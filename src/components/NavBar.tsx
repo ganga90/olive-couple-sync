@@ -13,6 +13,9 @@ const NavBar = () => {
           <NavLink to="/lists" className="text-sm text-muted-foreground hover:text-foreground">
             Lists
           </NavLink>
+          <NavLink to="/profile" className="text-sm text-muted-foreground hover:text-foreground">
+            Profile
+          </NavLink>
           <SignedOut>
             <SignInButton mode="modal">
               <Button size="sm">Sign in</Button>
