@@ -8,6 +8,7 @@ import NotFound from "./pages/NotFound";
 import Lists from "./pages/Lists";
 import Onboarding from "./pages/Onboarding";
 import Profile from "./pages/Profile";
+import NoteDetails from "./pages/NoteDetails";
 import NavBar from "./components/NavBar";
 import MobileTabBar from "./components/MobileTabBar";
 import { CoupleProvider } from "./providers/CoupleProvider";
@@ -28,6 +29,7 @@ const App = () => (
               <Route path="/lists" element={<Lists />} />
               <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/profile" element={<Profile />} />
+              <Route path="/notes/:id" element={<NoteDetails />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

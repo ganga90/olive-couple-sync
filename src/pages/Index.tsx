@@ -81,25 +81,27 @@ const Index = () => {
                 <div className="grid gap-3">
                   {latestNotes.map((n) => (
                     <article key={n.id}>
-                      <Card>
-                        <CardContent className="p-4">
-                          <div className="mb-1 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="secondary">{n.category}</Badge>
-                              {n.dueDate ? (
-                                <Badge variant="outline">Due {new Date(n.dueDate).toLocaleDateString()}</Badge>
-                              ) : null}
+                      <Link to={`/notes/${n.id}`} aria-label={`Open note ${n.summary}`}>
+                        <Card className="transition-colors hover:bg-accent/50">
+                          <CardContent className="p-4">
+                            <div className="mb-1 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary">{n.category}</Badge>
+                                {n.dueDate ? (
+                                  <Badge variant="outline">Due {new Date(n.dueDate).toLocaleDateString()}</Badge>
+                                ) : null}
+                              </div>
+                              <span className="text-xs text-muted-foreground">
+                                {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
+                              </span>
                             </div>
-                            <span className="text-xs text-muted-foreground">
-                              {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
-                            </span>
-                          </div>
-                          <p className="text-sm">{n.summary}</p>
-                          {n.addedBy ? (
-                            <p className="mt-2 text-xs text-muted-foreground">Added by {n.addedBy}</p>
-                          ) : null}
-                        </CardContent>
-                      </Card>
+                            <p className="text-sm">{n.summary}</p>
+                            {n.addedBy ? (
+                              <p className="mt-2 text-xs text-muted-foreground">Added by {n.addedBy}</p>
+                            ) : null}
+                          </CardContent>
+                        </Card>
+                      </Link>
                     </article>
                   ))}
                 </div>
