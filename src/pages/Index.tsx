@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { SignedIn, SignedOut, SignInButton, SignUpButton, useUser } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, SignIn, useUser } from "@clerk/clerk-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,13 +42,8 @@ const Index = () => {
         <h1 className="text-4xl font-bold">Olive — your couple’s second brain</h1>
         <p className="text-lg text-muted-foreground">Capture anything in one place. Olive organizes it for both of you.</p>
         <SignedOut>
-          <div className="flex items-center gap-3">
-            <SignInButton mode="modal">
-              <Button size="lg">Sign in</Button>
-            </SignInButton>
-            <SignUpButton mode="modal">
-              <Button variant="outline" size="lg">Create account</Button>
-            </SignUpButton>
+          <div className="w-full max-w-md rounded-md border p-4">
+            <SignIn fallbackRedirectUrl="/onboarding" />
           </div>
         </SignedOut>
         <SignedIn>

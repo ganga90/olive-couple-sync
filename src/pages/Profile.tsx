@@ -1,4 +1,4 @@
-import { SignedIn, SignedOut, SignInButton, UserProfile } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, SignIn, UserProfile } from "@clerk/clerk-react";
 import { useSEO } from "@/hooks/useSEO";
 
 const Profile = () => {
@@ -11,13 +11,8 @@ const Profile = () => {
         <p className="mb-6 text-muted-foreground">Manage your account information, security, and preferences.</p>
 
         <SignedOut>
-          <div className="rounded-md border p-6">
-            <p className="mb-4 text-sm text-muted-foreground">You need to be signed in to manage your profile.</p>
-            <SignInButton mode="modal">
-              <button className="inline-flex items-center justify-center rounded-md border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground">
-                Sign in
-              </button>
-            </SignInButton>
+          <div className="rounded-md border p-4">
+            <SignIn fallbackRedirectUrl="/onboarding" />
           </div>
         </SignedOut>
 
