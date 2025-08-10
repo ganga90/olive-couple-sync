@@ -11,12 +11,12 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { ArrowLeft, Pencil, Trash2, User, CalendarDays } from "lucide-react";
 import { format } from "date-fns";
-import { generateOliveReply } from "@/utils/oliveAssistant";
+import { assistWithNote } from "@/utils/oliveAssistant";
 
 const NoteDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { notes, deleteNote } = useNotes();
+  const { notes, deleteNote, updateNote } = useNotes();
   const note = useMemo(() => notes.find((n) => n.id === id), [notes, id]);
 
   useSEO({ title: note ? `${note.summary} — Olive` : "Note — Olive", description: note?.originalText });
@@ -50,10 +50,13 @@ const NoteDetails = () => {
 
   const onSend = async () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || !note) return;
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: text }]);
-    const reply = await generateOliveReply(note, text);
+    const { reply, updates } = await assistWithNote(note, text);
+    if (updates && Object.keys(updates).length) {
+      updateNote(note.id, updates);
+    }
     setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
   };
 
@@ -80,6 +83,19 @@ const NoteDetails = () => {
         </div>
 
         <h2 className="text-2xl font-semibold leading-tight">{note.summary}</h2>
+
+        {note.items && note.items.length ? (
+          <Card>
+            <CardContent className="p-4">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">ITEMS:</div>
+              <ul className="list-disc space-y-1 pl-5 text-sm">
+                {note.items.map((it, idx) => (
+                  <li key={idx}>{it}</li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardContent className="p-4">

@@ -4,6 +4,7 @@ import { useNotes } from "@/providers/NotesProvider";
 import { useSEO } from "@/hooks/useSEO";
 import { Input } from "@/components/ui/input";
 import { categories } from "@/constants/categories";
+import { Link } from "react-router-dom";
 
 const Lists = () => {
   
@@ -45,21 +46,22 @@ const Lists = () => {
             {filteredCategories.map((c) => {
               const count = notes.filter((n) => n.category === c).length;
               return (
-                <Card key={c} className="border-border bg-card/90 shadow-sm">
-                  <CardContent className="flex items-center justify-between p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-foreground/80">
-                        {/* Icon placeholder per category (simple emoji for now) */}
-                        <span aria-hidden>🗂️</span>
+                <Link to={`/lists/${encodeURIComponent(c)}`} aria-label={`Open ${c} list`} className="block">
+                  <Card key={c} className="border-border bg-card/90 shadow-sm transition-colors hover:bg-accent/50">
+                    <CardContent className="flex items-center justify-between p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-foreground/80">
+                          <span aria-hidden>🗂️</span>
+                        </div>
+                        <div>
+                          <div className="font-medium">{c}</div>
+                          <div className="text-xs text-muted-foreground">{count} {count === 1 ? "item" : "items"}</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="font-medium">{c}</div>
-                        <div className="text-xs text-muted-foreground">{count} {count === 1 ? "item" : "items"}</div>
-                      </div>
-                    </div>
-                    <span className="text-muted-foreground">›</span>
-                  </CardContent>
-                </Card>
+                      <span className="text-muted-foreground">›</span>
+                    </CardContent>
+                  </Card>
+                </Link>
               );
             })}
           </div>
