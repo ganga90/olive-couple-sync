@@ -2,15 +2,29 @@ import { useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useUser } from "@clerk/clerk-react";
+import { useNotes } from "@/providers/NotesProvider";
+import { processNoteWithAI } from "@/utils/aiProcessor";
 
 const Lists = () => {
   const [note, setNote] = useState("");
+  const { user } = useUser();
+  const { addNote } = useNotes();
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!note.trim()) return;
-    toast.success("Note captured — AI will organize it soon.");
-    setNote("");
+    const text = note.trim();
+    if (!text) return;
+    const addedBy = user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "You";
+    try {
+      const processed = await processNoteWithAI(text, addedBy);
+      addNote(processed);
+      toast.success("Note captured and organized.");
+      setNote("");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to process note.");
+    }
   };
 
   return (
