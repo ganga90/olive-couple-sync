@@ -2,15 +2,24 @@ import { useState } from "react";
 import { SignedIn, SignedOut, SignInButton, SignUpButton, useUser } from "@clerk/clerk-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Link } from "react-router-dom";
+import { useSEO } from "@/hooks/useSEO";
 import { toast } from "sonner";
 import { useNotes } from "@/providers/NotesProvider";
 import { processNoteWithAI } from "@/utils/aiProcessor";
+import { formatDistanceToNow } from "date-fns";
 
 const Index = () => {
+  useSEO({ title: "Home — Olive", description: "Capture notes and see your latest items in Olive." });
   const [note, setNote] = useState("");
   const { user } = useUser();
-  const { addNote } = useNotes();
-
+  const { notes, addNote } = useNotes();
+  const latestNotes = notes
+    .slice()
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
+    .slice(0, 5);
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = note.trim();
@@ -43,13 +52,55 @@ const Index = () => {
           </div>
         </SignedOut>
         <SignedIn>
-          <div className="w-full">
+          <div className="w-full space-y-6">
             <form onSubmit={onSubmit} className="space-y-3">
-              <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g., Buy lemons tomorrow and book dental checkup" />
+              <Textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="e.g., Buy lemons tomorrow and book dental checkup"
+                aria-label="Add a note"
+              />
               <div className="flex justify-center">
                 <Button type="submit">Add note</Button>
               </div>
             </form>
+
+            <section aria-labelledby="latest-notes">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 id="latest-notes" className="text-xl font-semibold">Latest notes</h2>
+                <Link to="/lists" className="text-sm text-muted-foreground hover:text-foreground">View all</Link>
+              </div>
+
+              {latestNotes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No notes yet. Add your first note above.</p>
+              ) : (
+                <div className="grid gap-3">
+                  {latestNotes.map((n) => (
+                    <article key={n.id}>
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="mb-1 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary">{n.category}</Badge>
+                              {n.dueDate ? (
+                                <Badge variant="outline">Due {new Date(n.dueDate).toLocaleDateString()}</Badge>
+                              ) : null}
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
+                            </span>
+                          </div>
+                          <p className="text-sm">{n.summary}</p>
+                          {n.addedBy ? (
+                            <p className="mt-2 text-xs text-muted-foreground">Added by {n.addedBy}</p>
+                          ) : null}
+                        </CardContent>
+                      </Card>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
         </SignedIn>
       </section>
