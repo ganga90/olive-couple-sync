@@ -10,7 +10,7 @@ const SignUpPage = () => {
         <h1 className="mb-2 text-3xl font-bold">Create account</h1>
         <p className="mb-6 text-muted-foreground">Join Olive and set up your space in minutes.</p>
         <div className="rounded-md border p-4">
-          <SignUp fallbackRedirectUrl="/onboarding" />
+          <SignUp fallbackRedirectUrl="/welcome" />
         </div>
       </section>
     </main>

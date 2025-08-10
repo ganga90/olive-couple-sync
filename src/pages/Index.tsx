@@ -43,7 +43,7 @@ const Index = () => {
         <p className="text-lg text-muted-foreground">Capture anything in one place. Olive organizes it for both of you.</p>
         <SignedOut>
           <div className="w-full max-w-md space-y-3 rounded-md border p-4">
-            <SignIn fallbackRedirectUrl="/onboarding" />
+            <SignIn fallbackRedirectUrl="/welcome" />
             <p className="text-center text-xs text-muted-foreground">
               Can’t see the form? <Link to="/sign-in" className="underline underline-offset-4">Open sign-in page</Link>
             </p>

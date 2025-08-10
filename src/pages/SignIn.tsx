@@ -10,7 +10,7 @@ const SignInPage = () => {
         <h1 className="mb-2 text-3xl font-bold">Sign in</h1>
         <p className="mb-6 text-muted-foreground">Access your notes, lists, and preferences.</p>
         <div className="rounded-md border p-4">
-          <SignIn fallbackRedirectUrl="/onboarding" />
+          <SignIn fallbackRedirectUrl="/welcome" />
         </div>
       </section>
     </main>

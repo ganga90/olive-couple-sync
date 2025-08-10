@@ -9,6 +9,7 @@ import Lists from "./pages/Lists";
 import Onboarding from "./pages/Onboarding";
 import Profile from "./pages/Profile";
 import NoteDetails from "./pages/NoteDetails";
+import Welcome from "./pages/Welcome";
 import NavBar from "./components/NavBar";
 import MobileTabBar from "./components/MobileTabBar";
 import { CoupleProvider } from "./providers/CoupleProvider";
@@ -30,6 +31,7 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/lists" element={<Lists />} />
               <Route path="/onboarding" element={<Onboarding />} />
+              <Route path="/welcome" element={<Welcome />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/notes/:id" element={<NoteDetails />} />
               <Route path="/sign-in" element={<SignInPage />} />

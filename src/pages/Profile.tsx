@@ -13,7 +13,7 @@ const Profile = () => {
 
         <SignedOut>
           <div className="rounded-md border p-4 space-y-2">
-            <SignIn fallbackRedirectUrl="/onboarding" />
+            <SignIn fallbackRedirectUrl="/welcome" />
             <p className="text-center text-xs text-muted-foreground">
               Can’t see the form? <Link to="/sign-in" className="underline underline-offset-4">Open sign-in page</Link>
             </p>
