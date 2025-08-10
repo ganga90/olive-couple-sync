@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,12 +10,30 @@ import { useNotes } from "@/providers/NotesProvider";
 import { processNoteWithAI } from "@/utils/aiProcessor";
 import { useSEO } from "@/hooks/useSEO";
 import { format } from "date-fns";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { categories } from "@/constants/categories";
 
 const Lists = () => {
   const [note, setNote] = useState("");
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState<string>("All");
   const { user } = useUser();
   const { notes, isLoading, addNote, updateNote, deleteNote } = useNotes();
   useSEO({ title: "Lists — Olive", description: "Capture and organize shared notes for your couple." });
+
+  const filteredNotes = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return notes.filter((n) => {
+      const matchesCategory = category === "All" || n.category === category;
+      const matchesQuery =
+        !q ||
+        n.summary.toLowerCase().includes(q) ||
+        n.originalText.toLowerCase().includes(q) ||
+        (n.tags?.some((t) => t.toLowerCase().includes(q)) ?? false);
+      return matchesCategory && matchesQuery;
+    });
+  }, [notes, query, category]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,23 +66,46 @@ const Lists = () => {
 
       <section className="mb-10">
         <h2 className="mb-3 text-xl font-semibold">Your notes</h2>
+
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search notes by text or tags"
+              aria-label="Search notes"
+            />
+          </div>
+          <Select value={category} onValueChange={setCategory}>
+            <SelectTrigger className="w-full sm:w-48" aria-label="Filter by category">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All">All</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
         ) : notes.length === 0 ? (
           <p className="text-sm text-muted-foreground">No notes yet. Add one above to get started.</p>
+        ) : filteredNotes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No matching notes. Try a different search or category.</p>
         ) : (
           <div className="space-y-3">
-            {notes.map((n) => (
+            {filteredNotes.map((n) => (
               <Card key={n.id} className="border-border">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 py-3">
-                  <CardTitle className="text-base font-medium">
-                    {n.summary}
-                  </CardTitle>
+                  <CardTitle className="text-base font-medium">{n.summary}</CardTitle>
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary">{n.category}</Badge>
-                    {n.dueDate ? (
-                      <Badge variant="outline">Due {format(new Date(n.dueDate), "MMM d")}</Badge>
-                    ) : null}
+                    {n.dueDate ? <Badge variant="outline">Due {format(new Date(n.dueDate), "MMM d")}</Badge> : null}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3 py-3">
@@ -95,7 +136,9 @@ const Lists = () => {
 
                     <div className="flex flex-wrap items-center gap-2">
                       {n.tags?.map((t) => (
-                        <Badge key={t} variant="outline">{t}</Badge>
+                        <Badge key={t} variant="outline">
+                          {t}
+                        </Badge>
                       ))}
                       {n.priority ? <Badge variant="secondary">{n.priority}</Badge> : null}
                       <span className="ml-auto text-xs text-muted-foreground">
