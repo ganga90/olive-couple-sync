@@ -9,6 +9,7 @@ if (!PUBLISHABLE_KEY) {
   throw new Error('Missing Clerk Publishable Key')
 }
 
+console.log('[Olive] Clerk publishable key present:', Boolean(PUBLISHABLE_KEY))
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
