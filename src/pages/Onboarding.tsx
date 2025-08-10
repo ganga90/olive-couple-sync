@@ -4,11 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { useCouple } from "@/providers/CoupleProvider";
+import { useSEO } from "@/hooks/useSEO";
 
 const Onboarding = () => {
   const [you, setYou] = useState("");
   const [partner, setPartner] = useState("");
   const navigate = useNavigate();
+  const { setNames } = useCouple();
+  useSEO({ title: "Onboarding — Olive", description: "Set up your couple names to personalize Olive." });
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -16,6 +20,7 @@ const Onboarding = () => {
       toast.error("Please enter both names");
       return;
     }
+    setNames(you, partner);
     toast.success("Welcome to Olive! You're all set.");
     navigate("/lists");
   };

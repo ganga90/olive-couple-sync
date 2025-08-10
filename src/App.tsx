@@ -8,6 +8,7 @@ import NotFound from "./pages/NotFound";
 import Lists from "./pages/Lists";
 import Onboarding from "./pages/Onboarding";
 import NavBar from "./components/NavBar";
+import { CoupleProvider } from "./providers/CoupleProvider";
 import { NotesProvider } from "./providers/NotesProvider";
 const queryClient = new QueryClient();
 
@@ -16,18 +17,20 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <NotesProvider>
-        <BrowserRouter>
-          <NavBar />
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/lists" element={<Lists />} />
-            <Route path="/onboarding" element={<Onboarding />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </NotesProvider>
+      <CoupleProvider>
+        <NotesProvider>
+          <BrowserRouter>
+            <NavBar />
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/lists" element={<Lists />} />
+              <Route path="/onboarding" element={<Onboarding />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </NotesProvider>
+      </CoupleProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

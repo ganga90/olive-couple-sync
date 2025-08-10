@@ -22,7 +22,7 @@ const NavBar = () => {
             </SignUpButton>
           </SignedOut>
           <SignedIn>
-            <UserButton appearance={{ elements: { userButtonPopoverFooter: "hidden" } }} />
+            <UserButton appearance={{ elements: { userButtonPopoverFooter: "hidden" } }} showName />
           </SignedIn>
         </div>
       </nav>

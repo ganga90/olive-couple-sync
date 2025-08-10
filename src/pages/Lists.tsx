@@ -1,15 +1,21 @@
 import { useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { useUser } from "@clerk/clerk-react";
 import { useNotes } from "@/providers/NotesProvider";
 import { processNoteWithAI } from "@/utils/aiProcessor";
+import { useSEO } from "@/hooks/useSEO";
+import { format } from "date-fns";
 
 const Lists = () => {
   const [note, setNote] = useState("");
   const { user } = useUser();
-  const { addNote } = useNotes();
+  const { notes, isLoading, addNote, updateNote, deleteNote } = useNotes();
+  useSEO({ title: "Lists — Olive", description: "Capture and organize shared notes for your couple." });
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,6 +44,46 @@ const Lists = () => {
             <Button type="submit">Add</Button>
           </div>
         </form>
+      </section>
+
+      <section className="mb-10">
+        <h2 className="mb-3 text-xl font-semibold">Your notes</h2>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : notes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No notes yet. Add one above to get started.</p>
+        ) : (
+          <div className="space-y-3">
+            {notes.map((n) => (
+              <Card key={n.id} className="border-border">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 py-3">
+                  <CardTitle className="text-base font-medium">
+                    {n.summary}
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">{n.category}</Badge>
+                    {n.dueDate ? (
+                      <Badge variant="outline">Due {format(new Date(n.dueDate), "MMM d")}</Badge>
+                    ) : null}
+                  </div>
+                </CardHeader>
+                <CardContent className="flex items-center justify-between py-3">
+                  <div className="flex items-center gap-3">
+                    <Checkbox id={`done-${n.id}`} checked={n.completed} onCheckedChange={() => updateNote(n.id, { completed: !n.completed })} />
+                    <label htmlFor={`done-${n.id}`} className="text-sm text-muted-foreground">
+                      Mark done
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => deleteNote(n.id)}>
+                      Delete
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </section>
 
       <section>
