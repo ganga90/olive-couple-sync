@@ -1,5 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
-import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 
 const NavBar = () => {
@@ -17,12 +17,12 @@ const NavBar = () => {
             Profile
           </NavLink>
           <SignedOut>
-            <SignInButton mode="modal">
+            <Link to="/sign-in">
               <Button size="sm">Sign in</Button>
-            </SignInButton>
-            <SignUpButton mode="modal">
+            </Link>
+            <Link to="/sign-up">
               <Button variant="outline" size="sm">Sign up</Button>
-            </SignUpButton>
+            </Link>
           </SignedOut>
           <SignedIn>
             <UserButton appearance={{ elements: { userButtonPopoverFooter: "hidden" } }} showName />

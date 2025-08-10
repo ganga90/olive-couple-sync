@@ -13,6 +13,8 @@ import NavBar from "./components/NavBar";
 import MobileTabBar from "./components/MobileTabBar";
 import { CoupleProvider } from "./providers/CoupleProvider";
 import { NotesProvider } from "./providers/NotesProvider";
+import SignInPage from "./pages/SignIn";
+import SignUpPage from "./pages/SignUp";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -30,6 +32,8 @@ const App = () => (
               <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/notes/:id" element={<NoteDetails />} />
+              <Route path="/sign-in" element={<SignInPage />} />
+              <Route path="/sign-up" element={<SignUpPage />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
