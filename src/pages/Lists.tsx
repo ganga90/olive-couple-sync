@@ -67,17 +67,41 @@ const Lists = () => {
                     ) : null}
                   </div>
                 </CardHeader>
-                <CardContent className="flex items-center justify-between py-3">
-                  <div className="flex items-center gap-3">
-                    <Checkbox id={`done-${n.id}`} checked={n.completed} onCheckedChange={() => updateNote(n.id, { completed: !n.completed })} />
-                    <label htmlFor={`done-${n.id}`} className="text-sm text-muted-foreground">
-                      Mark done
-                    </label>
+                <CardContent className="space-y-3 py-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Checkbox id={`done-${n.id}`} checked={n.completed} onCheckedChange={() => updateNote(n.id, { completed: !n.completed })} />
+                      <label htmlFor={`done-${n.id}`} className="text-sm text-muted-foreground">
+                        Mark done
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => deleteNote(n.id)}>
+                        Delete
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => deleteNote(n.id)}>
-                      Delete
-                    </Button>
+
+                  <div className="space-y-2">
+                    {n.items && n.items.length ? (
+                      <ul className="list-disc pl-6 text-sm text-muted-foreground">
+                        {n.items.map((item, idx) => (
+                          <li key={idx}>{item}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+
+                    <p className="text-sm text-muted-foreground">{n.originalText}</p>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {n.tags?.map((t) => (
+                        <Badge key={t} variant="outline">{t}</Badge>
+                      ))}
+                      {n.priority ? <Badge variant="secondary">{n.priority}</Badge> : null}
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        Added by {n.addedBy} • {format(new Date(n.createdAt), "MMM d, yyyy")}
+                      </span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -90,6 +114,24 @@ const Lists = () => {
         <h2 className="mb-2 text-xl font-semibold">Common lists</h2>
         <p className="text-sm text-muted-foreground">Groceries, tasks, travel ideas, date ideas — coming next.</p>
       </section>
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "ItemList",
+            itemListElement: notes.map((n, i) => ({
+              "@type": "ListItem",
+              position: i + 1,
+              name: n.summary,
+              description: n.originalText,
+              dateCreated: n.createdAt,
+              dateModified: n.updatedAt,
+            })),
+          }),
+        }}
+      />
     </main>
   );
 };
