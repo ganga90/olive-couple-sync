@@ -53,17 +53,21 @@ const Index = () => {
         </SignedOut>
         <SignedIn>
           <div className="w-full space-y-6">
-            <form onSubmit={onSubmit} className="space-y-3">
-              <Textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="e.g., Buy lemons tomorrow and book dental checkup"
-                aria-label="Add a note"
-              />
-              <div className="flex justify-center">
-                <Button type="submit">Add note</Button>
-              </div>
-            </form>
+            <section aria-labelledby="drop-a-note">
+              <h2 id="drop-a-note" className="mb-2 text-xl font-semibold">Drop a note</h2>
+              <p className="mb-3 text-sm text-muted-foreground">Write anything. Olive will summarize, categorize, and schedule it.</p>
+              <form onSubmit={onSubmit} className="space-y-3">
+                <Textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="e.g., Buy lemons tomorrow and book dental checkup"
+                  aria-label="Add a note"
+                />
+                <div className="flex justify-center">
+                  <Button type="submit">Add note</Button>
+                </div>
+              </form>
+            </section>
 
             <section aria-labelledby="latest-notes">
               <div className="mb-3 flex items-center justify-between">

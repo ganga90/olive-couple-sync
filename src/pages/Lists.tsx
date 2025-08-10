@@ -1,13 +1,9 @@
 import { useMemo, useState } from "react";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { toast } from "sonner";
-import { useUser } from "@clerk/clerk-react";
 import { useNotes } from "@/providers/NotesProvider";
-import { processNoteWithAI } from "@/utils/aiProcessor";
+import { Button } from "@/components/ui/button";
 import { useSEO } from "@/hooks/useSEO";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
@@ -15,12 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { categories } from "@/constants/categories";
 
 const Lists = () => {
-  const [note, setNote] = useState("");
+  
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("All");
-  const { user } = useUser();
-  const { notes, isLoading, addNote, updateNote, deleteNote } = useNotes();
-  useSEO({ title: "Lists — Olive", description: "Capture and organize shared notes for your couple." });
+  
+  const { notes, isLoading, updateNote, deleteNote } = useNotes();
+  useSEO({ title: "Lists — Olive", description: "Browse and search all your lists." });
 
   const filteredNotes = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -35,37 +31,12 @@ const Lists = () => {
     });
   }, [notes, query, category]);
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = note.trim();
-    if (!text) return;
-    const addedBy = user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "You";
-    try {
-      const processed = await processNoteWithAI(text, addedBy);
-      addNote(processed);
-      toast.success("Note captured and organized.");
-      setNote("");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to process note.");
-    }
-  };
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
-      <section className="mb-8">
-        <h1 className="mb-2 text-2xl font-semibold">Drop a note</h1>
-        <p className="mb-4 text-sm text-muted-foreground">Write anything. Olive will summarize, categorize, and schedule it.</p>
-        <form onSubmit={onSubmit} className="space-y-3">
-          <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g., Buy lemons tomorrow and book dental checkup" />
-          <div className="flex justify-end">
-            <Button type="submit">Add</Button>
-          </div>
-        </form>
-      </section>
 
       <section className="mb-10">
-        <h2 className="mb-3 text-xl font-semibold">Your notes</h2>
+        <h2 className="mb-3 text-xl font-semibold">All lists</h2>
 
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="flex-1">
@@ -94,7 +65,7 @@ const Lists = () => {
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
         ) : notes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No notes yet. Add one above to get started.</p>
+          <p className="text-sm text-muted-foreground">No notes yet. Add one from Home to get started.</p>
         ) : filteredNotes.length === 0 ? (
           <p className="text-sm text-muted-foreground">No matching notes. Try a different search or category.</p>
         ) : (
