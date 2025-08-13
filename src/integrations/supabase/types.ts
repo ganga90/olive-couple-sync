@@ -14,7 +14,186 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      couple_members: {
+        Row: {
+          couple_id: string
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["member_role"]
+          user_id: string
+        }
+        Insert: {
+          couple_id: string
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          user_id: string
+        }
+        Update: {
+          couple_id?: string
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "couple_members_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "couples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      couples: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          partner_name: string | null
+          title: string | null
+          updated_at: string
+          you_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          partner_name?: string | null
+          title?: string | null
+          updated_at?: string
+          you_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          partner_name?: string | null
+          title?: string | null
+          updated_at?: string
+          you_name?: string | null
+        }
+        Relationships: []
+      }
+      invites: {
+        Row: {
+          couple_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          invited_by: string | null
+          invited_email: string
+          status: Database["public"]["Enums"]["invite_status"]
+          token: string
+        }
+        Insert: {
+          couple_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          invited_by?: string | null
+          invited_email: string
+          status?: Database["public"]["Enums"]["invite_status"]
+          token: string
+        }
+        Update: {
+          couple_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          invited_by?: string | null
+          invited_email?: string
+          status?: Database["public"]["Enums"]["invite_status"]
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invites_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "couples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notes: {
+        Row: {
+          author_id: string | null
+          category: string
+          completed: boolean
+          couple_id: string
+          created_at: string
+          due_date: string | null
+          id: string
+          items: string[] | null
+          original_text: string
+          priority: Database["public"]["Enums"]["note_priority"] | null
+          summary: string
+          tags: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          author_id?: string | null
+          category: string
+          completed?: boolean
+          couple_id: string
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          items?: string[] | null
+          original_text: string
+          priority?: Database["public"]["Enums"]["note_priority"] | null
+          summary: string
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string | null
+          category?: string
+          completed?: boolean
+          couple_id?: string
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          items?: string[] | null
+          original_text?: string
+          priority?: Database["public"]["Enums"]["note_priority"] | null
+          summary?: string
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notes_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "couples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +202,9 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      invite_status: "pending" | "accepted" | "revoked"
+      member_role: "owner" | "member"
+      note_priority: "low" | "medium" | "high"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +331,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      invite_status: ["pending", "accepted", "revoked"],
+      member_role: ["owner", "member"],
+      note_priority: ["low", "medium", "high"],
+    },
   },
 } as const
