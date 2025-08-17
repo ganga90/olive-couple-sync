@@ -25,8 +25,8 @@ const Index = () => {
 
   console.log('[Index] Auth state:', { user: !!user, authLoading, isOnboarded, coupleLoading });
 
-  // Show loading state
-  if (authLoading || coupleLoading) {
+  // Show loading state only when actually loading auth or couple data
+  if (authLoading || (user && coupleLoading)) {
     return (
       <main className="min-h-screen bg-gradient-soft flex items-center justify-center">
         <div className="text-center">
