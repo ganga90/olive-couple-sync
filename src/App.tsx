@@ -15,6 +15,9 @@ import NavBar from "./components/NavBar";
 import MobileTabBar from "./components/MobileTabBar";
 import { CoupleProvider } from "./providers/CoupleProvider";
 import { NotesProvider } from "./providers/NotesProvider";
+import { AuthProvider } from "./providers/AuthProvider";
+import { SupabaseCoupleProvider } from "./providers/SupabaseCoupleProvider";
+import { SupabaseNotesProvider } from "./providers/SupabaseNotesProvider";
 import SignInPage from "./pages/SignIn";
 import SignUpPage from "./pages/SignUp";
 const queryClient = new QueryClient();
@@ -24,8 +27,11 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <CoupleProvider>
-        <NotesProvider>
+      <AuthProvider>
+        <SupabaseCoupleProvider>
+          <SupabaseNotesProvider>
+            <CoupleProvider>
+              <NotesProvider>
           <BrowserRouter>
             <NavBar />
             <Routes>
@@ -43,8 +49,11 @@ const App = () => (
             </Routes>
             <MobileTabBar />
           </BrowserRouter>
-        </NotesProvider>
-      </CoupleProvider>
+              </NotesProvider>
+            </CoupleProvider>
+          </SupabaseNotesProvider>
+        </SupabaseCoupleProvider>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

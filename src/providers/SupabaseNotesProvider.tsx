@@ -1,0 +1,112 @@
+import React, { createContext, useContext, useMemo } from "react";
+import { useSupabaseCouple } from "./SupabaseCoupleProvider";
+import { useSupabaseNotes, SupabaseNote } from "@/hooks/useSupabaseNotes";
+import type { Note } from "@/types/note";
+
+type SupabaseNotesContextValue = {
+  notes: Note[];
+  loading: boolean;
+  addNote: (noteData: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => Promise<Note | null>;
+  updateNote: (id: string, updates: Partial<Note>) => Promise<Note | null>;
+  deleteNote: (id: string) => Promise<boolean>;
+  getNotesByCategory: (category: string) => Note[];
+};
+
+const SupabaseNotesContext = createContext<SupabaseNotesContextValue | undefined>(undefined);
+
+// Convert Supabase note to app Note type
+const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote): Note => ({
+  id: supabaseNote.id,
+  originalText: supabaseNote.original_text,
+  summary: supabaseNote.summary,
+  category: supabaseNote.category,
+  dueDate: supabaseNote.due_date,
+  addedBy: supabaseNote.author_id || "unknown",
+  createdAt: supabaseNote.created_at,
+  updatedAt: supabaseNote.updated_at,
+  completed: supabaseNote.completed,
+  priority: supabaseNote.priority || undefined,
+  tags: supabaseNote.tags || undefined,
+  items: supabaseNote.items || undefined,
+});
+
+// Convert app Note to Supabase note insert type
+const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => ({
+  original_text: note.originalText,
+  summary: note.summary,
+  category: note.category,
+  due_date: note.dueDate,
+  completed: note.completed,
+  priority: note.priority || null,
+  tags: note.tags || null,
+  items: note.items || null,
+});
+
+export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { currentCouple } = useSupabaseCouple();
+  const { 
+    notes: supabaseNotes, 
+    loading, 
+    addNote: addSupabaseNote, 
+    updateNote: updateSupabaseNote, 
+    deleteNote: deleteSupabaseNote,
+    getNotesByCategory: getSupabaseNotesByCategory 
+  } = useSupabaseNotes(currentCouple?.id);
+
+  const notes = useMemo(() => 
+    supabaseNotes.map(convertSupabaseNoteToNote), 
+    [supabaseNotes]
+  );
+
+  const addNote = async (noteData: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => {
+    const supabaseNoteData = convertNoteToSupabaseInsert(noteData);
+    const result = await addSupabaseNote(supabaseNoteData);
+    return result ? convertSupabaseNoteToNote(result) : null;
+  };
+
+  const updateNote = async (id: string, updates: Partial<Note>) => {
+    const supabaseUpdates: any = {};
+    
+    if (updates.originalText !== undefined) supabaseUpdates.original_text = updates.originalText;
+    if (updates.summary !== undefined) supabaseUpdates.summary = updates.summary;
+    if (updates.category !== undefined) supabaseUpdates.category = updates.category;
+    if (updates.dueDate !== undefined) supabaseUpdates.due_date = updates.dueDate;
+    if (updates.completed !== undefined) supabaseUpdates.completed = updates.completed;
+    if (updates.priority !== undefined) supabaseUpdates.priority = updates.priority;
+    if (updates.tags !== undefined) supabaseUpdates.tags = updates.tags;
+    if (updates.items !== undefined) supabaseUpdates.items = updates.items;
+
+    const result = await updateSupabaseNote(id, supabaseUpdates);
+    return result ? convertSupabaseNoteToNote(result) : null;
+  };
+
+  const deleteNote = async (id: string) => {
+    return await deleteSupabaseNote(id);
+  };
+
+  const getNotesByCategory = (category: string) => {
+    const categoryNotes = getSupabaseNotesByCategory(category);
+    return categoryNotes.map(convertSupabaseNoteToNote);
+  };
+
+  const value = useMemo(() => ({
+    notes,
+    loading,
+    addNote,
+    updateNote,
+    deleteNote,
+    getNotesByCategory,
+  }), [notes, loading]);
+
+  return (
+    <SupabaseNotesContext.Provider value={value}>
+      {children}
+    </SupabaseNotesContext.Provider>
+  );
+};
+
+export const useSupabaseNotesContext = () => {
+  const ctx = useContext(SupabaseNotesContext);
+  if (!ctx) throw new Error("useSupabaseNotesContext must be used within SupabaseNotesProvider");
+  return ctx;
+};
