@@ -26,8 +26,8 @@ const Onboarding = () => {
   };
 
   const handleComplete = () => {
-    console.log('[Onboarding] Complete called, navigating to /');
-    toast.success("Welcome to Olive! You're all set.");
+    console.log('[Onboarding] handleComplete called, navigating to home');
+    toast.success("Welcome to Olive! 🫒");
     navigate("/");
   };
 

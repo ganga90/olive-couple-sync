@@ -28,6 +28,8 @@ export const useSupabaseCouples = () => {
   const [loading, setLoading] = useState(true);
   const supabase = useClerkSupabaseClient();
 
+  console.log('[useSupabaseCouples] Hook initialized with user:', !!user, 'loading:', loading);
+
   const fetchCouples = useCallback(async () => {
     if (!user) {
       console.log("[Couples] No user, clearing state");
@@ -137,6 +139,8 @@ export const useSupabaseCouples = () => {
     console.log("[Couples] Creating couple with data:", coupleData, "user:", user.id);
 
     try {
+      // First, create the couple
+      console.log("[Couples] Inserting couple into clerk_couples table");
       const { data, error } = await supabase
         .from("clerk_couples")
         .insert([{
@@ -153,7 +157,8 @@ export const useSupabaseCouples = () => {
       
       console.log("[Couples] Couple created successfully:", data);
       
-      // Add user as member immediately after couple creation
+      // Then, add user as member
+      console.log("[Couples] Adding user as member");
       const { error: memberError } = await supabase
         .from("clerk_couple_members")
         .insert({
@@ -164,7 +169,9 @@ export const useSupabaseCouples = () => {
         
       if (memberError) {
         console.error("[Couples] Error adding member:", memberError);
-        // Don't fail the whole operation if member insertion fails
+        // Don't fail the whole operation if member insertion fails due to trigger
+      } else {
+        console.log("[Couples] Member added successfully");
       }
       
       toast.success("Couple workspace created successfully");
@@ -174,10 +181,10 @@ export const useSupabaseCouples = () => {
       return data;
     } catch (error) {
       console.error("[Couples] Error creating couple:", error);
-      toast.error("Failed to create couple workspace");
+      toast.error(`Failed to create couple workspace: ${error.message || error}`);
       return null;
     }
-  }, [user, supabase, fetchCouples]);
+  }, [user, supabase]);
 
   const updateCouple = useCallback(async (id: string, updates: { title?: string; you_name?: string; partner_name?: string }) => {
     if (!user) {

@@ -25,6 +25,7 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
   const supabase = useClerkSupabaseClient();
 
   const handleSetupOnly = async () => {
+    console.log('[InviteFlow] handleSetupOnly called with:', { you, partner });
     setLoading(true);
     try {
       console.log('[InviteFlow] Creating couple with:', { title: `${you} & ${partner}`, you_name: you, partner_name: partner });
@@ -36,13 +37,15 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
       console.log('[InviteFlow] Couple created:', couple);
       
       if (!couple) {
+        console.error('[InviteFlow] Failed to create couple - null returned');
         throw new Error("Failed to create couple");
       }
       
+      console.log('[InviteFlow] Couple creation successful, calling onComplete');
       toast.success("Your space is ready! You can invite your partner later from your profile.");
       onComplete();
     } catch (error) {
-      console.error("Failed to create couple:", error);
+      console.error("[InviteFlow] Failed to create couple:", error);
       toast.error("Failed to set up your space. Please try again.");
     } finally {
       setLoading(false);
