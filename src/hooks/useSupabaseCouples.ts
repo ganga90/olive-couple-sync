@@ -30,13 +30,17 @@ export const useSupabaseCouples = () => {
 
   const fetchCouples = useCallback(async () => {
     if (!user) {
+      console.log("[Couples] No user, clearing state");
       setCouples([]);
       setCurrentCouple(null);
       setLoading(false);
       return;
     }
 
+    setLoading(true);
     try {
+      console.log("[Couples] Fetching couples for user:", user.id);
+      
       // First ensure user profile exists
       await supabase
         .from('clerk_profiles')
@@ -67,19 +71,22 @@ export const useSupabaseCouples = () => {
       if (error) throw error;
 
       const userCouples = data?.map(member => member.clerk_couples).filter(Boolean) as SupabaseCouple[] || [];
+      console.log("[Couples] Found couples:", userCouples);
       setCouples(userCouples);
       
       // Set the first couple as current if none selected
       if (userCouples.length > 0 && !currentCouple) {
+        console.log("[Couples] Setting current couple to:", userCouples[0]);
         setCurrentCouple(userCouples[0]);
       }
     } catch (error) {
       console.error("[Couples] Error fetching couples:", error);
       toast.error("Failed to load couples");
     } finally {
+      console.log("[Couples] Fetch completed, setting loading to false");
       setLoading(false);
     }
-  }, [user, currentCouple, supabase]);
+  }, [user, supabase]); // Remove currentCouple dependency to avoid infinite loop
 
   useEffect(() => {
     fetchCouples();
@@ -145,11 +152,24 @@ export const useSupabaseCouples = () => {
       }
       
       console.log("[Couples] Couple created successfully:", data);
+      
+      // Add user as member immediately after couple creation
+      const { error: memberError } = await supabase
+        .from("clerk_couple_members")
+        .insert({
+          couple_id: data.id,
+          user_id: user.id,
+          role: 'owner' as const
+        });
+        
+      if (memberError) {
+        console.error("[Couples] Error adding member:", memberError);
+        // Don't fail the whole operation if member insertion fails
+      }
+      
       toast.success("Couple workspace created successfully");
       setCurrentCouple(data);
-      
-      // Trigger refetch to ensure couples list is updated
-      fetchCouples();
+      setCouples(prev => [...prev, data]);
       
       return data;
     } catch (error) {
