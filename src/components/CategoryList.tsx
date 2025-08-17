@@ -1,7 +1,24 @@
 import React from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, Users, User } from "lucide-react";
+import { 
+  ChevronRight, 
+  ShoppingCart, 
+  CheckSquare, 
+  Home, 
+  Plane, 
+  Heart, 
+  ShoppingBag, 
+  Activity, 
+  DollarSign, 
+  Briefcase, 
+  User, 
+  Gift, 
+  ChefHat, 
+  Film, 
+  Book, 
+  UtensilsCrossed 
+} from "lucide-react";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useNavigate } from "react-router-dom";
 
@@ -10,6 +27,29 @@ interface CategoryListProps {
   category: string;
   shared?: boolean;
 }
+
+const getCategoryIcon = (category: string) => {
+  const iconMap: Record<string, any> = {
+    'groceries': ShoppingCart,
+    'task': CheckSquare,
+    'home improvement': Home,
+    'travel idea': Plane,
+    'date idea': Heart,
+    'shopping': ShoppingBag,
+    'health': Activity,
+    'finance': DollarSign,
+    'work': Briefcase,
+    'personal': User,
+    'gift ideas': Gift,
+    'recipes': ChefHat,
+    'movies to watch': Film,
+    'books to read': Book,
+    'restaurants': UtensilsCrossed,
+  };
+  
+  const normalizedCategory = category.toLowerCase();
+  return iconMap[normalizedCategory] || User;
+};
 
 export const CategoryList: React.FC<CategoryListProps> = ({ 
   title, 
@@ -29,6 +69,8 @@ export const CategoryList: React.FC<CategoryListProps> = ({
 
   if (totalCount === 0) return null;
 
+  const CategoryIcon = getCategoryIcon(category);
+
   return (
     <Card 
       className="p-4 cursor-pointer transition-all duration-200 hover:shadow-soft hover:scale-[1.02] bg-gradient-soft border-olive/20"
@@ -37,14 +79,10 @@ export const CategoryList: React.FC<CategoryListProps> = ({
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
+            <CategoryIcon className="h-5 w-5 text-olive" />
             <h3 className="font-semibold text-foreground capitalize">
               {title}
             </h3>
-            {shared ? (
-              <Users className="h-4 w-4 text-olive" />
-            ) : (
-              <User className="h-4 w-4 text-muted-foreground" />
-            )}
           </div>
           
           <div className="flex items-center gap-2">
