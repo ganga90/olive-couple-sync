@@ -52,6 +52,13 @@ export default {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
 				},
+				olive: {
+					DEFAULT: 'hsl(var(--olive-primary))',
+					light: 'hsl(var(--olive-light))',
+					dark: 'hsl(var(--olive-dark))'
+				},
+				sage: 'hsl(var(--sage))',
+				cream: 'hsl(var(--cream))',
 				sidebar: {
 					DEFAULT: 'hsl(var(--sidebar-background))',
 					foreground: 'hsl(var(--sidebar-foreground))',
@@ -67,6 +74,14 @@ export default {
 				lg: 'var(--radius)',
 				md: 'calc(var(--radius) - 2px)',
 				sm: 'calc(var(--radius) - 4px)'
+			},
+			backgroundImage: {
+				'gradient-olive': 'var(--gradient-olive)',
+				'gradient-soft': 'var(--gradient-soft)'
+			},
+			boxShadow: {
+				'olive': 'var(--shadow-olive)',
+				'soft': 'var(--shadow-soft)'
 			},
 			keyframes: {
 				'accordion-down': {

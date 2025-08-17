@@ -1,113 +1,207 @@
-import { useState } from "react";
-import { SignedIn, SignedOut, SignIn, useUser } from "@clerk/clerk-react";
-import { Textarea } from "@/components/ui/textarea";
+import React from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/providers/AuthProvider";
+import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { NoteInput } from "@/components/NoteInput";
+import { NoteCard } from "@/components/NoteCard";
+import { CategoryList } from "@/components/CategoryList";
+import { OliveLogoWithText } from "@/components/OliveLogo";
+import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Link } from "react-router-dom";
+import { Plus, List, Heart } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
-import { toast } from "sonner";
-import { useNotes } from "@/providers/NotesProvider";
-import { processNoteWithAI } from "@/utils/aiProcessor";
-import { formatDistanceToNow } from "date-fns";
 
 const Index = () => {
-  useSEO({ title: "Home — Olive", description: "Capture notes and see your latest items in Olive." });
-  const [note, setNote] = useState("");
-  const { user } = useUser();
-  const { notes, addNote } = useNotes();
-  const latestNotes = notes
-    .slice()
-    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
-    .slice(0, 5);
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = note.trim();
-    if (!text) return;
-    const addedBy = user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "You";
-    try {
-      const processed = await processNoteWithAI(text, addedBy);
-      addNote(processed);
-      toast.success("Note captured and organized.");
-      setNote("");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to process note.");
-    }
-  };
+  useSEO({ 
+    title: "Olive — Your Couple's Second Brain", 
+    description: "Capture, organize, and act on life's notes, tasks, and ideas together with AI-powered assistance." 
+  });
+
+  const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
+  const { currentCouple, isOnboarded, loading: coupleLoading } = useSupabaseCouple();
+  const { notes, loading: notesLoading } = useSupabaseNotesContext();
+
+  // Show loading state
+  if (authLoading || coupleLoading) {
+    return (
+      <main className="min-h-screen bg-gradient-soft flex items-center justify-center">
+        <div className="text-center">
+          <OliveLogoWithText size="lg" className="mb-4" />
+          <p className="text-muted-foreground">Loading your space...</p>
+        </div>
+      </main>
+    );
+  }
+
+  // Redirect to auth if not signed in
+  if (!user) {
+    return (
+      <main className="min-h-screen bg-gradient-soft">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-md mx-auto text-center space-y-6">
+            <OliveLogoWithText size="lg" className="justify-center" />
+            
+            <div className="space-y-4">
+              <h1 className="text-2xl font-bold text-foreground">
+                Your couple's second brain
+              </h1>
+              <p className="text-muted-foreground">
+                Capture, organize, and act on life's notes, tasks, and ideas together with AI-powered assistance.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <Button 
+                onClick={() => navigate("/sign-up")}
+                className="w-full bg-gradient-olive text-white shadow-olive"
+                size="lg"
+              >
+                Get Started
+              </Button>
+              <Button 
+                onClick={() => navigate("/sign-in")}
+                variant="outline"
+                className="w-full border-olive/30 text-olive hover:bg-olive/10"
+                size="lg"
+              >
+                Sign In
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <Heart className="h-4 w-4 text-olive" />
+                Built for couples
+              </div>
+              <div className="flex items-center gap-1">
+                <Plus className="h-4 w-4 text-olive" />
+                AI-powered
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Redirect to onboarding if not set up
+  if (!isOnboarded) {
+    return (
+      <main className="min-h-screen bg-gradient-soft">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-md mx-auto text-center space-y-6">
+            <OliveLogoWithText size="lg" className="justify-center" />
+            
+            <div className="space-y-4">
+              <h1 className="text-2xl font-bold text-foreground">
+                Let's set up your space
+              </h1>
+              <p className="text-muted-foreground">
+                Tell us your names to personalize Olive for you both.
+              </p>
+            </div>
+
+            <Button 
+              onClick={() => navigate("/onboarding")}
+              className="w-full bg-gradient-olive text-white shadow-olive"
+              size="lg"
+            >
+              Continue Setup
+            </Button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Get recent notes (last 5)
+  const recentNotes = notes.slice(0, 5);
+  
+  // Get unique categories
+  const categories = Array.from(new Set(notes.map(note => note.category)))
+    .filter(category => category && category !== "general");
 
   return (
-    <main className="min-h-screen bg-background">
-      <section className="mx-auto flex max-w-3xl flex-col items-center justify-center gap-6 px-4 py-20 text-center">
-        <h1 className="text-4xl font-bold">Olive — your couple’s second brain</h1>
-        <p className="text-lg text-muted-foreground">Capture anything in one place. Olive organizes it for both of you.</p>
-        <SignedOut>
-          <div className="w-full max-w-md space-y-3 rounded-md border p-4">
-            <SignIn fallbackRedirectUrl="/welcome" />
-            <p className="text-center text-xs text-muted-foreground">
-              Can’t see the form? <Link to="/sign-in" className="underline underline-offset-4">Open sign-in page</Link>
-            </p>
+    <main className="min-h-screen bg-gradient-soft pb-20">
+      <div className="container mx-auto px-4 py-6 space-y-6">
+        {/* Header */}
+        <div className="text-center space-y-2">
+          <OliveLogoWithText className="justify-center" />
+          <p className="text-sm text-muted-foreground">
+            Your shared second brain
+          </p>
+        </div>
+
+        {/* Note Input */}
+        <div className="max-w-lg mx-auto">
+          <NoteInput />
+        </div>
+
+        {/* Quick Lists Access */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-foreground">
+              Your Lists
+            </h2>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => navigate("/lists")}
+              className="text-olive hover:text-olive-dark hover:bg-olive/10"
+            >
+              <List className="h-4 w-4 mr-1" />
+              View All
+            </Button>
           </div>
-        </SignedOut>
-        <SignedIn>
-          <div className="w-full space-y-6">
-            <section aria-labelledby="drop-a-note">
-              <h2 id="drop-a-note" className="mb-2 text-xl font-semibold">Drop a note</h2>
-              <p className="mb-3 text-sm text-muted-foreground">Write anything. Olive will summarize, categorize, and schedule it.</p>
-              <form onSubmit={onSubmit} className="space-y-3">
-                <Textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="e.g., Buy lemons tomorrow and book dental checkup"
-                  aria-label="Add a note"
+
+          <div className="grid gap-3">
+            {categories.slice(0, 4).map((category) => (
+              <CategoryList
+                key={category}
+                title={category.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                category={category}
+                shared={true}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Recent Notes */}
+        {recentNotes.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold text-foreground">
+              Recent Notes
+            </h2>
+            
+            <div className="space-y-3">
+              {recentNotes.map((note) => (
+                <NoteCard
+                  key={note.id}
+                  note={note}
                 />
-                <div className="flex justify-center">
-                  <Button type="submit">Add note</Button>
-                </div>
-              </form>
-            </section>
-
-            <section aria-labelledby="latest-notes">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 id="latest-notes" className="text-xl font-semibold">Latest notes</h2>
-                <Link to="/lists" className="text-sm text-muted-foreground hover:text-foreground">View all</Link>
-              </div>
-
-              {latestNotes.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No notes yet. Add your first note above.</p>
-              ) : (
-                <div className="grid gap-3">
-                  {latestNotes.map((n) => (
-                    <article key={n.id}>
-                      <Link to={`/notes/${n.id}`} aria-label={`Open note ${n.summary}`}>
-                        <Card className="transition-colors hover:bg-accent/50">
-                          <CardContent className="p-4">
-                            <div className="mb-1 flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Badge variant="secondary">{n.category}</Badge>
-                                {n.dueDate ? (
-                                  <Badge variant="outline">Due {new Date(n.dueDate).toLocaleDateString()}</Badge>
-                                ) : null}
-                              </div>
-                              <span className="text-xs text-muted-foreground">
-                                {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
-                              </span>
-                            </div>
-                            <p className="text-sm">{n.summary}</p>
-                            {n.addedBy ? (
-                              <p className="mt-2 text-xs text-muted-foreground">Added by {n.addedBy}</p>
-                            ) : null}
-                          </CardContent>
-                        </Card>
-                      </Link>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
+              ))}
+            </div>
           </div>
-        </SignedIn>
-      </section>
+        )}
+
+        {/* Empty state */}
+        {notes.length === 0 && !notesLoading && (
+          <div className="text-center py-12 space-y-4">
+            <div className="w-16 h-16 mx-auto bg-olive/10 rounded-full flex items-center justify-center">
+              <Heart className="h-8 w-8 text-olive" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold text-foreground">
+                Start your journey together
+              </h3>
+              <p className="text-muted-foreground max-w-sm mx-auto">
+                Drop your first note above and watch Olive organize it for you both.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </main>
   );
 };
