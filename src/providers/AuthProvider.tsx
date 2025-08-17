@@ -14,6 +14,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { isSignedIn } = useClerkAuth();
   const supabase = useClerkSupabaseClient();
 
+  console.log('[AuthProvider] State:', { isLoaded, isSignedIn, user: !!user });
+
   // Sync Clerk user to Supabase profiles
   useEffect(() => {
     if (isSignedIn && user && isLoaded) {

@@ -38,6 +38,16 @@ const Index = () => {
     );
   }
 
+  // Add timeout fallback to prevent infinite loading
+  React.useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (authLoading) {
+        console.warn('[Index] Auth loading timeout - forcing completion');
+      }
+    }, 5000);
+    return () => clearTimeout(timeout);
+  }, [authLoading]);
+
   // Redirect to auth if not signed in
   if (!user) {
     return (
