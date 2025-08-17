@@ -23,6 +23,8 @@ const Index = () => {
   const { currentCouple, isOnboarded, loading: coupleLoading } = useSupabaseCouple();
   const { notes, loading: notesLoading } = useSupabaseNotesContext();
 
+  console.log('[Index] Auth state:', { user: !!user, authLoading, isOnboarded, coupleLoading });
+
   // Show loading state
   if (authLoading || coupleLoading) {
     return (
