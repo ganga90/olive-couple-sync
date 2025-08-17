@@ -79,7 +79,21 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         throw inviteError;
       }
 
-      // Send invite email (this would typically be done via an edge function)
+      // Send invite email via edge function
+      const { error: emailError } = await supabase.functions.invoke('send-invite', {
+        body: {
+          inviteEmail,
+          partnerName: partner,
+          coupleTitle: `${you} & ${partner}`,
+          inviteToken: token,
+        }
+      });
+
+      if (emailError) {
+        console.warn("Failed to send invite email:", emailError);
+        // Don't fail the whole process if email fails
+      }
+
       toast.success(`Invite sent to ${inviteEmail}! They'll receive an email with a link to join.`);
       onComplete();
     } catch (error) {

@@ -44,6 +44,21 @@ export const PartnerInfo = () => {
         throw inviteError;
       }
 
+      // Send invite email via edge function
+      const { error: emailError } = await supabase.functions.invoke('send-invite', {
+        body: {
+          inviteEmail,
+          partnerName: partner,
+          coupleTitle: currentCouple.title || `${you} & ${partner}`,
+          inviteToken: token,
+        }
+      });
+
+      if (emailError) {
+        console.warn("Failed to send invite email:", emailError);
+        // Don't fail the whole process if email fails
+      }
+
       toast.success(`Invite sent to ${inviteEmail}!`);
       setInviteEmail("");
       setShowInviteForm(false);
