@@ -1,17 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/providers/AuthProvider";
-import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import { useUser } from "@clerk/clerk-react";
+import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
 import { toast } from "sonner";
 
-export type SupabaseNote = Tables<"notes">;
-export type SupabaseNoteInsert = TablesInsert<"notes">;
-export type SupabaseNoteUpdate = TablesUpdate<"notes">;
+export type SupabaseNote = {
+  id: string;
+  couple_id: string;
+  author_id?: string;
+  original_text: string;
+  summary: string;
+  category: string;
+  items?: string[];
+  tags?: string[];
+  due_date?: string;
+  completed: boolean;
+  priority?: 'low' | 'medium' | 'high';
+  created_at: string;
+  updated_at: string;
+};
 
 export const useSupabaseNotes = (coupleId?: string) => {
-  const { user } = useAuth();
+  const { user } = useUser();
   const [notes, setNotes] = useState<SupabaseNote[]>([]);
   const [loading, setLoading] = useState(true);
+  const supabase = useClerkSupabaseClient();
 
   const fetchNotes = useCallback(async () => {
     if (!coupleId) {
@@ -22,7 +34,7 @@ export const useSupabaseNotes = (coupleId?: string) => {
 
     try {
       const { data, error } = await supabase
-        .from("notes")
+        .from("clerk_notes")
         .select("*")
         .eq("couple_id", coupleId)
         .order("created_at", { ascending: false });
@@ -35,7 +47,7 @@ export const useSupabaseNotes = (coupleId?: string) => {
     } finally {
       setLoading(false);
     }
-  }, [coupleId]);
+  }, [coupleId, supabase]);
 
   useEffect(() => {
     if (!user || !coupleId) {
@@ -47,13 +59,13 @@ export const useSupabaseNotes = (coupleId?: string) => {
 
     // Set up realtime subscription
     const channel = supabase
-      .channel("notes_changes")
+      .channel("clerk_notes_changes")
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
-          table: "notes",
+          table: "clerk_notes",
           filter: `couple_id=eq.${coupleId}`,
         },
         (payload) => {
@@ -68,7 +80,7 @@ export const useSupabaseNotes = (coupleId?: string) => {
     };
   }, [user, coupleId, fetchNotes]);
 
-  const addNote = useCallback(async (noteData: Omit<SupabaseNoteInsert, "couple_id" | "author_id">) => {
+  const addNote = useCallback(async (noteData: Omit<SupabaseNote, "id" | "created_at" | "updated_at" | "couple_id" | "author_id">) => {
     if (!user || !coupleId) {
       toast.error("You must be signed in to add notes");
       return null;
@@ -76,7 +88,7 @@ export const useSupabaseNotes = (coupleId?: string) => {
 
     try {
       const { data, error } = await supabase
-        .from("notes")
+        .from("clerk_notes")
         .insert([{
           ...noteData,
           couple_id: coupleId,
@@ -93,9 +105,9 @@ export const useSupabaseNotes = (coupleId?: string) => {
       toast.error("Failed to add note");
       return null;
     }
-  }, [user, coupleId]);
+  }, [user, coupleId, supabase]);
 
-  const updateNote = useCallback(async (id: string, updates: SupabaseNoteUpdate) => {
+  const updateNote = useCallback(async (id: string, updates: Partial<SupabaseNote>) => {
     if (!user) {
       toast.error("You must be signed in to update notes");
       return null;
@@ -103,7 +115,7 @@ export const useSupabaseNotes = (coupleId?: string) => {
 
     try {
       const { data, error } = await supabase
-        .from("notes")
+        .from("clerk_notes")
         .update(updates)
         .eq("id", id)
         .select()
@@ -117,7 +129,7 @@ export const useSupabaseNotes = (coupleId?: string) => {
       toast.error("Failed to update note");
       return null;
     }
-  }, [user]);
+  }, [user, supabase]);
 
   const deleteNote = useCallback(async (id: string) => {
     if (!user) {
@@ -127,7 +139,7 @@ export const useSupabaseNotes = (coupleId?: string) => {
 
     try {
       const { error } = await supabase
-        .from("notes")
+        .from("clerk_notes")
         .delete()
         .eq("id", id);
 
@@ -139,7 +151,7 @@ export const useSupabaseNotes = (coupleId?: string) => {
       toast.error("Failed to delete note");
       return false;
     }
-  }, [user]);
+  }, [user, supabase]);
 
   const getNotesByCategory = useCallback((category: string) => {
     return notes.filter(note => note.category === category);

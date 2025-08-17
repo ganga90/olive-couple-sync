@@ -1,20 +1,32 @@
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/providers/AuthProvider";
-import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import { useUser } from "@clerk/clerk-react";
+import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
 import { toast } from "sonner";
 
-export type SupabaseCouple = Tables<"couples">;
-export type SupabaseCoupleInsert = TablesInsert<"couples">;
-export type SupabaseCoupleUpdate = TablesUpdate<"couples">;
+export type SupabaseCouple = {
+  id: string;
+  title?: string;
+  you_name?: string;
+  partner_name?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+};
 
-export type SupabaseCoupleMember = Tables<"couple_members">;
+export type SupabaseCoupleMember = {
+  id: string;
+  couple_id: string;
+  user_id: string;
+  role: 'owner' | 'member';
+  created_at: string;
+};
 
 export const useSupabaseCouples = () => {
-  const { user } = useAuth();
+  const { user } = useUser();
   const [couples, setCouples] = useState<SupabaseCouple[]>([]);
   const [currentCouple, setCurrentCouple] = useState<SupabaseCouple | null>(null);
   const [loading, setLoading] = useState(true);
+  const supabase = useClerkSupabaseClient();
 
   const fetchCouples = useCallback(async () => {
     if (!user) {
@@ -25,12 +37,22 @@ export const useSupabaseCouples = () => {
     }
 
     try {
+      // First ensure user profile exists
+      await supabase
+        .from('clerk_profiles')
+        .upsert({
+          id: user.id,
+          display_name: user.fullName || user.emailAddresses[0]?.emailAddress.split('@')[0] || 'User',
+        }, {
+          onConflict: 'id'
+        });
+
       const { data, error } = await supabase
-        .from("couple_members")
+        .from("clerk_couple_members")
         .select(`
           couple_id,
           role,
-          couples!inner (
+          clerk_couples!inner (
             id,
             title,
             you_name,
@@ -44,7 +66,7 @@ export const useSupabaseCouples = () => {
 
       if (error) throw error;
 
-      const userCouples = data?.map(member => member.couples).filter(Boolean) as SupabaseCouple[] || [];
+      const userCouples = data?.map(member => member.clerk_couples).filter(Boolean) as SupabaseCouple[] || [];
       setCouples(userCouples);
       
       // Set the first couple as current if none selected
@@ -57,7 +79,7 @@ export const useSupabaseCouples = () => {
     } finally {
       setLoading(false);
     }
-  }, [user, currentCouple]);
+  }, [user, currentCouple, supabase]);
 
   useEffect(() => {
     fetchCouples();
@@ -66,13 +88,13 @@ export const useSupabaseCouples = () => {
 
     // Set up realtime subscription
     const channel = supabase
-      .channel("couples_changes")
+      .channel("clerk_couples_changes")
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
-          table: "couples",
+          table: "clerk_couples",
         },
         (payload) => {
           console.log("[Couples] Realtime update:", payload);
@@ -84,7 +106,7 @@ export const useSupabaseCouples = () => {
         {
           event: "*",
           schema: "public",
-          table: "couple_members",
+          table: "clerk_couple_members",
         },
         (payload) => {
           console.log("[Couples] Member realtime update:", payload);
@@ -98,7 +120,7 @@ export const useSupabaseCouples = () => {
     };
   }, [user, fetchCouples]);
 
-  const createCouple = useCallback(async (coupleData: Omit<SupabaseCoupleInsert, "created_by">) => {
+  const createCouple = useCallback(async (coupleData: { title?: string; you_name?: string; partner_name?: string }) => {
     if (!user) {
       toast.error("You must be signed in to create a couple");
       return null;
@@ -106,7 +128,7 @@ export const useSupabaseCouples = () => {
 
     try {
       const { data, error } = await supabase
-        .from("couples")
+        .from("clerk_couples")
         .insert([{
           ...coupleData,
           created_by: user.id,
@@ -123,9 +145,9 @@ export const useSupabaseCouples = () => {
       toast.error("Failed to create couple workspace");
       return null;
     }
-  }, [user]);
+  }, [user, supabase]);
 
-  const updateCouple = useCallback(async (id: string, updates: SupabaseCoupleUpdate) => {
+  const updateCouple = useCallback(async (id: string, updates: { title?: string; you_name?: string; partner_name?: string }) => {
     if (!user) {
       toast.error("You must be signed in to update couple");
       return null;
@@ -133,7 +155,7 @@ export const useSupabaseCouples = () => {
 
     try {
       const { data, error } = await supabase
-        .from("couples")
+        .from("clerk_couples")
         .update(updates)
         .eq("id", id)
         .select()
@@ -153,7 +175,7 @@ export const useSupabaseCouples = () => {
       toast.error("Failed to update couple workspace");
       return null;
     }
-  }, [user, currentCouple]);
+  }, [user, currentCouple, supabase]);
 
   const switchCouple = useCallback((couple: SupabaseCouple) => {
     setCurrentCouple(couple);
