@@ -23,10 +23,11 @@ const Index = () => {
   const { currentCouple, isOnboarded, loading: coupleLoading } = useSupabaseCouple();
   const { notes, loading: notesLoading } = useSupabaseNotesContext();
 
-  console.log('[Index] Auth state:', { user: !!user, authLoading, isOnboarded, coupleLoading });
+  console.log('[Index] Auth state:', { user: !!user, authLoading, isOnboarded, coupleLoading, currentCouple: !!currentCouple });
 
-  // Show loading state only when actually loading auth or couple data
-  if (authLoading || (user && coupleLoading)) {
+  // Show loading state only when auth is actually loading
+  if (authLoading) {
+    console.log('[Index] Showing loading state - authLoading:', authLoading);
     return (
       <main className="min-h-screen bg-gradient-soft flex items-center justify-center">
         <div className="text-center">
