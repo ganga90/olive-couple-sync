@@ -24,7 +24,7 @@ const Onboarding = () => {
     }
     setNames(you, partner);
     toast.success("Welcome to Olive! You're all set.");
-    navigate("/lists");
+    navigate("/");
   };
 
   return (

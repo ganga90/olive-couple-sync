@@ -6,6 +6,7 @@ import { Send, Sparkles } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
+import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
 import { toast } from "sonner";
 
 interface NoteInputProps {
@@ -18,6 +19,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const { user } = useAuth();
   const { currentCouple, you } = useSupabaseCouple();
   const { addNote } = useSupabaseNotesContext();
+  const supabase = useClerkSupabaseClient();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,14 +32,24 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
     setIsProcessing(true);
     
     try {
-      // Process the note with AI (we'll implement this next)
-      const processedNote = await processNoteWithAI(text.trim());
+      // Process the note with Gemini AI
+      const { data: processedNote, error } = await supabase.functions.invoke('process-note', {
+        body: { 
+          text: text.trim(),
+          user_id: user.id
+        }
+      });
+
+      if (error) {
+        console.error('AI processing error:', error);
+        throw new Error('Failed to process note with AI');
+      }
       
       await addNote({
         originalText: text.trim(),
         summary: processedNote.summary,
         category: processedNote.category,
-        dueDate: processedNote.dueDate,
+        dueDate: processedNote.due_date,
         completed: false,
         priority: processedNote.priority,
         tags: processedNote.tags,
@@ -55,33 +67,6 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
     }
   };
 
-  // Temporary AI processing - we'll replace this with actual AI later
-  const processNoteWithAI = async (text: string) => {
-    // Simple categorization based on keywords for now
-    const lowercaseText = text.toLowerCase();
-    let category = "general";
-    
-    if (lowercaseText.includes("grocery") || lowercaseText.includes("food") || lowercaseText.includes("buy")) {
-      category = "groceries";
-    } else if (lowercaseText.includes("task") || lowercaseText.includes("todo") || lowercaseText.includes("need to")) {
-      category = "tasks";
-    } else if (lowercaseText.includes("travel") || lowercaseText.includes("trip") || lowercaseText.includes("vacation")) {
-      category = "travel";
-    } else if (lowercaseText.includes("date") || lowercaseText.includes("dinner") || lowercaseText.includes("romantic")) {
-      category = "date ideas";
-    } else if (lowercaseText.includes("home") || lowercaseText.includes("house") || lowercaseText.includes("repair")) {
-      category = "home improvement";
-    }
-
-    return {
-      summary: text.length > 50 ? text.substring(0, 50) + "..." : text,
-      category,
-      dueDate: null,
-      priority: "medium" as const,
-      tags: [],
-      items: text.includes(",") ? text.split(",").map(item => item.trim()) : [],
-    };
-  };
 
   return (
     <Card className="bg-gradient-soft border-olive/20 shadow-soft">

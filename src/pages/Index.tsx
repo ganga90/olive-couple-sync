@@ -10,6 +10,7 @@ import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { Button } from "@/components/ui/button";
 import { Plus, List, Heart } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
+import { FloatingNoteButton } from "@/components/FloatingNoteButton";
 
 const Index = () => {
   useSEO({ 
@@ -202,6 +203,9 @@ const Index = () => {
           </div>
         )}
       </div>
+      
+      {/* Floating Note Button */}
+      <FloatingNoteButton />
     </main>
   );
 };
