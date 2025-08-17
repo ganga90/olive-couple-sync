@@ -27,11 +27,18 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
   const handleSetupOnly = async () => {
     setLoading(true);
     try {
-      await createCouple({
+      console.log('[InviteFlow] Creating couple with:', { title: `${you} & ${partner}`, you_name: you, partner_name: partner });
+      const couple = await createCouple({
         title: `${you} & ${partner}`,
         you_name: you,
         partner_name: partner,
       });
+      console.log('[InviteFlow] Couple created:', couple);
+      
+      if (!couple) {
+        throw new Error("Failed to create couple");
+      }
+      
       toast.success("Your space is ready! You can invite your partner later from your profile.");
       onComplete();
     } catch (error) {

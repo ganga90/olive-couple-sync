@@ -39,18 +39,28 @@ export const SupabaseCoupleProvider: React.FC<{ children: React.ReactNode }> = (
     }
   };
 
-  const value = useMemo(() => ({
-    currentCouple,
-    couples,
-    loading,
-    isOnboarded: Boolean(currentCouple && currentCouple.you_name && currentCouple.partner_name),
-    you: currentCouple?.you_name || "",
-    partner: currentCouple?.partner_name || "",
-    createCouple,
-    updateCouple,
-    switchCouple,
-    setNames,
-  }), [currentCouple, couples, loading, createCouple, updateCouple, switchCouple]);
+  const value = useMemo(() => {
+    const isOnboardedValue = Boolean(currentCouple && currentCouple.you_name && currentCouple.partner_name);
+    console.log('[SupabaseCoupleProvider] Calculating isOnboarded:', {
+      currentCouple: !!currentCouple,
+      you_name: currentCouple?.you_name,
+      partner_name: currentCouple?.partner_name,
+      isOnboarded: isOnboardedValue
+    });
+    
+    return {
+      currentCouple,
+      couples,
+      loading,
+      isOnboarded: isOnboardedValue,
+      you: currentCouple?.you_name || "",
+      partner: currentCouple?.partner_name || "",
+      createCouple,
+      updateCouple,
+      switchCouple,
+      setNames,
+    };
+  }, [currentCouple, couples, loading, createCouple, updateCouple, switchCouple]);
 
   return (
     <SupabaseCoupleContext.Provider value={value}>

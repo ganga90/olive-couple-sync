@@ -122,9 +122,12 @@ export const useSupabaseCouples = () => {
 
   const createCouple = useCallback(async (coupleData: { title?: string; you_name?: string; partner_name?: string }) => {
     if (!user) {
+      console.error("[Couples] No user found when creating couple");
       toast.error("You must be signed in to create a couple");
       return null;
     }
+
+    console.log("[Couples] Creating couple with data:", coupleData, "user:", user.id);
 
     try {
       const { data, error } = await supabase
@@ -136,16 +139,25 @@ export const useSupabaseCouples = () => {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("[Couples] Insert error:", error);
+        throw error;
+      }
+      
+      console.log("[Couples] Couple created successfully:", data);
       toast.success("Couple workspace created successfully");
       setCurrentCouple(data);
+      
+      // Trigger refetch to ensure couples list is updated
+      fetchCouples();
+      
       return data;
     } catch (error) {
       console.error("[Couples] Error creating couple:", error);
       toast.error("Failed to create couple workspace");
       return null;
     }
-  }, [user, supabase]);
+  }, [user, supabase, fetchCouples]);
 
   const updateCouple = useCallback(async (id: string, updates: { title?: string; you_name?: string; partner_name?: string }) => {
     if (!user) {
