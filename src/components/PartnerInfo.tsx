@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
+import { useAuth } from "@/providers/AuthProvider";
 import { User2, Mail, Plus, Check, Clock, X } from "lucide-react";
 
 export const PartnerInfo = () => {
@@ -14,6 +15,7 @@ export const PartnerInfo = () => {
   const [loading, setLoading] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const { currentCouple, you, partner } = useSupabaseCouple();
+  const { user } = useAuth();
   const supabase = useClerkSupabaseClient();
 
   const handleSendInvite = async () => {
@@ -35,6 +37,7 @@ export const PartnerInfo = () => {
         .insert({
           couple_id: currentCouple.id,
           invited_email: inviteEmail,
+          invited_by: user?.id,
           token,
           expires_at: expiresAt.toISOString(),
           status: "pending" as const,

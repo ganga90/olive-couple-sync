@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
+import { useAuth } from "@/providers/AuthProvider";
 import { Mail, User2 } from "lucide-react";
 
 interface InviteFlowProps {
@@ -20,6 +21,7 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"setup" | "invite">("setup");
   const { createCouple } = useSupabaseCouple();
+  const { user } = useAuth();
   const supabase = useClerkSupabaseClient();
 
   const handleSetupOnly = async () => {
@@ -70,6 +72,7 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         .insert({
           couple_id: couple.id,
           invited_email: inviteEmail,
+          invited_by: user?.id,
           token,
           expires_at: expiresAt.toISOString(),
           status: "pending" as const,
