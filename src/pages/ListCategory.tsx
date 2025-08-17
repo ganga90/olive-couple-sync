@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useNotes } from "@/providers/NotesProvider";
+import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSEO } from "@/hooks/useSEO";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,9 +10,12 @@ import { ArrowLeft } from "lucide-react";
 const ListCategory = () => {
   const { category = "" } = useParams();
   const navigate = useNavigate();
-  const { getNotesByCategory } = useNotes();
+  const { notes } = useSupabaseNotesContext();
   const decoded = decodeURIComponent(category);
-  const notes = useMemo(() => getNotesByCategory(decoded), [decoded, getNotesByCategory]);
+  const categoryNotes = useMemo(() => 
+    notes.filter(note => note.category === decoded), 
+    [notes, decoded]
+  );
 
   useSEO({ title: `${decoded} — Olive`, description: `Browse items in ${decoded} list.` });
 
@@ -31,13 +34,13 @@ const ListCategory = () => {
           <h1 className="text-xl font-semibold text-olive-dark">{decoded}</h1>
         </header>
 
-        {notes.length === 0 ? (
+        {categoryNotes.length === 0 ? (
           <Card className="p-6 bg-white/50 border-olive/20 shadow-soft text-center">
             <p className="text-sm text-muted-foreground">No items yet in this list.</p>
           </Card>
         ) : (
           <div className="space-y-3">
-            {notes.map((n) => (
+            {categoryNotes.map((n) => (
               <Link key={n.id} to={`/notes/${n.id}`} className="block" aria-label={`Open ${n.summary}`}>
                 <Card className="bg-white/50 border-olive/20 shadow-soft transition-all duration-200 hover:shadow-lg hover:scale-[1.02]">
                   <CardContent className="flex items-center justify-between p-4">

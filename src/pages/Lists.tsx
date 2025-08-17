@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { useNotes } from "@/providers/NotesProvider";
+import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSEO } from "@/hooks/useSEO";
 import { Input } from "@/components/ui/input";
 import { categories } from "@/constants/categories";
@@ -48,7 +48,7 @@ const getCategoryIcon = (category: string) => {
 
 const Lists = () => {
   const [query, setQuery] = useState("");
-  const { notes, isLoading } = useNotes();
+  const { notes, loading } = useSupabaseNotesContext();
   useSEO({ title: "Lists — Olive", description: "Browse and search all your lists." });
 
   const filteredCategories = useMemo(() => {
@@ -71,7 +71,7 @@ const Lists = () => {
           />
         </div>
 
-        {isLoading ? (
+        {loading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
         ) : filteredCategories.length === 0 ? (
           <p className="text-sm text-muted-foreground">No lists found.</p>
