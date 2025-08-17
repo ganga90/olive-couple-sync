@@ -24,9 +24,25 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!text.trim() || !user || !currentCouple) {
+    if (!text.trim() || !user) {
       toast.error("Please enter a note and make sure you're signed in");
       return;
+    }
+
+    // If no couple exists, create a default one for the user
+    let coupleToUse = currentCouple;
+    if (!coupleToUse) {
+      console.log('[NoteInput] No couple found, creating default couple for user');
+      // Create a simple local couple for single-user notes
+      coupleToUse = {
+        id: `local-${user.id}`,
+        title: "My Notes",
+        you_name: "You",
+        partner_name: "Partner",
+        created_by: user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
     }
 
     setIsProcessing(true);
@@ -73,10 +89,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         <div className="text-center mb-4">
           <h2 className="text-lg font-semibold text-foreground mb-1">
-            Drop a note, {you || "there"}
+            Drop a note here
           </h2>
           <p className="text-sm text-muted-foreground">
-            I'll organize it for you both
+            I'll organize it for you with AI
           </p>
         </div>
         

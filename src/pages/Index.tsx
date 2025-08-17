@@ -99,49 +99,12 @@ const Index = () => {
     );
   }
 
-  // If user is signed in but no couple setup yet, show simple onboarding option
-  if (!currentCouple && !coupleLoading) {
-    return (
-      <main className="min-h-screen bg-gradient-soft">
-        <div className="container mx-auto px-4 py-8">
-          <div className="max-w-md mx-auto text-center space-y-6">
-            <OliveLogoWithText size="lg" className="justify-center" />
-            
-            <div className="space-y-4">
-              <h1 className="text-2xl font-bold text-foreground">
-                Welcome to Olive!
-              </h1>
-              <p className="text-muted-foreground">
-                Your couple's shared second brain is ready. Start by adding your first note below!
-              </p>
-            </div>
-
-            {/* Show note input immediately */}
-            <div className="max-w-lg mx-auto">
-              <NoteInput />
-            </div>
-
-            <Button 
-              onClick={() => navigate("/onboarding")}
-              variant="outline"
-              className="border-olive/30 text-olive hover:bg-olive/10"
-              size="sm"
-            >
-              Set up couple names (optional)
-            </Button>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  // Get recent notes (last 5)
+  // Get recent notes (last 5) and categories
   const recentNotes = notes.slice(0, 5);
-  
-  // Get unique categories
   const categories = Array.from(new Set(notes.map(note => note.category)))
     .filter(category => category && category !== "general");
 
+  // Main authenticated user view - always show note input
   return (
     <main className="min-h-screen bg-gradient-soft pb-20">
       <div className="container mx-auto px-4 py-6 space-y-6">
@@ -149,43 +112,72 @@ const Index = () => {
         <div className="text-center space-y-2">
           <OliveLogoWithText className="justify-center" />
           <p className="text-sm text-muted-foreground">
-            Your shared second brain
+            Your AI-powered note organizer
           </p>
         </div>
 
-        {/* Note Input */}
+        {/* Note Input - Always show for authenticated users */}
         <div className="max-w-lg mx-auto">
           <NoteInput />
         </div>
 
-        {/* Quick Lists Access */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-foreground">
-              Your Lists
-            </h2>
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={() => navigate("/lists")}
-              className="text-olive hover:text-olive-dark hover:bg-olive/10"
-            >
-              <List className="h-4 w-4 mr-1" />
-              View All
-            </Button>
+        {/* Show setup suggestion only if no couple configured */}
+        {!currentCouple && !coupleLoading && (
+          <div className="max-w-lg mx-auto">
+            <div className="text-center py-6 space-y-4">
+              <div className="w-12 h-12 mx-auto bg-olive/10 rounded-full flex items-center justify-center">
+                <Heart className="h-6 w-6 text-olive" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-foreground">
+                  Welcome to Olive!
+                </h3>
+                <p className="text-muted-foreground text-sm">
+                  Try adding a note above to see how I organize it for you.
+                </p>
+              </div>
+              <Button 
+                onClick={() => navigate("/onboarding")}
+                variant="outline"
+                className="border-olive/30 text-olive hover:bg-olive/10"
+                size="sm"
+              >
+                Set up couple names (optional)
+              </Button>
+            </div>
           </div>
+        )}
 
-          <div className="grid gap-3">
-            {categories.slice(0, 4).map((category) => (
-              <CategoryList
-                key={category}
-                title={category.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
-                category={category}
-                shared={true}
-              />
-            ))}
+        {/* Quick Lists Access - only show if we have a couple and categories */}
+        {currentCouple && categories.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">
+                Your Lists
+              </h2>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => navigate("/lists")}
+                className="text-olive hover:text-olive-dark hover:bg-olive/10"
+              >
+                <List className="h-4 w-4 mr-1" />
+                View All
+              </Button>
+            </div>
+
+            <div className="grid gap-3">
+              {categories.slice(0, 4).map((category) => (
+                <CategoryList
+                  key={category}
+                  title={category.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                  category={category}
+                  shared={true}
+                />
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Recent Notes */}
         {recentNotes.length > 0 && (
@@ -213,10 +205,10 @@ const Index = () => {
             </div>
             <div className="space-y-2">
               <h3 className="text-lg font-semibold text-foreground">
-                Start your journey together
+                Start your journey with Olive
               </h3>
               <p className="text-muted-foreground max-w-sm mx-auto">
-                Drop your first note above and watch Olive organize it for you both.
+                Drop your first note above and watch Olive organize it for you.
               </p>
             </div>
           </div>
