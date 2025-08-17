@@ -99,8 +99,8 @@ const Index = () => {
     );
   }
 
-  // Redirect to onboarding if not set up
-  if (!isOnboarded) {
+  // If user is signed in but no couple setup yet, show simple onboarding option
+  if (!currentCouple && !coupleLoading) {
     return (
       <main className="min-h-screen bg-gradient-soft">
         <div className="container mx-auto px-4 py-8">
@@ -109,19 +109,25 @@ const Index = () => {
             
             <div className="space-y-4">
               <h1 className="text-2xl font-bold text-foreground">
-                Let's set up your space
+                Welcome to Olive!
               </h1>
               <p className="text-muted-foreground">
-                Tell us your names to personalize Olive for you both.
+                Your couple's shared second brain is ready. Start by adding your first note below!
               </p>
+            </div>
+
+            {/* Show note input immediately */}
+            <div className="max-w-lg mx-auto">
+              <NoteInput />
             </div>
 
             <Button 
               onClick={() => navigate("/onboarding")}
-              className="w-full bg-gradient-olive text-white shadow-olive"
-              size="lg"
+              variant="outline"
+              className="border-olive/30 text-olive hover:bg-olive/10"
+              size="sm"
             >
-              Continue Setup
+              Set up couple names (optional)
             </Button>
           </div>
         </div>

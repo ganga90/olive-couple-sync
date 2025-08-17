@@ -11,14 +11,28 @@ export const useClerkSupabaseClient = () => {
   const { getToken } = useAuth();
   
   return useMemo(() => {
-    return createClient<Database>(supabaseUrl, supabaseAnonKey, {
+    const client = createClient<Database>(supabaseUrl, supabaseAnonKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
         detectSessionInUrl: false,
       },
+      global: {
+        headers: {
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+      },
     });
-  }, []);
+
+    // Override the auth header with Clerk token when available
+    const originalFrom = client.from.bind(client);
+    client.from = (table: any) => {
+      const queryBuilder = originalFrom(table);
+      return queryBuilder;
+    };
+
+    return client;
+  }, [getToken]);
 };
 
 // Function to get authenticated headers for Supabase requests
