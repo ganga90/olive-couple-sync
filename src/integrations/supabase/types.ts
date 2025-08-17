@@ -14,6 +14,145 @@ export type Database = {
   }
   public: {
     Tables: {
+      clerk_couple_members: {
+        Row: {
+          couple_id: string | null
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["member_role"]
+          user_id: string | null
+        }
+        Insert: {
+          couple_id?: string | null
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          user_id?: string | null
+        }
+        Update: {
+          couple_id?: string | null
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clerk_couple_members_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_couples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clerk_couples: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          partner_name: string | null
+          title: string | null
+          updated_at: string
+          you_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          partner_name?: string | null
+          title?: string | null
+          updated_at?: string
+          you_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          partner_name?: string | null
+          title?: string | null
+          updated_at?: string
+          you_name?: string | null
+        }
+        Relationships: []
+      }
+      clerk_notes: {
+        Row: {
+          author_id: string | null
+          category: string
+          completed: boolean
+          couple_id: string | null
+          created_at: string
+          due_date: string | null
+          id: string
+          items: string[] | null
+          original_text: string
+          priority: Database["public"]["Enums"]["note_priority"] | null
+          summary: string
+          tags: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          author_id?: string | null
+          category: string
+          completed?: boolean
+          couple_id?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          items?: string[] | null
+          original_text: string
+          priority?: Database["public"]["Enums"]["note_priority"] | null
+          summary: string
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string | null
+          category?: string
+          completed?: boolean
+          couple_id?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          items?: string[] | null
+          original_text?: string
+          priority?: Database["public"]["Enums"]["note_priority"] | null
+          summary?: string
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clerk_notes_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_couples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clerk_profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       couple_members: {
         Row: {
           couple_id: string
@@ -199,7 +338,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_clerk_user_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
     }
     Enums: {
       invite_status: "pending" | "accepted" | "revoked"
