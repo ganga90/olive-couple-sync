@@ -2,7 +2,9 @@ import { SignedIn, SignedOut, SignIn, UserProfile } from "@clerk/clerk-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { OliveLogo } from "@/components/OliveLogo";
+import { PartnerInfo } from "@/components/PartnerInfo";
 
 const Profile = () => {
   useSEO({ title: "Profile — Olive", description: "Manage your Olive account profile and settings." });
@@ -29,9 +31,15 @@ const Profile = () => {
         </SignedOut>
 
         <SignedIn>
-          <Card className="p-2 bg-white/50 border-olive/20 shadow-soft">
-            <UserProfile routing="hash" />
-          </Card>
+          <div className="space-y-6">
+            {/* Partner Information */}
+            <PartnerInfo />
+            
+            {/* User Profile */}
+            <Card className="p-2 bg-white/50 border-olive/20 shadow-soft">
+              <UserProfile routing="hash" />
+            </Card>
+          </div>
         </SignedIn>
       </section>
     </main>

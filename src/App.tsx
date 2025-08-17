@@ -11,10 +11,9 @@ import Profile from "./pages/Profile";
 import NoteDetails from "./pages/NoteDetails";
 import Welcome from "./pages/Welcome";
 import ListCategory from "./pages/ListCategory";
+import AcceptInvite from "./pages/AcceptInvite";
 import NavBar from "./components/NavBar";
 import MobileTabBar from "./components/MobileTabBar";
-import { CoupleProvider } from "./providers/CoupleProvider";
-import { NotesProvider } from "./providers/NotesProvider";
 import { AuthProvider } from "./providers/AuthProvider";
 import { SupabaseCoupleProvider } from "./providers/SupabaseCoupleProvider";
 import { SupabaseNotesProvider } from "./providers/SupabaseNotesProvider";
@@ -30,27 +29,24 @@ const App = () => (
       <AuthProvider>
         <SupabaseCoupleProvider>
           <SupabaseNotesProvider>
-            <CoupleProvider>
-              <NotesProvider>
-          <BrowserRouter>
-            <NavBar />
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/lists" element={<Lists />} />
-              <Route path="/lists/:category" element={<ListCategory />} />
-              <Route path="/onboarding" element={<Onboarding />} />
-              <Route path="/welcome" element={<Welcome />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/notes/:id" element={<NoteDetails />} />
-              <Route path="/sign-in" element={<SignInPage />} />
-              <Route path="/sign-up" element={<SignUpPage />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-            <MobileTabBar />
-          </BrowserRouter>
-              </NotesProvider>
-            </CoupleProvider>
+            <BrowserRouter>
+              <NavBar />
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/lists" element={<Lists />} />
+                <Route path="/lists/:category" element={<ListCategory />} />
+                <Route path="/onboarding" element={<Onboarding />} />
+                <Route path="/welcome" element={<Welcome />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/notes/:id" element={<NoteDetails />} />
+                <Route path="/sign-in" element={<SignInPage />} />
+                <Route path="/sign-up" element={<SignUpPage />} />
+                <Route path="/accept-invite" element={<AcceptInvite />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+              <MobileTabBar />
+            </BrowserRouter>
           </SupabaseNotesProvider>
         </SupabaseCoupleProvider>
       </AuthProvider>
