@@ -29,59 +29,36 @@ export const useClerkSupabaseClient = () => {
   return useMemo(() => {
     const client = getSupabaseClient();
     
-    // Create wrapper that adds Clerk auth to requests
+    // Create a simple wrapper that preserves all original client functionality
     const authenticatedClient = {
       ...client,
-      from: (table: string) => {
-        const queryBuilder = client.from(table);
-        
-        // Override the query execution methods to add auth headers
-        const addAuthToMethod = (methodName: string) => {
-          const originalMethod = queryBuilder[methodName];
-          if (typeof originalMethod === 'function') {
-            queryBuilder[methodName] = async (...args: any[]) => {
-              try {
-                const token = await getToken({ template: "supabase" });
-                if (token) {
-                  // Set auth header for this specific request
-                  queryBuilder.headers = {
-                    ...queryBuilder.headers,
-                    'Authorization': `Bearer ${token}`,
-                  };
-                }
-                return await originalMethod.apply(queryBuilder, args);
-              } catch (error) {
-                console.error('[Clerk-Supabase] Auth error in', methodName, error);
-                // Fallback to original method without auth
-                return await originalMethod.apply(queryBuilder, args);
-              }
-            };
-          }
-        };
+      from: (table: string) => client.from(table),
+      functions: client.functions,
+      channel: client.channel ? client.channel.bind(client) : undefined,
+      removeChannel: client.removeChannel ? client.removeChannel.bind(client) : undefined,
+    };
 
-        // Add auth to common query methods
-        ['select', 'insert', 'update', 'delete', 'upsert'].forEach(addAuthToMethod);
-        
-        return queryBuilder;
-      },
-      functions: {
-        invoke: async (functionName: string, options?: any) => {
-          try {
-            const token = await getToken({ template: "supabase" });
-            const headers = token ? {
+    // Override only the functions.invoke method to add auth
+    const originalInvoke = client.functions.invoke.bind(client.functions);
+    authenticatedClient.functions = {
+      ...client.functions,
+      invoke: async (functionName: string, options?: any) => {
+        try {
+          const token = await getToken({ template: "supabase" });
+          if (token) {
+            const authHeaders = {
               ...options?.headers,
               'Authorization': `Bearer ${token}`,
-            } : options?.headers;
-            
-            return await client.functions.invoke(functionName, {
+            };
+            return await originalInvoke(functionName, {
               ...options,
-              headers,
+              headers: authHeaders,
             });
-          } catch (error) {
-            console.error('[Clerk-Supabase] Function invoke error:', error);
-            // Fallback to original invoke
-            return await client.functions.invoke(functionName, options);
           }
+          return await originalInvoke(functionName, options);
+        } catch (error) {
+          console.error('[Clerk-Supabase] Function invoke error:', error);
+          return await originalInvoke(functionName, options);
         }
       }
     };
