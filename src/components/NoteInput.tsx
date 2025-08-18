@@ -26,6 +26,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Check auth state at start
+    console.log('[NoteInput] Starting submission with user:', !!user, user?.id);
+    
     if (!text.trim() || !user) {
       toast.error("Please enter a note and make sure you're signed in");
       return;
@@ -55,6 +58,13 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
     setIsProcessing(true);
     
     try {
+      // Double-check auth state before AI processing
+      if (!user) {
+        throw new Error('User authentication lost during processing');
+      }
+
+      console.log('[NoteInput] Processing note with AI for user:', user.id);
+      
       // Process the note with Gemini AI
       const { data: aiProcessedNote, error } = await supabase.functions.invoke('process-note', {
         body: { 
@@ -67,6 +77,13 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
         console.error('AI processing error:', error);
         throw new Error('Failed to process note with AI');
       }
+      
+      // Triple-check auth state before saving to Supabase
+      if (!user) {
+        throw new Error('User authentication lost before saving note');
+      }
+
+      console.log('[NoteInput] Saving note to Supabase for user:', user.id);
       
       // Add the note to Supabase
       const savedNote = await addNote({

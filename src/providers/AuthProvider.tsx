@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useEffect } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { useUser, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
 
 type AuthContextValue = {
   user: any;
   loading: boolean;
+  isAuthenticated: boolean;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -14,7 +15,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { isSignedIn } = useClerkAuth();
   const supabase = useClerkSupabaseClient();
 
-  console.log('[AuthProvider] State:', { isLoaded, isSignedIn, user: !!user });
+  console.log('[AuthProvider] State:', { isLoaded, isSignedIn, user: !!user, userId: user?.id });
 
   // Sync Clerk user to Supabase profiles
   useEffect(() => {
@@ -45,6 +46,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const value = {
     user: isSignedIn ? user : null,
     loading: !isLoaded,
+    isAuthenticated: Boolean(isSignedIn && user && isLoaded),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
