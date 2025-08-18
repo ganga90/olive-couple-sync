@@ -8,6 +8,7 @@ import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
 import { toast } from "sonner";
+import { NoteRecap } from "./NoteRecap";
 
 interface NoteInputProps {
   onNoteAdded?: () => void;
@@ -16,8 +17,9 @@ interface NoteInputProps {
 export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const [text, setText] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processedNote, setProcessedNote] = useState<any>(null);
   const { user } = useAuth();
-  const { currentCouple, you } = useSupabaseCouple();
+  const { currentCouple, createCouple } = useSupabaseCouple();
   const { addNote } = useSupabaseNotesContext();
   const supabase = useClerkSupabaseClient();
 
@@ -29,27 +31,32 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
       return;
     }
 
-    // If no couple exists, create a default one for the user
+    // Ensure we have a couple to save notes to
     let coupleToUse = currentCouple;
     if (!coupleToUse) {
-      console.log('[NoteInput] No couple found, creating default couple for user');
-      // Create a simple local couple for single-user notes
-      coupleToUse = {
-        id: `local-${user.id}`,
-        title: "My Notes",
-        you_name: "You",
-        partner_name: "Partner",
-        created_by: user.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
+      console.log('[NoteInput] No couple found, creating one for user');
+      try {
+        coupleToUse = await createCouple({
+          title: "My Notes",
+          you_name: user.firstName || user.fullName || "You",
+          partner_name: "Partner"
+        });
+        
+        if (!coupleToUse) {
+          throw new Error('Failed to create couple');
+        }
+      } catch (error) {
+        console.error('Error creating couple:', error);
+        toast.error("Failed to set up your notes space. Please try again.");
+        return;
+      }
     }
 
     setIsProcessing(true);
     
     try {
       // Process the note with Gemini AI
-      const { data: processedNote, error } = await supabase.functions.invoke('process-note', {
+      const { data: aiProcessedNote, error } = await supabase.functions.invoke('process-note', {
         body: { 
           text: text.trim(),
           user_id: user.id
@@ -61,20 +68,36 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
         throw new Error('Failed to process note with AI');
       }
       
-      await addNote({
+      // Add the note to Supabase
+      const savedNote = await addNote({
         originalText: text.trim(),
-        summary: processedNote.summary,
-        category: processedNote.category,
-        dueDate: processedNote.due_date,
+        summary: aiProcessedNote.summary,
+        category: aiProcessedNote.category,
+        dueDate: aiProcessedNote.due_date,
         completed: false,
-        priority: processedNote.priority,
-        tags: processedNote.tags,
-        items: processedNote.items,
+        priority: aiProcessedNote.priority,
+        tags: aiProcessedNote.tags,
+        items: aiProcessedNote.items,
       });
 
-      setText("");
-      onNoteAdded?.();
-      toast.success("Note added and organized!");
+      if (savedNote) {
+        // Show the recap
+        setProcessedNote({
+          summary: aiProcessedNote.summary,
+          category: aiProcessedNote.category,
+          dueDate: aiProcessedNote.due_date,
+          priority: aiProcessedNote.priority,
+          tags: aiProcessedNote.tags,
+          items: aiProcessedNote.items,
+          originalText: text.trim(),
+          author: user.firstName || user.fullName || "You",
+          createdAt: savedNote.createdAt
+        });
+
+        setText("");
+        onNoteAdded?.();
+        toast.success("Note added and organized!");
+      }
     } catch (error) {
       console.error("Error processing note:", error);
       toast.error("Failed to process note. Please try again.");
@@ -82,6 +105,26 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
       setIsProcessing(false);
     }
   };
+
+  const handleCloseRecap = () => {
+    setProcessedNote(null);
+  };
+
+  // If we have a processed note, show the recap
+  if (processedNote) {
+    return (
+      <div className="space-y-4">
+        <NoteRecap note={processedNote} onClose={handleCloseRecap} />
+        <Button 
+          onClick={handleCloseRecap}
+          variant="outline" 
+          className="w-full border-olive/30 text-olive hover:bg-olive/10"
+        >
+          Add Another Note
+        </Button>
+      </div>
+    );
+  }
 
 
   return (
