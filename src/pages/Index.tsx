@@ -18,60 +18,11 @@ const Index = () => {
   const navigate = useNavigate();
   const [hasNotes, setHasNotes] = useState(false);
   const { user, loading } = useAuth();
-  const { you } = useSupabaseCouple();
 
-  // If user is authenticated, show the authenticated experience
-  if (user && !loading) {
-    return (
-      <main className="min-h-screen bg-gradient-soft">
-        <div className="container mx-auto px-4 py-8">
-          <div className="max-w-lg mx-auto space-y-8">
-            {/* Welcome Header */}
-            <div className="text-center space-y-4">
-              <OliveLogoWithText size="lg" className="justify-center" />
-              <div className="space-y-2">
-                <h1 className="text-2xl font-bold text-foreground">
-                  Welcome back, {user.firstName || user.fullName || "there"}!
-                </h1>
-                <p className="text-muted-foreground">
-                  What would you like me to organize for you today?
-                </p>
-              </div>
-            </div>
+  // If user is authenticated AND auth has loaded, show enhanced experience
+  const isAuthenticated = user && !loading;
+  const userName = isAuthenticated ? (user.firstName || user.fullName || "there") : null;
 
-            {/* Authenticated Note Input */}
-            <NoteInput onNoteAdded={() => setHasNotes(true)} />
-
-            {/* Features */}
-            <div className="flex items-center justify-center gap-8 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <Plus className="h-4 w-4 text-olive" />
-                Saved to your space
-              </div>
-              <div className="flex items-center gap-2">
-                <Heart className="h-4 w-4 text-olive" />
-                AI-organized
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  // Show loading state
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-gradient-soft flex items-center justify-center">
-        <div className="text-center">
-          <OliveLogoWithText size="lg" className="justify-center mb-4" />
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </main>
-    );
-  }
-
-  // Simple standalone interface - no authentication required
   return (
     <main className="min-h-screen bg-gradient-soft">
       <div className="container mx-auto px-4 py-8">
@@ -81,16 +32,26 @@ const Index = () => {
             <OliveLogoWithText size="lg" className="justify-center" />
             <div className="space-y-2">
               <h1 className="text-2xl font-bold text-foreground">
-                Your AI-powered note organizer
+                {isAuthenticated 
+                  ? `Welcome back, ${userName}!` 
+                  : "Your AI-powered note organizer"
+                }
               </h1>
               <p className="text-muted-foreground">
-                Drop a note below and watch Olive organize it for you
+                {isAuthenticated 
+                  ? "What would you like me to organize for you today?"
+                  : "Drop a note below and watch Olive organize it for you"
+                }
               </p>
             </div>
           </div>
 
-          {/* Note Input */}
-          <SimpleNoteInput onNoteAdded={() => setHasNotes(true)} />
+          {/* Note Input - use authenticated version if signed in */}
+          {isAuthenticated ? (
+            <NoteInput onNoteAdded={() => setHasNotes(true)} />
+          ) : (
+            <SimpleNoteInput onNoteAdded={() => setHasNotes(true)} />
+          )}
 
           {/* Welcome message */}
           {!hasNotes && (
@@ -113,36 +74,38 @@ const Index = () => {
           <div className="flex items-center justify-center gap-8 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <Plus className="h-4 w-4 text-olive" />
-              AI-powered
+              {isAuthenticated ? "Saved to your space" : "AI-powered"}
             </div>
             <div className="flex items-center gap-2">
               <Heart className="h-4 w-4 text-olive" />
-              Smart categorization
+              {isAuthenticated ? "AI-organized" : "Smart categorization"}
             </div>
           </div>
 
-          {/* Auth buttons */}
-          <div className="space-y-3 pt-8">
-            <p className="text-center text-sm text-muted-foreground">
-              Want to save your notes and unlock more features?
-            </p>
-            <div className="space-y-2">
-              <Button 
-                onClick={() => navigate("/sign-up")}
-                className="w-full bg-gradient-olive text-white shadow-olive"
-                size="lg"
-              >
-                Create Account
-              </Button>
-              <Button 
-                onClick={() => navigate("/sign-in")}
-                variant="outline"
-                className="w-full border-olive/30 text-olive hover:bg-olive/10"
-              >
-                Sign In
-              </Button>
+          {/* Auth buttons - only show for non-authenticated users */}
+          {!isAuthenticated && (
+            <div className="space-y-3 pt-8">
+              <p className="text-center text-sm text-muted-foreground">
+                Want to save your notes and unlock more features?
+              </p>
+              <div className="space-y-2">
+                <Button 
+                  onClick={() => navigate("/sign-up")}
+                  className="w-full bg-gradient-olive text-white shadow-olive"
+                  size="lg"
+                >
+                  Create Account
+                </Button>
+                <Button 
+                  onClick={() => navigate("/sign-in")}
+                  variant="outline"
+                  className="w-full border-olive/30 text-olive hover:bg-olive/10"
+                >
+                  Sign In
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </main>
