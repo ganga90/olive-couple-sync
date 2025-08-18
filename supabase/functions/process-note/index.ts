@@ -93,12 +93,24 @@ serve(async (req) => {
     const aiResponse = data.candidates[0].content.parts[0].text;
     console.log('AI response text:', aiResponse);
 
-    // Parse the JSON response
+    // Parse the JSON response - handle markdown code blocks
     let processedNote;
     try {
-      processedNote = JSON.parse(aiResponse);
+      let cleanResponse = aiResponse.trim();
+      
+      // Remove markdown code blocks if present
+      if (cleanResponse.startsWith('```json')) {
+        cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanResponse.startsWith('```')) {
+        cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      console.log('Cleaned AI response for parsing:', cleanResponse);
+      processedNote = JSON.parse(cleanResponse);
+      console.log('Successfully parsed AI response:', processedNote);
     } catch (parseError) {
-      console.error('Failed to parse AI response as JSON:', aiResponse);
+      console.error('Failed to parse AI response as JSON:', cleanResponse);
+      console.error('Parse error:', parseError);
       // Fallback to basic processing
       processedNote = {
         summary: text.length > 100 ? text.substring(0, 97) + "..." : text,

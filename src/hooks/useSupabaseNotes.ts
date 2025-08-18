@@ -81,28 +81,43 @@ export const useSupabaseNotes = (coupleId?: string) => {
   }, [user, coupleId, fetchNotes]);
 
   const addNote = useCallback(async (noteData: Omit<SupabaseNote, "id" | "created_at" | "updated_at" | "couple_id" | "author_id">) => {
+    console.log('[useSupabaseNotes] addNote called with:', { noteData, userId: user?.id, coupleId });
+    
     if (!user || !coupleId) {
+      const errorMsg = `Missing requirements - user: ${!!user}, coupleId: ${!!coupleId}`;
+      console.error('[useSupabaseNotes]', errorMsg);
       toast.error("You must be signed in to add notes");
       return null;
     }
 
     try {
+      console.log('[useSupabaseNotes] Inserting note to clerk_notes table');
+      
+      const insertData = {
+        ...noteData,
+        couple_id: coupleId,
+        author_id: user.id,
+      };
+      
+      console.log('[useSupabaseNotes] Final insert data:', insertData);
+      
       const { data, error } = await supabase
         .from("clerk_notes")
-        .insert([{
-          ...noteData,
-          couple_id: coupleId,
-          author_id: user.id,
-        }])
+        .insert([insertData])
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[useSupabaseNotes] Supabase insert error:', error);
+        throw error;
+      }
+      
+      console.log('[useSupabaseNotes] Successfully inserted note:', data);
       toast.success("Note added successfully");
       return data;
     } catch (error) {
-      console.error("[Notes] Error adding note:", error);
-      toast.error("Failed to add note");
+      console.error("[useSupabaseNotes] Error adding note:", error);
+      toast.error(`Failed to add note: ${error.message}`);
       return null;
     }
   }, [user, coupleId, supabase]);

@@ -45,7 +45,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
     // Ensure we have a couple to save notes to
     let coupleToUse = currentCouple;
     if (!coupleToUse) {
-      console.log('[NoteInput] No couple found, creating one for user');
+      console.log('[NoteInput] No couple found, creating one for user:', user.id);
       try {
         coupleToUse = await createCouple({
           title: "My Notes",
@@ -53,14 +53,18 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
           partner_name: "Partner"
         });
         
+        console.log('[NoteInput] Created couple:', coupleToUse);
+        
         if (!coupleToUse) {
           throw new Error('Failed to create couple');
         }
       } catch (error) {
-        console.error('Error creating couple:', error);
+        console.error('[NoteInput] Error creating couple:', error);
         toast.error("Failed to set up your notes space. Please try again.");
         return;
       }
+    } else {
+      console.log('[NoteInput] Using existing couple:', coupleToUse.id);
     }
 
     setIsProcessing(true);
@@ -82,19 +86,26 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
       });
 
       if (error) {
-        console.error('AI processing error:', error);
-        throw new Error('Failed to process note with AI');
+        console.error('[NoteInput] AI processing error:', error);
+        throw new Error(`Failed to process note with AI: ${error.message || error}`);
       }
+      
+      if (!aiProcessedNote) {
+        console.error('[NoteInput] No data returned from AI processing');
+        throw new Error('No data returned from AI processing');
+      }
+
+      console.log('[NoteInput] AI processed note:', aiProcessedNote);
       
       // Triple-check auth state before saving to Supabase
       if (!user) {
         throw new Error('User authentication lost before saving note');
       }
 
-      console.log('[NoteInput] Saving note to Supabase for user:', user.id);
+      console.log('[NoteInput] Saving note to Supabase for user:', user.id, 'couple:', coupleToUse.id);
       
-      // Add the note to Supabase
-      const savedNote = await addNote({
+      // Prepare note data
+      const noteData = {
         originalText: text.trim(),
         summary: aiProcessedNote.summary,
         category: aiProcessedNote.category,
@@ -103,7 +114,14 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
         priority: aiProcessedNote.priority,
         tags: aiProcessedNote.tags,
         items: aiProcessedNote.items,
-      });
+      };
+      
+      console.log('[NoteInput] Note data to save:', noteData);
+      
+      // Add the note to Supabase
+      const savedNote = await addNote(noteData);
+      
+      console.log('[NoteInput] Saved note result:', savedNote);
 
       if (savedNote) {
         // Show the recap
