@@ -33,7 +33,11 @@ export const SimpleNoteInput: React.FC<SimpleNoteInputProps> = ({ onNoteAdded })
     let category = "general";
     let priority = "medium";
     
-    if (lowerText.includes("grocery") || lowerText.includes("shopping") || lowerText.includes("buy")) {
+    // Check for food/grocery items first (more specific)
+    if (lowerText.includes("grocery") || lowerText.includes("groceries") || 
+        /\b(milk|eggs|bread|lemons?|apples?|bananas?|cheese|butter|yogurt|vegetables?|fruits?|meat|chicken|beef|fish|rice|pasta|cereal|juice|coffee|tea|sugar|flour|onions?|tomatoes?|potatoes?|carrots?)\b/.test(lowerText)) {
+      category = "groceries";
+    } else if (lowerText.includes("shopping") || lowerText.includes("buy")) {
       category = "shopping";
     } else if (lowerText.includes("date") || lowerText.includes("dinner") || lowerText.includes("movie")) {
       category = "dateIdeas";
