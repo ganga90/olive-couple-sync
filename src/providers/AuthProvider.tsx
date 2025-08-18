@@ -15,7 +15,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { isSignedIn } = useClerkAuth();
   const supabase = useClerkSupabaseClient();
 
-  console.log('[AuthProvider] State:', { isLoaded, isSignedIn, user: !!user, userId: user?.id });
+  console.log('[AuthProvider] DETAILED State:', { 
+    isLoaded, 
+    isSignedIn, 
+    user: !!user, 
+    userId: user?.id,
+    userEmail: user?.emailAddresses?.[0]?.emailAddress,
+    fullName: user?.fullName 
+  });
 
   // Sync Clerk user to Supabase profiles
   useEffect(() => {
@@ -43,11 +50,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [isSignedIn, user, isLoaded, supabase]);
 
+  const isAuthenticated = Boolean(isSignedIn && user && isLoaded);
+  
+  console.log('[AuthProvider] Computing isAuthenticated:', {
+    isSignedIn,
+    hasUser: !!user,
+    isLoaded,
+    computed: isAuthenticated
+  });
+
   const value = {
-    user: isSignedIn ? user : null,
+    user: isAuthenticated ? user : null,
     loading: !isLoaded,
-    isAuthenticated: Boolean(isSignedIn && user && isLoaded),
+    isAuthenticated,
   };
+
+  console.log('[AuthProvider] Final context value:', {
+    hasUser: !!value.user,
+    loading: value.loading,
+    isAuthenticated: value.isAuthenticated
+  });
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

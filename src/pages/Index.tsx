@@ -17,11 +17,21 @@ const Index = () => {
 
   const navigate = useNavigate();
   const [hasNotes, setHasNotes] = useState(false);
-  const { user, loading } = useAuth();
+  const { user, loading, isAuthenticated } = useAuth();
+
+  // Debug authentication state
+  console.log('[Index] Auth State:', { 
+    user: !!user, 
+    loading, 
+    isAuthenticated,
+    userId: user?.id 
+  });
 
   // If user is authenticated AND auth has loaded, show enhanced experience
-  const isAuthenticated = user && !loading;
-  const userName = isAuthenticated ? (user.firstName || user.fullName || "there") : null;
+  const isAuthenticatedUser = isAuthenticated && !loading;
+  const userName = isAuthenticatedUser ? (user.firstName || user.fullName || "there") : null;
+
+  console.log('[Index] Computed States:', { isAuthenticatedUser, userName });
 
   return (
     <main className="min-h-screen bg-gradient-soft">
@@ -32,13 +42,13 @@ const Index = () => {
             <OliveLogoWithText size="lg" className="justify-center" />
             <div className="space-y-2">
               <h1 className="text-2xl font-bold text-foreground">
-                {isAuthenticated 
+                {isAuthenticatedUser 
                   ? `Welcome back, ${userName}!` 
                   : "Your AI-powered note organizer"
                 }
               </h1>
               <p className="text-muted-foreground">
-                {isAuthenticated 
+                {isAuthenticatedUser 
                   ? "What would you like me to organize for you today?"
                   : "Drop a note below and watch Olive organize it for you"
                 }
@@ -47,7 +57,7 @@ const Index = () => {
           </div>
 
           {/* Note Input - use authenticated version if signed in */}
-          {isAuthenticated ? (
+          {isAuthenticatedUser ? (
             <NoteInput onNoteAdded={() => setHasNotes(true)} />
           ) : (
             <SimpleNoteInput onNoteAdded={() => setHasNotes(true)} />
@@ -74,16 +84,16 @@ const Index = () => {
           <div className="flex items-center justify-center gap-8 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <Plus className="h-4 w-4 text-olive" />
-              {isAuthenticated ? "Saved to your space" : "AI-powered"}
+              {isAuthenticatedUser ? "Saved to your space" : "AI-powered"}
             </div>
             <div className="flex items-center gap-2">
               <Heart className="h-4 w-4 text-olive" />
-              {isAuthenticated ? "AI-organized" : "Smart categorization"}
+              {isAuthenticatedUser ? "AI-organized" : "Smart categorization"}
             </div>
           </div>
 
           {/* Auth buttons - only show for non-authenticated users */}
-          {!isAuthenticated && (
+          {!isAuthenticatedUser && (
             <div className="space-y-3 pt-8">
               <p className="text-center text-sm text-muted-foreground">
                 Want to save your notes and unlock more features?

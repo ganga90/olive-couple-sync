@@ -23,6 +23,14 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const { addNote } = useSupabaseNotesContext();
   const supabase = useClerkSupabaseClient();
 
+  // Debug authentication state in NoteInput
+  console.log('[NoteInput] Auth State:', { 
+    user: !!user, 
+    userId: user?.id,
+    currentCouple: !!currentCouple,
+    coupleId: currentCouple?.id
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
