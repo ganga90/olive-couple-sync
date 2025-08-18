@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Plus, Heart } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { SimpleNoteInput } from "@/components/SimpleNoteInput";
+import { NoteInput } from "@/components/NoteInput";
+import { useAuth } from "@/providers/AuthProvider";
+import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 
 const Index = () => {
   useSEO({ 
@@ -14,6 +17,59 @@ const Index = () => {
 
   const navigate = useNavigate();
   const [hasNotes, setHasNotes] = useState(false);
+  const { user, loading } = useAuth();
+  const { you } = useSupabaseCouple();
+
+  // If user is authenticated, show the authenticated experience
+  if (user && !loading) {
+    return (
+      <main className="min-h-screen bg-gradient-soft">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-lg mx-auto space-y-8">
+            {/* Welcome Header */}
+            <div className="text-center space-y-4">
+              <OliveLogoWithText size="lg" className="justify-center" />
+              <div className="space-y-2">
+                <h1 className="text-2xl font-bold text-foreground">
+                  Welcome back, {user.firstName || user.fullName || "there"}!
+                </h1>
+                <p className="text-muted-foreground">
+                  What would you like me to organize for you today?
+                </p>
+              </div>
+            </div>
+
+            {/* Authenticated Note Input */}
+            <NoteInput onNoteAdded={() => setHasNotes(true)} />
+
+            {/* Features */}
+            <div className="flex items-center justify-center gap-8 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Plus className="h-4 w-4 text-olive" />
+                Saved to your space
+              </div>
+              <div className="flex items-center gap-2">
+                <Heart className="h-4 w-4 text-olive" />
+                AI-organized
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Show loading state
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-gradient-soft flex items-center justify-center">
+        <div className="text-center">
+          <OliveLogoWithText size="lg" className="justify-center mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </main>
+    );
+  }
 
   // Simple standalone interface - no authentication required
   return (
