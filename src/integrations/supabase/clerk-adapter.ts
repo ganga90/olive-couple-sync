@@ -19,41 +19,14 @@ export const useClerkSupabaseClient = () => {
       if (isSignedIn) {
         console.log('[ClerkAdapter] User signed in, setting auth token');
         
-        // Try both approaches to debug which works
-        console.log('[ClerkAdapter] Testing token methods...');
+        // Use ONLY the regular session token for direct Clerk-Supabase integration
+        const sessionToken = await getToken();
+        console.log('[ClerkAdapter] Session token available:', !!sessionToken);
         
-        // Test 1: Regular token
-        const regularToken = await getToken();
-        console.log('[ClerkAdapter] Regular token:', !!regularToken, regularToken?.substring(0, 30) + '...');
-        
-        // Test 2: Supabase template token  
-        const supabaseToken = await getToken({ template: "supabase" });
-        console.log('[ClerkAdapter] Supabase template token:', !!supabaseToken, supabaseToken?.substring(0, 30) + '...');
-        
-        // Decode and inspect both tokens
-        if (regularToken) {
-          try {
-            const payload = JSON.parse(atob(regularToken.split('.')[1]));
-            console.log('[ClerkAdapter] Regular token payload:', payload);
-          } catch (e) {
-            console.error('[ClerkAdapter] Failed to decode regular token:', e);
-          }
-        }
-        
-        if (supabaseToken) {
-          try {
-            const payload = JSON.parse(atob(supabaseToken.split('.')[1]));
-            console.log('[ClerkAdapter] Supabase token payload:', payload);
-          } catch (e) {
-            console.error('[ClerkAdapter] Failed to decode Supabase token:', e);
-          }
-        }
-        
-        // Use the Supabase template token if available, otherwise regular
-        const tokenToUse = supabaseToken || regularToken;
+        const tokenToUse = sessionToken;
         
         if (tokenToUse) {
-          console.log('[ClerkAdapter] Using token type:', supabaseToken ? 'supabase-template' : 'regular');
+          console.log('[ClerkAdapter] Using regular session token for direct integration');
           console.log('[ClerkAdapter] Setting Supabase session with token');
           
           const { data, error } = await supabaseClient.auth.setSession({
@@ -66,18 +39,10 @@ export const useClerkSupabaseClient = () => {
           } else {
             console.log('[ClerkAdapter] Session set successfully:', data);
             
-            // Test if auth.uid() works
+            // Verify auth.uid() works
             try {
               const { data: user } = await supabaseClient.auth.getUser();
               console.log('[ClerkAdapter] Current Supabase user:', user);
-              
-              // Test a simple authenticated query
-              const { data: testData, error: testError } = await supabaseClient
-                .from('clerk_profiles')
-                .select('*')
-                .limit(1);
-              console.log('[ClerkAdapter] Test query result:', { testData, testError });
-              
             } catch (err) {
               console.error('[ClerkAdapter] Error testing auth:', err);
             }
@@ -108,22 +73,15 @@ export const useClerkSupabaseClient = () => {
         invoke: async (functionName: string, options?: any) => {
           console.log('[ClerkAdapter] Invoking function:', functionName);
           
-          // Prioritize Supabase template token for function calls
-          const supabaseToken = await getToken({ template: "supabase" });
-          const regularToken = await getToken();
-          const tokenToUse = supabaseToken || regularToken;
+          // Use only the regular session token for direct integration
+          const sessionToken = await getToken();
+          console.log('[ClerkAdapter] Function token available:', !!sessionToken);
           
-          console.log('[ClerkAdapter] Function token types:', {
-            regular: !!regularToken,
-            supabase: !!supabaseToken,
-            using: supabaseToken ? 'supabase-template' : 'regular'
-          });
-          
-          if (tokenToUse) {
+          if (sessionToken) {
             console.log('[ClerkAdapter] Setting session before function call');
             const { error: sessionError } = await supabaseClient.auth.setSession({
-              access_token: tokenToUse,
-              refresh_token: tokenToUse
+              access_token: sessionToken,
+              refresh_token: sessionToken
             });
             
             if (sessionError) {
@@ -133,7 +91,7 @@ export const useClerkSupabaseClient = () => {
           
           const headers = {
             ...options?.headers,
-            ...(tokenToUse && { Authorization: `Bearer ${tokenToUse}` })
+            ...(sessionToken && { Authorization: `Bearer ${sessionToken}` })
           };
 
           console.log('[ClerkAdapter] Calling function with headers:', Object.keys(headers));
