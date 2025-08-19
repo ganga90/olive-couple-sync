@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect } from "react";
 import { useUser, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
 
@@ -15,36 +15,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { isSignedIn } = useClerkAuth();
   const supabase = useClerkSupabaseClient();
 
-  console.log('[AuthProvider] Raw Clerk hooks:', { 
+  console.log('[AuthProvider] Clerk state:', { 
     isLoaded, 
     isSignedIn, 
     user: !!user, 
     userId: user?.id
   });
 
-  // Wait for Clerk to load before doing anything
-  if (!isLoaded) {
-    console.log('[AuthProvider] Clerk still loading...');
-    return (
-      <AuthContext.Provider value={{
-        user: null,
-        loading: true,
-        isAuthenticated: false,
-      }}>
-        {children}
-      </AuthContext.Provider>
-    );
-  }
-
-  console.log('[AuthProvider] Clerk loaded! Final state:', {
-    isSignedIn,
-    user: !!user,
-    userId: user?.id
-  });
-
+  // ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL LOGIC
   // Sync Clerk user to Supabase profiles when signed in
   useEffect(() => {
-    if (isSignedIn && user) {
+    if (isLoaded && isSignedIn && user) {
       console.log('[AuthProvider] Syncing user to Supabase:', user.id);
       const syncProfile = async () => {
         try {
@@ -69,20 +50,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       syncProfile();
     }
-  }, [isSignedIn, user, supabase]);
+  }, [isLoaded, isSignedIn, user, supabase]);
 
-  // Now we know Clerk is loaded, calculate the auth state
-  const isAuthenticated = Boolean(isSignedIn && user);
-  
-  console.log('[AuthProvider] Final authenticated state:', {
+  // Calculate auth state
+  const isAuthenticated = Boolean(isLoaded && isSignedIn && user);
+  const loading = !isLoaded;
+
+  console.log('[AuthProvider] Final auth state:', {
     isAuthenticated,
+    loading,
     hasUser: !!user,
     userId: user?.id
   });
 
   const value = {
     user: isAuthenticated ? user : null,
-    loading: false, // Clerk is loaded at this point
+    loading,
     isAuthenticated,
   };
 
