@@ -19,7 +19,17 @@ export const useClerkSupabaseClient = () => {
       if (isSignedIn) {
         console.log('[ClerkAdapter] User signed in, setting auth token');
         const token = await getToken({ template: "supabase" });
-        console.log('[ClerkAdapter] Got Clerk token:', !!token, token?.substring(0, 20) + '...');
+        console.log('[ClerkAdapter] Got Clerk token:', !!token, token ? token.substring(0, 50) + '...' : 'NO TOKEN');
+        
+        // Decode and log JWT payload for debugging
+        if (token) {
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            console.log('[ClerkAdapter] JWT payload:', payload);
+          } catch (e) {
+            console.error('[ClerkAdapter] Failed to decode JWT:', e);
+          }
+        }
         
         if (token) {
           console.log('[ClerkAdapter] Setting Supabase session with token');
@@ -74,6 +84,15 @@ export const useClerkSupabaseClient = () => {
           // Always get a fresh token for function calls
           const token = await getToken({ template: "supabase" });
           console.log('[ClerkAdapter] Function token present:', !!token);
+          
+          if (token) {
+            try {
+              const payload = JSON.parse(atob(token.split('.')[1]));
+              console.log('[ClerkAdapter] Function call JWT payload:', payload);
+            } catch (e) {
+              console.error('[ClerkAdapter] Failed to decode function JWT:', e);
+            }
+          }
           
           if (token) {
             // Ensure session is set before function call
