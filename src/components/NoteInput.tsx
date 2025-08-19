@@ -83,6 +83,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
     if (!coupleToUse) {
       console.log('[NoteInput] No couple found, creating one for user:', user.id);
       try {
+        // Make sure we refresh the auth token before creating couple
+        const token = await supabase.auth.getSession();
+        console.log('[NoteInput] Current session before couple creation:', !!token.data.session);
+        
         coupleToUse = await createCouple({
           title: "My Notes",
           you_name: user.firstName || user.fullName || "You",

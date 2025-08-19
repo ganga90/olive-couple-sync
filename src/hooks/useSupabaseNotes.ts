@@ -93,6 +93,10 @@ export const useSupabaseNotes = (coupleId?: string) => {
     try {
       console.log('[useSupabaseNotes] Inserting note to clerk_notes table');
       
+      // Ensure we have a fresh session before inserting
+      const session = await supabase.auth.getSession();
+      console.log('[useSupabaseNotes] Current session before insert:', !!session.data.session);
+      
       const insertData = {
         ...noteData,
         couple_id: coupleId,
@@ -109,13 +113,30 @@ export const useSupabaseNotes = (coupleId?: string) => {
 
       if (error) {
         console.error('[useSupabaseNotes] Supabase insert error:', error);
+        
+        // If RLS policy violation, provide more helpful error
+        if (error.message?.includes('row-level security policy')) {
+          console.error('[useSupabaseNotes] RLS Policy violation - checking user context');
+          
+          // Debug the user context in RLS
+          try {
+            const { data: debugUserId } = await supabase.rpc('get_clerk_user_id');
+            console.log('[useSupabaseNotes] RLS user ID:', debugUserId);
+            console.log('[useSupabaseNotes] Expected user ID:', user.id);
+          } catch (debugErr) {
+            console.error('[useSupabaseNotes] Debug RLS error:', debugErr);
+          }
+          
+          throw new Error('Authentication error - please try signing out and back in');
+        }
+        
         throw error;
       }
       
       console.log('[useSupabaseNotes] Successfully inserted note:', data);
       toast.success("Note added successfully");
       return data;
-    } catch (error) {
+    } catch (error: any) {
       console.error("[useSupabaseNotes] Error adding note:", error);
       toast.error(`Failed to add note: ${error.message}`);
       return null;

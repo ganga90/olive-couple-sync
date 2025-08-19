@@ -159,6 +159,12 @@ export const useSupabaseCouples = () => {
       
       // Try to save to database in background, but don't block on it
       try {
+        console.log('[useSupabaseCouples] Attempting to save couple to database');
+        
+        // Ensure we have a fresh session before creating
+        const session = await supabase.auth.getSession();
+        console.log('[useSupabaseCouples] Current session before couple creation:', !!session.data.session);
+        
         const { data, error } = await supabase
           .from("clerk_couples")
           .insert([{
@@ -168,14 +174,38 @@ export const useSupabaseCouples = () => {
           .select()
           .single();
 
-        if (!error && data) {
+        if (error) {
+          console.error('[useSupabaseCouples] Database save error:', error);
+          
+          // If RLS policy violation, provide more helpful error
+          if (error.message?.includes('row-level security policy')) {
+            console.error('[useSupabaseCouples] RLS Policy violation - checking user context');
+            
+            // Debug the user context in RLS
+            try {
+              const { data: debugUserId } = await supabase.rpc('get_clerk_user_id');
+              console.log('[useSupabaseCouples] RLS user ID:', debugUserId);
+              console.log('[useSupabaseCouples] Expected user ID:', user.id);
+            } catch (debugErr) {
+              console.error('[useSupabaseCouples] Debug RLS error:', debugErr);
+            }
+          }
+          
+          throw error;
+        }
+
+        if (data) {
           console.log("[Couples] Couple saved to database:", data);
           // Update with the real database ID
           setCurrentCouple(data);
           setCouples(prev => prev.map(c => c.id === localCouple.id ? data : c));
         }
-      } catch (dbError) {
+      } catch (dbError: any) {
         console.warn("[Couples] Database save failed, but local couple still works:", dbError);
+        // If it's an RLS error, show a more helpful message
+        if (dbError.message?.includes('row-level security policy')) {
+          console.log("[Couples] RLS error detected, this may resolve after auth sync");
+        }
       }
       
       return localCouple;
