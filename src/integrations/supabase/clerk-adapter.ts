@@ -49,7 +49,7 @@ export const useClerkSupabaseClient = () => {
           }
         }
         
-        // Try using the Supabase template token first
+        // Use the Supabase template token if available, otherwise regular
         const tokenToUse = supabaseToken || regularToken;
         
         if (tokenToUse) {
@@ -108,9 +108,9 @@ export const useClerkSupabaseClient = () => {
         invoke: async (functionName: string, options?: any) => {
           console.log('[ClerkAdapter] Invoking function:', functionName);
           
-          // Try both token types for function calls
-          const regularToken = await getToken();
+          // Prioritize Supabase template token for function calls
           const supabaseToken = await getToken({ template: "supabase" });
+          const regularToken = await getToken();
           const tokenToUse = supabaseToken || regularToken;
           
           console.log('[ClerkAdapter] Function token types:', {
