@@ -13,20 +13,32 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoaded } = useUser();
   const { isSignedIn } = useClerkAuth();
+  const [initialized, setInitialized] = useState(false);
   const supabase = useClerkSupabaseClient();
 
-  console.log('[AuthProvider] DETAILED State:', { 
+  // Add debugging to track Clerk initialization
+  console.log('[AuthProvider] Raw Clerk State:', { 
     isLoaded, 
     isSignedIn, 
     user: !!user, 
     userId: user?.id,
     userEmail: user?.emailAddresses?.[0]?.emailAddress,
-    fullName: user?.fullName 
+    fullName: user?.fullName,
+    initialized
   });
+
+  // Wait for Clerk to fully initialize
+  useEffect(() => {
+    if (isLoaded && !initialized) {
+      console.log('[AuthProvider] Clerk has loaded, setting initialized to true');
+      setInitialized(true);
+    }
+  }, [isLoaded, initialized]);
 
   // Sync Clerk user to Supabase profiles
   useEffect(() => {
-    if (isSignedIn && user && isLoaded) {
+    if (isSignedIn && user && isLoaded && initialized) {
+      console.log('[AuthProvider] Syncing user profile to Supabase:', user.id);
       const syncProfile = async () => {
         try {
           const { error } = await supabase
@@ -40,6 +52,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           if (error) {
             console.error('[Auth] Error syncing profile:', error);
+          } else {
+            console.log('[Auth] Profile synced successfully');
           }
         } catch (err) {
           console.error('[Auth] Error syncing profile:', err);
@@ -48,20 +62,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       syncProfile();
     }
-  }, [isSignedIn, user, isLoaded, supabase]);
+  }, [isSignedIn, user, isLoaded, initialized, supabase]);
 
-  const isAuthenticated = Boolean(isSignedIn && user && isLoaded);
+  // Calculate authentication state - must be loaded AND initialized
+  const isAuthenticated = Boolean(isSignedIn && user && isLoaded && initialized);
+  const loading = !isLoaded || !initialized;
   
-  console.log('[AuthProvider] Computing isAuthenticated:', {
+  console.log('[AuthProvider] Computing authentication:', {
     isSignedIn,
     hasUser: !!user,
     isLoaded,
-    computed: isAuthenticated
+    initialized,
+    computed: isAuthenticated,
+    loading
   });
 
   const value = {
     user: isAuthenticated ? user : null,
-    loading: !isLoaded,
+    loading,
     isAuthenticated,
   };
 
