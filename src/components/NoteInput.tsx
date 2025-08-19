@@ -18,7 +18,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const [text, setText] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedNote, setProcessedNote] = useState<any>(null);
-  const { user } = useAuth();
+  const { user, loading, isAuthenticated } = useAuth();
   const { currentCouple, createCouple } = useSupabaseCouple();
   const { addNote } = useSupabaseNotesContext();
   const supabase = useClerkSupabaseClient();
@@ -27,9 +27,23 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   console.log('[NoteInput] Auth State:', { 
     user: !!user, 
     userId: user?.id,
+    loading,
+    isAuthenticated,
     currentCouple: !!currentCouple,
     coupleId: currentCouple?.id
   });
+
+  // Don't allow note submission while loading or if not authenticated
+  if (loading) {
+    return (
+      <Card className="bg-gradient-soft border-olive/20 shadow-soft">
+        <div className="p-6 text-center">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-olive mx-auto mb-2"></div>
+          <p className="text-sm text-muted-foreground">Loading your notes space...</p>
+        </div>
+      </Card>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,8 +51,13 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
     // Check auth state at start
     console.log('[NoteInput] Starting submission with user:', !!user, user?.id);
     
-    if (!text.trim() || !user) {
-      toast.error("Please enter a note and make sure you're signed in");
+    if (!text.trim()) {
+      toast.error("Please enter a note");
+      return;
+    }
+
+    if (!isAuthenticated || !user) {
+      toast.error("You need to be signed in to add notes");
       return;
     }
 
