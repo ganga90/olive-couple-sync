@@ -5,15 +5,22 @@ import './index.css'
 import { ClerkProvider } from '@clerk/clerk-react'
 
 const PUBLISHABLE_KEY = 'pk_test_Z3JhdGVmdWwtd3Jlbi04NC5jbGVyay5hY2NvdW50cy5kZXYk'
+
 if (!PUBLISHABLE_KEY) {
   throw new Error('Missing Clerk Publishable Key')
 }
 
-console.log('[Olive] Clerk publishable key present:', Boolean(PUBLISHABLE_KEY))
+console.log('[Olive] Initializing Clerk with key:', PUBLISHABLE_KEY.substring(0, 20) + '...')
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+    <ClerkProvider 
+      publishableKey={PUBLISHABLE_KEY}
+      afterSignInUrl="/"
+      afterSignUpUrl="/"
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+    >
       <App />
     </ClerkProvider>
   </React.StrictMode>
