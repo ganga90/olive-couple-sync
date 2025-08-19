@@ -32,7 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const { error } = await supabase
             .from('clerk_profiles')
             .upsert([{ 
-              id: user.id,
+              id: user.id, // This is now a UUID with the new integration
               display_name: user.fullName || user.firstName || user.emailAddresses[0]?.emailAddress?.split('@')[0] || 'User'
             }], {
               onConflict: 'id'

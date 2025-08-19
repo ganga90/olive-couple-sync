@@ -18,42 +18,22 @@ export const useClerkSupabaseClient = () => {
     const setAuthToken = async () => {
       if (isSignedIn) {
         console.log('[ClerkAdapter] User signed in, setting auth token');
-        const token = await getToken({ template: "supabase" });
-        console.log('[ClerkAdapter] Got Clerk token:', !!token, token ? token.substring(0, 50) + '...' : 'NO TOKEN');
-        
-        // Decode and log JWT payload for debugging
-        if (token) {
-          try {
-            const payload = JSON.parse(atob(token.split('.')[1]));
-            console.log('[ClerkAdapter] JWT payload:', payload);
-          } catch (e) {
-            console.error('[ClerkAdapter] Failed to decode JWT:', e);
-          }
-        }
+        // Use Clerk session token directly (no template needed for new integration)
+        const token = await getToken();
+        console.log('[ClerkAdapter] Got Clerk token:', !!token);
         
         if (token) {
-          console.log('[ClerkAdapter] Setting Supabase session with token');
-          // Set the session with the Clerk JWT token
+          console.log('[ClerkAdapter] Setting Supabase session with Clerk token');
+          // Set the session with the Clerk token
           const { error } = await supabaseClient.auth.setSession({
             access_token: token,
-            refresh_token: ''
+            refresh_token: token
           });
           
           if (error) {
             console.error('[ClerkAdapter] Error setting session:', error);
           } else {
             console.log('[ClerkAdapter] Session set successfully');
-          }
-          
-          // Test the JWT function to see what user ID we get
-          try {
-            const { data: debugClaims } = await supabaseClient.rpc('debug_jwt_claims');
-            console.log('[ClerkAdapter] JWT claims debug:', debugClaims);
-            
-            const { data: userId, error: userError } = await supabaseClient.rpc('get_clerk_user_id');
-            console.log('[ClerkAdapter] get_clerk_user_id result:', { userId, error: userError });
-          } catch (err) {
-            console.log('[ClerkAdapter] Error testing JWT functions:', err);
           }
         }
       } else {
@@ -81,24 +61,15 @@ export const useClerkSupabaseClient = () => {
         invoke: async (functionName: string, options?: any) => {
           console.log('[ClerkAdapter] Invoking function:', functionName);
           
-          // Always get a fresh token for function calls
-          const token = await getToken({ template: "supabase" });
+          // Always get a fresh token for function calls (no template needed)
+          const token = await getToken();
           console.log('[ClerkAdapter] Function token present:', !!token);
-          
-          if (token) {
-            try {
-              const payload = JSON.parse(atob(token.split('.')[1]));
-              console.log('[ClerkAdapter] Function call JWT payload:', payload);
-            } catch (e) {
-              console.error('[ClerkAdapter] Failed to decode function JWT:', e);
-            }
-          }
           
           if (token) {
             // Ensure session is set before function call
             await supabaseClient.auth.setSession({
               access_token: token,
-              refresh_token: ''
+              refresh_token: token
             });
           }
           

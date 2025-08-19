@@ -338,14 +338,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      debug_jwt_claims: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
-      get_clerk_user_id: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
+      [_ in never]: never
     }
     Enums: {
       invite_status: "pending" | "accepted" | "revoked"
