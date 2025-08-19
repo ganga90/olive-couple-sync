@@ -21,7 +21,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const { user, loading, isAuthenticated } = useAuth();
   const { currentCouple, createCouple } = useSupabaseCouple();
   const { addNote } = useSupabaseNotesContext();
-  const supabase = useClerkSupabaseClient();
+  const supabaseClient = useClerkSupabaseClient();
 
   // Debug authentication state in NoteInput
   console.log('[NoteInput] Auth State:', { 
@@ -64,15 +64,14 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
       return;
     }
 
-    if (!isAuthenticated) {
-      console.log('[NoteInput] FAILED: Not authenticated');
-      toast.error("You need to be signed in to add notes");
-      return;
-    }
-
-    if (!user) {
-      console.log('[NoteInput] FAILED: No user object');
-      toast.error("You need to be signed in to add notes");
+    if (!isAuthenticated || !user) {
+      console.log('[NoteInput] FAILED: Not authenticated or no user', { isAuthenticated, user: !!user });
+      toast.error("Please sign in to add notes", {
+        action: {
+          label: "Sign In",
+          onClick: () => window.location.href = "/sign-in"
+        }
+      });
       return;
     }
 
@@ -83,9 +82,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
     if (!coupleToUse) {
       console.log('[NoteInput] No couple found, creating one for user:', user.id);
       try {
-        // Make sure we refresh the auth token before creating couple
-        const token = await supabase.auth.getSession();
-        console.log('[NoteInput] Current session before couple creation:', !!token.data.session);
+        // Make sure we have auth session before creating couple
+        const session = await supabaseClient.auth.getSession();
+        console.log('[NoteInput] Current session before couple creation:', !!session.data.session);
         
         coupleToUse = await createCouple({
           title: "My Notes",
@@ -118,7 +117,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
       console.log('[NoteInput] Processing note with AI for user:', user.id);
       
       // Process the note with Gemini AI
-      const { data: aiProcessedNote, error } = await supabase.functions.invoke('process-note', {
+      const { data: aiProcessedNote, error } = await supabaseClient.functions.invoke('process-note', {
         body: { 
           text: text.trim(),
           user_id: user.id
