@@ -48,18 +48,35 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Check auth state at start
-    console.log('[NoteInput] Starting submission with user:', !!user, user?.id);
+    // Comprehensive auth debugging
+    console.log('[NoteInput] === SUBMISSION DEBUG ===');
+    console.log('[NoteInput] Text:', text.trim());
+    console.log('[NoteInput] Auth state:', { 
+      user: !!user, 
+      userId: user?.id,
+      loading,
+      isAuthenticated,
+      userObject: user
+    });
     
     if (!text.trim()) {
       toast.error("Please enter a note");
       return;
     }
 
-    if (!isAuthenticated || !user) {
+    if (!isAuthenticated) {
+      console.log('[NoteInput] FAILED: Not authenticated');
       toast.error("You need to be signed in to add notes");
       return;
     }
+
+    if (!user) {
+      console.log('[NoteInput] FAILED: No user object');
+      toast.error("You need to be signed in to add notes");
+      return;
+    }
+
+    console.log('[NoteInput] ✅ Auth checks passed, proceeding with note creation');
 
     // Ensure we have a couple to save notes to
     let coupleToUse = currentCouple;

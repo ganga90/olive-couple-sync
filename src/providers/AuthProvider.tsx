@@ -13,31 +13,21 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoaded } = useUser();
   const { isSignedIn } = useClerkAuth();
-  const [initialized, setInitialized] = useState(false);
   const supabase = useClerkSupabaseClient();
 
-  // Add debugging to track Clerk initialization
-  console.log('[AuthProvider] Raw Clerk State:', { 
+  // Simplify: Just use Clerk's built-in state management
+  console.log('[AuthProvider] Clerk State:', { 
     isLoaded, 
     isSignedIn, 
     user: !!user, 
     userId: user?.id,
     userEmail: user?.emailAddresses?.[0]?.emailAddress,
-    fullName: user?.fullName,
-    initialized
+    fullName: user?.fullName
   });
-
-  // Wait for Clerk to fully initialize
-  useEffect(() => {
-    if (isLoaded && !initialized) {
-      console.log('[AuthProvider] Clerk has loaded, setting initialized to true');
-      setInitialized(true);
-    }
-  }, [isLoaded, initialized]);
 
   // Sync Clerk user to Supabase profiles
   useEffect(() => {
-    if (isSignedIn && user && isLoaded && initialized) {
+    if (isSignedIn && user && isLoaded) {
       console.log('[AuthProvider] Syncing user profile to Supabase:', user.id);
       const syncProfile = async () => {
         try {
@@ -53,7 +43,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (error) {
             console.error('[Auth] Error syncing profile:', error);
           } else {
-            console.log('[Auth] Profile synced successfully');
+            console.log('[Auth] Profile synced successfully for:', user.id);
           }
         } catch (err) {
           console.error('[Auth] Error syncing profile:', err);
@@ -62,18 +52,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       syncProfile();
     }
-  }, [isSignedIn, user, isLoaded, initialized, supabase]);
+  }, [isSignedIn, user, isLoaded, supabase]);
 
-  // Calculate authentication state - must be loaded AND initialized
-  const isAuthenticated = Boolean(isSignedIn && user && isLoaded && initialized);
-  const loading = !isLoaded || !initialized;
+  // Calculate authentication state based on Clerk's state
+  const isAuthenticated = Boolean(isSignedIn && user && isLoaded);
+  const loading = !isLoaded;
   
-  console.log('[AuthProvider] Computing authentication:', {
-    isSignedIn,
+  console.log('[AuthProvider] Authentication computed:', {
+    isSignedIn: !!isSignedIn,
     hasUser: !!user,
     isLoaded,
-    initialized,
-    computed: isAuthenticated,
+    isAuthenticated,
     loading
   });
 
@@ -83,8 +72,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isAuthenticated,
   };
 
-  console.log('[AuthProvider] Final context value:', {
+  console.log('[AuthProvider] FINAL AUTH STATE:', {
     hasUser: !!value.user,
+    userId: value.user?.id,
     loading: value.loading,
     isAuthenticated: value.isAuthenticated
   });
