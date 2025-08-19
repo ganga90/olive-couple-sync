@@ -30,7 +30,7 @@ const Index = () => {
   // Show loading state while authentication is loading
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-gentle flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-soft flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-olive mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading your space...</p>
