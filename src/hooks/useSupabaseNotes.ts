@@ -93,9 +93,30 @@ export const useSupabaseNotes = (coupleId?: string) => {
     try {
       console.log('[useSupabaseNotes] Inserting note to clerk_notes table');
       
-      // Ensure we have a fresh session before inserting
+      // Comprehensive session and auth debugging
       const session = await supabase.auth.getSession();
-      console.log('[useSupabaseNotes] Current session before insert:', !!session.data.session);
+      console.log('[useSupabaseNotes] Session debugging:', {
+        hasSession: !!session.data.session,
+        sessionUser: session.data.session?.user?.id,
+        sessionValid: !!session.data.session?.access_token,
+        sessionError: session.error
+      });
+      
+      // Test if we can access any data first  
+      const { data: testProfiles, error: profileError } = await supabase
+        .from("clerk_profiles")
+        .select("*")
+        .limit(1);
+      
+      console.log('[useSupabaseNotes] Profile access test:', { testProfiles, profileError });
+      
+      // Test couple access
+      const { data: testCouples, error: coupleError } = await supabase
+        .from("clerk_couples")
+        .select("*")
+        .limit(1);
+      
+      console.log('[useSupabaseNotes] Couple access test:', { testCouples, coupleError });
       
       const insertData = {
         ...noteData,
@@ -118,13 +139,12 @@ export const useSupabaseNotes = (coupleId?: string) => {
         if (error.message?.includes('row-level security policy')) {
           console.error('[useSupabaseNotes] RLS Policy violation - checking user context');
           
-          // Debug the user context in RLS
+          // Test direct auth.uid() access
           try {
-            const { data: debugUserId } = await supabase.rpc('get_clerk_user_id');
-            console.log('[useSupabaseNotes] RLS user ID:', debugUserId);
-            console.log('[useSupabaseNotes] Expected user ID:', user.id);
-          } catch (debugErr) {
-            console.error('[useSupabaseNotes] Debug RLS error:', debugErr);
+            const { data: currentUser } = await supabase.auth.getUser();
+            console.log('[useSupabaseNotes] Current authenticated user:', currentUser);
+          } catch (authErr) {
+            console.error('[useSupabaseNotes] Auth check failed:', authErr);
           }
           
           throw new Error('Authentication error - please try signing out and back in');
