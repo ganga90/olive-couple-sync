@@ -44,6 +44,9 @@ const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "upda
 
 export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentCouple } = useSupabaseCouple();
+  
+  console.log('[SupabaseNotesProvider] Rendering with currentCouple:', !!currentCouple, currentCouple?.id);
+  
   const { 
     notes: supabaseNotes, 
     loading, 
@@ -53,8 +56,11 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     getNotesByCategory: getSupabaseNotesByCategory 
   } = useSupabaseNotes(currentCouple?.id || null); // Pass null for personal notes when no couple
 
-  const notes = useMemo(() => 
-    supabaseNotes.map(convertSupabaseNoteToNote), 
+  const notes = useMemo(() => {
+    const convertedNotes = supabaseNotes.map(convertSupabaseNoteToNote);
+    console.log('[SupabaseNotesProvider] Converting notes:', supabaseNotes.length, 'supabase notes to', convertedNotes.length, 'app notes');
+    return convertedNotes;
+  }, 
     [supabaseNotes]
   );
 

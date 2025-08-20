@@ -26,7 +26,10 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
   const supabase = useClerkSupabaseClient();
 
   const fetchNotes = useCallback(async () => {
+    console.log('[useSupabaseNotes] fetchNotes called with user:', !!user, 'coupleId:', coupleId);
+    
     if (!user) {
+      console.log('[useSupabaseNotes] No user, clearing notes');
       setNotes([]);
       setLoading(false);
       return;
@@ -40,15 +43,22 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
       
       if (coupleId) {
         // If couple ID is provided, fetch couple notes
+        console.log('[useSupabaseNotes] Fetching couple notes for couple:', coupleId);
         query = query.eq("couple_id", coupleId);
       } else {
         // If no couple ID, fetch personal notes (where couple_id is null)
+        console.log('[useSupabaseNotes] Fetching personal notes (couple_id is null)');
         query = query.is("couple_id", null);
       }
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error('[useSupabaseNotes] Error fetching notes:', error);
+        throw error;
+      }
+      
+      console.log('[useSupabaseNotes] Successfully fetched notes:', data?.length || 0, 'notes');
       setNotes(data || []);
     } catch (error) {
       console.error("[Notes] Error fetching notes:", error);
@@ -64,6 +74,7 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
       return;
     }
 
+    console.log('[useSupabaseNotes] useEffect triggered - fetching notes for user:', user.id, 'coupleId:', coupleId);
     fetchNotes();
 
     // Set up realtime subscription
@@ -77,13 +88,16 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
           table: "clerk_notes",
         },
         (payload) => {
-          console.log("[Notes] Realtime update:", payload);
+          console.log("[Notes] Realtime update received:", payload);
           fetchNotes(); // Refetch all notes for simplicity
         }
       )
       .subscribe();
 
+    console.log('[useSupabaseNotes] Realtime subscription set up for user:', user.id);
+
     return () => {
+      console.log('[useSupabaseNotes] Cleaning up realtime subscription');
       supabase.removeChannel(channel);
     };
   }, [user, fetchNotes]);
