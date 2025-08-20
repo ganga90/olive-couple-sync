@@ -13,7 +13,7 @@ const ListCategory = () => {
   const { notes } = useSupabaseNotesContext();
   const decoded = decodeURIComponent(category);
   const categoryNotes = useMemo(() => 
-    notes.filter(note => note.category === decoded), 
+    notes.filter(note => note.category.toLowerCase() === decoded.toLowerCase()), 
     [notes, decoded]
   );
 

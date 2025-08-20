@@ -51,10 +51,29 @@ const Lists = () => {
   const { notes, loading } = useSupabaseNotesContext();
   useSEO({ title: "Lists — Olive", description: "Browse and search all your lists." });
 
+  console.log('[Lists] Rendering with notes:', notes.length, 'loading:', loading);
+  console.log('[Lists] Notes data:', notes);
+
   const filteredCategories = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return categories.filter((c) => !q || c.toLowerCase().includes(q));
-  }, [query]);
+    console.log('[Lists] Filtering categories with query:', q);
+    
+    // Get unique categories from actual notes
+    const actualCategories = Array.from(new Set(notes.map(note => note.category)));
+    console.log('[Lists] Actual categories from notes:', actualCategories);
+    
+    // Filter categories that exist in notes or match query
+    const availableCategories = categories.filter(c => {
+      const hasNotes = actualCategories.some(noteCategory => 
+        noteCategory.toLowerCase() === c.toLowerCase()
+      );
+      const matchesQuery = !q || c.toLowerCase().includes(q);
+      return hasNotes && matchesQuery;
+    });
+    
+    console.log('[Lists] Available categories after filtering:', availableCategories);
+    return availableCategories;
+  }, [query, notes]);
 
   return (
     <main className="min-h-screen bg-gradient-soft">
@@ -77,10 +96,12 @@ const Lists = () => {
           <p className="text-sm text-muted-foreground">No lists found.</p>
         ) : (
           <div className="space-y-3">
-            {filteredCategories.map((c) => {
-              const count = notes.filter((n) => n.category === c).length;
-              const CategoryIcon = getCategoryIcon(c);
-              return (
+             {filteredCategories.map((c) => {
+               const count = notes.filter((n) => 
+                 n.category.toLowerCase() === c.toLowerCase()
+               ).length;
+               const CategoryIcon = getCategoryIcon(c);
+               return (
                 <Link key={c} to={`/lists/${encodeURIComponent(c)}`} aria-label={`Open ${c} list`} className="block">
                   <Card className="bg-white/50 border-olive/20 shadow-soft transition-all duration-200 hover:shadow-lg hover:scale-[1.02]">
                     <CardContent className="flex items-center justify-between p-4">
