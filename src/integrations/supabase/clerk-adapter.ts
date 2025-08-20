@@ -1,4 +1,4 @@
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth, useSession } from "@clerk/clerk-react";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
 import { useMemo } from "react";
@@ -8,27 +8,36 @@ const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 
 // Hook to get Clerk-authenticated Supabase client using official integration pattern
 export const useClerkSupabaseClient = () => {
-  const { getToken, isSignedIn } = useAuth();
+  const { isSignedIn } = useAuth();
+  const { session } = useSession();
   
   return useMemo(() => {
-    // Create Supabase client with Clerk session token using official pattern
+    // Create Supabase client with Clerk session token using exact pattern from docs
     const supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey, {
       global: {
-        async accessToken() {
-          if (!isSignedIn) {
-            console.log('[ClerkAdapter] User not signed in, no token');
-            return null;
-          }
-          
-          const token = await getToken();
-          console.log('[ClerkAdapter] Got Clerk token for Supabase:', !!token);
-          return token;
+        headers: {
+          'Content-Type': 'application/json',
         },
+      },
+      auth: {
+        // Use the exact pattern from Supabase docs
+        persistSession: false,
+      },
+      // Session accessed from Clerk SDK - exact pattern from docs
+      accessToken: async () => {
+        if (!isSignedIn || !session) {
+          console.log('[ClerkAdapter] No Clerk session available');
+          return null;
+        }
+        
+        const token = await session.getToken();
+        console.log('[ClerkAdapter] Got Clerk token for Supabase:', !!token);
+        return token;
       },
     });
     
-    console.log('[ClerkAdapter] Created Supabase client with Clerk token injection');
+    console.log('[ClerkAdapter] Created Supabase client with Clerk session token integration');
     
     return supabaseClient;
-  }, [getToken, isSignedIn]);
+  }, [isSignedIn, session]);
 };

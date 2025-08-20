@@ -194,15 +194,7 @@ export const useSupabaseCouples = () => {
           // If RLS policy violation, provide more helpful error
           if (error.message?.includes('row-level security policy')) {
             console.error('[useSupabaseCouples] RLS Policy violation - checking user context');
-            
-            // Debug the user context in RLS
-            try {
-              const { data: debugUserId } = await supabase.rpc('get_clerk_user_id');
-              console.log('[useSupabaseCouples] RLS user ID:', debugUserId);
-              console.log('[useSupabaseCouples] Expected user ID:', user.id);
-            } catch (debugErr) {
-              console.error('[useSupabaseCouples] Debug RLS error:', debugErr);
-            }
+            console.log('[useSupabaseCouples] Expected user ID:', user.id);
           }
           
           throw error;
