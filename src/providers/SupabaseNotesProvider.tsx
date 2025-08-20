@@ -12,6 +12,7 @@ type SupabaseNotesContextValue = {
   updateNote: (id: string, updates: Partial<Note>) => Promise<Note | null>;
   deleteNote: (id: string) => Promise<boolean>;
   getNotesByCategory: (category: string) => Note[];
+  refetch: () => Promise<void>;
 };
 
 const SupabaseNotesContext = createContext<SupabaseNotesContextValue | undefined>(undefined);
@@ -84,7 +85,8 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     addNote: addSupabaseNote, 
     updateNote: updateSupabaseNote, 
     deleteNote: deleteSupabaseNote,
-    getNotesByCategory: getSupabaseNotesByCategory 
+    getNotesByCategory: getSupabaseNotesByCategory,
+    refetch 
   } = useSupabaseNotes(currentCouple?.id || null); // Pass null for personal notes when no couple
 
   const notes = useMemo(() => {
@@ -136,7 +138,8 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     updateNote,
     deleteNote,
     getNotesByCategory,
-  }), [notes, loading]);
+    refetch,
+  }), [notes, loading, refetch]);
 
   return (
     <SupabaseNotesContext.Provider value={value}>

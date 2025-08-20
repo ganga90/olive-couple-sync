@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSEO } from "@/hooks/useSEO";
@@ -48,8 +48,13 @@ const getCategoryIcon = (category: string) => {
 
 const Lists = () => {
   const [query, setQuery] = useState("");
-  const { notes, loading } = useSupabaseNotesContext();
+  const { notes, loading, refetch } = useSupabaseNotesContext();
   useSEO({ title: "Lists — Olive", description: "Browse and search all your lists." });
+
+  // Refresh data when the page loads
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
 
   const filteredCategories = useMemo(() => {
     const q = query.trim().toLowerCase();
