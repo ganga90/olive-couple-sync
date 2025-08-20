@@ -338,7 +338,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_couple_member: {
+        Args: { couple_uuid: string; user_text: string }
+        Returns: boolean
+      }
+      is_couple_owner: {
+        Args: { couple_uuid: string; user_text: string }
+        Returns: boolean
+      }
     }
     Enums: {
       invite_status: "pending" | "accepted" | "revoked"
