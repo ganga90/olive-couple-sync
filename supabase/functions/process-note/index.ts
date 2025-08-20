@@ -1,100 +1,157 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import "https://deno.land/x/xhr@0.1.0/mod.ts"
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1'
+import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.21.0"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+}
 
-const SYSTEM_PROMPT = `You are Olive Assistant, an intelligent AI designed to support couples in organizing their shared and individual lives seamlessly. Your task is to process unstructured raw text notes entered by users and transform them into actionable, well-organized information.
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const geminiApiKey = Deno.env.get('GEMINI_API')!
 
-For each raw note, perform the following steps:
+const supabase = createClient(supabaseUrl, supabaseServiceKey)
+const genAI = new GoogleGenerativeAI(geminiApiKey)
 
-Understand the Context and Content:
-- Identify the main message and extract key points into a concise summary.
-- Detect the user who submitted the note.
+// Get existing lists for a user/couple to help AI make better category decisions
+async function getExistingLists(userId: string, coupleId: string | null) {
+  try {
+    let query = supabase
+      .from('clerk_lists')
+      .select('name, description')
+      .eq('author_id', userId);
 
-Categorization:
-- Assign one or more relevant categories from predefined lists (e.g., groceries, task, home improvement, travel idea, date idea, reminder, shopping list, personal note) based on the content.
-- If the note does not fit existing categories, suggest potential new custom categories.
+    if (coupleId) {
+      query = query.eq('couple_id', coupleId);
+    } else {
+      query = query.is('couple_id', null);
+    }
 
-Date Extraction:
-- Automatically detect any date, time, or deadline mentioned explicitly or implicitly (e.g., "tomorrow," "next Friday," "in 3 days").
-- If no date is found, leave the date field empty.
+    const { data, error } = await query;
+    if (error) {
+      console.error('Error fetching existing lists:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Unexpected error fetching lists:', error);
+    return [];
+  }
+}
 
-Actionability & Prioritization:
-- Identify if the note represents an actionable task or idea.
-- Highlight important or urgent items when indicated.
+// Create a new list if it doesn't exist
+async function createListIfNeeded(listName: string, userId: string, coupleId: string | null) {
+  try {
+    // Check if list already exists
+    let checkQuery = supabase
+      .from('clerk_lists')
+      .select('id')
+      .eq('name', listName)
+      .eq('author_id', userId);
 
-Formatting Output:
-- Return a structured JSON object with fields:
-  - summary: concise summary of the note (max 100 characters)
-  - category: assigned category (lowercase, use underscores for spaces)
-  - due_date: standardized ISO date if detected, otherwise null
-  - priority: "low", "medium", or "high"
-  - tags: array of relevant tags
-  - items: array of individual items if the note contains a list
+    if (coupleId) {
+      checkQuery = checkQuery.eq('couple_id', coupleId);
+    } else {
+      checkQuery = checkQuery.is('couple_id', null);
+    }
 
-Learning & Memory:
-- Store patterns for categories, phrases, or commonly used terms to improve future classification and personalization for this user.
+    const { data: existingList } = await checkQuery.single();
+    
+    if (existingList) {
+      return existingList.id;
+    }
 
-Maintain a warm, helpful, and respectful tone, supporting the couple's shared life organization with intelligence and empathy.`;
+    // Create new list
+    const { data, error } = await supabase
+      .from('clerk_lists')
+      .insert({
+        name: listName,
+        author_id: userId,
+        couple_id: coupleId,
+        is_manual: false, // AI-generated list
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Error creating list:', error);
+      return null;
+    }
+
+    console.log('Created new list:', listName, 'with id:', data.id);
+    return data.id;
+  } catch (error) {
+    console.error('Unexpected error creating list:', error);
+    return null;
+  }
+}
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API');
-    if (!GEMINI_API_KEY) {
-      throw new Error('GEMINI_API key is not configured');
+    const { text, userId, coupleId } = await req.json()
+
+    if (!text || !userId) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: text and userId' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
     }
 
-    const { text, user_id } = await req.json();
-    
-    if (!text || !user_id) {
-      throw new Error('Missing required fields: text and user_id');
-    }
+    console.log('Processing note for user:', userId, 'text:', text)
 
-    // Call Gemini API
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: `${SYSTEM_PROMPT}\n\nProcess this note:\n"${text}"\n\nRespond with ONLY a valid JSON object, no other text.`
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 1000,
-        }
-      }),
-    });
+    // Get existing lists to help AI make better category decisions
+    const existingLists = await getExistingLists(userId, coupleId || null);
+    const existingListNames = existingLists.map(list => list.name).join(', ');
+    console.log('Existing lists for context:', existingListNames)
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Gemini API error:', errorText);
-      throw new Error('Failed to process note with AI');
-    }
+    const prompt = `You are an AI assistant that processes notes and organizes them into structured data.
 
-    const data = await response.json();
-    console.log('Gemini response:', data);
-    
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      throw new Error('Invalid response from Gemini API');
-    }
+Given this note text: "${text}"
 
-    const aiResponse = data.candidates[0].content.parts[0].text;
+${existingLists.length > 0 ? 
+  `The user already has these lists: ${existingListNames}. 
+   If the note fits into one of these existing lists, use that category name exactly as it appears.
+   Only create a new category if the note doesn't fit well into any existing list.` :
+  'This is a new note that may require a new category.'
+}
+
+Please analyze it and return ONLY a JSON response with the following structure:
+{
+  "summary": "A brief, clear summary of the note (max 100 characters)",
+  "category": "Choose from existing lists above, or create a new category name (use proper case like 'Home Improvement', 'Groceries', etc.)",
+  "due_date": "ISO date string if a specific date/time is mentioned, otherwise null",
+  "priority": "low, medium, or high based on urgency indicators",
+  "tags": ["relevant", "tags", "from", "content"],
+  "items": ["individual", "items", "if", "this", "is", "a", "list"]
+}
+
+For the category:
+- First check if this note belongs to any existing list above
+- If it fits an existing list, use that exact name
+- If it doesn't fit any existing list, create a new appropriate category name
+- Use proper case formatting (e.g., "Home Improvement", "Gift Ideas", "Movies to Watch")
+
+If the note contains multiple items (like a shopping list), extract them into the items array.
+
+Respond with ONLY the JSON, no additional text.`
+
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const aiResponse = response.text();
+
     console.log('AI response text:', aiResponse);
 
     // Parse the JSON response - handle markdown code blocks
-    let processedNote;
+    let parsed;
     try {
       let cleanResponse = aiResponse.trim();
       
@@ -106,15 +163,15 @@ serve(async (req) => {
       }
       
       console.log('Cleaned AI response for parsing:', cleanResponse);
-      processedNote = JSON.parse(cleanResponse);
-      console.log('Successfully parsed AI response:', processedNote);
+      parsed = JSON.parse(cleanResponse);
+      console.log('Successfully parsed AI response:', parsed);
     } catch (parseError) {
-      console.error('Failed to parse AI response as JSON:', cleanResponse);
+      console.error('Failed to parse AI response as JSON:', aiResponse);
       console.error('Parse error:', parseError);
       // Fallback to basic processing
-      processedNote = {
+      parsed = {
         summary: text.length > 100 ? text.substring(0, 97) + "..." : text,
-        category: "general",
+        category: "Task",
         due_date: null,
         priority: "medium",
         tags: [],
@@ -122,36 +179,34 @@ serve(async (req) => {
       };
     }
 
-    // Ensure required fields
+    // Create list if needed and get list ID
+    const listId = await createListIfNeeded(parsed.category, userId, coupleId || null);
+
+    // Return the processed note result
     const result = {
-      summary: processedNote.summary || text,
-      category: processedNote.category || "general",
-      due_date: processedNote.due_date || null,
-      priority: processedNote.priority || "medium",
-      tags: processedNote.tags || [],
-      items: processedNote.items || [],
-      original_text: text
-    };
+      ...parsed,
+      original_text: text,
+      list_id: listId
+    }
 
-    console.log('Processed note result:', result);
-
+    console.log('Processed note result:', result)
+    
     return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
   } catch (error) {
-    console.error('Error in process-note function:', error);
+    console.error('Error in process-note function:', error)
     return new Response(JSON.stringify({ 
       error: error.message,
-      // Fallback processing
       summary: 'Note processing failed',
-      category: 'general',
+      category: 'Task',
       due_date: null,
       priority: 'medium',
       tags: [],
       items: []
     }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
   }
-});
+})

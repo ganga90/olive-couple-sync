@@ -17,8 +17,14 @@ type SupabaseNotesContextValue = {
 
 const SupabaseNotesContext = createContext<SupabaseNotesContextValue | undefined>(undefined);
 
-// Map AI categories (lowercase with underscores) to display categories
+// Map AI categories - now the AI returns proper case directly
 const mapAICategory = (aiCategory: string): string => {
+  // If it's already proper case, return as is
+  if (aiCategory && aiCategory[0] === aiCategory[0].toUpperCase()) {
+    return aiCategory;
+  }
+  
+  // Fallback mapping for legacy formats
   const categoryMap: Record<string, string> = {
     'groceries': 'Groceries',
     'task': 'Task',
@@ -40,7 +46,7 @@ const mapAICategory = (aiCategory: string): string => {
   
   return categoryMap[aiCategory.toLowerCase()] || categories.find(cat => 
     cat.toLowerCase().replace(/\s+/g, '_') === aiCategory.toLowerCase()
-  ) || 'Task';
+  ) || aiCategory || 'Task';
 };
 
 // Convert Supabase note to app Note type
@@ -65,7 +71,7 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
 const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => ({
   original_text: note.originalText,
   summary: note.summary,
-  category: note.category.toLowerCase().replace(/\s+/g, '_'), // Convert back to AI format
+  category: note.category, // Keep original case for proper display
   due_date: note.dueDate,
   completed: note.completed,
   priority: note.priority || null,
@@ -111,7 +117,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     
     if (updates.originalText !== undefined) supabaseUpdates.original_text = updates.originalText;
     if (updates.summary !== undefined) supabaseUpdates.summary = updates.summary;
-    if (updates.category !== undefined) supabaseUpdates.category = updates.category.toLowerCase().replace(/\s+/g, '_');
+    if (updates.category !== undefined) supabaseUpdates.category = updates.category;
     if (updates.dueDate !== undefined) supabaseUpdates.due_date = updates.dueDate;
     if (updates.completed !== undefined) supabaseUpdates.completed = updates.completed;
     if (updates.priority !== undefined) supabaseUpdates.priority = updates.priority;
@@ -127,7 +133,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const getNotesByCategory = (category: string) => {
-    const categoryNotes = getSupabaseNotesByCategory(category.toLowerCase().replace(/\s+/g, '_'));
+    const categoryNotes = getSupabaseNotesByCategory(category);
     return categoryNotes.map(note => convertSupabaseNoteToNote(note, user));
   };
 

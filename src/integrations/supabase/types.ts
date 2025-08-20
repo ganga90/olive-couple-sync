@@ -76,6 +76,39 @@ export type Database = {
         }
         Relationships: []
       }
+      clerk_lists: {
+        Row: {
+          author_id: string | null
+          couple_id: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_manual: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          author_id?: string | null
+          couple_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_manual?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string | null
+          couple_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_manual?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       clerk_notes: {
         Row: {
           author_id: string | null
@@ -86,6 +119,7 @@ export type Database = {
           due_date: string | null
           id: string
           items: string[] | null
+          list_id: string | null
           original_text: string
           priority: Database["public"]["Enums"]["note_priority"] | null
           summary: string
@@ -101,6 +135,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           items?: string[] | null
+          list_id?: string | null
           original_text: string
           priority?: Database["public"]["Enums"]["note_priority"] | null
           summary: string
@@ -116,6 +151,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           items?: string[] | null
+          list_id?: string | null
           original_text?: string
           priority?: Database["public"]["Enums"]["note_priority"] | null
           summary?: string
@@ -128,6 +164,13 @@ export type Database = {
             columns: ["couple_id"]
             isOneToOne: false
             referencedRelation: "clerk_couples"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clerk_notes_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_lists"
             referencedColumns: ["id"]
           },
         ]
