@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 export type SupabaseNote = {
   id: string;
-  couple_id: string;
+  couple_id: string | null; // Now optional
   author_id?: string;
   original_text: string;
   summary: string;
@@ -19,25 +19,34 @@ export type SupabaseNote = {
   updated_at: string;
 };
 
-export const useSupabaseNotes = (coupleId?: string) => {
+export const useSupabaseNotes = (coupleId?: string | null) => {
   const { user } = useUser();
   const [notes, setNotes] = useState<SupabaseNote[]>([]);
   const [loading, setLoading] = useState(true);
   const supabase = useClerkSupabaseClient();
 
   const fetchNotes = useCallback(async () => {
-    if (!coupleId) {
+    if (!user) {
       setNotes([]);
       setLoading(false);
       return;
     }
 
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("clerk_notes")
         .select("*")
-        .eq("couple_id", coupleId)
         .order("created_at", { ascending: false });
+      
+      if (coupleId) {
+        // If couple ID is provided, fetch couple notes
+        query = query.eq("couple_id", coupleId);
+      } else {
+        // If no couple ID, fetch personal notes (where couple_id is null)
+        query = query.is("couple_id", null);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setNotes(data || []);
@@ -47,10 +56,10 @@ export const useSupabaseNotes = (coupleId?: string) => {
     } finally {
       setLoading(false);
     }
-  }, [coupleId, supabase]);
+  }, [coupleId, user, supabase]);
 
   useEffect(() => {
-    if (!user || !coupleId) {
+    if (!user) {
       setLoading(false);
       return;
     }
@@ -66,7 +75,6 @@ export const useSupabaseNotes = (coupleId?: string) => {
           event: "*",
           schema: "public",
           table: "clerk_notes",
-          filter: `couple_id=eq.${coupleId}`,
         },
         (payload) => {
           console.log("[Notes] Realtime update:", payload);
@@ -78,14 +86,13 @@ export const useSupabaseNotes = (coupleId?: string) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, coupleId, fetchNotes]);
+  }, [user, fetchNotes]);
 
-  const addNote = useCallback(async (noteData: Omit<SupabaseNote, "id" | "created_at" | "updated_at" | "couple_id" | "author_id">) => {
-    console.log('[useSupabaseNotes] addNote called with:', { noteData, userId: user?.id, coupleId });
+  const addNote = useCallback(async (noteData: Omit<SupabaseNote, "id" | "created_at" | "updated_at" | "author_id">, providedCoupleId?: string | null) => {
+    console.log('[useSupabaseNotes] addNote called with:', { noteData, userId: user?.id, coupleId, providedCoupleId });
     
-    if (!user || !coupleId) {
-      const errorMsg = `Missing requirements - user: ${!!user}, coupleId: ${!!coupleId}`;
-      console.error('[useSupabaseNotes]', errorMsg);
+    if (!user) {
+      console.error('[useSupabaseNotes] No user found');
       toast.error("You must be signed in to add notes");
       return null;
     }
@@ -95,7 +102,7 @@ export const useSupabaseNotes = (coupleId?: string) => {
       
       const insertData = {
         ...noteData,
-        couple_id: coupleId,
+        couple_id: providedCoupleId || coupleId || null, // Allow null for personal notes
         author_id: user.id,
       };
       

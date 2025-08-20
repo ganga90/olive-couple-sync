@@ -51,7 +51,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     updateNote: updateSupabaseNote, 
     deleteNote: deleteSupabaseNote,
     getNotesByCategory: getSupabaseNotesByCategory 
-  } = useSupabaseNotes(currentCouple?.id);
+  } = useSupabaseNotes(currentCouple?.id || null); // Pass null for personal notes when no couple
 
   const notes = useMemo(() => 
     supabaseNotes.map(convertSupabaseNoteToNote), 
@@ -59,7 +59,10 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   const addNote = async (noteData: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => {
-    const supabaseNoteData = convertNoteToSupabaseInsert(noteData);
+    const supabaseNoteData = {
+      ...convertNoteToSupabaseInsert(noteData),
+      couple_id: currentCouple?.id || null, // Allow null for personal notes
+    };
     const result = await addSupabaseNote(supabaseNoteData);
     return result ? convertSupabaseNoteToNote(result) : null;
   };

@@ -77,35 +77,6 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
 
     console.log('[NoteInput] ✅ Auth checks passed, proceeding with note creation');
 
-    // Ensure we have a couple to save notes to
-    let coupleToUse = currentCouple;
-    if (!coupleToUse) {
-      console.log('[NoteInput] No couple found, creating one for user:', user.id);
-      try {
-        // Make sure we have auth session before creating couple
-        const session = await supabaseClient.auth.getSession();
-        console.log('[NoteInput] Current session before couple creation:', !!session.data.session);
-        
-        coupleToUse = await createCouple({
-          title: "My Notes",
-          you_name: user.firstName || user.fullName || "You",
-          partner_name: "Partner"
-        });
-        
-        console.log('[NoteInput] Created couple:', coupleToUse);
-        
-        if (!coupleToUse) {
-          throw new Error('Failed to create couple');
-        }
-      } catch (error) {
-        console.error('[NoteInput] Error creating couple:', error);
-        toast.error("Failed to set up your notes space. Please try again.");
-        return;
-      }
-    } else {
-      console.log('[NoteInput] Using existing couple:', coupleToUse.id);
-    }
-
     setIsProcessing(true);
     
     try {
@@ -141,7 +112,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
         throw new Error('User authentication lost before saving note');
       }
 
-      console.log('[NoteInput] Saving note to Supabase for user:', user.id, 'couple:', coupleToUse.id);
+      console.log('[NoteInput] Saving note to Supabase for user:', user.id);
       
       // Prepare note data
       const noteData = {
