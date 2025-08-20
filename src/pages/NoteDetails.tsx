@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useNotes } from "@/providers/NotesProvider";
+import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSEO } from "@/hooks/useSEO";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { ArrowLeft, Pencil, Trash2, User, CalendarDays } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle, Tag } from "lucide-react";
 import { format } from "date-fns";
 import { assistWithNote } from "@/utils/oliveAssistant";
 import { OliveLogo } from "@/components/OliveLogo";
@@ -17,7 +17,7 @@ import { OliveLogo } from "@/components/OliveLogo";
 const NoteDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { notes, deleteNote, updateNote } = useNotes();
+  const { notes, deleteNote, updateNote } = useSupabaseNotesContext();
   const note = useMemo(() => notes.find((n) => n.id === id), [notes, id]);
 
   useSEO({ title: note ? `${note.summary} — Olive` : "Note — Olive", description: note?.originalText });
@@ -51,8 +51,8 @@ const NoteDetails = () => {
     );
   }
 
-  const onDelete = () => {
-    deleteNote(note.id);
+  const onDelete = async () => {
+    await deleteNote(note.id);
     toast.success("Note deleted");
     navigate(-1);
   };
@@ -64,7 +64,7 @@ const NoteDetails = () => {
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     const { reply, updates } = await assistWithNote(note, text);
     if (updates && Object.keys(updates).length) {
-      updateNote(note.id, updates);
+      await updateNote(note.id, updates);
     }
     setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
   };
@@ -104,16 +104,57 @@ const NoteDetails = () => {
           </div>
         </header>
 
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="bg-olive/10 text-olive border-olive/20">
-              {note.category}
-            </Badge>
+        <div className="space-y-6">
+          {/* Header with success indicator */}
+          <div className="flex items-center gap-3 text-olive-dark">
+            <CheckCircle className="h-6 w-6 text-olive" />
+            <h1 className="text-xl font-semibold">Note Organized!</h1>
           </div>
 
-          <h2 className="text-2xl font-semibold leading-tight text-olive-dark">{note.summary}</h2>
+          {/* AI Summary Section */}
+          <div className="space-y-3">
+            <div className="text-sm font-medium text-muted-foreground uppercase tracking-wide">AI Summary</div>
+            <h2 className="text-2xl font-semibold leading-tight text-olive-dark">{note.summary}</h2>
+          </div>
 
-          {note.items && note.items.length ? (
+          {/* Category and Priority */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <Badge variant="secondary" className="bg-olive/10 text-olive border-olive/20 px-3 py-1">
+              {note.category}
+            </Badge>
+            {note.priority && (
+              <Badge 
+                variant="outline" 
+                className={`px-3 py-1 ${
+                  note.priority === 'high' ? 'border-destructive/30 text-destructive bg-destructive/5' :
+                  note.priority === 'medium' ? 'border-yellow-500/30 text-yellow-600 bg-yellow-50' :
+                  'border-green-500/30 text-green-600 bg-green-50'
+                }`}
+              >
+                {note.priority} priority
+              </Badge>
+            )}
+          </div>
+
+          {/* Tags Section */}
+          {note.tags && note.tags.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Tag className="h-4 w-4" />
+                <span>Tags</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {note.tags.map((tag, idx) => (
+                  <Badge key={idx} variant="outline" className="bg-gray-50 border-gray-200 text-gray-600">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Items List */}
+          {note.items && note.items.length > 0 && (
             <Card className="bg-white/50 border-olive/20 shadow-soft">
               <CardContent className="p-4">
                 <div className="mb-3 text-xs font-medium text-olive-dark uppercase tracking-wide">Items</div>
@@ -124,25 +165,27 @@ const NoteDetails = () => {
                 </ul>
               </CardContent>
             </Card>
-          ) : null}
+          )}
 
-          <Card className="bg-white/50 border-olive/20 shadow-soft">
-            <CardContent className="p-4">
-              <div className="mb-3 text-xs font-medium text-olive-dark uppercase tracking-wide">Original Note</div>
-              <p className="rounded-md bg-olive/5 border border-olive/10 p-3 text-sm text-olive-dark">{note.originalText}</p>
-            </CardContent>
-          </Card>
-
+          {/* Metadata */}
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <User className="h-4 w-4 text-olive" /> 
-              <span>Added by {note.addedBy}</span>
+              <span>Added by {note.addedBy || 'You'}</span>
             </div>
             <div className="flex items-center gap-2">
               <CalendarDays className="h-4 w-4 text-olive" /> 
-              <span>Created {format(new Date(note.createdAt), "M/d/yyyy")}</span>
+              <span>{format(new Date(note.createdAt), "MMM d, yyyy 'at' h:mm a")}</span>
             </div>
           </div>
+
+          {/* Original Text */}
+          <Card className="bg-white/50 border-olive/20 shadow-soft">
+            <CardContent className="p-4">
+              <div className="mb-3 text-xs font-medium text-olive-dark uppercase tracking-wide">Original</div>
+              <p className="text-sm text-muted-foreground italic">"{note.originalText}"</p>
+            </CardContent>
+          </Card>
 
           <Separator className="my-6 bg-olive/20" />
 
