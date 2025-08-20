@@ -93,31 +93,6 @@ export const useSupabaseNotes = (coupleId?: string) => {
     try {
       console.log('[useSupabaseNotes] Inserting note to clerk_notes table');
       
-      // Comprehensive session and auth debugging
-      const session = await supabase.auth.getSession();
-      console.log('[useSupabaseNotes] Session debugging:', {
-        hasSession: !!session.data.session,
-        sessionUser: session.data.session?.user?.id,
-        sessionValid: !!session.data.session?.access_token,
-        sessionError: session.error
-      });
-      
-      // Test if we can access any data first  
-      const { data: testProfiles, error: profileError } = await supabase
-        .from("clerk_profiles")
-        .select("*")
-        .limit(1);
-      
-      console.log('[useSupabaseNotes] Profile access test:', { testProfiles, profileError });
-      
-      // Test couple access
-      const { data: testCouples, error: coupleError } = await supabase
-        .from("clerk_couples")
-        .select("*")
-        .limit(1);
-      
-      console.log('[useSupabaseNotes] Couple access test:', { testCouples, coupleError });
-      
       const insertData = {
         ...noteData,
         couple_id: coupleId,
@@ -137,16 +112,7 @@ export const useSupabaseNotes = (coupleId?: string) => {
         
         // If RLS policy violation, provide more helpful error
         if (error.message?.includes('row-level security policy')) {
-          console.error('[useSupabaseNotes] RLS Policy violation - checking user context');
-          
-          // Test direct auth.uid() access
-          try {
-            const { data: currentUser } = await supabase.auth.getUser();
-            console.log('[useSupabaseNotes] Current authenticated user:', currentUser);
-          } catch (authErr) {
-            console.error('[useSupabaseNotes] Auth check failed:', authErr);
-          }
-          
+          console.error('[useSupabaseNotes] RLS Policy violation - user may not have access to this couple');
           throw new Error('Authentication error - please try signing out and back in');
         }
         

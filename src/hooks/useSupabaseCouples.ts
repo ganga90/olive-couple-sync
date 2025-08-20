@@ -163,22 +163,6 @@ export const useSupabaseCouples = () => {
       try {
         console.log('[useSupabaseCouples] Attempting to save couple to database');
         
-        // Ensure we have a fresh session before creating
-        const session = await supabase.auth.getSession();
-        console.log('[useSupabaseCouples] Current session before couple creation:', {
-          hasSession: !!session.data.session,
-          user: session.data.session?.user?.id,
-          sessionData: session.data.session
-        });
-        
-        // Test if we can access any data first
-        const { data: testData, error: testError } = await supabase
-          .from("clerk_profiles")
-          .select("*")
-          .limit(1);
-        
-        console.log('[useSupabaseCouples] Pre-creation test query:', { testData, testError });
-        
         const { data, error } = await supabase
           .from("clerk_couples")
           .insert([{
