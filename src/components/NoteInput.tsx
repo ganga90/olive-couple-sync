@@ -149,6 +149,12 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
 
         setText("");
         onNoteAdded?.();
+        
+        // Force a manual refetch to ensure UI updates
+        setTimeout(() => {
+          window.location.reload();
+        }, 100);
+        
         toast.success("Note added and organized!");
       }
     } catch (error) {
