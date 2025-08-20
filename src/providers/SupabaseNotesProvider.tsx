@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useMemo } from "react";
 import { useSupabaseCouple } from "./SupabaseCoupleProvider";
 import { useSupabaseNotes, SupabaseNote } from "@/hooks/useSupabaseNotes";
+import { useAuth } from "./AuthProvider";
 import type { Note } from "@/types/note";
+import { categories } from "@/constants/categories";
 
 type SupabaseNotesContextValue = {
   notes: Note[];
@@ -14,14 +16,42 @@ type SupabaseNotesContextValue = {
 
 const SupabaseNotesContext = createContext<SupabaseNotesContextValue | undefined>(undefined);
 
+// Map AI categories (lowercase with underscores) to display categories
+const mapAICategory = (aiCategory: string): string => {
+  const categoryMap: Record<string, string> = {
+    'groceries': 'Groceries',
+    'task': 'Task',
+    'home_improvement': 'Home Improvement',
+    'travel_idea': 'Travel Idea',
+    'date_idea': 'Date Idea',
+    'shopping': 'Shopping',
+    'health': 'Health',
+    'finance': 'Finance',
+    'work': 'Work',
+    'personal': 'Personal',
+    'gift_ideas': 'Gift Ideas',
+    'recipes': 'Recipes',
+    'movies_to_watch': 'Movies to Watch',
+    'books_to_read': 'Books to Read',
+    'restaurants': 'Restaurants',
+    'general': 'Task',
+  };
+  
+  return categoryMap[aiCategory.toLowerCase()] || categories.find(cat => 
+    cat.toLowerCase().replace(/\s+/g, '_') === aiCategory.toLowerCase()
+  ) || 'Task';
+};
+
 // Convert Supabase note to app Note type
-const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote): Note => ({
+const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any): Note => ({
   id: supabaseNote.id,
   originalText: supabaseNote.original_text,
   summary: supabaseNote.summary,
-  category: supabaseNote.category,
+  category: mapAICategory(supabaseNote.category),
   dueDate: supabaseNote.due_date,
-  addedBy: supabaseNote.author_id || "unknown",
+  addedBy: supabaseNote.author_id === currentUser?.id ? 
+    (currentUser?.firstName || currentUser?.fullName || "You") : 
+    supabaseNote.author_id || "Unknown",
   createdAt: supabaseNote.created_at,
   updatedAt: supabaseNote.updated_at,
   completed: supabaseNote.completed,
@@ -34,7 +64,7 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote): Note => ({
 const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => ({
   original_text: note.originalText,
   summary: note.summary,
-  category: note.category,
+  category: note.category.toLowerCase().replace(/\s+/g, '_'), // Convert back to AI format
   due_date: note.dueDate,
   completed: note.completed,
   priority: note.priority || null,
@@ -44,6 +74,7 @@ const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "upda
 
 export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentCouple } = useSupabaseCouple();
+  const { user } = useAuth();
   
   console.log('[SupabaseNotesProvider] Rendering with currentCouple:', !!currentCouple, currentCouple?.id);
   
@@ -57,11 +88,11 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
   } = useSupabaseNotes(currentCouple?.id || null); // Pass null for personal notes when no couple
 
   const notes = useMemo(() => {
-    const convertedNotes = supabaseNotes.map(convertSupabaseNoteToNote);
+    const convertedNotes = supabaseNotes.map(note => convertSupabaseNoteToNote(note, user));
     console.log('[SupabaseNotesProvider] Converting notes:', supabaseNotes.length, 'supabase notes to', convertedNotes.length, 'app notes');
     return convertedNotes;
   }, 
-    [supabaseNotes]
+    [supabaseNotes, user]
   );
 
   const addNote = async (noteData: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => {
@@ -70,7 +101,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
       couple_id: currentCouple?.id || null, // Allow null for personal notes
     };
     const result = await addSupabaseNote(supabaseNoteData);
-    return result ? convertSupabaseNoteToNote(result) : null;
+    return result ? convertSupabaseNoteToNote(result, user) : null;
   };
 
   const updateNote = async (id: string, updates: Partial<Note>) => {
@@ -78,7 +109,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     
     if (updates.originalText !== undefined) supabaseUpdates.original_text = updates.originalText;
     if (updates.summary !== undefined) supabaseUpdates.summary = updates.summary;
-    if (updates.category !== undefined) supabaseUpdates.category = updates.category;
+    if (updates.category !== undefined) supabaseUpdates.category = updates.category.toLowerCase().replace(/\s+/g, '_');
     if (updates.dueDate !== undefined) supabaseUpdates.due_date = updates.dueDate;
     if (updates.completed !== undefined) supabaseUpdates.completed = updates.completed;
     if (updates.priority !== undefined) supabaseUpdates.priority = updates.priority;
@@ -86,7 +117,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     if (updates.items !== undefined) supabaseUpdates.items = updates.items;
 
     const result = await updateSupabaseNote(id, supabaseUpdates);
-    return result ? convertSupabaseNoteToNote(result) : null;
+    return result ? convertSupabaseNoteToNote(result, user) : null;
   };
 
   const deleteNote = async (id: string) => {
@@ -94,8 +125,8 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const getNotesByCategory = (category: string) => {
-    const categoryNotes = getSupabaseNotesByCategory(category);
-    return categoryNotes.map(convertSupabaseNoteToNote);
+    const categoryNotes = getSupabaseNotesByCategory(category.toLowerCase().replace(/\s+/g, '_'));
+    return categoryNotes.map(note => convertSupabaseNoteToNote(note, user));
   };
 
   const value = useMemo(() => ({
