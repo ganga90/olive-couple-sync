@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useUser } from "@clerk/clerk-react";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
+import { useSupabaseCouples } from "@/hooks/useSupabaseCouples";
 import { useSEO } from "@/hooks/useSEO";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle, Tag, UserCheck } from "lucide-react";
@@ -18,7 +20,9 @@ import { OliveLogo } from "@/components/OliveLogo";
 const NoteDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useUser();
   const { notes, deleteNote, updateNote } = useSupabaseNotesContext();
+  const { currentCouple } = useSupabaseCouples();
   const note = useMemo(() => notes.find((n) => n.id === id), [notes, id]);
 
   useSEO({ title: note ? `${note.summary} — Olive` : "Note — Olive", description: note?.originalText });
@@ -33,7 +37,26 @@ const NoteDetails = () => {
   );
   const [input, setInput] = useState("");
   const [isEditingOwner, setIsEditingOwner] = useState(false);
-  const [taskOwner, setTaskOwner] = useState(note?.task_owner || "");
+
+  // Get available owners (current user and partner)
+  const availableOwners = useMemo(() => {
+    const owners = [];
+    if (user?.fullName) {
+      owners.push({
+        id: user.id,
+        name: currentCouple?.you_name || user.fullName,
+        isCurrentUser: true
+      });
+    }
+    if (currentCouple?.partner_name) {
+      owners.push({
+        id: 'partner',
+        name: currentCouple.partner_name,
+        isCurrentUser: false
+      });
+    }
+    return owners;
+  }, [user, currentCouple]);
 
   if (!note) {
     return (
@@ -72,24 +95,15 @@ const NoteDetails = () => {
     setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
   };
 
-  const updateTaskOwner = async () => {
+  const updateTaskOwner = async (newOwner: string) => {
     if (!note) return;
     try {
-      await updateNote(note.id, { task_owner: taskOwner.trim() || null });
+      await updateNote(note.id, { task_owner: newOwner || null });
       setIsEditingOwner(false);
       toast.success("Task owner updated");
     } catch (error) {
       toast.error("Failed to update task owner");
       console.error("Error updating task owner:", error);
-    }
-  };
-
-  const handleOwnerKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      updateTaskOwner();
-    } else if (e.key === 'Escape') {
-      setTaskOwner(note?.task_owner || "");
-      setIsEditingOwner(false);
     }
   };
 
@@ -213,31 +227,29 @@ const NoteDetails = () => {
               <div className="mt-2">
                 {isEditingOwner ? (
                   <div className="flex items-center gap-2">
-                    <Input
-                      value={taskOwner}
-                      onChange={(e) => setTaskOwner(e.target.value)}
-                      onKeyDown={handleOwnerKeyPress}
-                      placeholder="Enter task owner name..."
-                      className="flex-1 border-olive/30 focus:border-olive focus:ring-olive/20"
-                      autoFocus
-                    />
-                    <Button
-                      size="sm"
-                      onClick={updateTaskOwner}
-                      className="bg-olive hover:bg-olive/90 text-white"
+                    <Select
+                      value={note.task_owner || ""}
+                      onValueChange={(value) => updateTaskOwner(value)}
                     >
-                      Save
-                    </Button>
+                      <SelectTrigger className="flex-1 border-olive/30 focus:border-olive focus:ring-olive/20 bg-white">
+                        <SelectValue placeholder="Select task owner..." />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-olive/20 shadow-lg z-50">
+                        <SelectItem value="">No owner assigned</SelectItem>
+                        {availableOwners.map((owner) => (
+                          <SelectItem key={owner.id} value={owner.name}>
+                            {owner.name} {owner.isCurrentUser ? "(You)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        setTaskOwner(note.task_owner || "");
-                        setIsEditingOwner(false);
-                      }}
+                      onClick={() => setIsEditingOwner(false)}
                       className="border-olive/30"
                     >
-                      Cancel
+                      Done
                     </Button>
                   </div>
                 ) : (
