@@ -26,6 +26,17 @@ export const useSupabaseCouples = () => {
   const [couples, setCouples] = useState<SupabaseCouple[]>([]);
   const [currentCouple, setCurrentCouple] = useState<SupabaseCouple | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Load saved couple selection from localStorage
+  useEffect(() => {
+    const savedCoupleId = localStorage.getItem('olive-current-couple-id');
+    if (savedCoupleId && couples.length > 0) {
+      const savedCouple = couples.find(c => c.id === savedCoupleId);
+      if (savedCouple && savedCouple !== currentCouple) {
+        setCurrentCouple(savedCouple);
+      }
+    }
+  }, [couples]);
   const supabase = useClerkSupabaseClient();
 
   console.log('[useSupabaseCouples] Hook initialized with user:', !!user, 'loading:', loading);
@@ -238,6 +249,8 @@ export const useSupabaseCouples = () => {
 
   const switchCouple = useCallback((couple: SupabaseCouple) => {
     setCurrentCouple(couple);
+    // Persist couple selection to localStorage
+    localStorage.setItem('olive-current-couple-id', couple.id);
   }, []);
 
   return {

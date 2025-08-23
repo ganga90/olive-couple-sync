@@ -20,9 +20,13 @@ Categorization & List Assignment:
 - Consider existing common list names when categorizing.
 
 Task Owner Detection:
-- Identify if the note specifies who should complete the task (e.g., "John should fix this", "I need to call", "partner needs to buy").
-- If no specific owner is mentioned, default to the note author.
-- Return the detected task owner ID or null if author should be the owner.
+- Carefully identify if the note specifies who should complete the task using patterns like:
+  * Direct mentions: "John should fix this", "Sarah needs to call", "Mike has to buy"
+  * Indirect assignments: "partner should handle", "I'll ask them to do", "let's have [name] take care of"
+  * Pronoun references: "he/she needs to", "they should handle"
+- Look for role-based assignments: "partner", "spouse", "husband", "wife", "boyfriend", "girlfriend"
+- If no specific owner is mentioned, return null (defaults to note author).
+- Return the detected name/identifier exactly as mentioned, or null if author should be the owner.
 
 Date Extraction:
 - Automatically detect any date, time, or deadline mentioned explicitly or implicitly (e.g., "tomorrow," "next Friday," "in 3 days").
