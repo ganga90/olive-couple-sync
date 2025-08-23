@@ -12,11 +12,17 @@ For each raw note, perform the following steps:
 
 Understand the Context and Content:
 - Identify the main message and extract key points into a concise summary.
-- Detect the user who submitted the note.
+- Detect the user who submitted the note and identify task ownership.
 
-Categorization:
-- Assign one or more relevant categories from predefined lists (e.g., groceries, task, home improvement, travel idea, date idea, reminder, shopping list, personal note) based on the content.
-- If the note does not fit existing categories, suggest potential new custom categories.
+Categorization & List Assignment:
+- Assign appropriate list names (e.g., "Groceries", "Home Improvement", "Travel Ideas", "Date Ideas", etc.) based on content.
+- Use proper capitalized names for lists (e.g., "Groceries" not "groceries").
+- Consider existing common list names when categorizing.
+
+Task Owner Detection:
+- Identify if the note specifies who should complete the task (e.g., "John should fix this", "I need to call", "partner needs to buy").
+- If no specific owner is mentioned, default to the note author.
+- Return the detected task owner ID or null if author should be the owner.
 
 Date Extraction:
 - Automatically detect any date, time, or deadline mentioned explicitly or implicitly (e.g., "tomorrow," "next Friday," "in 3 days").
@@ -29,11 +35,12 @@ Actionability & Prioritization:
 Formatting Output:
 - Return a structured JSON object with fields:
   - summary: concise summary of the note (max 100 characters)
-  - category: assigned category (lowercase, use underscores for spaces)
+  - list_name: proper capitalized list name (e.g., "Groceries", "Tasks")
   - due_date: standardized ISO date if detected, otherwise null
   - priority: "low", "medium", or "high"
   - tags: array of relevant tags
   - items: array of individual items if the note contains a list
+  - task_owner: user ID if someone specific is assigned, otherwise null (means author)
 
 Learning & Memory:
 - Store patterns for categories, phrases, or commonly used terms to improve future classification and personalization for this user.
@@ -114,22 +121,24 @@ serve(async (req) => {
       // Fallback to basic processing
       processedNote = {
         summary: text.length > 100 ? text.substring(0, 97) + "..." : text,
-        category: "general",
+        list_name: "Tasks",
         due_date: null,
         priority: "medium",
         tags: [],
-        items: text.includes(',') ? text.split(',').map(item => item.trim()) : []
+        items: text.includes(',') ? text.split(',').map(item => item.trim()) : [],
+        task_owner: null
       };
     }
 
     // Ensure required fields
     const result = {
       summary: processedNote.summary || text,
-      category: processedNote.category || "general",
+      list_name: processedNote.list_name || "Tasks",
       due_date: processedNote.due_date || null,
       priority: processedNote.priority || "medium",
       tags: processedNote.tags || [],
       items: processedNote.items || [],
+      task_owner: processedNote.task_owner || null,
       original_text: text
     };
 
@@ -144,11 +153,12 @@ serve(async (req) => {
       error: error.message,
       // Fallback processing
       summary: 'Note processing failed',
-      category: 'general',
+      list_name: 'Tasks',
       due_date: null,
       priority: 'medium',
       tags: [],
-      items: []
+      items: [],
+      task_owner: null
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

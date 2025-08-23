@@ -168,7 +168,7 @@ const NoteDetails = () => {
           )}
 
           {/* Metadata */}
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+          <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
             <div className="flex items-center gap-2">
               <User className="h-4 w-4 text-olive" /> 
               <span>Added by {note.addedBy || 'You'}</span>
@@ -177,6 +177,12 @@ const NoteDetails = () => {
               <CalendarDays className="h-4 w-4 text-olive" /> 
               <span>{format(new Date(note.createdAt), "MMM d, yyyy 'at' h:mm a")}</span>
             </div>
+            {note.taskOwner && (
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-olive" /> 
+                <span>Owner: {note.taskOwner === note.addedBy ? 'You' : note.taskOwner}</span>
+              </div>
+            )}
           </div>
 
           {/* Original Text */}

@@ -6,6 +6,7 @@ import { Send, Sparkles } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
+import { useSupabaseListsContext } from "@/providers/SupabaseListsProvider";
 import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
 import { toast } from "sonner";
 import { NoteRecap } from "./NoteRecap";
@@ -21,6 +22,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const { user, loading, isAuthenticated } = useAuth();
   const { currentCouple, createCouple } = useSupabaseCouple();
   const { addNote } = useSupabaseNotesContext();
+  const { findOrCreateList } = useSupabaseListsContext();
   const supabaseClient = useClerkSupabaseClient();
 
   // Debug authentication state in NoteInput
@@ -113,17 +115,30 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
       }
 
       console.log('[NoteInput] Saving note to Supabase for user:', user.id);
+
+      // Find or create list based on AI processing
+      let listId = null;
+      if (aiProcessedNote.list_name) {
+        console.log('[NoteInput] Finding/creating list for:', aiProcessedNote.list_name);
+        const list = await findOrCreateList(aiProcessedNote.list_name, true);
+        if (list) {
+          listId = list.id;
+          console.log('[NoteInput] Assigned to list:', list.name, 'ID:', listId);
+        }
+      }
       
       // Prepare note data
       const noteData = {
         originalText: text.trim(),
         summary: aiProcessedNote.summary,
-        category: aiProcessedNote.category,
+        category: aiProcessedNote.list_name || 'Tasks',
         dueDate: aiProcessedNote.due_date,
         completed: false,
         priority: aiProcessedNote.priority,
         tags: aiProcessedNote.tags,
         items: aiProcessedNote.items,
+        listId: listId,
+        taskOwner: aiProcessedNote.task_owner || user.id,
       };
       
       console.log('[NoteInput] Note data to save:', noteData);

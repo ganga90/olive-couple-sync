@@ -17,6 +17,8 @@ export type SupabaseNote = {
   priority?: 'low' | 'medium' | 'high';
   created_at: string;
   updated_at: string;
+  list_id?: string | null;
+  task_owner?: string | null;
 };
 
 export const useSupabaseNotes = (coupleId?: string | null) => {
