@@ -12,21 +12,11 @@ For each raw note, perform the following steps:
 
 Understand the Context and Content:
 - Identify the main message and extract key points into a concise summary.
-- Detect the user who submitted the note and identify task ownership.
+- Detect the user who submitted the note.
 
-Categorization & List Assignment:
-- Assign appropriate list names (e.g., "Groceries", "Home Improvement", "Travel Ideas", "Date Ideas", etc.) based on content.
-- Use proper capitalized names for lists (e.g., "Groceries" not "groceries").
-- Consider existing common list names when categorizing.
-
-Task Owner Detection:
-- Carefully identify if the note specifies who should complete the task using patterns like:
-  * Direct mentions: "John should fix this", "Sarah needs to call", "Mike has to buy"
-  * Indirect assignments: "partner should handle", "I'll ask them to do", "let's have [name] take care of"
-  * Pronoun references: "he/she needs to", "they should handle"
-- Look for role-based assignments: "partner", "spouse", "husband", "wife", "boyfriend", "girlfriend"
-- If no specific owner is mentioned, return null (defaults to note author).
-- Return the detected name/identifier exactly as mentioned, or null if author should be the owner.
+Categorization:
+- Assign one or more relevant categories from predefined lists (e.g., groceries, task, home improvement, travel idea, date idea, reminder, shopping list, personal note) based on the content.
+- If the note does not fit existing categories, suggest potential new custom categories.
 
 Date Extraction:
 - Automatically detect any date, time, or deadline mentioned explicitly or implicitly (e.g., "tomorrow," "next Friday," "in 3 days").
@@ -39,12 +29,11 @@ Actionability & Prioritization:
 Formatting Output:
 - Return a structured JSON object with fields:
   - summary: concise summary of the note (max 100 characters)
-  - list_name: proper capitalized list name (e.g., "Groceries", "Tasks")
+  - category: assigned category (lowercase, use underscores for spaces)
   - due_date: standardized ISO date if detected, otherwise null
   - priority: "low", "medium", or "high"
   - tags: array of relevant tags
   - items: array of individual items if the note contains a list
-  - task_owner: user ID if someone specific is assigned, otherwise null (means author)
 
 Learning & Memory:
 - Store patterns for categories, phrases, or commonly used terms to improve future classification and personalization for this user.
@@ -125,24 +114,22 @@ serve(async (req) => {
       // Fallback to basic processing
       processedNote = {
         summary: text.length > 100 ? text.substring(0, 97) + "..." : text,
-        list_name: "Tasks",
+        category: "general",
         due_date: null,
         priority: "medium",
         tags: [],
-        items: text.includes(',') ? text.split(',').map(item => item.trim()) : [],
-        task_owner: null
+        items: text.includes(',') ? text.split(',').map(item => item.trim()) : []
       };
     }
 
     // Ensure required fields
     const result = {
       summary: processedNote.summary || text,
-      list_name: processedNote.list_name || "Tasks",
+      category: processedNote.category || "general",
       due_date: processedNote.due_date || null,
       priority: processedNote.priority || "medium",
       tags: processedNote.tags || [],
       items: processedNote.items || [],
-      task_owner: processedNote.task_owner || null,
       original_text: text
     };
 
@@ -157,12 +144,11 @@ serve(async (req) => {
       error: error.message,
       // Fallback processing
       summary: 'Note processing failed',
-      list_name: 'Tasks',
+      category: 'general',
       due_date: null,
       priority: 'medium',
       tags: [],
-      items: [],
-      task_owner: null
+      items: []
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

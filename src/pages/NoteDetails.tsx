@@ -7,10 +7,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle, Tag, Save, X } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle, Tag } from "lucide-react";
 import { format } from "date-fns";
 import { assistWithNote } from "@/utils/oliveAssistant";
 import { OliveLogo } from "@/components/OliveLogo";
@@ -32,8 +31,6 @@ const NoteDetails = () => {
       : []
   );
   const [input, setInput] = useState("");
-  const [editingOwner, setEditingOwner] = useState(false);
-  const [newOwner, setNewOwner] = useState("");
 
   if (!note) {
     return (
@@ -70,22 +67,6 @@ const NoteDetails = () => {
       await updateNote(note.id, updates);
     }
     setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-  };
-
-  const onSaveOwner = async () => {
-    if (!note) return;
-    try {
-      await updateNote(note.id, { taskOwner: newOwner || null });
-      setEditingOwner(false);
-      toast.success("Task owner updated");
-    } catch (error) {
-      toast.error("Failed to update task owner");
-    }
-  };
-
-  const startEditingOwner = () => {
-    setNewOwner(note?.taskOwner || "");
-    setEditingOwner(true);
   };
 
   return (
@@ -187,7 +168,7 @@ const NoteDetails = () => {
           )}
 
           {/* Metadata */}
-          <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <User className="h-4 w-4 text-olive" /> 
               <span>Added by {note.addedBy || 'You'}</span>
@@ -195,48 +176,6 @@ const NoteDetails = () => {
             <div className="flex items-center gap-2">
               <CalendarDays className="h-4 w-4 text-olive" /> 
               <span>{format(new Date(note.createdAt), "MMM d, yyyy 'at' h:mm a")}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <User className="h-4 w-4 text-olive" /> 
-              <span>Owner: </span>
-              {editingOwner ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={newOwner}
-                    onChange={(e) => setNewOwner(e.target.value)}
-                    placeholder="Task owner name"
-                    className="h-6 w-32 text-xs border-olive/30 focus:border-olive"
-                  />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={onSaveOwner}
-                    className="h-6 w-6 p-0 hover:bg-olive/10"
-                  >
-                    <Save className="h-3 w-3 text-olive" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setEditingOwner(false)}
-                    className="h-6 w-6 p-0 hover:bg-destructive/10"
-                  >
-                    <X className="h-3 w-3 text-destructive" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1">
-                  <span>{(note.taskOwner === note.addedBy || !note.taskOwner) ? 'You' : note.taskOwner}</span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={startEditingOwner}
-                    className="h-5 w-5 p-0 hover:bg-olive/10"
-                  >
-                    <Pencil className="h-3 w-3 text-olive" />
-                  </Button>
-                </div>
-              )}
             </div>
           </div>
 

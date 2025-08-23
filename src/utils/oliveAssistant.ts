@@ -7,18 +7,17 @@ export async function assistWithNote(
   userMessage: string
 ): Promise<{ reply: string; updates?: Partial<Note> }> {
   try {
-    // Call the ask-olive-individual edge function with specific system prompt
-    const { data, error } = await supabase.functions.invoke('ask-olive-individual', {
+    // Call the ask-olive edge function
+    const { data, error } = await supabase.functions.invoke('ask-olive', {
       body: { 
         noteContent: `Summary: ${note.summary}\nOriginal: ${note.originalText}\nItems: ${note.items?.join(', ') || 'None'}`,
         userMessage: userMessage,
-        noteCategory: note.category,
-        noteSummary: note.summary
+        noteCategory: note.category
       }
     });
 
     if (error) {
-      console.error('Ask Olive Individual error:', error);
+      console.error('Ask Olive error:', error);
       throw new Error('Failed to get response from Olive assistant');
     }
 
