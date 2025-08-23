@@ -212,7 +212,7 @@ const Landing = () => {
           
           <Button 
             size="lg" 
-            className="bg-white text-olive-primary hover:bg-cream px-8 py-6 text-lg font-semibold rounded-2xl transition-all duration-300 hover:scale-105 shadow-lg"
+            className="bg-white text-olive-dark hover:bg-cream px-8 py-6 text-lg font-semibold rounded-2xl transition-all duration-300 hover:scale-105 shadow-lg"
             asChild
           >
             <Link to="/sign-up">
@@ -231,7 +231,7 @@ const Landing = () => {
             <span className="font-semibold text-olive-dark">Olive</span>
           </div>
           <p className="text-sm text-muted-foreground">
-            © 2024 Olive. Built with love for couples everywhere.
+            © 2025 Olive. Built with love for couples everywhere.
           </p>
         </div>
       </footer>
