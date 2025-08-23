@@ -59,6 +59,7 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
   addedBy: supabaseNote.author_id === currentUser?.id ? 
     (currentUser?.firstName || currentUser?.fullName || "You") : 
     supabaseNote.author_id || "Unknown",
+  taskOwner: supabaseNote.task_owner || undefined,
   createdAt: supabaseNote.created_at,
   updatedAt: supabaseNote.updated_at,
   completed: supabaseNote.completed,
@@ -73,6 +74,7 @@ const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "upda
   summary: note.summary,
   category: note.category, // Keep original case for proper display
   due_date: note.dueDate,
+  task_owner: note.taskOwner,
   completed: note.completed,
   priority: note.priority || null,
   tags: note.tags || null,
@@ -119,6 +121,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     if (updates.summary !== undefined) supabaseUpdates.summary = updates.summary;
     if (updates.category !== undefined) supabaseUpdates.category = updates.category;
     if (updates.dueDate !== undefined) supabaseUpdates.due_date = updates.dueDate;
+    if (updates.taskOwner !== undefined) supabaseUpdates.task_owner = updates.taskOwner;
     if (updates.completed !== undefined) supabaseUpdates.completed = updates.completed;
     if (updates.priority !== undefined) supabaseUpdates.priority = updates.priority;
     if (updates.tags !== undefined) supabaseUpdates.tags = updates.tags;

@@ -7,6 +7,7 @@ export type SupabaseNote = {
   id: string;
   couple_id: string | null; // Now optional
   author_id?: string;
+  task_owner?: string;
   original_text: string;
   summary: string;
   category: string;

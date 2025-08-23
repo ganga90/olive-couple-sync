@@ -124,6 +124,7 @@ export type Database = {
           priority: Database["public"]["Enums"]["note_priority"] | null
           summary: string
           tags: string[] | null
+          task_owner: string | null
           updated_at: string
         }
         Insert: {
@@ -140,6 +141,7 @@ export type Database = {
           priority?: Database["public"]["Enums"]["note_priority"] | null
           summary: string
           tags?: string[] | null
+          task_owner?: string | null
           updated_at?: string
         }
         Update: {
@@ -156,6 +158,7 @@ export type Database = {
           priority?: Database["public"]["Enums"]["note_priority"] | null
           summary?: string
           tags?: string[] | null
+          task_owner?: string | null
           updated_at?: string
         }
         Relationships: [

@@ -5,6 +5,7 @@ export interface Note {
   category: string;
   dueDate?: string | null;
   addedBy: string;
+  taskOwner?: string;
   createdAt: string;
   updatedAt: string;
   completed: boolean;
@@ -17,6 +18,7 @@ export interface ProcessedNote {
   summary: string;
   category: string;
   dueDate?: string | null;
+  taskOwner?: string;
   tags?: string[];
   priority?: "low" | "medium" | "high";
   items?: string[];

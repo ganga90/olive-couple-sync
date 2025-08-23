@@ -127,6 +127,7 @@ Please analyze it and return ONLY a JSON response with the following structure:
   "summary": "A brief, clear summary of the note (max 100 characters)",
   "category": "Choose from existing lists above, or create a new category name (use proper case like 'Home Improvement', 'Groceries', etc.)",
   "due_date": "ISO date string if a specific date/time is mentioned, otherwise null",
+  "task_owner": "Name of person responsible if mentioned (e.g., 'John', 'Sarah'), otherwise null",
   "priority": "low, medium, or high based on urgency indicators",
   "tags": ["relevant", "tags", "from", "content"],
   "items": ["individual", "items", "if", "this", "is", "a", "list"]
@@ -137,6 +138,11 @@ For the category:
 - If it fits an existing list, use that exact name
 - If it doesn't fit any existing list, create a new appropriate category name
 - Use proper case formatting (e.g., "Home Improvement", "Gift Ideas", "Movies to Watch")
+
+For task_owner:
+- Look for phrases like "John should...", "Sarah needs to...", "I need [name] to...", "[name] can handle this"
+- Extract the person's name if clearly mentioned as being responsible
+- Return null if no specific person is mentioned as the owner
 
 If the note contains multiple items (like a shopping list), extract them into the items array.
 
@@ -173,6 +179,7 @@ Respond with ONLY the JSON, no additional text.`
         summary: text.length > 100 ? text.substring(0, 97) + "..." : text,
         category: "Task",
         due_date: null,
+        task_owner: null,
         priority: "medium",
         tags: [],
         items: text.includes(',') ? text.split(',').map(item => item.trim()) : []
