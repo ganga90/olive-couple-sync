@@ -83,10 +83,11 @@ const Landing = () => {
         
         <div className={`relative mx-auto max-w-6xl text-center transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
           {/* Logo */}
-          <div className="mb-8 flex justify-center">
+          <div className="mb-8 flex justify-center items-center gap-4">
             <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-gradient-olive shadow-olive border border-olive-primary/20">
               <OliveLogo size={40} className="text-white" />
             </div>
+            <span className="text-2xl font-semibold text-olive-dark">Meet Olive</span>
           </div>
 
           {/* Main Headline */}
