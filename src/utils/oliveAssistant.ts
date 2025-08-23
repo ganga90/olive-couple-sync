@@ -7,12 +7,13 @@ export async function assistWithNote(
   userMessage: string
 ): Promise<{ reply: string; updates?: Partial<Note> }> {
   try {
-    // Call the ask-olive edge function
-    const { data, error } = await supabase.functions.invoke('ask-olive', {
+    // Call the ask-olive-individual edge function for focused assistance
+    const { data, error } = await supabase.functions.invoke('ask-olive-individual', {
       body: { 
         noteContent: `Summary: ${note.summary}\nOriginal: ${note.originalText}\nItems: ${note.items?.join(', ') || 'None'}`,
         userMessage: userMessage,
-        noteCategory: note.category
+        noteCategory: note.category,
+        noteTitle: note.summary
       }
     });
 

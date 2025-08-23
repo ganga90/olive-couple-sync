@@ -24,7 +24,11 @@ export type SupabaseCoupleMember = {
 export const useSupabaseCouples = () => {
   const { user } = useUser();
   const [couples, setCouples] = useState<SupabaseCouple[]>([]);
-  const [currentCouple, setCurrentCouple] = useState<SupabaseCouple | null>(null);
+  const [currentCouple, setCurrentCouple] = useState<SupabaseCouple | null>(() => {
+    // Load persisted couple session
+    const stored = localStorage.getItem('olive_current_couple');
+    return stored ? JSON.parse(stored) : null;
+  });
   const [loading, setLoading] = useState(true);
   const supabase = useClerkSupabaseClient();
 
@@ -238,7 +242,17 @@ export const useSupabaseCouples = () => {
 
   const switchCouple = useCallback((couple: SupabaseCouple) => {
     setCurrentCouple(couple);
+    localStorage.setItem('olive_current_couple', JSON.stringify(couple));
   }, []);
+
+  // Persist current couple to localStorage whenever it changes
+  useEffect(() => {
+    if (currentCouple) {
+      localStorage.setItem('olive_current_couple', JSON.stringify(currentCouple));
+    } else {
+      localStorage.removeItem('olive_current_couple');
+    }
+  }, [currentCouple]);
 
   return {
     couples,
