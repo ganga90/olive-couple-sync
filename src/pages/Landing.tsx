@@ -90,7 +90,7 @@ const Landing = () => {
           </div>
 
           {/* Main Headline */}
-          <h1 className="mb-6 text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold bg-gradient-to-r from-olive-dark via-olive-primary to-sage bg-clip-text text-transparent leading-tight">
+          <h1 className="mb-6 text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-olive-dark leading-tight">
             <span className="block sm:inline">Your Couple's</span>
             <br className="hidden sm:block" />
             <span className="block sm:inline"> </span>
