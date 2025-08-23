@@ -11,6 +11,7 @@ export interface Note {
   priority?: "low" | "medium" | "high";
   tags?: string[];
   items?: string[];
+  task_owner?: string | null;
 }
 
 export interface ProcessedNote {

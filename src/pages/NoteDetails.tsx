@@ -7,9 +7,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle, Tag } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle, Tag, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 import { assistWithNote } from "@/utils/oliveAssistant";
 import { OliveLogo } from "@/components/OliveLogo";
@@ -31,6 +32,8 @@ const NoteDetails = () => {
       : []
   );
   const [input, setInput] = useState("");
+  const [isEditingOwner, setIsEditingOwner] = useState(false);
+  const [taskOwner, setTaskOwner] = useState(note?.task_owner || "");
 
   if (!note) {
     return (
@@ -67,6 +70,27 @@ const NoteDetails = () => {
       await updateNote(note.id, updates);
     }
     setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+  };
+
+  const updateTaskOwner = async () => {
+    if (!note) return;
+    try {
+      await updateNote(note.id, { task_owner: taskOwner.trim() || null });
+      setIsEditingOwner(false);
+      toast.success("Task owner updated");
+    } catch (error) {
+      toast.error("Failed to update task owner");
+      console.error("Error updating task owner:", error);
+    }
+  };
+
+  const handleOwnerKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      updateTaskOwner();
+    } else if (e.key === 'Escape') {
+      setTaskOwner(note?.task_owner || "");
+      setIsEditingOwner(false);
+    }
   };
 
   return (
@@ -166,6 +190,64 @@ const NoteDetails = () => {
               </CardContent>
             </Card>
           )}
+
+          {/* Task Owner Section */}
+          <Card className="bg-white/50 border-olive/20 shadow-soft">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-medium text-olive-dark">
+                  <UserCheck className="h-4 w-4 text-olive" />
+                  <span>Task Owner</span>
+                </div>
+                {!isEditingOwner && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsEditingOwner(true)}
+                    className="text-olive hover:bg-olive/10"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+              <div className="mt-2">
+                {isEditingOwner ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={taskOwner}
+                      onChange={(e) => setTaskOwner(e.target.value)}
+                      onKeyDown={handleOwnerKeyPress}
+                      placeholder="Enter task owner name..."
+                      className="flex-1 border-olive/30 focus:border-olive focus:ring-olive/20"
+                      autoFocus
+                    />
+                    <Button
+                      size="sm"
+                      onClick={updateTaskOwner}
+                      className="bg-olive hover:bg-olive/90 text-white"
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setTaskOwner(note.task_owner || "");
+                        setIsEditingOwner(false);
+                      }}
+                      className="border-olive/30"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {note.task_owner || "No owner assigned"}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Metadata */}
           <div className="flex items-center gap-4 text-sm text-muted-foreground">

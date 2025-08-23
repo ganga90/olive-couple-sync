@@ -22,6 +22,12 @@ Date Extraction:
 - Automatically detect any date, time, or deadline mentioned explicitly or implicitly (e.g., "tomorrow," "next Friday," "in 3 days").
 - If no date is found, leave the date field empty.
 
+Task Owner Detection:
+- Scan for mentions of who should be responsible for or assigned to complete the task.
+- Look for phrases like "ask [name]", "[name] should do", "for [name]", "[name] needs to", "remind [name]", etc.
+- If a specific person is mentioned as responsible, extract their name as the task owner.
+- If no specific owner is mentioned, leave the task_owner field as null.
+
 Actionability & Prioritization:
 - Identify if the note represents an actionable task or idea.
 - Highlight important or urgent items when indicated.
@@ -34,6 +40,7 @@ Formatting Output:
   - priority: "low", "medium", or "high"
   - tags: array of relevant tags
   - items: array of individual items if the note contains a list
+  - task_owner: name of the person responsible for the task if detected, otherwise null
 
 Learning & Memory:
 - Store patterns for categories, phrases, or commonly used terms to improve future classification and personalization for this user.
@@ -130,6 +137,7 @@ serve(async (req) => {
       priority: processedNote.priority || "medium",
       tags: processedNote.tags || [],
       items: processedNote.items || [],
+      task_owner: processedNote.task_owner || null,
       original_text: text
     };
 
