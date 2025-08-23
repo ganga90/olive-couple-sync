@@ -144,8 +144,8 @@ Respond with ONLY the JSON, no additional text.`
 
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
+    const aiResult = await model.generateContent(prompt);
+    const response = await aiResult.response;
     const aiResponse = response.text();
 
     console.log('AI response text:', aiResponse);
@@ -183,15 +183,15 @@ Respond with ONLY the JSON, no additional text.`
     const listId = await createListIfNeeded(parsed.category, userId, coupleId || null);
 
     // Return the processed note result
-    const result = {
+    const processedResult = {
       ...parsed,
       original_text: text,
       list_id: listId
     }
 
-    console.log('Processed note result:', result)
+    console.log('Processed note result:', processedResult)
     
-    return new Response(JSON.stringify(result), {
+    return new Response(JSON.stringify(processedResult), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   } catch (error) {
