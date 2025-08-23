@@ -19,7 +19,7 @@ const SignUpPage = () => {
         <p className="mb-6 text-center text-muted-foreground">Join Olive and set up your space in minutes.</p>
         
         <Card className="p-4 bg-white/50 border-olive/20 shadow-soft">
-          <SignUp fallbackRedirectUrl="/" />
+          <SignUp fallbackRedirectUrl="/welcome" />
         </Card>
       </section>
     </main>

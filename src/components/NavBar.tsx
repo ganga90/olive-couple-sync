@@ -6,7 +6,7 @@ const NavBar = () => {
   return (
     <header className="border-b bg-background">
       <nav className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <Link to="/" className="text-base font-semibold">
+        <Link to="/home" className="text-base font-semibold">
           Olive
         </Link>
         <div className="flex items-center gap-3">
