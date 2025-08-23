@@ -125,6 +125,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
         priority: aiProcessedNote.priority,
         tags: aiProcessedNote.tags,
         items: aiProcessedNote.items,
+        listId: aiProcessedNote.list_id, // Connect note to the AI-created list
+        taskOwner: aiProcessedNote.task_owner,
       };
       
       console.log('[NoteInput] Note data to save:', noteData);

@@ -66,6 +66,7 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
   priority: supabaseNote.priority || undefined,
   tags: supabaseNote.tags || undefined,
   items: supabaseNote.items || undefined,
+  listId: supabaseNote.list_id || undefined,
 });
 
 // Convert app Note to Supabase note insert type
@@ -79,6 +80,7 @@ const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "upda
   priority: note.priority || null,
   tags: note.tags || null,
   items: note.items || null,
+  list_id: note.listId || null,
 });
 
 export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -126,6 +128,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     if (updates.priority !== undefined) supabaseUpdates.priority = updates.priority;
     if (updates.tags !== undefined) supabaseUpdates.tags = updates.tags;
     if (updates.items !== undefined) supabaseUpdates.items = updates.items;
+    if (updates.listId !== undefined) supabaseUpdates.list_id = updates.listId;
 
     const result = await updateSupabaseNote(id, supabaseUpdates);
     return result ? convertSupabaseNoteToNote(result, user) : null;
