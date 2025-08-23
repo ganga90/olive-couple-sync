@@ -1,10 +1,8 @@
 import { useMemo, useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
-import { useSupabaseListsContext } from "@/providers/SupabaseListsProvider";
 import { useSEO } from "@/hooks/useSEO";
 import { Input } from "@/components/ui/input";
-import { CreateListDialog } from "@/components/CreateListDialog";
 import { categories } from "@/constants/categories";
 import { Link } from "react-router-dom";
 import { 
@@ -51,34 +49,32 @@ const getCategoryIcon = (category: string) => {
 const Lists = () => {
   const [query, setQuery] = useState("");
   const { notes, loading, refetch } = useSupabaseNotesContext();
-  const { lists, loading: listsLoading, refetch: refetchLists } = useSupabaseListsContext();
   useSEO({ title: "Lists — Olive", description: "Browse and search all your lists." });
 
   // Refresh data when the page loads
   useEffect(() => {
     refetch();
-    refetchLists();
-  }, [refetch, refetchLists]);
+  }, [refetch]);
 
-  const filteredLists = useMemo(() => {
+  const filteredCategories = useMemo(() => {
     const q = query.trim().toLowerCase();
     
-    // Filter lists based on search query
-    const matchingLists = lists.filter(list => {
-      const matchesQuery = !q || list.name.toLowerCase().includes(q);
+    // Get unique categories from actual notes
+    const actualCategories = Array.from(new Set(notes.map(note => note.category)));
+    
+    // Show all categories that have notes, matching query if provided
+    const availableCategories = actualCategories.filter(category => {
+      const matchesQuery = !q || category.toLowerCase().includes(q);
       return matchesQuery;
     });
     
-    return matchingLists;
-  }, [query, lists]);
+    return availableCategories;
+  }, [query, notes]);
 
   return (
     <main className="min-h-screen bg-gradient-soft">
       <section className="mx-auto max-w-2xl px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-semibold text-olive-dark">Lists</h1>
-          <CreateListDialog />
-        </div>
+        <h1 className="mb-3 text-2xl font-semibold text-olive-dark">Lists</h1>
 
         <div className="mb-6">
           <Input
@@ -90,20 +86,17 @@ const Lists = () => {
           />
         </div>
 
-        {loading || listsLoading ? (
+        {loading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : filteredLists.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-sm text-muted-foreground mb-4">No lists found.</p>
-            <CreateListDialog />
-          </div>
+        ) : filteredCategories.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No lists found.</p>
         ) : (
           <div className="space-y-3">
-             {filteredLists.map((list) => {
-               const count = notes.filter((n) => n.category === list.name).length;
-               const CategoryIcon = getCategoryIcon(list.name);
+             {filteredCategories.map((c) => {
+               const count = notes.filter((n) => n.category === c).length;
+               const CategoryIcon = getCategoryIcon(c);
                return (
-                <Link key={list.id} to={`/lists/${encodeURIComponent(list.name)}`} aria-label={`Open ${list.name} list`} className="block">
+                <Link key={c} to={`/lists/${encodeURIComponent(c)}`} aria-label={`Open ${c} list`} className="block">
                   <Card className="bg-white/50 border-olive/20 shadow-soft transition-all duration-200 hover:shadow-lg hover:scale-[1.02]">
                     <CardContent className="flex items-center justify-between p-4">
                       <div className="flex items-center gap-3">
@@ -111,11 +104,8 @@ const Lists = () => {
                           <CategoryIcon className="h-5 w-5 text-olive" />
                         </div>
                         <div>
-                          <div className="font-medium text-olive-dark">{list.name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {count} {count === 1 ? "item" : "items"}
-                            {list.is_manual && <span className="ml-2 text-olive">• Manual</span>}
-                          </div>
+                          <div className="font-medium text-olive-dark">{c}</div>
+                          <div className="text-xs text-muted-foreground">{count} {count === 1 ? "item" : "items"}</div>
                         </div>
                       </div>
                       <span className="text-olive">›</span>

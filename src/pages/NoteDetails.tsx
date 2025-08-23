@@ -153,27 +153,6 @@ const NoteDetails = () => {
             </div>
           )}
 
-          {/* Task Owner Section */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <User className="h-4 w-4" />
-              <span>Task Owner</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="bg-olive/10 text-olive border-olive/20 px-3 py-1">
-                {note.taskOwner || note.addedBy || 'Unassigned'}
-              </Badge>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => toast.message("Edit task owner coming soon")}
-                className="border-olive/30 hover:bg-olive/10 hover:text-olive"
-              >
-                <Pencil className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
-
           {/* Items List */}
           {note.items && note.items.length > 0 && (
             <Card className="bg-white/50 border-olive/20 shadow-soft">

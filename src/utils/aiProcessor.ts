@@ -28,7 +28,6 @@ export async function processNoteWithAI(text: string, addedBy: string): Promise<
     summary: text.length > 120 ? text.slice(0, 117) + "..." : text,
     category: inferCategory(text),
     dueDate: parseDueDate(text),
-    taskOwner: addedBy, // Default to the person who added it
     tags: [],
     priority: "low",
     items: /,| and /i.test(text) ? text.split(/,| and /i).map(s => s.trim()).filter(Boolean) : undefined,
@@ -42,7 +41,6 @@ export async function processNoteWithAI(text: string, addedBy: string): Promise<
     category: processed.category,
     dueDate: processed.dueDate ?? null,
     addedBy,
-    taskOwner: processed.taskOwner,
     createdAt: now,
     updatedAt: now,
     completed: false,

@@ -17,8 +17,8 @@ createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ClerkProvider 
       publishableKey={PUBLISHABLE_KEY}
-      signInFallbackRedirectUrl="/home"
-      signUpFallbackRedirectUrl="/welcome"
+      signInFallbackRedirectUrl="/"
+      signUpFallbackRedirectUrl="/"
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
     >

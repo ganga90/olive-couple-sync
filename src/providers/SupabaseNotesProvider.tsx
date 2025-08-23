@@ -17,14 +17,8 @@ type SupabaseNotesContextValue = {
 
 const SupabaseNotesContext = createContext<SupabaseNotesContextValue | undefined>(undefined);
 
-// Map AI categories - now the AI returns proper case directly
+// Map AI categories (lowercase with underscores) to display categories
 const mapAICategory = (aiCategory: string): string => {
-  // If it's already proper case, return as is
-  if (aiCategory && aiCategory[0] === aiCategory[0].toUpperCase()) {
-    return aiCategory;
-  }
-  
-  // Fallback mapping for legacy formats
   const categoryMap: Record<string, string> = {
     'groceries': 'Groceries',
     'task': 'Task',
@@ -46,7 +40,7 @@ const mapAICategory = (aiCategory: string): string => {
   
   return categoryMap[aiCategory.toLowerCase()] || categories.find(cat => 
     cat.toLowerCase().replace(/\s+/g, '_') === aiCategory.toLowerCase()
-  ) || aiCategory || 'Task';
+  ) || 'Task';
 };
 
 // Convert Supabase note to app Note type
@@ -59,28 +53,24 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
   addedBy: supabaseNote.author_id === currentUser?.id ? 
     (currentUser?.firstName || currentUser?.fullName || "You") : 
     supabaseNote.author_id || "Unknown",
-  taskOwner: supabaseNote.task_owner || undefined,
   createdAt: supabaseNote.created_at,
   updatedAt: supabaseNote.updated_at,
   completed: supabaseNote.completed,
   priority: supabaseNote.priority || undefined,
   tags: supabaseNote.tags || undefined,
   items: supabaseNote.items || undefined,
-  listId: supabaseNote.list_id || undefined,
 });
 
 // Convert app Note to Supabase note insert type
 const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => ({
   original_text: note.originalText,
   summary: note.summary,
-  category: note.category, // Keep original case for proper display
+  category: note.category.toLowerCase().replace(/\s+/g, '_'), // Convert back to AI format
   due_date: note.dueDate,
-  task_owner: note.taskOwner,
   completed: note.completed,
   priority: note.priority || null,
   tags: note.tags || null,
   items: note.items || null,
-  list_id: note.listId || null,
 });
 
 export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -121,14 +111,12 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     
     if (updates.originalText !== undefined) supabaseUpdates.original_text = updates.originalText;
     if (updates.summary !== undefined) supabaseUpdates.summary = updates.summary;
-    if (updates.category !== undefined) supabaseUpdates.category = updates.category;
+    if (updates.category !== undefined) supabaseUpdates.category = updates.category.toLowerCase().replace(/\s+/g, '_');
     if (updates.dueDate !== undefined) supabaseUpdates.due_date = updates.dueDate;
-    if (updates.taskOwner !== undefined) supabaseUpdates.task_owner = updates.taskOwner;
     if (updates.completed !== undefined) supabaseUpdates.completed = updates.completed;
     if (updates.priority !== undefined) supabaseUpdates.priority = updates.priority;
     if (updates.tags !== undefined) supabaseUpdates.tags = updates.tags;
     if (updates.items !== undefined) supabaseUpdates.items = updates.items;
-    if (updates.listId !== undefined) supabaseUpdates.list_id = updates.listId;
 
     const result = await updateSupabaseNote(id, supabaseUpdates);
     return result ? convertSupabaseNoteToNote(result, user) : null;
@@ -139,7 +127,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const getNotesByCategory = (category: string) => {
-    const categoryNotes = getSupabaseNotesByCategory(category);
+    const categoryNotes = getSupabaseNotesByCategory(category.toLowerCase().replace(/\s+/g, '_'));
     return categoryNotes.map(note => convertSupabaseNoteToNote(note, user));
   };
 

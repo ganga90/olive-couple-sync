@@ -91,8 +91,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
       const { data: aiProcessedNote, error } = await supabaseClient.functions.invoke('process-note', {
         body: { 
           text: text.trim(),
-          userId: user.id,
-          coupleId: currentCouple?.id
+          user_id: user.id
         }
       });
 
@@ -125,8 +124,6 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
         priority: aiProcessedNote.priority,
         tags: aiProcessedNote.tags,
         items: aiProcessedNote.items,
-        listId: aiProcessedNote.list_id, // Connect note to the AI-created list
-        taskOwner: aiProcessedNote.task_owner,
       };
       
       console.log('[NoteInput] Note data to save:', noteData);

@@ -19,7 +19,7 @@ const SignInPage = () => {
         <p className="mb-6 text-center text-muted-foreground">Access your notes, lists, and preferences.</p>
         
         <Card className="p-4 bg-white/50 border-olive/20 shadow-soft">
-          <SignIn fallbackRedirectUrl="/home" />
+          <SignIn fallbackRedirectUrl="/" />
         </Card>
       </section>
     </main>

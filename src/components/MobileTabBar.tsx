@@ -9,7 +9,7 @@ const MobileTabBar = () => {
     >
       <div className="mx-auto flex max-w-5xl items-stretch px-4 pb-[env(safe-area-inset-bottom)]">
         <NavLink
-          to="/home"
+          to="/"
           className={({ isActive }) =>
             `flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs transition-colors ${
               isActive ? "text-foreground" : "text-muted-foreground"

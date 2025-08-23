@@ -4,7 +4,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
-import Landing from "./pages/Landing";
 import NotFound from "./pages/NotFound";
 import Lists from "./pages/Lists";
 import Onboarding from "./pages/Onboarding";
@@ -18,7 +17,6 @@ import MobileTabBar from "./components/MobileTabBar";
 import { AuthProvider } from "./providers/AuthProvider";
 import { SupabaseCoupleProvider } from "./providers/SupabaseCoupleProvider";
 import { SupabaseNotesProvider } from "./providers/SupabaseNotesProvider";
-import { SupabaseListsProvider } from "./providers/SupabaseListsProvider";
 import SignInPage from "./pages/SignIn";
 import SignUpPage from "./pages/SignUp";
 const queryClient = new QueryClient();
@@ -30,27 +28,26 @@ const App = () => (
       <Sonner />
       <AuthProvider>
         <SupabaseCoupleProvider>
-          <SupabaseListsProvider>
-            <SupabaseNotesProvider>
-              <BrowserRouter>
-                <Routes>
-                  <Route path="/" element={<Landing />} />
-                  <Route path="/home" element={<><NavBar /><Index /><MobileTabBar /></>} />
-                  <Route path="/lists" element={<><NavBar /><Lists /><MobileTabBar /></>} />
-                  <Route path="/lists/:category" element={<><NavBar /><ListCategory /><MobileTabBar /></>} />
-                  <Route path="/onboarding" element={<><NavBar /><Onboarding /><MobileTabBar /></>} />
-                  <Route path="/welcome" element={<><NavBar /><Welcome /><MobileTabBar /></>} />
-                  <Route path="/profile" element={<><NavBar /><Profile /><MobileTabBar /></>} />
-                  <Route path="/notes/:id" element={<><NavBar /><NoteDetails /><MobileTabBar /></>} />
-                  <Route path="/sign-in" element={<SignInPage />} />
-                  <Route path="/sign-up" element={<SignUpPage />} />
-                  <Route path="/accept-invite" element={<AcceptInvite />} />
-                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </BrowserRouter>
-            </SupabaseNotesProvider>
-          </SupabaseListsProvider>
+          <SupabaseNotesProvider>
+            <BrowserRouter>
+              <NavBar />
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/lists" element={<Lists />} />
+                <Route path="/lists/:category" element={<ListCategory />} />
+                <Route path="/onboarding" element={<Onboarding />} />
+                <Route path="/welcome" element={<Welcome />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/notes/:id" element={<NoteDetails />} />
+                <Route path="/sign-in" element={<SignInPage />} />
+                <Route path="/sign-up" element={<SignUpPage />} />
+                <Route path="/accept-invite" element={<AcceptInvite />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+              <MobileTabBar />
+            </BrowserRouter>
+          </SupabaseNotesProvider>
         </SupabaseCoupleProvider>
       </AuthProvider>
     </TooltipProvider>

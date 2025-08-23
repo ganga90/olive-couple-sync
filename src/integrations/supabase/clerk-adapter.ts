@@ -12,7 +12,7 @@ export const useClerkSupabaseClient = () => {
   const { session } = useSession();
   
   return useMemo(() => {
-    // Create Supabase client with Clerk session token
+    // Create Supabase client with Clerk session token using exact pattern from docs
     const supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: {
@@ -20,26 +20,19 @@ export const useClerkSupabaseClient = () => {
         },
       },
       auth: {
+        // Use the exact pattern from Supabase docs
         persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
       },
-      // Use Clerk session token for authentication
+      // Session accessed from Clerk SDK - exact pattern from docs
       accessToken: async () => {
         if (!isSignedIn || !session) {
           console.log('[ClerkAdapter] No Clerk session available');
           return null;
         }
         
-        try {
-          // Use the supabase template to get the proper JWT format
-          const token = await session.getToken({ template: "supabase" });
-          console.log('[ClerkAdapter] Got Clerk token for Supabase:', !!token);
-          return token;
-        } catch (error) {
-          console.warn('[ClerkAdapter] Failed to get Supabase token:', error);
-          return null;
-        }
+        const token = await session.getToken();
+        console.log('[ClerkAdapter] Got Clerk token for Supabase:', !!token);
+        return token;
       },
     });
     
