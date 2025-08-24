@@ -16,43 +16,35 @@ export const useClerkSupabaseClient = () => {
       auth: {
         persistSession: false,
       },
-    });
-    
-    // Set the session with Supabase JWT token from Clerk if user is signed in
-    const setSupabaseSession = async () => {
-      if (!isSignedIn || !session) {
-        console.log('[ClerkAdapter] No Clerk session available, clearing Supabase session');
-        await supabaseClient.auth.signOut();
-        return;
-      }
-      
-      try {
-        // First try to get the Supabase JWT token specifically from Clerk
-        let supabaseToken;
-        try {
-          supabaseToken = await session.getToken({ template: 'supabase' });
-          console.log('[ClerkAdapter] Got Supabase JWT token:', !!supabaseToken);
-        } catch (templateError) {
-          // Fallback to regular token if template doesn't exist
-          console.log('[ClerkAdapter] Supabase template not found, using regular token');
-          supabaseToken = await session.getToken();
+      global: {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+      // Use accessToken approach to inject Clerk JWT
+      accessToken: async () => {
+        if (!isSignedIn || !session) {
+          console.log('[ClerkAdapter] No Clerk session available');
+          return null;
         }
         
-        if (supabaseToken) {
-          // Set the session using the JWT token
-          await supabaseClient.auth.setSession({
-            access_token: supabaseToken,
-            refresh_token: 'placeholder', // Required but not used
-          });
-          console.log('[ClerkAdapter] Successfully set Supabase session with Clerk token');
+        try {
+          // Try to get Supabase-specific token first, fallback to regular token
+          let token;
+          try {
+            token = await session.getToken({ template: 'supabase' });
+            console.log('[ClerkAdapter] Got Supabase template token:', !!token);
+          } catch {
+            token = await session.getToken();
+            console.log('[ClerkAdapter] Got regular Clerk token:', !!token);
+          }
+          return token;
+        } catch (error) {
+          console.error('[ClerkAdapter] Error getting token:', error);
+          return null;
         }
-      } catch (error) {
-        console.error('[ClerkAdapter] Error setting Supabase session:', error);
-      }
-    };
-    
-    // Set session immediately
-    setSupabaseSession();
+      },
+    });
     
     console.log('[ClerkAdapter] Created Supabase client with Clerk session token integration');
     
