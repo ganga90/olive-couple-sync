@@ -384,7 +384,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      debug_clerk_jwt: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       debug_clerk_user_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      debug_clerk_user_id_fixed: {
         Args: Record<PropertyKey, never>
         Returns: string
       }
