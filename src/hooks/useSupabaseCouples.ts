@@ -166,6 +166,13 @@ export const useSupabaseCouples = () => {
       // Try to save to database in background, but don't block on it
       try {
         console.log('[useSupabaseCouples] Attempting to save couple to database');
+        console.log('[useSupabaseCouples] User ID:', user.id);
+        console.log('[useSupabaseCouples] Couple data to insert:', {
+          title: coupleData.title,
+          you_name: coupleData.you_name,
+          partner_name: coupleData.partner_name,
+          created_by: user.id,
+        });
         
         // Only send the exact fields that exist in the database
         const { data, error } = await supabase
@@ -180,7 +187,12 @@ export const useSupabaseCouples = () => {
           .single();
 
         if (error) {
-          console.error('[useSupabaseCouples] Database save error:', error);
+          console.error('[useSupabaseCouples] Database save error details:', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+          });
           
           // If RLS policy violation, provide more helpful error
           if (error.message?.includes('row-level security policy')) {
