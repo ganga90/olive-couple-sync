@@ -400,6 +400,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      get_clerk_user_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       is_couple_member: {
         Args: { couple_uuid: string; user_text: string }
         Returns: boolean
