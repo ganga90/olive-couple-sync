@@ -25,15 +25,22 @@ export const PartnerInfo = () => {
       return;
     }
 
+    if (loading) {
+      console.log('Invite creation already in progress, ignoring duplicate request');
+      return;
+    }
+
     setLoading(true);
     try {
-      // Generate invite token
-      const token = crypto.randomUUID();
+      // Generate a highly unique token to avoid conflicts
+      const timestamp = Date.now();
+      const randomPart = crypto.randomUUID();
+      const token = `${timestamp}-${randomPart}`;
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
 
       // Create unique placeholder email to avoid conflicts
-      const uniqueEmail = `${partner?.toLowerCase().replace(/\s+/g, '') || 'partner'}-${Date.now()}@invite.olive`;
+      const uniqueEmail = `${partner?.toLowerCase().replace(/\s+/g, '') || 'partner'}-${timestamp}@invite.olive`;
 
       console.log('Creating invite with:', {
         couple_id: currentCouple.id,
@@ -48,13 +55,6 @@ export const PartnerInfo = () => {
       if (!currentCouple.id || currentCouple.id.length < 20) {
         throw new Error("Please wait for your workspace to sync before sending invites");
       }
-
-      console.log('Creating invite with:', {
-        couple_id: currentCouple.id,
-        invited_email: uniqueEmail,
-        invited_by: user?.id,
-        token,
-      });
 
       // Create invite
       const { data: inviteData, error: inviteError } = await supabase

@@ -104,8 +104,10 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         throw new Error("Failed to create couple");
       }
 
-      // Generate invite token
-      const token = crypto.randomUUID();
+      // Generate a highly unique token to avoid conflicts
+      const timestamp = Date.now();
+      const randomPart = crypto.randomUUID();
+      const token = `${timestamp}-${randomPart}`;
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
 
@@ -113,7 +115,7 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
       const coupleId = couple.id;
       
       // Create unique placeholder email to avoid conflicts
-      const uniqueEmail = `${partner.toLowerCase().replace(/\s+/g, '')}-${Date.now()}@invite.olive`;
+      const uniqueEmail = `${partner.toLowerCase().replace(/\s+/g, '')}-${timestamp}@invite.olive`;
 
       // Check if couple is properly saved to database (not just local)
       if (!coupleId || coupleId.length < 20) {
