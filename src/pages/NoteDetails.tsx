@@ -37,6 +37,7 @@ const NoteDetails = () => {
   );
   const [input, setInput] = useState("");
   const [isEditingOwner, setIsEditingOwner] = useState(false);
+  const [localTaskOwner, setLocalTaskOwner] = useState<string | null>(note?.task_owner || null);
 
   // Get available owners (current user and partner)
   const availableOwners = useMemo(() => {
@@ -98,11 +99,14 @@ const NoteDetails = () => {
   const updateTaskOwner = async (newOwner: string) => {
     if (!note) return;
     try {
-      await updateNote(note.id, { task_owner: newOwner || null });
+      const ownerValue = newOwner || null;
+      setLocalTaskOwner(ownerValue);
+      await updateNote(note.id, { task_owner: ownerValue });
       setIsEditingOwner(false);
       toast.success("Task owner updated");
     } catch (error) {
       toast.error("Failed to update task owner");
+      setLocalTaskOwner(note.task_owner || null);
       console.error("Error updating task owner:", error);
     }
   };
@@ -228,7 +232,7 @@ const NoteDetails = () => {
                 {isEditingOwner ? (
                   <div className="flex items-center gap-2">
                     <Select
-                      value={note.task_owner || ""}
+                      value={localTaskOwner || ""}
                       onValueChange={(value) => updateTaskOwner(value)}
                     >
                       <SelectTrigger className="flex-1 border-olive/30 focus:border-olive focus:ring-olive/20 bg-white">
@@ -254,7 +258,7 @@ const NoteDetails = () => {
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    {note.task_owner || "No owner assigned"}
+                    {localTaskOwner || "No owner assigned"}
                   </p>
                 )}
               </div>
