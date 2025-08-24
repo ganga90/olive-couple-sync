@@ -106,16 +106,30 @@ const NoteDetails = () => {
 
   const updateTaskOwner = async (newOwner: string) => {
     if (!note) return;
+    
+    console.log("[NoteDetails] Updating task owner from:", note.task_owner, "to:", newOwner);
+    
     try {
       const ownerValue = newOwner === "none" ? null : newOwner;
       setLocalTaskOwner(ownerValue);
-      await updateNote(note.id, { task_owner: ownerValue });
-      setIsEditingOwner(false);
-      toast.success("Task owner updated");
+      
+      console.log("[NoteDetails] Calling updateNote with task_owner:", ownerValue);
+      const result = await updateNote(note.id, { task_owner: ownerValue });
+      
+      if (result) {
+        console.log("[NoteDetails] Task owner update successful");
+        setIsEditingOwner(false);
+        toast.success("Task owner updated");
+      } else {
+        console.error("[NoteDetails] Task owner update failed - no result returned");
+        // Revert local state on failure
+        setLocalTaskOwner(note.task_owner || null);
+        toast.error("Failed to update task owner");
+      }
     } catch (error) {
+      console.error("[NoteDetails] Error updating task owner:", error);
       toast.error("Failed to update task owner");
       setLocalTaskOwner(note.task_owner || null);
-      console.error("Error updating task owner:", error);
     }
   };
 

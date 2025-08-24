@@ -15,6 +15,7 @@ export type SupabaseNote = {
   due_date?: string;
   completed: boolean;
   priority?: 'low' | 'medium' | 'high';
+  task_owner?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -157,6 +158,9 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
     }
 
     try {
+      console.log("[useSupabaseNotes] Updating note:", id, "with updates:", updates);
+      console.log("[useSupabaseNotes] Current user:", user?.id);
+      
       const { data, error } = await supabase
         .from("clerk_notes")
         .update(updates)
@@ -164,15 +168,31 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("[useSupabaseNotes] Update error details:", error);
+        
+        // Check for RLS policy violations
+        if (error.message?.includes('row-level security policy')) {
+          console.error("[useSupabaseNotes] RLS Policy violation during update");
+          throw new Error('Permission denied - you may not have access to update this note');
+        }
+        
+        throw error;
+      }
+      
+      console.log("[useSupabaseNotes] Successfully updated note:", data);
       toast.success("Note updated successfully");
+      
+      // Trigger refetch to ensure UI is updated
+      await fetchNotes();
+      
       return data;
     } catch (error) {
-      console.error("[Notes] Error updating note:", error);
-      toast.error("Failed to update note");
+      console.error("[useSupabaseNotes] Error updating note:", error);
+      toast.error(`Failed to update note: ${(error as any).message || error}`);
       return null;
     }
-  }, [user, supabase]);
+  }, [user, supabase, fetchNotes]);
 
   const deleteNote = useCallback(async (id: string) => {
     if (!user) {
