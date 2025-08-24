@@ -19,6 +19,8 @@ export const useClerkSupabaseClient = () => {
       global: {
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Prefer': 'return=representation',
         },
       },
       // Use accessToken approach to inject Clerk JWT

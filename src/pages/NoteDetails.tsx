@@ -108,16 +108,21 @@ const NoteDetails = () => {
     if (!note) return;
     
     console.log("[NoteDetails] Updating task owner from:", note.task_owner, "to:", newOwner);
+    console.log("[NoteDetails] Current user:", user?.id);
+    console.log("[NoteDetails] Note author_id:", note.addedBy);
+    console.log("[NoteDetails] Current couple_id from note:", (note as any).couple_id);
     
     try {
       const ownerValue = newOwner === "none" ? null : newOwner;
       setLocalTaskOwner(ownerValue);
       
       console.log("[NoteDetails] Calling updateNote with task_owner:", ownerValue);
+      console.log("[NoteDetails] Update payload will be:", JSON.stringify({ task_owner: ownerValue }, null, 2));
+      
       const result = await updateNote(note.id, { task_owner: ownerValue });
       
       if (result) {
-        console.log("[NoteDetails] Task owner update successful");
+        console.log("[NoteDetails] Task owner update successful:", result);
         setIsEditingOwner(false);
         toast.success("Task owner updated");
       } else {

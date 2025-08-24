@@ -160,21 +160,52 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
     try {
       console.log("[useSupabaseNotes] Updating note:", id, "with updates:", updates);
       console.log("[useSupabaseNotes] Current user:", user?.id);
+      console.log("[useSupabaseNotes] Raw updates payload:", JSON.stringify(updates, null, 2));
+      
+      // Validate payload - ensure we only send valid fields
+      const validUpdates: any = {};
+      const allowedFields = ['summary', 'category', 'priority', 'tags', 'items', 'due_date', 'completed', 'task_owner'];
+      
+      Object.keys(updates).forEach(key => {
+        if (allowedFields.includes(key) && updates[key as keyof SupabaseNote] !== undefined) {
+          validUpdates[key] = updates[key as keyof SupabaseNote];
+        }
+      });
+      
+      console.log("[useSupabaseNotes] Validated updates payload:", JSON.stringify(validUpdates, null, 2));
+      
+      if (Object.keys(validUpdates).length === 0) {
+        console.error("[useSupabaseNotes] No valid fields to update");
+        throw new Error('No valid fields provided for update');
+      }
       
       const { data, error } = await supabase
         .from("clerk_notes")
-        .update(updates)
+        .update(validUpdates)
         .eq("id", id)
         .select()
         .single();
 
       if (error) {
-        console.error("[useSupabaseNotes] Update error details:", error);
+        console.error("[useSupabaseNotes] Update error details:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          status: (error as any).status,
+          statusCode: (error as any).statusCode,
+          statusText: (error as any).statusText
+        });
         
-        // Check for RLS policy violations
+        // Enhanced error handling for different error types
         if (error.message?.includes('row-level security policy')) {
           console.error("[useSupabaseNotes] RLS Policy violation during update");
           throw new Error('Permission denied - you may not have access to update this note');
+        }
+        
+        if (error.code === 'PGRST116' || (error as any).status === 406) {
+          console.error("[useSupabaseNotes] 406 Not Acceptable - likely schema/format issue");
+          throw new Error('Data format not acceptable - check field types and values');
         }
         
         throw error;
@@ -187,9 +218,16 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
       await fetchNotes();
       
       return data;
-    } catch (error) {
-      console.error("[useSupabaseNotes] Error updating note:", error);
-      toast.error(`Failed to update note: ${(error as any).message || error}`);
+    } catch (error: any) {
+      console.error("[useSupabaseNotes] Error updating note:", {
+        error,
+        message: error?.message,
+        stack: error?.stack,
+        updates,
+        noteId: id,
+        userId: user?.id
+      });
+      toast.error(`Failed to update note: ${error?.message || error}`);
       return null;
     }
   }, [user, supabase, fetchNotes]);
