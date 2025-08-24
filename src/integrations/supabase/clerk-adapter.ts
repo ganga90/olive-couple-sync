@@ -23,7 +23,7 @@ export const useClerkSupabaseClient = () => {
           'Prefer': 'return=representation',
         },
       },
-      // NEW APPROACH: Use accessToken callback for Third-Party Auth integration
+      // Use Supabase JWT template for proper RLS integration
       accessToken: async () => {
         if (!isSignedIn || !session) {
           console.log('[ClerkAdapter] No Clerk session available');
@@ -31,13 +31,25 @@ export const useClerkSupabaseClient = () => {
         }
         
         try {
-          // Use session.getToken() without template for Third-Party Auth
-          const token = await session.getToken();
-          console.log('[ClerkAdapter] Got Clerk session token:', !!token);
+          // Use Supabase JWT template - this creates JWT with proper 'sub' claim
+          const token = await session.getToken({ template: 'supabase' });
+          console.log('[ClerkAdapter] Got Clerk Supabase JWT token:', !!token);
+          if (token) {
+            console.log('[ClerkAdapter] JWT token preview:', token.substring(0, 100) + '...');
+          }
           return token;
         } catch (error) {
-          console.error('[ClerkAdapter] Error getting session token:', error);
-          return null;
+          console.error('[ClerkAdapter] Error getting Supabase JWT token:', error);
+          // Fallback to regular token if Supabase template fails
+          console.log('[ClerkAdapter] Falling back to regular token...');
+          try {
+            const fallbackToken = await session.getToken();
+            console.log('[ClerkAdapter] Got fallback token:', !!fallbackToken);
+            return fallbackToken;
+          } catch (fallbackError) {
+            console.error('[ClerkAdapter] Fallback token also failed:', fallbackError);
+            return null;
+          }
         }
       },
     });
