@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
@@ -38,6 +38,13 @@ const NoteDetails = () => {
   const [input, setInput] = useState("");
   const [isEditingOwner, setIsEditingOwner] = useState(false);
   const [localTaskOwner, setLocalTaskOwner] = useState<string | null>(note?.task_owner || null);
+
+  // Sync localTaskOwner with note.task_owner when note changes
+  useEffect(() => {
+    if (note) {
+      setLocalTaskOwner(note.task_owner || null);
+    }
+  }, [note?.task_owner]);
 
   // Get available owners (current user and partner)
   const availableOwners = useMemo(() => {
