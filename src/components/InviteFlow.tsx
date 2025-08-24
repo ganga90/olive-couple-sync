@@ -115,6 +115,11 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
       // Create unique placeholder email to avoid conflicts
       const uniqueEmail = `${partner.toLowerCase().replace(/\s+/g, '')}-${Date.now()}@invite.olive`;
 
+      // Check if couple is properly saved to database (not just local)
+      if (!coupleId || coupleId.length < 20) {
+        throw new Error("Please wait for your workspace to sync before sending invites");
+      }
+
       console.log('Creating invite with:', {
         couple_id: coupleId,
         invited_email: uniqueEmail,

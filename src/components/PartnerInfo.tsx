@@ -44,6 +44,18 @@ export const PartnerInfo = () => {
         expires_at: expiresAt.toISOString()
       });
 
+      // Check if couple is properly saved to database (not just local)
+      if (!currentCouple.id || currentCouple.id.length < 20) {
+        throw new Error("Please wait for your workspace to sync before sending invites");
+      }
+
+      console.log('Creating invite with:', {
+        couple_id: currentCouple.id,
+        invited_email: uniqueEmail,
+        invited_by: user?.id,
+        token,
+      });
+
       // Create invite
       const { data: inviteData, error: inviteError } = await supabase
         .from("invites")

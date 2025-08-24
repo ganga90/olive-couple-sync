@@ -145,79 +145,66 @@ export const useSupabaseCouples = () => {
     console.log("[Couples] Creating couple with data:", coupleData, "user:", user.id);
 
     try {
-      // Create a local couple object that works immediately
-      const localCouple: SupabaseCouple = {
-        id: crypto.randomUUID(),
+      // First, try to save to database to get the real ID
+      console.log('[useSupabaseCouples] Attempting to save couple to database');
+      console.log('[useSupabaseCouples] User ID:', user.id);
+      console.log('[useSupabaseCouples] Couple data to insert:', {
         title: coupleData.title || `${coupleData.you_name || 'You'} & ${coupleData.partner_name || 'Partner'}`,
         you_name: coupleData.you_name,
         partner_name: coupleData.partner_name,
         created_by: user.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      // Set it immediately for better UX
-      setCurrentCouple(localCouple);
-      setCouples(prev => [...prev, localCouple]);
+      });
       
-      console.log("[Couples] Local couple created successfully:", localCouple);
-      toast.success("Your space is ready! You can start adding notes.");
-      
-      // Try to save to database in background, but don't block on it
-      try {
-        console.log('[useSupabaseCouples] Attempting to save couple to database');
-        console.log('[useSupabaseCouples] User ID:', user.id);
-        console.log('[useSupabaseCouples] Couple data to insert:', {
-          title: coupleData.title,
+      const { data, error } = await supabase
+        .from("clerk_couples")
+        .insert([{
+          title: coupleData.title || `${coupleData.you_name || 'You'} & ${coupleData.partner_name || 'Partner'}`,
           you_name: coupleData.you_name,
           partner_name: coupleData.partner_name,
           created_by: user.id,
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[useSupabaseCouples] Database save error details:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint
         });
         
-        // Only send the exact fields that exist in the database
-        const { data, error } = await supabase
-          .from("clerk_couples")
-          .insert([{
-            title: coupleData.title,
-            you_name: coupleData.you_name,
-            partner_name: coupleData.partner_name,
-            created_by: user.id,
-          }])
-          .select()
-          .single();
-
-        if (error) {
-          console.error('[useSupabaseCouples] Database save error details:', {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint
-          });
-          
-          // If RLS policy violation, provide more helpful error
-          if (error.message?.includes('row-level security policy')) {
-            console.error('[useSupabaseCouples] RLS Policy violation - checking user context');
-            console.log('[useSupabaseCouples] Expected user ID:', user.id);
-          }
-          
-          throw error;
-        }
-
-        if (data) {
-          console.log("[Couples] Couple saved to database:", data);
-          // Update with the real database ID
-          setCurrentCouple(data);
-          setCouples(prev => prev.map(c => c.id === localCouple.id ? data : c));
-        }
-      } catch (dbError: any) {
-        console.warn("[Couples] Database save failed, but local couple still works:", dbError);
-        // If it's an RLS error, show a more helpful message
-        if (dbError.message?.includes('row-level security policy')) {
-          console.log("[Couples] RLS error detected, this may resolve after auth sync");
-        }
+        // Create a fallback local couple if database fails
+        const localCouple: SupabaseCouple = {
+          id: crypto.randomUUID(),
+          title: coupleData.title || `${coupleData.you_name || 'You'} & ${coupleData.partner_name || 'Partner'}`,
+          you_name: coupleData.you_name,
+          partner_name: coupleData.partner_name,
+          created_by: user.id,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        
+        setCurrentCouple(localCouple);
+        setCouples(prev => [...prev, localCouple]);
+        console.log("[Couples] Created local couple due to DB error:", localCouple);
+        toast.success("Your workspace is ready locally (offline mode)");
+        
+        return localCouple;
       }
-      
-      return localCouple;
+
+      if (data) {
+        console.log("[Couples] Couple saved to database successfully:", data);
+        
+        // Use the database couple (with real ID)
+        setCurrentCouple(data);
+        setCouples(prev => [...prev, data]);
+        toast.success("Your workspace is ready!");
+        
+        return data;
+      }
+
+      return null;
     } catch (error) {
       console.error("[Couples] Error creating couple:", error);
       toast.error(`Failed to create couple workspace: ${error.message || error}`);
