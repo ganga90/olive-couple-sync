@@ -59,16 +59,36 @@ const Lists = () => {
   const filteredCategories = useMemo(() => {
     const q = query.trim().toLowerCase();
     
-    // Get unique categories from actual notes
-    const actualCategories = Array.from(new Set(notes.map(note => note.category)));
-    
-    // Show all categories that have notes, matching query if provided
-    const availableCategories = actualCategories.filter(category => {
-      const matchesQuery = !q || category.toLowerCase().includes(q);
-      return matchesQuery;
+    if (!q) {
+      // If no search query, show all categories that have notes
+      return Array.from(new Set(notes.map(note => note.category)));
+    }
+
+    // Filter notes based on search criteria
+    const matchingNotes = notes.filter(note => {
+      // Search in category name
+      if (note.category.toLowerCase().includes(q)) return true;
+      
+      // Search in task summary (task name)
+      if (note.summary.toLowerCase().includes(q)) return true;
+      
+      // Search in original text
+      if (note.originalText.toLowerCase().includes(q)) return true;
+      
+      // Search in tags
+      if (note.tags && note.tags.some(tag => tag.toLowerCase().includes(q))) return true;
+      
+      // Search in task owner
+      if (note.task_owner && note.task_owner.toLowerCase().includes(q)) return true;
+      
+      // Search in added by
+      if (note.addedBy && note.addedBy.toLowerCase().includes(q)) return true;
+      
+      return false;
     });
-    
-    return availableCategories;
+
+    // Get unique categories from matching notes
+    return Array.from(new Set(matchingNotes.map(note => note.category)));
   }, [query, notes]);
 
   return (
@@ -80,7 +100,7 @@ const Lists = () => {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search lists..."
+            placeholder="Search in lists, tasks, tags, owners..."
             aria-label="Search lists"
             className="border-olive/30 focus:border-olive focus:ring-olive/20 bg-white/50"
           />
