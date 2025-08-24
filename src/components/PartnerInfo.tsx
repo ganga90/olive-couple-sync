@@ -1,26 +1,27 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
 import { useAuth } from "@/providers/AuthProvider";
-import { User2, Mail, Plus, Check, Clock, X } from "lucide-react";
+import { User2, Share2, Plus, Check, Clock, X, Copy } from "lucide-react";
 
 export const PartnerInfo = () => {
-  const [inviteEmail, setInviteEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviteUrl, setInviteUrl] = useState("");
+  const [inviteMessage, setInviteMessage] = useState("");
+  const [copied, setCopied] = useState(false);
   const { currentCouple, you, partner } = useSupabaseCouple();
   const { user } = useAuth();
   const supabase = useClerkSupabaseClient();
 
-  const handleSendInvite = async () => {
-    if (!inviteEmail || !currentCouple) {
-      toast.error("Please enter a valid email");
+  const handleCreateInvite = async () => {
+    if (!currentCouple) {
+      toast.error("No couple space found");
       return;
     }
 
@@ -36,7 +37,7 @@ export const PartnerInfo = () => {
         .from("invites")
         .insert({
           couple_id: currentCouple.id,
-          invited_email: inviteEmail,
+          invited_email: `${partner}@invite.olive`, // Placeholder email
           invited_by: user?.id,
           token,
           expires_at: expiresAt.toISOString(),
@@ -47,29 +48,34 @@ export const PartnerInfo = () => {
         throw inviteError;
       }
 
-      // Send invite email via edge function
-      const { error: emailError } = await supabase.functions.invoke('send-invite', {
-        body: {
-          inviteEmail,
-          partnerName: partner,
-          coupleTitle: currentCouple.title || `${you} & ${partner}`,
-          inviteToken: token,
-        }
-      });
+      // Generate invite URL
+      const currentUrl = window.location.origin;
+      const inviteLink = `${currentUrl}/accept-invite?token=${token}`;
+      
+      // Create personalized message
+      const message = `Hey ${partner || 'there'}! 🌿\n\n${you || 'Your partner'} has invited you to join your shared Olive space where you can organize notes, lists, and tasks together.\n\nClick this link to join: ${inviteLink}\n\nThis link expires in 7 days. Looking forward to organizing together! 💚`;
 
-      if (emailError) {
-        console.warn("Failed to send invite email:", emailError);
-        // Don't fail the whole process if email fails
-      }
-
-      toast.success(`Invite sent to ${inviteEmail}!`);
-      setInviteEmail("");
-      setShowInviteForm(false);
+      setInviteUrl(inviteLink);
+      setInviteMessage(message);
+      
+      toast.success("Invite link created! Copy and share it with your partner.");
     } catch (error) {
-      console.error("Failed to send invite:", error);
-      toast.error("Failed to send invite. Please try again.");
+      console.error("Failed to create invite:", error);
+      toast.error("Failed to create invite. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      toast.success("Copied to clipboard!");
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy:", error);
+      toast.error("Failed to copy to clipboard");
     }
   };
 
@@ -146,33 +152,24 @@ export const PartnerInfo = () => {
             )}
           </div>
 
-          {showInviteForm && (
+          {showInviteForm && !inviteUrl && (
             <div className="space-y-3 p-4 bg-olive/5 rounded-lg border border-olive/20">
-              <div className="space-y-2">
-                <Label htmlFor="partner-email" className="text-sm">Partner's email</Label>
-                <Input
-                  id="partner-email"
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="partner@example.com"
-                  className="border-olive/30 focus:border-olive focus:ring-olive/20"
-                />
-              </div>
+              <p className="text-sm text-muted-foreground">
+                Create a shareable link to invite your partner to this space.
+              </p>
               <div className="flex gap-2">
                 <Button 
-                  onClick={handleSendInvite}
+                  onClick={handleCreateInvite}
                   size="sm"
                   className="bg-olive hover:bg-olive/90 text-white"
-                  disabled={loading || !inviteEmail}
+                  disabled={loading}
                 >
-                  <Mail className="h-4 w-4 mr-1" />
-                  {loading ? "Sending..." : "Send Invite"}
+                  <Share2 className="h-4 w-4 mr-1" />
+                  {loading ? "Creating..." : "Create Invite Link"}
                 </Button>
                 <Button 
                   onClick={() => {
                     setShowInviteForm(false);
-                    setInviteEmail("");
                   }}
                   size="sm"
                   variant="ghost"
@@ -181,6 +178,62 @@ export const PartnerInfo = () => {
                   Cancel
                 </Button>
               </div>
+            </div>
+          )}
+
+          {inviteUrl && (
+            <div className="space-y-3 p-4 bg-olive/5 rounded-lg border border-olive/20">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-olive-dark">Invite Message</Label>
+                <div className="relative">
+                  <textarea 
+                    value={inviteMessage}
+                    readOnly
+                    rows={6}
+                    className="w-full p-2 text-xs bg-white border border-olive/20 rounded resize-none focus:outline-none"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="absolute top-1 right-1 h-7 w-7 p-0 border-olive/30 text-olive hover:bg-olive/10"
+                    onClick={() => copyToClipboard(inviteMessage)}
+                  >
+                    {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-olive-dark">Just the Link</Label>
+                <div className="flex gap-2">
+                  <input 
+                    value={inviteUrl}
+                    readOnly
+                    className="flex-1 p-2 text-xs bg-white border border-olive/20 rounded focus:outline-none"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-olive/30 text-olive hover:bg-olive/10"
+                    onClick={() => copyToClipboard(inviteUrl)}
+                  >
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              <Button 
+                onClick={() => {
+                  setInviteUrl("");
+                  setInviteMessage("");
+                  setShowInviteForm(false);
+                }}
+                size="sm"
+                variant="ghost"
+                className="w-full text-muted-foreground hover:text-olive"
+              >
+                Create Another Invite
+              </Button>
             </div>
           )}
         </div>

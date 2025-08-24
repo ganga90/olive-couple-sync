@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -8,7 +7,7 @@ import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
 import { useAuth } from "@/providers/AuthProvider";
-import { Mail, User2 } from "lucide-react";
+import { Share2, User2, Copy, Check } from "lucide-react";
 
 interface InviteFlowProps {
   you: string;
@@ -17,9 +16,11 @@ interface InviteFlowProps {
 }
 
 export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
-  const [inviteEmail, setInviteEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"setup" | "invite">("setup");
+  const [inviteUrl, setInviteUrl] = useState("");
+  const [inviteMessage, setInviteMessage] = useState("");
+  const [copied, setCopied] = useState(false);
   const { createCouple } = useSupabaseCouple();
   const { user } = useAuth();
   const supabase = useClerkSupabaseClient();
@@ -65,12 +66,7 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
     }
   };
 
-  const handleSendInvite = async () => {
-    if (!inviteEmail) {
-      toast.error("Please enter your partner's email");
-      return;
-    }
-
+  const handleCreateInvite = async () => {
     setLoading(true);
     try {
       // Create couple first
@@ -94,7 +90,7 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         .from("invites")
         .insert({
           couple_id: couple.id,
-          invited_email: inviteEmail,
+          invited_email: `${partner}@invite.olive`, // Placeholder email
           invited_by: user?.id,
           token,
           expires_at: expiresAt.toISOString(),
@@ -105,28 +101,33 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         throw inviteError;
       }
 
-      // Send invite email via edge function
-      const { error: emailError } = await supabase.functions.invoke('send-invite', {
-        body: {
-          inviteEmail,
-          partnerName: partner,
-          coupleTitle: `${you} & ${partner}`,
-          inviteToken: token,
-        }
-      });
+      // Generate invite URL
+      const currentUrl = window.location.origin;
+      const inviteLink = `${currentUrl}/accept-invite?token=${token}`;
+      
+      // Create personalized message
+      const message = `Hey ${partner}! 🌿\n\n${you} has invited you to join your shared Olive space where you can organize notes, lists, and tasks together.\n\nClick this link to join: ${inviteLink}\n\nThis link expires in 7 days. Looking forward to organizing together! 💚`;
 
-      if (emailError) {
-        console.warn("Failed to send invite email:", emailError);
-        // Don't fail the whole process if email fails
-      }
-
-      toast.success(`Invite sent to ${inviteEmail}! They'll receive an email with a link to join.`);
-      onComplete();
+      setInviteUrl(inviteLink);
+      setInviteMessage(message);
+      
     } catch (error) {
-      console.error("Failed to send invite:", error);
-      toast.error("Failed to send invite. Please try again.");
+      console.error("Failed to create invite:", error);
+      toast.error("Failed to create invite. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      toast.success("Copied to clipboard!");
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy:", error);
+      toast.error("Failed to copy to clipboard");
     }
   };
 
@@ -146,8 +147,8 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
             className="w-full bg-olive hover:bg-olive/90 text-white shadow-soft"
             disabled={loading}
           >
-            <Mail className="h-4 w-4 mr-2" />
-            Invite {partner} Now
+            <Share2 className="h-4 w-4 mr-2" />
+            Create Invite Link for {partner}
           </Button>
           
           <div className="relative">
@@ -177,37 +178,23 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
     );
   }
 
-  return (
-    <Card className="p-6 bg-white/50 border-olive/20 shadow-soft space-y-6">
-      <div className="text-center space-y-2">
-        <h3 className="text-lg font-semibold text-olive-dark">Invite {partner}</h3>
-        <p className="text-sm text-muted-foreground">
-          We'll send them an email with a link to join your shared Olive space.
-        </p>
-      </div>
-
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="invite-email" className="text-olive-dark font-medium">
-            {partner}'s email address
-          </Label>
-          <Input 
-            id="invite-email"
-            type="email"
-            value={inviteEmail} 
-            onChange={(e) => setInviteEmail(e.target.value)} 
-            placeholder="partner@example.com"
-            className="border-olive/30 focus:border-olive focus:ring-olive/20"
-          />
+  if (!inviteUrl) {
+    return (
+      <Card className="p-6 bg-white/50 border-olive/20 shadow-soft space-y-6">
+        <div className="text-center space-y-2">
+          <h3 className="text-lg font-semibold text-olive-dark">Create Invite for {partner}</h3>
+          <p className="text-sm text-muted-foreground">
+            Generate a shareable link and message to invite {partner} to your Olive space.
+          </p>
         </div>
 
         <div className="space-y-3">
           <Button 
-            onClick={handleSendInvite}
+            onClick={handleCreateInvite}
             className="w-full bg-olive hover:bg-olive/90 text-white shadow-soft"
-            disabled={loading || !inviteEmail}
+            disabled={loading}
           >
-            {loading ? "Sending..." : "Send Invite"}
+            {loading ? "Creating Invite..." : "Generate Invite Link"}
           </Button>
 
           <Button 
@@ -217,6 +204,79 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
             disabled={loading}
           >
             Back
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-6 bg-white/50 border-olive/20 shadow-soft space-y-6">
+      <div className="text-center space-y-2">
+        <h3 className="text-lg font-semibold text-olive-dark">Invite Ready! 🌿</h3>
+        <p className="text-sm text-muted-foreground">
+          Copy and share this with {partner} via text, email, or any messaging app.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label className="text-olive-dark font-medium">Invite Message</Label>
+          <div className="relative">
+            <textarea 
+              value={inviteMessage}
+              readOnly
+              rows={8}
+              className="w-full p-3 text-sm bg-olive/5 border border-olive/20 rounded-lg resize-none focus:outline-none"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="absolute top-2 right-2 border-olive/30 text-olive hover:bg-olive/10"
+              onClick={() => copyToClipboard(inviteMessage)}
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-olive-dark font-medium">Just the Link</Label>
+          <div className="flex gap-2">
+            <input 
+              value={inviteUrl}
+              readOnly
+              className="flex-1 p-2 text-sm bg-olive/5 border border-olive/20 rounded-lg focus:outline-none"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-olive/30 text-olive hover:bg-olive/10"
+              onClick={() => copyToClipboard(inviteUrl)}
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <Button 
+            onClick={onComplete}
+            className="w-full bg-olive hover:bg-olive/90 text-white shadow-soft"
+          >
+            Done
+          </Button>
+
+          <Button 
+            onClick={() => {
+              setInviteUrl("");
+              setInviteMessage("");
+              setMode("setup");
+            }}
+            variant="ghost"
+            className="w-full text-muted-foreground hover:text-olive"
+          >
+            Create Another Invite
           </Button>
         </div>
       </div>
