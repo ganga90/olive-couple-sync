@@ -12,29 +12,47 @@ export const useClerkSupabaseClient = () => {
   const { session } = useSession();
   
   return useMemo(() => {
-    // Create Supabase client with Clerk session token using exact pattern from docs
     const supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      },
       auth: {
-        // Use the exact pattern from Supabase docs
         persistSession: false,
       },
-      // Session accessed from Clerk SDK - exact pattern from docs
-      accessToken: async () => {
-        if (!isSignedIn || !session) {
-          console.log('[ClerkAdapter] No Clerk session available');
-          return null;
+    });
+    
+    // Set the session with Supabase JWT token from Clerk if user is signed in
+    const setSupabaseSession = async () => {
+      if (!isSignedIn || !session) {
+        console.log('[ClerkAdapter] No Clerk session available, clearing Supabase session');
+        await supabaseClient.auth.signOut();
+        return;
+      }
+      
+      try {
+        // First try to get the Supabase JWT token specifically from Clerk
+        let supabaseToken;
+        try {
+          supabaseToken = await session.getToken({ template: 'supabase' });
+          console.log('[ClerkAdapter] Got Supabase JWT token:', !!supabaseToken);
+        } catch (templateError) {
+          // Fallback to regular token if template doesn't exist
+          console.log('[ClerkAdapter] Supabase template not found, using regular token');
+          supabaseToken = await session.getToken();
         }
         
-        const token = await session.getToken();
-        console.log('[ClerkAdapter] Got Clerk token for Supabase:', !!token);
-        return token;
-      },
-    });
+        if (supabaseToken) {
+          // Set the session using the JWT token
+          await supabaseClient.auth.setSession({
+            access_token: supabaseToken,
+            refresh_token: 'placeholder', // Required but not used
+          });
+          console.log('[ClerkAdapter] Successfully set Supabase session with Clerk token');
+        }
+      } catch (error) {
+        console.error('[ClerkAdapter] Error setting Supabase session:', error);
+      }
+    };
+    
+    // Set session immediately
+    setSupabaseSession();
     
     console.log('[ClerkAdapter] Created Supabase client with Clerk session token integration');
     
