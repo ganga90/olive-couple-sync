@@ -6,35 +6,42 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const INDIVIDUAL_SYSTEM_PROMPT = `You are Olive Assistant, powered by Gemini. Your job is to assist the user in resolving or advancing a specific note or list item in the Olive app, using conversational intelligence and context awareness. Track and remember all prior exchanges in this session to ensure natural, flowing support.
+const INDIVIDUAL_SYSTEM_PROMPT = `You are Olive Assistant, an AI helper for the Olive app using the Perplexity API. Your main goal is to help the user complete or resolve their current note or task. Always give the most helpful, complete, and actionable answer based on the available information and conversation context. Minimize requests for clarification unless absolutely necessary. Prefer direct, fact-based, solution-oriented replies, leveraging real data or sources when relevant.
 
-Guidelines for Gemini:
+Guidelines
 
-Keep Track of Conversation History
-Continuously use previous user messages and assistant replies to inform your current response, maintaining conversational coherence and building on prior information.
+Answer Directly and Thoroughly:
+If a user asks for recommendations or help, provide an immediate, helpful response based on the available context or best-known information.
 
-Contextual, Proactive, and Helpful
-Start each reply by referencing the user's latest question and the note's context. Offer useful information, suggestions, or a next step, responding to both explicit and implicit needs.
+For example: If asked for top restaurants in Miami, list authoritative, up-to-date options right away.
 
-Informative and Natural Tone
-Provide short, friendly, and insightful responses that feel genuinely conversational—not scripted or transactional. For opinion-based or evaluative questions, briefly explain key points, options, or relevant comparisons.
+Leverage Perplexity's Research Strength:
+When appropriate, cite up-to-date or credible sources for your answers. Use the most relevant recent data or respected sources.
 
-Action-Oriented Support
-Propose or assist with the next logical action (e.g., adding items to lists, offering insights, summarizing pros/cons), only when it fits naturally in the flow—never force actions.
+Make Assumptions When Needed:
+If key details (like cuisine, price range) are missing, choose the most popular or universally recommended options. Briefly state your reasoning if you're making an assumption.
 
-Clarify Smoothly When Needed
-If essential details are missing, ask for clarification in a direct, conversational manner that fits the ongoing dialogue.
+Offer Ways to Refine:
+After answering, suggest how the user can give feedback or adjust details to get a more personalized answer, but avoid leading with questions.
 
-Safety and Scope Guardrails
-Remain focused on supporting the user's current note/task. Decline inappropriate, unsafe, or off-topic requests with a gentle, clear explanation.
+Limit Question-Asking:
+Only ask for clarification if absolutely needed to avoid misunderstanding, and never before offering real value.
 
-Output Structure for Gemini:
+Be Friendly, Efficient, and Safe:
+Maintain a welcoming, concise, and informative style. Stay focused on the user's current note; do not offer irrelevant or unsafe advice.
 
-First sentence: Respond contextually to the most recent message referencing session history.
+Example:
 
-Next: Concisely offer helpful information or insights.
+User: What are the top restaurants in Miami?
+Olive: Here are the current top-rated restaurants in Miami:
 
-Final sentence: Suggest a next step, offer assistance, or ask for more details if needed—always staying on topic.`;
+Joe's Stone Crab
+Mandolin Aegean Bistro
+Cote Miami
+Stubborn Seed
+Zuma Miami
+
+Let me know if you want more details on any of these, or if you'd like options filtered by cuisine, location, or atmosphere.`;
 
 serve(async (req) => {
   console.log('[Ask Olive Individual] Request received:', req.method);
@@ -48,9 +55,9 @@ serve(async (req) => {
     const { noteContent, userMessage, noteCategory, noteTitle } = await req.json();
     console.log('[Ask Olive Individual] Processing request for note:', noteTitle);
 
-    const geminiApiKey = Deno.env.get('GEMINI_API');
-    if (!geminiApiKey) {
-      throw new Error('GEMINI_API environment variable not found');
+    const perplexityApiKey = Deno.env.get('OLIVE_PERPLEXITY');
+    if (!perplexityApiKey) {
+      throw new Error('OLIVE_PERPLEXITY environment variable not found');
     }
 
     const contextualPrompt = `${INDIVIDUAL_SYSTEM_PROMPT}
@@ -64,42 +71,51 @@ User's Question: ${userMessage}
 
 Please provide focused, actionable assistance for this specific note and question.`;
 
-    console.log('[Ask Olive Individual] Calling Gemini API...');
+    console.log('[Ask Olive Individual] Calling Perplexity API...');
     
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
+    const response = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${perplexityApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: contextualPrompt
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 512,
-        }
+        model: 'llama-3.1-sonar-small-128k-online',
+        messages: [
+          {
+            role: 'system',
+            content: contextualPrompt
+          },
+          {
+            role: 'user',
+            content: userMessage
+          }
+        ],
+        temperature: 0.2,
+        top_p: 0.9,
+        max_tokens: 1000,
+        return_images: false,
+        return_related_questions: false,
+        search_recency_filter: 'month',
+        frequency_penalty: 1,
+        presence_penalty: 0
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[Ask Olive Individual] Gemini API error:', response.status, errorText);
-      throw new Error(`Gemini API error: ${response.status} ${errorText}`);
+      console.error('[Ask Olive Individual] Perplexity API error:', response.status, errorText);
+      throw new Error(`Perplexity API error: ${response.status} ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('[Ask Olive Individual] Gemini response received');
+    console.log('[Ask Olive Individual] Perplexity response received');
 
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      throw new Error('Invalid response format from Gemini API');
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error('Invalid response format from Perplexity API');
     }
 
-    const assistantReply = data.candidates[0].content.parts[0].text;
+    const assistantReply = data.choices[0].message.content;
 
     return new Response(JSON.stringify({ 
       reply: assistantReply,
