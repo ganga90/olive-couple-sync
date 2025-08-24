@@ -384,10 +384,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      get_clerk_user_id: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
       is_couple_member: {
         Args: { couple_uuid: string; user_text: string }
         Returns: boolean
