@@ -16,6 +16,7 @@ import { ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle, Tag, UserCh
 import { format } from "date-fns";
 import { assistWithNote } from "@/utils/oliveAssistant";
 import { OliveLogo } from "@/components/OliveLogo";
+import ReactMarkdown from 'react-markdown';
 
 const NoteDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -321,7 +322,20 @@ const NoteDetails = () => {
                     ? "inline-block rounded-lg bg-olive text-white px-3 py-2 shadow-soft"
                     : "inline-block rounded-lg bg-white border border-olive/20 px-3 py-2 text-olive-dark shadow-soft"
                 }>
-                  {m.content}
+                  {m.role === "user" ? (
+                    m.content
+                  ) : (
+                    <ReactMarkdown 
+                      components={{
+                        ul: ({children}) => <ul className="list-disc pl-4 space-y-1 text-sm">{children}</ul>,
+                        li: ({children}) => <li className="text-sm">{children}</li>,
+                        strong: ({children}) => <strong className="font-semibold text-olive-dark">{children}</strong>,
+                        p: ({children}) => <p className="text-sm leading-relaxed mb-2 last:mb-0">{children}</p>
+                      }}
+                    >
+                      {m.content}
+                    </ReactMarkdown>
+                  )}
                 </div>
               </div>
             ))}
