@@ -51,9 +51,9 @@ export const PartnerInfo = () => {
         expires_at: expiresAt.toISOString()
       });
 
-      // Check if couple is properly saved to database (not just local)
-      if (!currentCouple.id || currentCouple.id.length < 20) {
-        throw new Error("Please wait for your workspace to sync before sending invites");
+      // Check if couple is properly saved to database (not just local offline mode)
+      if (!currentCouple.id || currentCouple.id.length < 20 || currentCouple.created_at === currentCouple.updated_at) {
+        throw new Error("Your workspace is in offline mode. Please refresh the page or check your connection before sending invites.");
       }
 
       // Create invite

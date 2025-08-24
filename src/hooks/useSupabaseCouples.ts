@@ -171,7 +171,16 @@ export const useSupabaseCouples = () => {
           message: error.message,
           code: error.code,
           details: error.details,
-          hint: error.hint
+          hint: error.hint,
+          fullError: error
+        });
+        
+        // Also log what we're trying to insert
+        console.error('[useSupabaseCouples] Failed insert payload:', {
+          title: coupleData.title || `${coupleData.you_name || 'You'} & ${coupleData.partner_name || 'Partner'}`,
+          you_name: coupleData.you_name,
+          partner_name: coupleData.partner_name,
+          created_by: user.id,
         });
         
         // Create a fallback local couple if database fails
@@ -188,7 +197,7 @@ export const useSupabaseCouples = () => {
         setCurrentCouple(localCouple);
         setCouples(prev => [...prev, localCouple]);
         console.log("[Couples] Created local couple due to DB error:", localCouple);
-        toast.success("Your workspace is ready locally (offline mode)");
+        toast.error("Database error: Your workspace is in offline mode. Please check your connection.");
         
         return localCouple;
       }

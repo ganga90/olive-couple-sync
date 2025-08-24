@@ -117,9 +117,9 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
       // Create unique placeholder email to avoid conflicts
       const uniqueEmail = `${partner.toLowerCase().replace(/\s+/g, '')}-${timestamp}@invite.olive`;
 
-      // Check if couple is properly saved to database (not just local)
+      // Check if couple is properly saved to database (not just local offline mode)
       if (!coupleId || coupleId.length < 20) {
-        throw new Error("Please wait for your workspace to sync before sending invites");
+        throw new Error("Your workspace is in offline mode. Please refresh the page or check your connection before sending invites.");
       }
 
       console.log('Creating invite with:', {
