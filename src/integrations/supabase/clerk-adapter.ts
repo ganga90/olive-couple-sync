@@ -6,7 +6,7 @@ import { useMemo } from "react";
 const supabaseUrl = "https://wtfspzvcetxmcfftwonq.supabase.co";
 const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0ZnNwenZjZXR4bWNmZnR3b25xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4NTEyNzIsImV4cCI6MjA3MDQyNzI3Mn0.RoQlasob6T3SuGmR4r_oFmbIcwrK8r6Q7KQDIwFrPBg";
 
-// Hook to get Clerk-authenticated Supabase client using official integration pattern
+// Hook to get Clerk-authenticated Supabase client using NEW Third-Party Auth integration
 export const useClerkSupabaseClient = () => {
   const { isSignedIn } = useAuth();
   const { session } = useSession();
@@ -23,7 +23,7 @@ export const useClerkSupabaseClient = () => {
           'Prefer': 'return=representation',
         },
       },
-      // Use accessToken approach to inject Clerk JWT
+      // NEW APPROACH: Use accessToken callback for Third-Party Auth integration
       accessToken: async () => {
         if (!isSignedIn || !session) {
           console.log('[ClerkAdapter] No Clerk session available');
@@ -31,24 +31,18 @@ export const useClerkSupabaseClient = () => {
         }
         
         try {
-          // Try to get Supabase-specific token first, fallback to regular token
-          let token;
-          try {
-            token = await session.getToken({ template: 'supabase' });
-            console.log('[ClerkAdapter] Got Supabase template token:', !!token);
-          } catch {
-            token = await session.getToken();
-            console.log('[ClerkAdapter] Got regular Clerk token:', !!token);
-          }
+          // Use session.getToken() without template for Third-Party Auth
+          const token = await session.getToken();
+          console.log('[ClerkAdapter] Got Clerk session token:', !!token);
           return token;
         } catch (error) {
-          console.error('[ClerkAdapter] Error getting token:', error);
+          console.error('[ClerkAdapter] Error getting session token:', error);
           return null;
         }
       },
     });
     
-    console.log('[ClerkAdapter] Created Supabase client with Clerk session token integration');
+    console.log('[ClerkAdapter] Created Supabase client with Clerk Third-Party Auth integration');
     
     return supabaseClient;
   }, [isSignedIn, session]);
