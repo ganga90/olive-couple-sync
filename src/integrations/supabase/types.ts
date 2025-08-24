@@ -384,6 +384,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      debug_clerk_user_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      debug_jwt_claims: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       is_couple_member: {
         Args: { couple_uuid: string; user_text: string }
         Returns: boolean

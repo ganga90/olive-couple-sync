@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
 import { useAuth } from "@/providers/AuthProvider";
-import { Share2, User2, Copy, Check } from "lucide-react";
+import { Share2, User2, Copy, Check, AlertTriangle } from "lucide-react";
 
 interface InviteFlowProps {
   you: string;
@@ -21,9 +21,33 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
   const [inviteUrl, setInviteUrl] = useState("");
   const [inviteMessage, setInviteMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [authDebug, setAuthDebug] = useState<string>("");
   const { createCouple } = useSupabaseCouple();
   const { user } = useAuth();
   const supabase = useClerkSupabaseClient();
+
+  // Debug auth state
+  useEffect(() => {
+    const debugAuth = async () => {
+      if (user) {
+        try {
+          const { data, error } = await supabase
+            .from('clerk_couples')
+            .select('count(*)')
+            .limit(1);
+          
+          if (error) {
+            setAuthDebug(`Auth Error: ${error.message}`);
+          } else {
+            setAuthDebug('Auth working correctly');
+          }
+        } catch (err) {
+          setAuthDebug(`Auth Debug Error: ${err}`);
+        }
+      }
+    };
+    debugAuth();
+  }, [user, supabase]);
 
   const handleSetupOnly = async () => {
     console.log('[InviteFlow] handleSetupOnly called with:', { you, partner, user: !!user });
@@ -140,6 +164,13 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
             You can start using Olive right away, or invite {partner} to join your shared space.
           </p>
         </div>
+
+        {authDebug && (
+          <div className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            <span className="text-xs text-yellow-800">{authDebug}</span>
+          </div>
+        )}
 
         <div className="space-y-3">
           <Button 
