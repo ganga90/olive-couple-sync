@@ -99,7 +99,7 @@ const NoteDetails = () => {
   const updateTaskOwner = async (newOwner: string) => {
     if (!note) return;
     try {
-      const ownerValue = newOwner || null;
+      const ownerValue = newOwner === "none" ? null : newOwner;
       setLocalTaskOwner(ownerValue);
       await updateNote(note.id, { task_owner: ownerValue });
       setIsEditingOwner(false);
@@ -232,14 +232,14 @@ const NoteDetails = () => {
                 {isEditingOwner ? (
                   <div className="flex items-center gap-2">
                     <Select
-                      value={localTaskOwner || ""}
+                      value={localTaskOwner || "none"}
                       onValueChange={(value) => updateTaskOwner(value)}
                     >
                       <SelectTrigger className="flex-1 border-olive/30 focus:border-olive focus:ring-olive/20 bg-white">
                         <SelectValue placeholder="Select task owner..." />
                       </SelectTrigger>
                       <SelectContent className="bg-white border-olive/20 shadow-lg z-50">
-                        <SelectItem value="">No owner assigned</SelectItem>
+                        <SelectItem value="none">No owner assigned</SelectItem>
                         {availableOwners.map((owner) => (
                           <SelectItem key={owner.id} value={owner.name}>
                             {owner.name} {owner.isCurrentUser ? "(You)" : ""}
