@@ -167,10 +167,13 @@ export const useSupabaseCouples = () => {
       try {
         console.log('[useSupabaseCouples] Attempting to save couple to database');
         
+        // Only send the exact fields that exist in the database
         const { data, error } = await supabase
           .from("clerk_couples")
           .insert([{
-            ...coupleData,
+            title: coupleData.title,
+            you_name: coupleData.you_name,
+            partner_name: coupleData.partner_name,
             created_by: user.id,
           }])
           .select()

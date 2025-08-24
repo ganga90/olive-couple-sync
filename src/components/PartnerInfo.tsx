@@ -32,21 +32,38 @@ export const PartnerInfo = () => {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
 
+      // Create unique placeholder email to avoid conflicts
+      const uniqueEmail = `${partner?.toLowerCase().replace(/\s+/g, '') || 'partner'}-${Date.now()}@invite.olive`;
+
+      console.log('Creating invite with:', {
+        couple_id: currentCouple.id,
+        invited_email: uniqueEmail,
+        invited_by: user?.id,
+        token,
+        status: 'pending',
+        expires_at: expiresAt.toISOString()
+      });
+
       // Create invite
-      const { error: inviteError } = await supabase
+      const { data: inviteData, error: inviteError } = await supabase
         .from("invites")
         .insert({
           couple_id: currentCouple.id,
-          invited_email: `${partner}@invite.olive`, // Placeholder email
+          invited_email: uniqueEmail,
           invited_by: user?.id,
           token,
           expires_at: expiresAt.toISOString(),
           status: "pending" as const,
-        });
+        })
+        .select()
+        .single();
 
       if (inviteError) {
+        console.error('Invite creation error:', inviteError);
         throw inviteError;
       }
+
+      console.log('Invite created successfully:', inviteData);
 
       // Generate invite URL
       const currentUrl = window.location.origin;
