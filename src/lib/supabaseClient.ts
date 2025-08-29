@@ -1,10 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
-import { useAuth } from '@clerk/clerk-react'
+import { useAuth as useClerkAuth } from '@clerk/clerk-react'
 import { useMemo } from 'react'
 import type { Database } from '@/integrations/supabase/types'
 
 export function useSupabase() {
-  const { getToken } = useAuth()
+  const { getToken } = useClerkAuth()
 
   return useMemo(() => {
     const url = import.meta.env.VITE_SUPABASE_URL!
