@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
-import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
+import { useSupabase } from "@/lib/supabaseClient";
 import { OliveLogo } from "@/components/OliveLogo";
 import { useSEO } from "@/hooks/useSEO";
 import { Check, X, Clock, Heart } from "lucide-react";
@@ -13,7 +13,7 @@ const AcceptInvite = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const supabase = useClerkSupabaseClient();
+  const supabase = useSupabase();
   const [loading, setLoading] = useState(true);
   const [invite, setInvite] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);

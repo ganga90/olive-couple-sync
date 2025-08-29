@@ -6,7 +6,7 @@ import { Plus, Send, Sparkles } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
-import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
+import { useSupabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 
 export const FloatingNoteButton: React.FC = () => {
@@ -16,7 +16,7 @@ export const FloatingNoteButton: React.FC = () => {
   const { user } = useAuth();
   const { currentCouple, you } = useSupabaseCouple();
   const { addNote } = useSupabaseNotesContext();
-  const supabase = useClerkSupabaseClient();
+  const supabase = useSupabase();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

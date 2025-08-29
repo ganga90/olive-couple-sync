@@ -6,7 +6,7 @@ import { Send, Sparkles } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
-import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
+import { useSupabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { NoteRecap } from "./NoteRecap";
 
@@ -21,7 +21,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const { user, loading, isAuthenticated } = useAuth();
   const { currentCouple, createCouple } = useSupabaseCouple();
   const { addNote } = useSupabaseNotesContext();
-  const supabaseClient = useClerkSupabaseClient();
+  const supabase = useSupabase();
 
   // Debug authentication state in NoteInput
   console.log('[NoteInput] Auth State:', { 
@@ -88,7 +88,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
       console.log('[NoteInput] Processing note with AI for user:', user.id);
       
       // Process the note with Gemini AI
-      const { data: aiProcessedNote, error } = await supabaseClient.functions.invoke('process-note', {
+      const { data: aiProcessedNote, error } = await supabase.functions.invoke('process-note', {
         body: { 
           text: text.trim(),
           user_id: user.id
