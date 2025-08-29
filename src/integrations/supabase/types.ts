@@ -397,6 +397,10 @@ export type Database = {
           token: string
         }
       }
+      debug_claims: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       debug_clerk_jwt: {
         Args: Record<PropertyKey, never>
         Returns: string

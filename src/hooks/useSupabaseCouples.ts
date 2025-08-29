@@ -145,29 +145,52 @@ export const useSupabaseCouples = () => {
     console.log("[Couples] Creating couple with data:", coupleData, "user:", user.id);
 
     try {
-      // First, try to save to database to get the real ID
-      console.log('[useSupabaseCouples] Attempting to save couple to database');
-      console.log('[useSupabaseCouples] User ID:', user.id);
-      console.log('[useSupabaseCouples] Couple data to insert:', {
+      // Debug JWT claims first
+      console.log('[Couples] Debugging JWT claims before insert...');
+      const { data: claims, error: claimsError } = await supabase.rpc('debug_claims');
+      console.log('[Couples] debug_claims result:', { data: claims, error: claimsError });
+      
+      const claimsObj = claims as any;
+      if (!claimsObj?.sub) {
+        console.error('[Couples] No JWT sub found! Token not being passed to Supabase client.');
+        toast.error("Authentication error - please refresh and try again");
+        return null;
+      }
+
+      console.log('[Couples] JWT sub from claims:', claimsObj.sub);
+      console.log('[Couples] User ID from Clerk:', user.id);
+      
+      // Ensure user.id matches JWT sub
+      if (user.id !== claimsObj.sub) {
+        console.error('[Couples] Mismatch between user.id and JWT sub!', { userId: user.id, jwtSub: claimsObj.sub });
+        toast.error("Authentication mismatch - please refresh and try again");
+        return null;
+      }
+
+      const insertPayload = {
         title: coupleData.title || `${coupleData.you_name || 'You'} & ${coupleData.partner_name || 'Partner'}`,
         you_name: coupleData.you_name,
         partner_name: coupleData.partner_name,
         created_by: user.id,
-      });
+      };
+      
+      console.log('[Couples] Inserting with payload:', insertPayload);
       
       const { data, error } = await supabase
         .from("clerk_couples")
-        .insert({
-          title: coupleData.title || `${coupleData.you_name || 'You'} & ${coupleData.partner_name || 'Partner'}`,
-          you_name: coupleData.you_name,
-          partner_name: coupleData.partner_name,
-          created_by: user.id,
-        })
+        .insert(insertPayload)
         .select('id, created_by, title, you_name, partner_name, created_at, updated_at')
         .single();
 
+      console.log('[Couples] Insert result:', { data, error });
+
       if (error) {
-        console.error('[useSupabaseCouples] Failed to create couple:', error);
+        console.error('[Couples] Failed to create couple:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
         toast.error(`Failed to create couple: ${error.message}`);
         return null;
       }
@@ -185,7 +208,7 @@ export const useSupabaseCouples = () => {
 
       return null;
     } catch (error) {
-      console.error("[Couples] Error creating couple:", error);
+      console.error("[Couples] Exception in createCouple:", error);
       toast.error(`Failed to create couple workspace: ${error.message || error}`);
       return null;
     }
