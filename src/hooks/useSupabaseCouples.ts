@@ -76,7 +76,7 @@ export const useSupabaseCouples = () => {
 
       if (error) throw error;
 
-      const userCouples = data?.map(member => member.clerk_couples).filter(Boolean) as SupabaseCouple[] || [];
+      const userCouples = (data?.map(member => member.clerk_couples).filter(Boolean) || []) as unknown as SupabaseCouple[];
       console.log("[Couples] Found couples:", userCouples);
       setCouples(userCouples);
       
