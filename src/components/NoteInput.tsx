@@ -136,6 +136,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
       if (savedNote) {
         // Show the recap
         setProcessedNote({
+          id: savedNote.id,
           summary: aiProcessedNote.summary,
           category: aiProcessedNote.category,
           dueDate: aiProcessedNote.due_date,
@@ -163,11 +164,20 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
     setProcessedNote(null);
   };
 
+  const handleNoteUpdated = (updatedNote: any) => {
+    setProcessedNote(prev => prev ? { ...prev, ...updatedNote } : null);
+    onNoteAdded?.(); // Refresh the notes list
+  };
+
   // If we have a processed note, show the recap
   if (processedNote) {
     return (
       <div className="space-y-4">
-        <NoteRecap note={processedNote} onClose={handleCloseRecap} />
+        <NoteRecap 
+          note={processedNote} 
+          onClose={handleCloseRecap} 
+          onNoteUpdated={handleNoteUpdated}
+        />
         <Button 
           onClick={handleCloseRecap}
           variant="outline" 

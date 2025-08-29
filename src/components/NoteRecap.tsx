@@ -1,11 +1,18 @@
-import React from "react";
+import React, { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Calendar, User, Tag, List, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CheckCircle, Calendar, User, Tag, List, Sparkles, Pencil, Check, X } from "lucide-react";
 import { format } from "date-fns";
+import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
+import { toast } from "sonner";
 
 interface NoteRecapProps {
   note: {
+    id?: string;
     summary: string;
     category: string;
     dueDate?: string | null;
@@ -17,9 +24,19 @@ interface NoteRecapProps {
     createdAt: string;
   };
   onClose?: () => void;
+  onNoteUpdated?: (updatedNote: any) => void;
 }
 
-export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose }) => {
+export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdated }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedNote, setEditedNote] = useState({
+    summary: note.summary,
+    category: note.category,
+    priority: note.priority || "medium",
+    tags: note.tags ? note.tags.join(", ") : "",
+    items: note.items ? note.items.join("\n") : ""
+  });
+  const { updateNote } = useSupabaseNotesContext();
   const getPriorityColor = (priority?: string) => {
     switch (priority) {
       case "high": return "bg-red-100 text-red-800 border-red-200";
@@ -42,6 +59,44 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose }) => {
     }
   };
 
+  const handleSaveEdit = async () => {
+    if (!note.id) {
+      toast.error("Cannot edit note - no ID found");
+      return;
+    }
+
+    try {
+      const updates = {
+        summary: editedNote.summary.trim(),
+        category: editedNote.category,
+        priority: editedNote.priority,
+        tags: editedNote.tags.split(",").map(tag => tag.trim()).filter(Boolean),
+        items: editedNote.items.split("\n").map(item => item.trim()).filter(Boolean)
+      };
+
+      const updatedNote = await updateNote(note.id, updates);
+      if (updatedNote) {
+        onNoteUpdated?.(updatedNote);
+        setIsEditing(false);
+        toast.success("Note updated successfully!");
+      }
+    } catch (error) {
+      console.error("Error updating note:", error);
+      toast.error("Failed to update note");
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedNote({
+      summary: note.summary,
+      category: note.category,
+      priority: note.priority || "medium",
+      tags: note.tags ? note.tags.join(", ") : "",
+      items: note.items ? note.items.join("\n") : ""
+    });
+    setIsEditing(false);
+  };
+
   return (
     <Card className="bg-gradient-to-br from-olive/5 to-olive/10 border-olive/20 shadow-soft">
       <div className="p-6 space-y-4">
@@ -51,64 +106,159 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose }) => {
             <CheckCircle className="h-5 w-5 text-olive" />
             <h3 className="text-lg font-semibold text-foreground">Note Organized!</h3>
           </div>
-          <Sparkles className="h-5 w-5 text-olive animate-pulse" />
+          <div className="flex items-center gap-2">
+            {!isEditing ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsEditing(true)}
+                className="text-olive hover:bg-olive/10"
+              >
+                <Pencil className="h-4 w-4 mr-1" />
+                Edit
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSaveEdit}
+                  className="text-green-600 hover:bg-green-50"
+                >
+                  <Check className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCancelEdit}
+                  className="text-red-600 hover:bg-red-50"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+            <Sparkles className="h-5 w-5 text-olive animate-pulse" />
+          </div>
         </div>
 
         {/* Summary */}
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">AI Summary</h4>
-          <p className="text-base font-medium text-foreground">{note.summary}</p>
-        </div>
-
-        {/* Category and Priority */}
-        <div className="flex flex-wrap gap-2">
-          <Badge className={getCategoryColor(note.category)}>
-            {note.category.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
-          </Badge>
-          {note.priority && (
-            <Badge className={getPriorityColor(note.priority)}>
-              {note.priority} priority
-            </Badge>
+          {isEditing ? (
+            <Textarea
+              value={editedNote.summary}
+              onChange={(e) => setEditedNote(prev => ({ ...prev, summary: e.target.value }))}
+              className="text-base font-medium border-olive/30 focus:border-olive"
+              rows={2}
+            />
+          ) : (
+            <p className="text-base font-medium text-foreground">{note.summary}</p>
           )}
         </div>
 
+        {/* Category and Priority */}
+        {isEditing ? (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Category</label>
+              <Select value={editedNote.category} onValueChange={(value) => setEditedNote(prev => ({ ...prev, category: value }))}>
+                <SelectTrigger className="border-olive/30 focus:border-olive">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="groceries">Groceries</SelectItem>
+                  <SelectItem value="shopping">Shopping</SelectItem>
+                  <SelectItem value="dateIdeas">Date Ideas</SelectItem>
+                  <SelectItem value="homeImprovement">Home Improvement</SelectItem>
+                  <SelectItem value="travel">Travel</SelectItem>
+                  <SelectItem value="reminder">Reminder</SelectItem>
+                  <SelectItem value="personal">Personal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Priority</label>
+              <Select value={editedNote.priority} onValueChange={(value) => setEditedNote(prev => ({ ...prev, priority: value as "low" | "medium" | "high" }))}>
+                <SelectTrigger className="border-olive/30 focus:border-olive">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low Priority</SelectItem>
+                  <SelectItem value="medium">Medium Priority</SelectItem>
+                  <SelectItem value="high">High Priority</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <Badge className={getCategoryColor(note.category)}>
+              {note.category.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+            </Badge>
+            {note.priority && (
+              <Badge className={getPriorityColor(note.priority)}>
+                {note.priority} priority
+              </Badge>
+            )}
+          </div>
+        )}
+
         {/* Items list */}
-        {note.items && note.items.length > 0 && (
+        {(isEditing || (note.items && note.items.length > 0)) && (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <List className="h-4 w-4 text-muted-foreground" />
               <h4 className="text-sm font-medium text-muted-foreground">Items</h4>
             </div>
-            <ul className="space-y-1">
-              {note.items.slice(0, 3).map((item, index) => (
-                <li key={index} className="text-sm text-foreground flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-olive rounded-full"></span>
-                  {item}
-                </li>
-              ))}
-              {note.items.length > 3 && (
-                <li className="text-sm text-muted-foreground">
-                  +{note.items.length - 3} more items
-                </li>
-              )}
-            </ul>
+            {isEditing ? (
+              <Textarea
+                value={editedNote.items}
+                onChange={(e) => setEditedNote(prev => ({ ...prev, items: e.target.value }))}
+                placeholder="Enter items, one per line..."
+                className="border-olive/30 focus:border-olive"
+                rows={4}
+              />
+            ) : (
+              <ul className="space-y-1">
+                {note.items?.slice(0, 3).map((item, index) => (
+                  <li key={index} className="text-sm text-foreground flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-olive rounded-full"></span>
+                    {item}
+                  </li>
+                ))}
+                {note.items && note.items.length > 3 && (
+                  <li className="text-sm text-muted-foreground">
+                    +{note.items.length - 3} more items
+                  </li>
+                )}
+              </ul>
+            )}
           </div>
         )}
 
         {/* Tags */}
-        {note.tags && note.tags.length > 0 && (
+        {(isEditing || (note.tags && note.tags.length > 0)) && (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Tag className="h-4 w-4 text-muted-foreground" />
               <h4 className="text-sm font-medium text-muted-foreground">Tags</h4>
             </div>
-            <div className="flex flex-wrap gap-1">
-              {note.tags.map((tag, index) => (
-                <Badge key={index} variant="outline" className="text-xs">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
+            {isEditing ? (
+              <Input
+                value={editedNote.tags}
+                onChange={(e) => setEditedNote(prev => ({ ...prev, tags: e.target.value }))}
+                placeholder="Enter tags separated by commas..."
+                className="border-olive/30 focus:border-olive"
+              />
+            ) : (
+              <div className="flex flex-wrap gap-1">
+                {note.tags?.map((tag, index) => (
+                  <Badge key={index} variant="outline" className="text-xs">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
