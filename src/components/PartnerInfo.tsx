@@ -67,7 +67,7 @@ export const PartnerInfo = () => {
 
       // Generate invite URL
       const currentUrl = window.location.origin;
-      const inviteLink = `${currentUrl}/accept-invite?token=${token}`;
+      const inviteLink = `${currentUrl}/accept-invite?token=${inviteData.token}`;
       
       // Create personalized message
       const message = `Hey ${partner || 'there'}! 🌿\n\n${you || 'Your partner'} has invited you to join your shared Olive space where you can organize notes, lists, and tasks together.\n\nClick this link to join: ${inviteLink}\n\nThis link expires in 7 days. Looking forward to organizing together! 💚`;
