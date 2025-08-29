@@ -8,8 +8,8 @@ export function useSupabase() {
 
   return useMemo(() => {
     const url = import.meta.env.VITE_SUPABASE_URL!
-    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY!
-    if (!url || !anon) console.error('[Supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY')
+    const anon = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY!
+    if (!url || !anon) console.error('[Supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY')
 
     return createClient<Database>(url, anon, {
       accessToken: async () => await getToken(),
