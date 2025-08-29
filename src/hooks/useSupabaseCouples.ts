@@ -142,8 +142,6 @@ export const useSupabaseCouples = () => {
       return null;
     }
 
-    console.log("[Couples] Creating couple with data:", coupleData, "user:", user.id);
-
     try {
       // Debug JWT claims first
       console.log('[Couples] Debugging JWT claims before insert...');
@@ -159,6 +157,7 @@ export const useSupabaseCouples = () => {
 
       console.log('[Couples] JWT sub from claims:', claimsObj.sub);
       console.log('[Couples] User ID from Clerk:', user.id);
+      console.log('[Couples] Auth role:', claimsObj.role);
       
       // Ensure user.id matches JWT sub
       if (user.id !== claimsObj.sub) {
@@ -167,40 +166,39 @@ export const useSupabaseCouples = () => {
         return null;
       }
 
-      const insertPayload = {
-        title: coupleData.title || `${coupleData.you_name || 'You'} & ${coupleData.partner_name || 'Partner'}`,
-        you_name: coupleData.you_name,
-        partner_name: coupleData.partner_name,
-        created_by: user.id,
-      };
+      // Use the new atomic RPC function for couple creation
+      console.log('[Couples] Using create_couple RPC with params:', {
+        p_title: coupleData.title,
+        p_you_name: coupleData.you_name,
+        p_partner_name: coupleData.partner_name
+      });
       
-      console.log('[Couples] Inserting with payload:', insertPayload);
-      
-      const { data, error } = await supabase
-        .from("clerk_couples")
-        .insert(insertPayload)
-        .select('id, created_by, title, you_name, partner_name, created_at, updated_at')
-        .single();
+      const { data, error } = await supabase.rpc('create_couple', {
+        p_title: coupleData.title,
+        p_you_name: coupleData.you_name,
+        p_partner_name: coupleData.partner_name
+      });
 
-      console.log('[Couples] Insert result:', { data, error });
+      console.log('[Couples] RPC result:', { data, error });
 
       if (error) {
-        console.error('[Couples] Failed to create couple:', {
+        console.error('[Couples] Failed to create couple via RPC:', {
           message: error.message,
           details: error.details,
           hint: error.hint,
-          code: error.code
+          code: error.code,
+          fullError: JSON.stringify(error, null, 2)
         });
         toast.error(`Failed to create couple: ${error.message}`);
         return null;
       }
 
       if (data) {
-        console.log("[Couples] Couple saved to database successfully:", data);
+        console.log("[Couples] Couple created successfully via RPC:", data);
         
-        // Use the database couple (with real ID)
+        // Refresh couples list and set current
+        await fetchCouples();
         setCurrentCouple(data);
-        setCouples(prev => [...prev, data]);
         toast.success("Your workspace is ready!");
         
         return data;
@@ -212,7 +210,7 @@ export const useSupabaseCouples = () => {
       toast.error(`Failed to create couple workspace: ${error.message || error}`);
       return null;
     }
-  }, [user, supabase]);
+  }, [user, supabase, fetchCouples]);
 
   const updateCouple = useCallback(async (id: string, updates: { title?: string; you_name?: string; partner_name?: string }) => {
     if (!user) {
