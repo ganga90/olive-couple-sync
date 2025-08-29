@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseCouples } from "@/hooks/useSupabaseCouples";
+import { useSupabase } from "@/lib/supabaseClient";
 import { useSEO } from "@/hooks/useSEO";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,6 +25,7 @@ const NoteDetails = () => {
   const { user } = useUser();
   const { notes, deleteNote, updateNote } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouples();
+  const supabase = useSupabase();
   const note = useMemo(() => notes.find((n) => n.id === id), [notes, id]);
 
   useSEO({ title: note ? `${note.summary} — Olive` : "Note — Olive", description: note?.originalText });
@@ -97,7 +99,7 @@ const NoteDetails = () => {
     if (!text || !note) return;
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: text }]);
-    const { reply, updates } = await assistWithNote(note, text);
+    const { reply, updates } = await assistWithNote(note, text, supabase);
     if (updates && Object.keys(updates).length) {
       await updateNote(note.id, updates);
     }

@@ -1,14 +1,15 @@
 import { Note } from "@/types/note";
-import { supabase } from "@/integrations/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Enhanced assistant using Gemini AI for better responses
 export async function assistWithNote(
   note: Note,
-  userMessage: string
+  userMessage: string,
+  supabaseClient: SupabaseClient<any>
 ): Promise<{ reply: string; updates?: Partial<Note> }> {
   try {
     // Call the ask-olive-individual edge function for focused assistance
-    const { data, error } = await supabase.functions.invoke('ask-olive-individual', {
+    const { data, error } = await supabaseClient.functions.invoke('ask-olive-individual', {
       body: { 
         noteContent: `Summary: ${note.summary}\nOriginal: ${note.originalText}\nItems: ${note.items?.join(', ') || 'None'}`,
         userMessage: userMessage,
@@ -50,7 +51,7 @@ export async function assistWithNote(
 }
 
 // Backward-compatible wrapper used elsewhere
-export async function generateOliveReply(note: Note, userMessage: string): Promise<string> {
-  const { reply } = await assistWithNote(note, userMessage);
+export async function generateOliveReply(note: Note, userMessage: string, supabaseClient: SupabaseClient<any>): Promise<string> {
+  const { reply } = await assistWithNote(note, userMessage, supabaseClient);
   return reply;
 }
