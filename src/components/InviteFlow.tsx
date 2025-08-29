@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
-import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
+import { useSupabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/providers/AuthProvider";
 import { Share2, User2, Copy, Check, AlertTriangle } from "lucide-react";
 
@@ -24,7 +24,7 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
   const [authDebug, setAuthDebug] = useState<string>("");
   const { createCouple } = useSupabaseCouple();
   const { user } = useAuth();
-  const supabase = useClerkSupabaseClient();
+  const supabase = useSupabase();
 
   // Debug auth state
   useEffect(() => {
@@ -131,19 +131,12 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         expires_at: expiresAt.toISOString()
       });
 
-      // Create invite
+      // Use the new RPC function for idempotent invite creation
       const { data: inviteData, error: inviteError } = await supabase
-        .from("invites")
-        .insert({
-          couple_id: coupleId,
-          invited_email: uniqueEmail,
-          invited_by: user?.id,
-          token,
-          status: 'pending',
-          expires_at: expiresAt.toISOString(),
-        })
-        .select()
-        .single();
+        .rpc('create_invite', {
+          p_couple_id: coupleId,
+          p_invited_email: uniqueEmail.toLowerCase(),
+        });
 
       if (inviteError) {
         console.error('Invite creation error:', inviteError);

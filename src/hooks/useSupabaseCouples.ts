@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
-import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
+import { useSupabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 
 export type SupabaseCouple = {
@@ -30,7 +30,7 @@ export const useSupabaseCouples = () => {
     return stored ? JSON.parse(stored) : null;
   });
   const [loading, setLoading] = useState(true);
-  const supabase = useClerkSupabaseClient();
+  const supabase = useSupabase();
 
   console.log('[useSupabaseCouples] Hook initialized with user:', !!user, 'loading:', loading);
 
@@ -157,49 +157,19 @@ export const useSupabaseCouples = () => {
       
       const { data, error } = await supabase
         .from("clerk_couples")
-        .insert([{
+        .insert({
           title: coupleData.title || `${coupleData.you_name || 'You'} & ${coupleData.partner_name || 'Partner'}`,
           you_name: coupleData.you_name,
           partner_name: coupleData.partner_name,
           created_by: user.id,
-        }])
-        .select()
+        })
+        .select('id, created_by, title, you_name, partner_name, created_at, updated_at')
         .single();
 
       if (error) {
-        console.error('[useSupabaseCouples] Database save error details:', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint,
-          fullError: error
-        });
-        
-        // Also log what we're trying to insert
-        console.error('[useSupabaseCouples] Failed insert payload:', {
-          title: coupleData.title || `${coupleData.you_name || 'You'} & ${coupleData.partner_name || 'Partner'}`,
-          you_name: coupleData.you_name,
-          partner_name: coupleData.partner_name,
-          created_by: user.id,
-        });
-        
-        // Create a fallback local couple if database fails
-        const localCouple: SupabaseCouple = {
-          id: crypto.randomUUID(),
-          title: coupleData.title || `${coupleData.you_name || 'You'} & ${coupleData.partner_name || 'Partner'}`,
-          you_name: coupleData.you_name,
-          partner_name: coupleData.partner_name,
-          created_by: user.id,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-        
-        setCurrentCouple(localCouple);
-        setCouples(prev => [...prev, localCouple]);
-        console.log("[Couples] Created local couple due to DB error:", localCouple);
-        toast.error("Database error: Your workspace is in offline mode. Please check your connection.");
-        
-        return localCouple;
+        console.error('[useSupabaseCouples] Failed to create couple:', error);
+        toast.error(`Failed to create couple: ${error.message}`);
+        return null;
       }
 
       if (data) {

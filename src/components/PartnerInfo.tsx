@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
-import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
+import { useSupabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/providers/AuthProvider";
 import { User2, Share2, Plus, Check, Clock, X, Copy } from "lucide-react";
 
@@ -17,7 +17,7 @@ export const PartnerInfo = () => {
   const [copied, setCopied] = useState(false);
   const { currentCouple, you, partner } = useSupabaseCouple();
   const { user } = useAuth();
-  const supabase = useClerkSupabaseClient();
+  const supabase = useSupabase();
 
   const handleCreateInvite = async () => {
     if (!currentCouple) {
@@ -51,24 +51,12 @@ export const PartnerInfo = () => {
         expires_at: expiresAt.toISOString()
       });
 
-      // Check if couple is properly saved to database (not just local offline mode)
-      if (!currentCouple.id || currentCouple.id.length < 20 || currentCouple.created_at === currentCouple.updated_at) {
-        throw new Error("Your workspace is in offline mode. Please refresh the page or check your connection before sending invites.");
-      }
-
-      // Create invite
+      // Use the new RPC function for idempotent invite creation
       const { data: inviteData, error: inviteError } = await supabase
-        .from("invites")
-        .insert({
-          couple_id: currentCouple.id,
-          invited_email: uniqueEmail,
-          invited_by: user?.id,
-          token,
-          expires_at: expiresAt.toISOString(),
-          status: "pending" as const,
-        })
-        .select()
-        .single();
+        .rpc('create_invite', {
+          p_couple_id: currentCouple.id,
+          p_invited_email: uniqueEmail.toLowerCase(),
+        });
 
       if (inviteError) {
         console.error('Invite creation error:', inviteError);

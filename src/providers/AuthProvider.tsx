@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect } from "react";
 import { useUser, useAuth as useClerkAuth } from "@clerk/clerk-react";
-import { useClerkSupabaseClient } from "@/integrations/supabase/clerk-adapter";
+import { useSupabase } from "@/lib/supabaseClient";
 
 type AuthContextValue = {
   user: any;
@@ -13,7 +13,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoaded } = useUser();
   const { isSignedIn } = useClerkAuth();
-  const supabase = useClerkSupabaseClient();
+  const supabase = useSupabase();
 
   console.log('[AuthProvider] Clerk state:', { 
     isLoaded, 
