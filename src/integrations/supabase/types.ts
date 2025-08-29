@@ -280,7 +280,7 @@ export type Database = {
           invited_by?: string | null
           invited_email: string
           status?: Database["public"]["Enums"]["invite_status"]
-          token: string
+          token?: string
         }
         Update: {
           couple_id?: string
@@ -384,6 +384,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_invite: {
+        Args: { p_couple_id: string; p_invited_email: string }
+        Returns: {
+          couple_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          invited_by: string | null
+          invited_email: string
+          status: Database["public"]["Enums"]["invite_status"]
+          token: string
+        }
+      }
       debug_clerk_jwt: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -405,11 +418,11 @@ export type Database = {
         Returns: string
       }
       is_couple_member: {
-        Args: { couple_uuid: string; user_text: string }
+        Args: { c: string } | { couple_uuid: string; user_text: string }
         Returns: boolean
       }
       is_couple_owner: {
-        Args: { couple_uuid: string; user_text: string }
+        Args: { c: string } | { couple_uuid: string; user_text: string }
         Returns: boolean
       }
     }
