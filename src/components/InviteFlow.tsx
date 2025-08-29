@@ -93,50 +93,34 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
   const handleCreateInvite = async () => {
     setLoading(true);
     try {
-      // Create couple first
-      const couple = await createCouple({
-        title: `${you} & ${partner}`,
-        you_name: you,
-        partner_name: partner,
+      // Create couple first using the atomic RPC
+      const { data: couple, error: coupleError } = await supabase.rpc('create_couple', {
+        p_title: `${you} & ${partner}`,
+        p_you_name: you,
+        p_partner_name: partner
       });
 
-      if (!couple) {
-        throw new Error("Failed to create couple");
+      if (coupleError || !couple) {
+        console.error('Failed to create couple:', coupleError);
+        throw coupleError || new Error("Failed to create couple");
       }
 
-      // Generate a highly unique token to avoid conflicts
-      const timestamp = Date.now();
-      const randomPart = crypto.randomUUID();
-      const token = `${timestamp}-${randomPart}`;
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
+      console.log('Couple created successfully:', couple);
 
-      // Use the couple ID from the database if available, otherwise use local ID
-      const coupleId = couple.id;
-      
       // Create unique placeholder email to avoid conflicts
+      const timestamp = Date.now();
       const uniqueEmail = `${partner.toLowerCase().replace(/\s+/g, '')}-${timestamp}@invite.olive`;
 
-      // Check if couple is properly saved to database (not just local offline mode)
-      if (!coupleId || coupleId.length < 20) {
-        throw new Error("Your workspace is in offline mode. Please refresh the page or check your connection before sending invites.");
-      }
-
-      console.log('Creating invite with:', {
-        couple_id: coupleId,
-        invited_email: uniqueEmail,
-        invited_by: user?.id,
-        token,
-        status: 'pending',
-        expires_at: expiresAt.toISOString()
+      console.log('Creating invite with RPC:', {
+        couple_id: couple.id,
+        invited_email: uniqueEmail
       });
 
-      // Use the new RPC function for idempotent invite creation
-      const { data: inviteData, error: inviteError } = await supabase
-        .rpc('create_invite', {
-          p_couple_id: coupleId,
-          p_invited_email: uniqueEmail.toLowerCase(),
-        });
+      // Use the new idempotent RPC function for invite creation
+      const { data: inviteData, error: inviteError } = await supabase.rpc('create_invite', {
+        p_couple_id: couple.id,
+        p_invited_email: uniqueEmail.toLowerCase()
+      });
 
       if (inviteError) {
         console.error('Invite creation error:', inviteError);
@@ -145,7 +129,7 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
 
       console.log('Invite created successfully:', inviteData);
 
-      // Generate invite URL
+      // Generate invite URL using the token from RPC response
       const currentUrl = window.location.origin;
       const inviteLink = `${currentUrl}/accept-invite?token=${inviteData.token}`;
       
