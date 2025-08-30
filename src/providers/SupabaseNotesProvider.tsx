@@ -44,7 +44,7 @@ const mapAICategory = (aiCategory: string): string => {
 };
 
 // Convert Supabase note to app Note type
-const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any): Note => ({
+const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any, currentCouple?: any): Note => ({
   id: supabaseNote.id,
   originalText: supabaseNote.original_text,
   summary: supabaseNote.summary,
@@ -59,7 +59,11 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
   priority: supabaseNote.priority || undefined,
   tags: supabaseNote.tags || undefined,
   items: supabaseNote.items || undefined,
-  task_owner: supabaseNote.task_owner || undefined,
+  task_owner: supabaseNote.task_owner && supabaseNote.task_owner.startsWith('user_') ? 
+    (supabaseNote.task_owner === currentUser?.id ? 
+      (currentCouple?.you_name || currentUser?.firstName || currentUser?.fullName || "You") : 
+      (currentCouple?.partner_name || "Partner")) : 
+    supabaseNote.task_owner || undefined,
   list_id: supabaseNote.list_id || undefined,
 });
 
@@ -94,11 +98,11 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
   } = useSupabaseNotes(currentCouple?.id || null); // Pass null for personal notes when no couple
 
   const notes = useMemo(() => {
-    const convertedNotes = supabaseNotes.map(note => convertSupabaseNoteToNote(note, user));
+    const convertedNotes = supabaseNotes.map(note => convertSupabaseNoteToNote(note, user, currentCouple));
     console.log('[SupabaseNotesProvider] Converting notes:', supabaseNotes.length, 'supabase notes to', convertedNotes.length, 'app notes');
     return convertedNotes;
   }, 
-    [supabaseNotes, user]
+    [supabaseNotes, user, currentCouple]
   );
 
   const addNote = async (noteData: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => {
@@ -107,7 +111,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
       couple_id: currentCouple?.id || null, // Allow null for personal notes
     };
     const result = await addSupabaseNote(supabaseNoteData);
-    return result ? convertSupabaseNoteToNote(result, user) : null;
+    return result ? convertSupabaseNoteToNote(result, user, currentCouple) : null;
   };
 
   const updateNote = async (id: string, updates: Partial<Note>) => {
@@ -126,7 +130,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     if (updates.list_id !== undefined) supabaseUpdates.list_id = updates.list_id;
 
     const result = await updateSupabaseNote(id, supabaseUpdates);
-    return result ? convertSupabaseNoteToNote(result, user) : null;
+    return result ? convertSupabaseNoteToNote(result, user, currentCouple) : null;
   };
 
   const deleteNote = async (id: string) => {
@@ -135,7 +139,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const getNotesByCategory = (category: string) => {
     const categoryNotes = getSupabaseNotesByCategory(category.toLowerCase().replace(/\s+/g, '_'));
-    return categoryNotes.map(note => convertSupabaseNoteToNote(note, user));
+    return categoryNotes.map(note => convertSupabaseNoteToNote(note, user, currentCouple));
   };
 
   const value = useMemo(() => ({
