@@ -22,6 +22,7 @@ interface NoteRecapProps {
     originalText: string;
     author: string;
     createdAt: string;
+    task_owner?: string | null;
   };
   onClose?: () => void;
   onNoteUpdated?: (updatedNote: any) => void;
@@ -34,7 +35,9 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
     category: note.category,
     priority: note.priority || "medium",
     tags: note.tags ? note.tags.join(", ") : "",
-    items: note.items ? note.items.join("\n") : ""
+    items: note.items ? note.items.join("\n") : "",
+    dueDate: note.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
+    taskOwner: note.task_owner || ""
   });
   const { updateNote } = useSupabaseNotesContext();
   const getPriorityColor = (priority?: string) => {
@@ -71,7 +74,9 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
         category: editedNote.category,
         priority: editedNote.priority,
         tags: editedNote.tags.split(",").map(tag => tag.trim()).filter(Boolean),
-        items: editedNote.items.split("\n").map(item => item.trim()).filter(Boolean)
+        items: editedNote.items.split("\n").map(item => item.trim()).filter(Boolean),
+        due_date: editedNote.dueDate ? new Date(editedNote.dueDate).toISOString() : null,
+        task_owner: editedNote.taskOwner.trim() || null
       };
 
       const updatedNote = await updateNote(note.id, updates);
@@ -92,7 +97,9 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
       category: note.category,
       priority: note.priority || "medium",
       tags: note.tags ? note.tags.join(", ") : "",
-      items: note.items ? note.items.join("\n") : ""
+      items: note.items ? note.items.join("\n") : "",
+      dueDate: note.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
+      taskOwner: note.task_owner || ""
     });
     setIsEditing(false);
   };
@@ -189,6 +196,24 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Due Date</label>
+              <Input
+                type="date"
+                value={editedNote.dueDate}
+                onChange={(e) => setEditedNote(prev => ({ ...prev, dueDate: e.target.value }))}
+                className="border-olive/30 focus:border-olive"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Task Owner</label>
+              <Input
+                value={editedNote.taskOwner}
+                onChange={(e) => setEditedNote(prev => ({ ...prev, taskOwner: e.target.value }))}
+                placeholder="Enter task owner..."
+                className="border-olive/30 focus:border-olive"
+              />
+            </div>
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -268,6 +293,12 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
             <User className="h-4 w-4" />
             <span>Added by {note.author}</span>
           </div>
+          {note.task_owner && (
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              <span>Owner: {note.task_owner}</span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
             <span>{format(new Date(note.createdAt), "MMM d, yyyy 'at' h:mm a")}</span>
