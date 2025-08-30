@@ -25,11 +25,16 @@ serve(async (req) => {
     const DG_KEY = Deno.env.get("DEEPGRAM_OLIVEAI");
     if (!DG_KEY) {
       console.error("Missing DEEPGRAM_OLIVEAI environment variable");
-      return new Response(JSON.stringify({ error: "Missing Deepgram key" }), {
+      return new Response(JSON.stringify({ 
+        error: "Missing Deepgram key", 
+        message: "Voice input requires a valid Deepgram API key. Please configure DEEPGRAM_OLIVEAI secret." 
+      }), {
         status: 500,
         headers: { "content-type": "application/json", ...cors(req.headers.get("origin")) },
       });
     }
+
+    console.log("Deepgram key found, length:", DG_KEY.length);
 
     // Optional: TTL can be passed from client; default to 300s
     let ttl = 300;
@@ -54,10 +59,28 @@ serve(async (req) => {
       body: JSON.stringify({ ttl }),
     });
 
+    console.log("Deepgram response status:", dgRes.status);
+
     if (!dgRes.ok) {
       const txt = await dgRes.text();
-      console.error("Deepgram grant failed:", txt);
-      return new Response(JSON.stringify({ error: "Deepgram grant failed", details: txt }), {
+      console.error("Deepgram grant failed - Status:", dgRes.status, "Response:", txt);
+      
+      // Parse the error to provide better feedback
+      let errorMessage = "Deepgram API error";
+      try {
+        const errorData = JSON.parse(txt);
+        if (errorData.err_code === "FORBIDDEN") {
+          errorMessage = "Invalid or insufficient Deepgram API key permissions. Please check your Deepgram API key.";
+        }
+      } catch (_) {
+        // Use generic message if can't parse error
+      }
+      
+      return new Response(JSON.stringify({ 
+        error: errorMessage, 
+        details: txt,
+        status: dgRes.status 
+      }), {
         status: 502,
         headers: { "content-type": "application/json", ...cors(req.headers.get("origin")) },
       });
@@ -72,7 +95,11 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("Error in dg-token function:", e);
-    return new Response(JSON.stringify({ error: "Unexpected", details: String(e) }), {
+    return new Response(JSON.stringify({ 
+      error: "Unexpected error", 
+      details: String(e),
+      message: "An unexpected error occurred while requesting Deepgram token"
+    }), {
       status: 500,
       headers: { "content-type": "application/json", ...cors(req.headers.get("origin")) },
     });

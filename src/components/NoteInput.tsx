@@ -139,6 +139,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
         priority: aiProcessedNote.priority,
         tags: aiProcessedNote.tags,
         items: aiProcessedNote.items,
+        list_id: aiProcessedNote.list_id, // Include the list_id from AI processing
+        task_owner: aiProcessedNote.task_owner,
       };
       
       console.log('[NoteInput] Note data to save:', noteData);
