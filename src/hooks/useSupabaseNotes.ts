@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
+import type { Note } from "@/types/note";
 
 export type SupabaseNote = {
   id: string;
@@ -151,7 +152,7 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
     }
   }, [user, coupleId, supabase]);
 
-  const updateNote = useCallback(async (id: string, updates: Partial<SupabaseNote>) => {
+  const updateNote = useCallback(async (id: string, updates: Partial<Note>) => {
     if (!user) {
       toast.error("You must be signed in to update notes");
       return null;
@@ -162,26 +163,49 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
       console.log("[useSupabaseNotes] Current user:", user?.id);
       console.log("[useSupabaseNotes] Raw updates payload:", JSON.stringify(updates, null, 2));
       
-      // Validate payload - ensure we only send valid fields
-      const validUpdates: any = {};
-      const allowedFields = ['summary', 'category', 'priority', 'tags', 'items', 'due_date', 'completed', 'task_owner'];
+      // Convert camelCase Note fields to snake_case Supabase fields
+      const supabaseUpdates: any = {};
       
       Object.keys(updates).forEach(key => {
-        if (allowedFields.includes(key) && updates[key as keyof SupabaseNote] !== undefined) {
-          validUpdates[key] = updates[key as keyof SupabaseNote];
+        const value = updates[key as keyof Note];
+        if (value !== undefined) {
+          // Map camelCase to snake_case for Supabase
+          switch (key) {
+            case 'dueDate':
+              supabaseUpdates.due_date = value;
+              break;
+            case 'task_owner':
+              supabaseUpdates.task_owner = value;
+              break;
+            case 'originalText':
+              supabaseUpdates.original_text = value;
+              break;
+            // Direct mappings for fields that match
+            case 'summary':
+            case 'category':
+            case 'priority':
+            case 'tags':
+            case 'items':
+            case 'completed':
+              supabaseUpdates[key] = value;
+              break;
+            default:
+              console.warn("[useSupabaseNotes] Ignoring unknown field:", key);
+              break;
+          }
         }
       });
       
-      console.log("[useSupabaseNotes] Validated updates payload:", JSON.stringify(validUpdates, null, 2));
+      console.log("[useSupabaseNotes] Converted updates payload:", JSON.stringify(supabaseUpdates, null, 2));
       
-      if (Object.keys(validUpdates).length === 0) {
+      if (Object.keys(supabaseUpdates).length === 0) {
         console.error("[useSupabaseNotes] No valid fields to update");
         throw new Error('No valid fields provided for update');
       }
       
       const { data, error } = await supabase
         .from("clerk_notes")
-        .update(validUpdates)
+        .update(supabaseUpdates)
         .eq("id", id)
         .select()
         .single();
