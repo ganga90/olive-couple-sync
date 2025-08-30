@@ -32,3 +32,9 @@ export function getSupabase(): SupabaseClient {
   })
   return _client
 }
+
+// Temporary compatibility export to identify files still using old import
+export function useSupabase(): SupabaseClient {
+  console.warn('⚠️ DEPRECATED: useSupabase() is deprecated. Use getSupabase() instead.', new Error().stack)
+  return getSupabase()
+}
