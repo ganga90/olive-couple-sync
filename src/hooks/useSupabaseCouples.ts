@@ -150,11 +150,13 @@ export const useSupabaseCouples = () => {
       const supabase = getSupabase();
       
       // Use the new RPC function to create couple + owner membership
-      const { data: coupleId, error } = await supabase.rpc('create_couple', {
+      const rpcArgs = {
         p_title: coupleData.title || `${coupleData.you_name} & ${coupleData.partner_name}`,
-        p_you: coupleData.you_name || '',
-        p_partner: coupleData.partner_name || ''
-      });
+        p_you_name: coupleData.you_name || '',
+        p_partner_name: coupleData.partner_name || ''
+      };
+      console.log('[RPC:create_couple] body', rpcArgs);
+      const { data: coupleId, error } = await supabase.rpc('create_couple', rpcArgs);
 
       if (error) {
         console.error('[Couples] Failed to create couple via RPC:', error);

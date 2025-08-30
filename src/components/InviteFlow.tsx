@@ -32,9 +32,10 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
       if (user) {
         try {
           const supabase = getSupabase();
-          const { data, error } = await supabase
+          // Health check using recommended approach to avoid PostgREST 400 errors
+          const { error } = await supabase
             .from('clerk_couples')
-            .select('count(*)')
+            .select('id', { head: true, count: 'exact' })
             .limit(1);
           
           if (error) {
@@ -96,11 +97,13 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
     try {
       const supabase = getSupabase();
       // Create couple first using the atomic RPC
-      const { data: coupleId, error: coupleError } = await supabase.rpc('create_couple', {
+      const rpcArgs = {
         p_title: `${you} & ${partner}`,
-        p_you: you,
-        p_partner: partner
-      });
+        p_you_name: you,
+        p_partner_name: partner
+      };
+      console.log('[RPC:create_couple] body', rpcArgs);
+      const { data: coupleId, error: coupleError } = await supabase.rpc('create_couple', rpcArgs);
 
       if (coupleError || !coupleId) {
         console.error('Failed to create couple:', coupleError);
