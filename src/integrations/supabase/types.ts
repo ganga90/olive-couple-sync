@@ -399,14 +399,9 @@ export type Database = {
       create_couple: {
         Args: { p_partner_name: string; p_title: string; p_you_name: string }
         Returns: {
-          created_at: string
-          created_by: string | null
-          id: string
-          partner_name: string | null
-          title: string | null
-          updated_at: string
-          you_name: string | null
-        }
+          couple_id: string
+          invite_token: string
+        }[]
       }
       create_invite: {
         Args: { p_couple_id: string }
@@ -452,6 +447,14 @@ export type Database = {
       is_couple_owner: {
         Args: { couple_uuid: string; user_id: string }
         Returns: boolean
+      }
+      jwt: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      jwt_sub: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
     }
     Enums: {

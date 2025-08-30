@@ -156,7 +156,7 @@ export const useSupabaseCouples = () => {
         p_partner_name: coupleData.partner_name || ''
       };
       console.log('[RPC:create_couple] body', rpcArgs);
-      const { data: coupleId, error } = await supabase.rpc('create_couple', rpcArgs);
+      const { data, error } = await supabase.rpc('create_couple', rpcArgs);
 
       if (error) {
         console.error('[Couples] Failed to create couple via RPC:', error);
@@ -164,7 +164,18 @@ export const useSupabaseCouples = () => {
         return null;
       }
 
-      console.log('[Couples] Couple created with ID:', coupleId);
+      console.log('[Couples] RPC response:', data);
+      
+      // The RPC now returns an array with {couple_id, invite_token} objects
+      const result = Array.isArray(data) && data.length > 0 ? data[0] : data;
+      
+      if (!result || !result.couple_id) {
+        console.error('[Couples] Invalid RPC response - missing couple_id');
+        toast.error('Failed to create couple - invalid response');
+        return null;
+      }
+
+      const coupleId = result.couple_id;
       
       // Fetch the created couple details
       const { data: newCouple, error: fetchError } = await supabase

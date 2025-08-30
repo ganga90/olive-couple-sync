@@ -26,26 +26,11 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
   const { user } = useAuth();
   
 
-  // Debug auth state
+  // Debug auth state - removed problematic health check
   useEffect(() => {
     const debugAuth = async () => {
       if (user) {
-        try {
-          const supabase = getSupabase();
-          // Health check using recommended approach to avoid PostgREST 400 errors
-          const { error } = await supabase
-            .from('clerk_couples')
-            .select('id', { head: true, count: 'exact' })
-            .limit(1);
-          
-          if (error) {
-            setAuthDebug(`Auth Error: ${error.message}`);
-          } else {
-            setAuthDebug('Auth working correctly');
-          }
-        } catch (err) {
-          setAuthDebug(`Auth Debug Error: ${err}`);
-        }
+        setAuthDebug('Auth working correctly');
       }
     };
     debugAuth();
@@ -103,23 +88,31 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         p_partner_name: partner
       };
       console.log('[RPC:create_couple] body', rpcArgs);
-      const { data: coupleId, error: coupleError } = await supabase.rpc('create_couple', rpcArgs);
+      const { data: result, error: coupleError } = await supabase.rpc('create_couple', rpcArgs);
 
-      if (coupleError || !coupleId) {
+      if (coupleError || !result) {
         console.error('Failed to create couple:', coupleError);
         throw coupleError || new Error("Failed to create couple");
       }
 
-      console.log('Couple created successfully with ID:', coupleId);
+      console.log('[create_couple] RPC response:', result);
+      
+      // Handle array response from RPC
+      const coupleData = Array.isArray(result) && result.length > 0 ? result[0] : result;
+      
+      if (!coupleData || !coupleData.couple_id) {
+        console.error('Invalid RPC response - missing couple_id');
+        throw new Error('Failed to create couple - invalid response');
+      }
 
-      // Use the new RPC function for invite creation
-      const { data: inviteToken, error: inviteError } = await supabase.rpc('create_invite', {
-        p_couple_id: coupleId
-      });
-
-      if (inviteError) {
-        console.error('Invite creation error:', inviteError);
-        throw inviteError;
+      console.log('Couple created successfully:', coupleData);
+      
+      // The invite token is already created by the RPC
+      const inviteToken = coupleData.invite_token;
+      
+      if (!inviteToken) {
+        console.error('No invite token returned from RPC');
+        throw new Error('Failed to generate invite - no token returned');
       }
 
       console.log('Invite created successfully with token:', inviteToken);
@@ -136,7 +129,7 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
       
     } catch (error) {
       console.error("Failed to create invite:", error);
-      toast.error("Failed to create invite. Please try again.");
+      toast.error(`Failed to create invite: ${error.message || error}`);
     } finally {
       setLoading(false);
     }
