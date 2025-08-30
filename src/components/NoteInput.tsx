@@ -91,7 +91,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
       const { data: aiProcessedNote, error } = await supabase.functions.invoke('process-note', {
         body: { 
           text: text.trim(),
-          user_id: user.id
+          user_id: user.id,
+          couple_id: currentCouple?.id || null
         }
       });
 

@@ -12,6 +12,7 @@ export interface Note {
   tags?: string[];
   items?: string[];
   task_owner?: string | null;
+  list_id?: string | null;
 }
 
 export interface ProcessedNote {

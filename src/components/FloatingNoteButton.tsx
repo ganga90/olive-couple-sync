@@ -33,7 +33,8 @@ export const FloatingNoteButton: React.FC = () => {
       const { data: processedNote, error } = await supabase.functions.invoke('process-note', {
         body: { 
           text: text.trim(),
-          user_id: user.id
+          user_id: user.id,
+          couple_id: currentCouple?.id || null
         }
       });
 

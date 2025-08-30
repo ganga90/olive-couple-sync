@@ -1,10 +1,13 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
+import { useSupabaseLists } from "@/hooks/useSupabaseLists";
+import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSEO } from "@/hooks/useSEO";
 import { Input } from "@/components/ui/input";
-import { categories } from "@/constants/categories";
 import { Link } from "react-router-dom";
+import { CreateListDialog } from "@/components/CreateListDialog";
 import { 
   ShoppingCart, 
   CheckSquare, 
@@ -20,87 +23,98 @@ import {
   ChefHat, 
   Film, 
   Book, 
-  UtensilsCrossed 
+  UtensilsCrossed,
+  List as ListIcon,
+  Pencil,
+  Trash2
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 const getCategoryIcon = (category: string) => {
   const iconMap: Record<string, any> = {
     'groceries': ShoppingCart,
+    'grocery': ShoppingCart,
     'task': CheckSquare,
+    'tasks': CheckSquare,
     'home improvement': Home,
+    'home': Home,
     'travel idea': Plane,
+    'travel': Plane,
     'date idea': Heart,
+    'date': Heart,
     'shopping': ShoppingBag,
     'health': Activity,
     'finance': DollarSign,
     'work': Briefcase,
     'personal': User,
     'gift ideas': Gift,
+    'gifts': Gift,
     'recipes': ChefHat,
+    'recipe': ChefHat,
     'movies to watch': Film,
+    'movies': Film,
     'books to read': Book,
+    'books': Book,
     'restaurants': UtensilsCrossed,
+    'restaurant': UtensilsCrossed,
   };
   
   const normalizedCategory = category.toLowerCase();
-  return iconMap[normalizedCategory] || User;
+  return iconMap[normalizedCategory] || ListIcon;
 };
 
 const Lists = () => {
   const [query, setQuery] = useState("");
-  const { notes, loading, refetch } = useSupabaseNotesContext();
-  useSEO({ title: "Lists — Olive", description: "Browse and search all your lists." });
+  const { notes } = useSupabaseNotesContext();
+  const { currentCouple } = useSupabaseCouple();
+  const { lists, loading, deleteList, refetch } = useSupabaseLists(currentCouple?.id || null);
+  
+  useSEO({ title: "Lists — Olive", description: "Browse and manage all your lists." });
 
-  // Refresh data when the page loads
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  const filteredCategories = useMemo(() => {
+  const filteredLists = useMemo(() => {
     const q = query.trim().toLowerCase();
     
     if (!q) {
-      // If no search query, show all categories that have notes
-      return Array.from(new Set(notes.map(note => note.category)));
+      return lists;
     }
 
-    // Filter notes based on search criteria
-    const matchingNotes = notes.filter(note => {
-      // Search in category name
-      if (note.category.toLowerCase().includes(q)) return true;
+    // Filter lists based on search criteria
+    return lists.filter(list => {
+      // Search in list name
+      if (list.name.toLowerCase().includes(q)) return true;
       
-      // Search in task summary (task name)
-      if (note.summary.toLowerCase().includes(q)) return true;
-      
-      // Search in original text
-      if (note.originalText.toLowerCase().includes(q)) return true;
-      
-      // Search in tags
-      if (note.tags && note.tags.some(tag => tag.toLowerCase().includes(q))) return true;
-      
-      // Search in task owner
-      if (note.task_owner && note.task_owner.toLowerCase().includes(q)) return true;
-      
-      // Search in added by
-      if (note.addedBy && note.addedBy.toLowerCase().includes(q)) return true;
+      // Search in list description
+      if (list.description && list.description.toLowerCase().includes(q)) return true;
       
       return false;
     });
+  }, [query, lists]);
 
-    // Get unique categories from matching notes
-    return Array.from(new Set(matchingNotes.map(note => note.category)));
-  }, [query, notes]);
+  const getListNoteCount = (listId: string) => {
+    return notes.filter(note => note.list_id === listId).length;
+  };
+
+  const handleDeleteList = async (listId: string, listName: string) => {
+    if (window.confirm(`Are you sure you want to delete the "${listName}" list? This action cannot be undone.`)) {
+      await deleteList(listId);
+      refetch();
+    }
+  };
 
   return (
     <main className="min-h-screen bg-gradient-soft">
       <section className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="mb-3 text-2xl font-semibold text-olive-dark">Lists</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-semibold text-olive-dark">Lists</h1>
+          <CreateListDialog onListCreated={refetch} />
+        </div>
 
         <div className="mb-6">
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search in lists, tasks, tags, owners..."
+            placeholder="Search lists..."
             aria-label="Search lists"
             className="border-olive/30 focus:border-olive focus:ring-olive/20 bg-white/50"
           />
@@ -108,32 +122,85 @@ const Lists = () => {
 
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : filteredCategories.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No lists found.</p>
+        ) : filteredLists.length === 0 ? (
+          <Card className="p-8 bg-white/50 border-olive/20 shadow-soft text-center">
+            <ListIcon className="h-12 w-12 text-olive/50 mx-auto mb-4" />
+            <p className="text-muted-foreground mb-4">
+              {query ? "No lists match your search." : "No lists yet. Create your first list to get organized!"}
+            </p>
+            {!query && <CreateListDialog onListCreated={refetch} />}
+          </Card>
         ) : (
           <div className="space-y-3">
-             {filteredCategories.map((c) => {
-               const count = notes.filter((n) => n.category === c).length;
-               const CategoryIcon = getCategoryIcon(c);
+             {filteredLists.map((list) => {
+               const count = getListNoteCount(list.id);
+               const ListIconComponent = getCategoryIcon(list.name);
                return (
-                <Link key={c} to={`/lists/${encodeURIComponent(c)}`} aria-label={`Open ${c} list`} className="block">
-                  <Card className="bg-white/50 border-olive/20 shadow-soft transition-all duration-200 hover:shadow-lg hover:scale-[1.02]">
-                    <CardContent className="flex items-center justify-between p-4">
-                      <div className="flex items-center gap-3">
+                <Card key={list.id} className="bg-white/50 border-olive/20 shadow-soft transition-all duration-200 hover:shadow-lg group">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <Link 
+                        to={`/lists/${encodeURIComponent(list.id)}`} 
+                        aria-label={`Open ${list.name} list`}
+                        className="flex items-center gap-3 flex-1 hover:text-olive"
+                      >
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-olive/10 border border-olive/20">
-                          <CategoryIcon className="h-5 w-5 text-olive" />
+                          <ListIconComponent className="h-5 w-5 text-olive" />
                         </div>
-                        <div>
-                          <div className="font-medium text-olive-dark">{c}</div>
-                          <div className="text-xs text-muted-foreground">{count} {count === 1 ? "item" : "items"}</div>
+                        <div className="flex-1">
+                          <div className="font-medium text-olive-dark flex items-center gap-2">
+                            {list.name}
+                            {!list.is_manual && (
+                              <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600">
+                                Auto
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {count} {count === 1 ? "item" : "items"}
+                            {list.description && (
+                              <span className="ml-2">• {list.description}</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <span className="text-olive">›</span>
-                    </CardContent>
-                  </Card>
-                </Link>
-              );
-            })}
+                        <span className="text-olive">›</span>
+                      </Link>
+                      
+                      {/* Action buttons - only show for manual lists */}
+                      {list.is_manual && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              // TODO: Add edit list functionality
+                              toast.info("Edit functionality coming soon!");
+                            }}
+                            className="h-8 w-8 p-0 hover:bg-olive/10"
+                          >
+                            <Pencil className="h-3 w-3 text-olive" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDeleteList(list.id, list.name);
+                            }}
+                            className="h-8 w-8 p-0 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+               );
+             })}
           </div>
         )}
       </section>

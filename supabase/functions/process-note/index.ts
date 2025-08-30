@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -68,17 +69,54 @@ serve(async (req) => {
 
   try {
     const GEMINI_API_KEY = Deno.env.get('GEMINI_API');
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
     if (!GEMINI_API_KEY) {
       throw new Error('GEMINI_API key is not configured');
     }
+    
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error('Supabase configuration is missing');
+    }
 
-    const { text, user_id } = await req.json();
+    const { text, user_id, couple_id } = await req.json();
     
     if (!text || !user_id) {
       throw new Error('Missing required fields: text and user_id');
     }
 
-    // Call Gemini API
+    // Initialize Supabase client
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Fetch existing lists for the user/couple to provide context
+    let existingListsQuery = supabase
+      .from('clerk_lists')
+      .select('id, name, description, is_manual, category')
+      .eq('author_id', user_id);
+
+    if (couple_id) {
+      existingListsQuery = supabase
+        .from('clerk_lists')
+        .select('id, name, description, is_manual, category')
+        .or(`and(author_id.eq.${user_id},couple_id.is.null),couple_id.eq.${couple_id}`);
+    } else {
+      existingListsQuery = existingListsQuery.is('couple_id', null);
+    }
+
+    const { data: existingLists, error: listsError } = await existingListsQuery;
+    
+    if (listsError) {
+      console.error('Error fetching existing lists:', listsError);
+      // Continue without lists context if there's an error
+    }
+
+    // Prepare context for AI about existing lists
+    const listsContext = existingLists && existingLists.length > 0 
+      ? `\n\nExisting lists available:\n${existingLists.map(list => `- ${list.name}${list.description ? ` (${list.description})` : ''}`).join('\n')}\n\nWhen categorizing, consider if this note belongs to one of these existing lists. If it matches an existing list's purpose, use a category that would map to that list.`
+      : '';
+
+    // Call Gemini API with enhanced context
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: {
@@ -87,7 +125,7 @@ serve(async (req) => {
       body: JSON.stringify({
         contents: [{
           parts: [{
-            text: `${SYSTEM_PROMPT}\n\nProcess this note:\n"${text}"\n\nRespond with ONLY a valid JSON object, no other text.`
+            text: `${SYSTEM_PROMPT}${listsContext}\n\nProcess this note:\n"${text}"\n\nRespond with ONLY a valid JSON object, no other text.`
           }]
         }],
         generationConfig: {
@@ -142,6 +180,59 @@ serve(async (req) => {
       };
     }
 
+    // Find or create appropriate list
+    let listId = null;
+    
+    if (existingLists && existingLists.length > 0) {
+      // Try to find an existing list that matches the category
+      const category = processedNote.category || 'general';
+      const matchingList = existingLists.find(list => {
+        const listName = list.name.toLowerCase();
+        const categoryName = category.toLowerCase().replace(/_/g, ' ');
+        
+        // Direct name match
+        if (listName === categoryName) return true;
+        
+        // Category match (if list has a category field)
+        if (list.category && list.category.toLowerCase() === category.toLowerCase()) return true;
+        
+        // Fuzzy matching for common variations
+        if (listName.includes(categoryName) || categoryName.includes(listName)) return true;
+        
+        return false;
+      });
+      
+      if (matchingList) {
+        console.log('Found matching existing list:', matchingList.name);
+        listId = matchingList.id;
+      } else {
+        // Create a new list for this category
+        const listName = category.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
+        
+        console.log('Creating new list for category:', category, '->', listName);
+        
+        const { data: newList, error: createError } = await supabase
+          .from('clerk_lists')
+          .insert([{
+            name: listName,
+            description: `Auto-generated list for ${listName.toLowerCase()} items`,
+            is_manual: false,
+            author_id: user_id,
+            couple_id: couple_id || null,
+          }])
+          .select()
+          .single();
+          
+        if (createError) {
+          console.error('Error creating new list:', createError);
+          // Continue without list assignment if creation fails
+        } else {
+          console.log('Successfully created new list:', newList);
+          listId = newList.id;
+        }
+      }
+    }
+
     // Ensure required fields
     const result = {
       summary: processedNote.summary || text,
@@ -151,6 +242,7 @@ serve(async (req) => {
       tags: processedNote.tags || [],
       items: processedNote.items || [],
       task_owner: processedNote.task_owner || null,
+      list_id: listId, // Assign to the found/created list
       original_text: text
     };
 
@@ -169,7 +261,8 @@ serve(async (req) => {
       due_date: null,
       priority: 'medium',
       tags: [],
-      items: []
+      items: [],
+      list_id: null
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

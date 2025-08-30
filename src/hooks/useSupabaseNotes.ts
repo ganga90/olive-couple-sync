@@ -17,6 +17,7 @@ export type SupabaseNote = {
   completed: boolean;
   priority?: 'low' | 'medium' | 'high';
   task_owner?: string | null;
+  list_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -177,8 +178,8 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
             case 'task_owner':
               supabaseUpdates.task_owner = value;
               break;
-            case 'originalText':
-              supabaseUpdates.original_text = value;
+            case 'list_id':
+              supabaseUpdates.list_id = value;
               break;
             // Direct mappings for fields that match
             case 'summary':
