@@ -1,5 +1,27 @@
 import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
-import { supabase } from "@/integrations/supabase/client";
+
+const SUPABASE_URL = "https://wtfspzvcetxmcfftwonq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0ZnNwenZjZXR4bWNmZnR3b25xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4NTEyNzIsImV4cCI6MjA3MDQyNzI3Mn0.RoQlasob6T3SuGmR4r_oFmbIcwrK8r6Q7KQDIwFrPBg";
+
+async function fetchDeepgramToken(ttl = 300): Promise<{ access_token: string; expires_in: number }> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/dg-token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      // The gateway needs this Authorization header even with verify_jwt=false
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      // apikey is not strictly required for functions, but harmless:
+      "apikey": SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ ttl }),
+  });
+
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Edge Function returned ${res.status}: ${t}`);
+  }
+  return res.json();
+}
 
 export type DeepgramLive = {
   open: () => Promise<void>;
@@ -21,15 +43,13 @@ export async function createDeepgramLive(
 ): Promise<DeepgramLive> {
   try {
     // 1) Get ephemeral token from our edge function
-    const { data, error } = await supabase.functions.invoke("dg-token", { 
-      body: { ttl: 300 } 
-    });
+    const tokenData = await fetchDeepgramToken(300);
     
-    if (error || !data?.token) {
-      throw new Error(`Failed to fetch Deepgram token: ${error?.message || 'No token received'}`);
+    if (!tokenData?.access_token) {
+      throw new Error('No access token received from Deepgram');
     }
 
-    const token: string = data.token;
+    const token: string = tokenData.access_token;
 
     // 2) Request microphone access
     const stream = await navigator.mediaDevices.getUserMedia({ 

@@ -1,15 +1,24 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-  "Access-Control-Allow-Headers": "authorization,content-type,x-client-info,apikey",
-};
+const ALLOWED_ORIGINS = [
+  "https://fe28fe11-6f80-433f-aa49-de1399a1110c.sandbox.lovable.dev",
+  "http://localhost:5173",
+];
+
+function cors(origin: string | null) {
+  const allowOrigin = ALLOWED_ORIGINS.includes(origin ?? "")
+    ? origin!
+    : "*";
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+}
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders, status: 204 });
+    return new Response(null, { headers: cors(req.headers.get("origin")) });
   }
 
   try {
@@ -18,11 +27,11 @@ serve(async (req) => {
       console.error("Missing DEEPGRAM_OLIVEAI environment variable");
       return new Response(JSON.stringify({ error: "Missing Deepgram key" }), {
         status: 500,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
+        headers: { "content-type": "application/json", ...cors(req.headers.get("origin")) },
       });
     }
 
-    // Default TTL of 5 minutes, allow customization
+    // Optional: TTL can be passed from client; default to 300s
     let ttl = 300;
     try {
       const body = await req.json();
@@ -35,44 +44,37 @@ serve(async (req) => {
 
     console.log(`Requesting Deepgram token with TTL: ${ttl}s`);
 
-    // Request ephemeral token from Deepgram
-    const response = await fetch("https://api.deepgram.com/v1/auth/grant", {
+    // Deepgram token grant
+    const dgRes = await fetch("https://api.deepgram.com/v1/auth/grant", {
       method: "POST",
       headers: {
-        "Authorization": `Token ${DG_KEY}`,
+        Authorization: `Token ${DG_KEY}`, // Deepgram requires Token, not Bearer
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ ttl }),
     });
 
-    const responseData = await response.json();
-    
-    if (!response.ok) {
-      console.error("Deepgram token request failed:", responseData);
-      return new Response(JSON.stringify({ 
-        error: "Failed to generate token",
-        details: responseData 
-      }), {
-        status: response.status,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
+    if (!dgRes.ok) {
+      const txt = await dgRes.text();
+      console.error("Deepgram grant failed:", txt);
+      return new Response(JSON.stringify({ error: "Deepgram grant failed", details: txt }), {
+        status: 502,
+        headers: { "content-type": "application/json", ...cors(req.headers.get("origin")) },
       });
     }
 
+    const token = await dgRes.json(); // { access_token, expires_in }
     console.log("Deepgram token generated successfully");
 
-    return new Response(JSON.stringify(responseData), {
+    return new Response(JSON.stringify(token), {
       status: 200,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "content-type": "application/json", ...cors(req.headers.get("origin")) },
     });
-
-  } catch (error: any) {
-    console.error("Error in dg-token function:", error);
-    return new Response(JSON.stringify({ 
-      error: "Internal server error",
-      message: error.message 
-    }), {
+  } catch (e) {
+    console.error("Error in dg-token function:", e);
+    return new Response(JSON.stringify({ error: "Unexpected", details: String(e) }), {
       status: 500,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "content-type": "application/json", ...cors(req.headers.get("origin")) },
     });
   }
 });
