@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/providers/AuthProvider";
 import { Share2, User2, Copy, Check, AlertTriangle } from "lucide-react";
 
@@ -31,6 +31,7 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
     const debugAuth = async () => {
       if (user) {
         try {
+          const supabase = getSupabase();
           const { data, error } = await supabase
             .from('clerk_couples')
             .select('count(*)')
@@ -47,7 +48,7 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
       }
     };
     debugAuth();
-  }, [user, supabase]);
+  }, [user]);
 
   const handleSetupOnly = async () => {
     console.log('[InviteFlow] handleSetupOnly called with:', { you, partner, user: !!user });
@@ -93,31 +94,24 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
   const handleCreateInvite = async () => {
     setLoading(true);
     try {
+      const supabase = getSupabase();
       // Create couple first using the atomic RPC
-      const { data: couple, error: coupleError } = await supabase.rpc('create_couple', {
+      const { data: coupleId, error: coupleError } = await supabase.rpc('create_couple', {
         p_title: `${you} & ${partner}`,
-        p_you_name: you,
-        p_partner_name: partner
+        p_you: you,
+        p_partner: partner
       });
 
-      if (coupleError || !couple) {
+      if (coupleError || !coupleId) {
         console.error('Failed to create couple:', coupleError);
         throw coupleError || new Error("Failed to create couple");
       }
 
-      console.log('Couple created successfully:', couple);
+      console.log('Couple created successfully with ID:', coupleId);
 
-      // The RPC returns {couple: {...}, membership: {...}}
-      const actualCouple = couple.couple;
-      if (!actualCouple) {
-        throw new Error("No couple data returned from RPC");
-      }
-
-      console.log('Using couple ID for invite:', actualCouple.id);
-
-      // Use the new RPC function for invite creation (only takes couple_id)
-      const { data: inviteData, error: inviteError } = await supabase.rpc('create_invite', {
-        p_couple_id: actualCouple.id
+      // Use the new RPC function for invite creation
+      const { data: inviteToken, error: inviteError } = await supabase.rpc('create_invite', {
+        p_couple_id: coupleId
       });
 
       if (inviteError) {
@@ -125,11 +119,11 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         throw inviteError;
       }
 
-      console.log('Invite created successfully:', inviteData);
+      console.log('Invite created successfully with token:', inviteToken);
 
       // Generate invite URL using the token from RPC response
       const currentUrl = window.location.origin;
-      const inviteLink = `${currentUrl}/join/${inviteData.token}`;
+      const inviteLink = `${currentUrl}/accept-invite?token=${inviteToken}`;
       
       // Create personalized message
       const message = `Hey ${partner}! 🌿\n\n${you} has invited you to join your shared Olive space where you can organize notes, lists, and tasks together.\n\nClick this link to join: ${inviteLink}\n\nThis link expires in 7 days. Looking forward to organizing together! 💚`;

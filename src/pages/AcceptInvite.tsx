@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import { OliveLogo } from "@/components/OliveLogo";
 import { useSEO } from "@/hooks/useSEO";
 import { Check, X, Clock, Heart } from "lucide-react";
@@ -34,6 +34,7 @@ const AcceptInvite = () => {
 
   const loadInvite = async () => {
     try {
+      const supabase = getSupabase();
       const { data, error } = await supabase
         .from("invites")
         .select(`
@@ -74,8 +75,9 @@ const AcceptInvite = () => {
 
     setLoading(true);
     try {
+      const supabase = getSupabase();
       // Use the new atomic RPC function for accepting invites
-      const { data, error } = await supabase.rpc('accept_invite', {
+      const { data: coupleId, error } = await supabase.rpc('accept_invite', {
         p_token: token
       });
 
@@ -83,7 +85,7 @@ const AcceptInvite = () => {
         throw error;
       }
 
-      console.log('Invite accepted successfully:', data);
+      console.log('Invite accepted successfully, couple ID:', coupleId);
       toast.success("Welcome to your shared Olive space!");
       navigate("/");
     } catch (error) {

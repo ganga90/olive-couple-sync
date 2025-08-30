@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/providers/AuthProvider";
 import { User2, Share2, Plus, Check, Clock, X, Copy } from "lucide-react";
 
@@ -51,22 +51,21 @@ export const PartnerInfo = () => {
         expires_at: expiresAt.toISOString()
       });
 
-      // Use the new RPC function for idempotent invite creation
-      const { data: inviteData, error: inviteError } = await supabase
-        .rpc('create_invite', {
-          p_couple_id: currentCouple.id,
-        });
+      const supabase = getSupabase();
+      const { data: inviteToken, error: inviteError } = await supabase.rpc('create_invite', {
+        p_couple_id: currentCouple.id,
+      });
 
       if (inviteError) {
         console.error('Invite creation error:', inviteError);
         throw inviteError;
       }
 
-      console.log('Invite created successfully:', inviteData);
+      console.log('Invite created successfully with token:', inviteToken);
 
       // Generate invite URL
       const currentUrl = window.location.origin;
-      const inviteLink = `${currentUrl}/accept-invite?token=${inviteData.token}`;
+      const inviteLink = `${currentUrl}/accept-invite?token=${inviteToken}`;
       
       // Create personalized message
       const message = `Hey ${partner || 'there'}! 🌿\n\n${you || 'Your partner'} has invited you to join your shared Olive space where you can organize notes, lists, and tasks together.\n\nClick this link to join: ${inviteLink}\n\nThis link expires in 7 days. Looking forward to organizing together! 💚`;

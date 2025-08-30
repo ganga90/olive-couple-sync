@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 
 export type SupabaseCouple = {
@@ -17,7 +17,7 @@ export type SupabaseCoupleMember = {
   id: string;
   couple_id: string;
   user_id: string;
-  role: 'owner' | 'member';
+  role: 'owner' | 'partner';
   created_at: string;
 };
 
@@ -46,6 +46,8 @@ export const useSupabaseCouples = () => {
     setLoading(true);
     try {
       console.log("[Couples] Fetching couples for user:", user.id);
+      
+      const supabase = getSupabase();
       
       // First ensure user profile exists
       await supabase
@@ -92,13 +94,15 @@ export const useSupabaseCouples = () => {
       console.log("[Couples] Fetch completed, setting loading to false");
       setLoading(false);
     }
-  }, [user, supabase]); // Remove currentCouple dependency to avoid infinite loop
+  }, [user]); // Remove currentCouple dependency to avoid infinite loop
 
   useEffect(() => {
     fetchCouples();
 
     if (!user) return;
 
+    const supabase = getSupabase();
+    
     // Set up realtime subscription
     const channel = supabase
       .channel("clerk_couples_changes")
@@ -143,74 +147,49 @@ export const useSupabaseCouples = () => {
     }
 
     try {
-      // Debug JWT claims first
-      console.log('[Couples] Debugging JWT claims before insert...');
-      const { data: claims, error: claimsError } = await supabase.rpc('debug_claims');
-      console.log('[Couples] debug_claims result:', { data: claims, error: claimsError });
+      const supabase = getSupabase();
       
-      const claimsObj = claims as any;
-      if (!claimsObj?.sub) {
-        console.error('[Couples] No JWT sub found! Token not being passed to Supabase client.');
-        toast.error("Authentication error - please refresh and try again");
-        return null;
-      }
-
-      console.log('[Couples] JWT sub from claims:', claimsObj.sub);
-      console.log('[Couples] User ID from Clerk:', user.id);
-      console.log('[Couples] Auth role:', claimsObj.role);
-      
-      // Ensure user.id matches JWT sub
-      if (user.id !== claimsObj.sub) {
-        console.error('[Couples] Mismatch between user.id and JWT sub!', { userId: user.id, jwtSub: claimsObj.sub });
-        toast.error("Authentication mismatch - please refresh and try again");
-        return null;
-      }
-
-      // Use the new atomic RPC function for couple creation
-      console.log('[Couples] Using create_couple RPC with params:', {
-        p_title: coupleData.title,
-        p_you_name: coupleData.you_name,
-        p_partner_name: coupleData.partner_name
+      // Use the new RPC function to create couple + owner membership
+      const { data: coupleId, error } = await supabase.rpc('create_couple', {
+        p_title: coupleData.title || `${coupleData.you_name} & ${coupleData.partner_name}`,
+        p_you: coupleData.you_name || '',
+        p_partner: coupleData.partner_name || ''
       });
-      
-      const { data, error } = await supabase.rpc('create_couple', {
-        p_title: coupleData.title,
-        p_you_name: coupleData.you_name,
-        p_partner_name: coupleData.partner_name
-      });
-
-      console.log('[Couples] RPC result:', { data, error });
 
       if (error) {
-        console.error('[Couples] Failed to create couple via RPC:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-          fullError: JSON.stringify(error, null, 2)
-        });
+        console.error('[Couples] Failed to create couple via RPC:', error);
         toast.error(`Failed to create couple: ${error.message}`);
         return null;
       }
 
-      if (data?.couple) {
-        console.log("[Couples] Couple created successfully via RPC:", data.couple);
-        
-        // Refresh couples list and set current
-        await fetchCouples();
-        setCurrentCouple(data.couple);
-        toast.success("Your workspace is ready!");
-        
-        return data.couple;
+      console.log('[Couples] Couple created with ID:', coupleId);
+      
+      // Fetch the created couple details
+      const { data: newCouple, error: fetchError } = await supabase
+        .from('clerk_couples')
+        .select('*')
+        .eq('id', coupleId)
+        .single();
+
+      if (fetchError) {
+        console.error('[Couples] Error fetching created couple:', fetchError);
+        throw fetchError;
       }
 
-      return null;
+      console.log("[Couples] Couple created successfully:", newCouple);
+      
+      // Refresh couples list and set current
+      await fetchCouples();
+      setCurrentCouple(newCouple);
+      toast.success("Your workspace is ready!");
+      
+      return newCouple;
     } catch (error) {
       console.error("[Couples] Exception in createCouple:", error);
       toast.error(`Failed to create couple workspace: ${error.message || error}`);
       return null;
     }
-  }, [user, supabase, fetchCouples]);
+  }, [user, fetchCouples]);
 
   const updateCouple = useCallback(async (id: string, updates: { title?: string; you_name?: string; partner_name?: string }) => {
     if (!user) {
@@ -219,6 +198,8 @@ export const useSupabaseCouples = () => {
     }
 
     try {
+      const supabase = getSupabase();
+      
       const { data, error } = await supabase
         .from("clerk_couples")
         .update(updates)
@@ -240,7 +221,7 @@ export const useSupabaseCouples = () => {
       toast.error("Failed to update couple workspace");
       return null;
     }
-  }, [user, currentCouple, supabase]);
+  }, [user, currentCouple]);
 
   const switchCouple = useCallback((couple: SupabaseCouple) => {
     setCurrentCouple(couple);
