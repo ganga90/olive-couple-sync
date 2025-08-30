@@ -19,21 +19,21 @@ export type Database = {
           couple_id: string | null
           created_at: string
           id: string
-          role: string
+          role: Database["public"]["Enums"]["member_role"]
           user_id: string | null
         }
         Insert: {
           couple_id?: string | null
           created_at?: string
           id?: string
-          role?: string
+          role?: Database["public"]["Enums"]["member_role"]
           user_id?: string | null
         }
         Update: {
           couple_id?: string | null
           created_at?: string
           id?: string
-          role?: string
+          role?: Database["public"]["Enums"]["member_role"]
           user_id?: string | null
         }
         Relationships: [
