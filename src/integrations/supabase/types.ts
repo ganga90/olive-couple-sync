@@ -386,11 +386,27 @@ export type Database = {
     Functions: {
       accept_invite: {
         Args: { p_token: string }
-        Returns: Json
+        Returns: {
+          created_at: string
+          created_by: string | null
+          id: string
+          partner_name: string | null
+          title: string | null
+          updated_at: string
+          you_name: string | null
+        }
       }
       create_couple: {
         Args: { p_partner_name: string; p_title: string; p_you_name: string }
-        Returns: Json
+        Returns: {
+          created_at: string
+          created_by: string | null
+          id: string
+          partner_name: string | null
+          title: string | null
+          updated_at: string
+          you_name: string | null
+        }
       }
       create_invite: {
         Args: { p_couple_id: string }
@@ -430,11 +446,11 @@ export type Database = {
         Returns: string
       }
       is_couple_member: {
-        Args: { c: string } | { couple_uuid: string; user_text: string }
+        Args: { couple_uuid: string; user_id: string }
         Returns: boolean
       }
       is_couple_owner: {
-        Args: { c: string } | { couple_uuid: string; user_text: string }
+        Args: { couple_uuid: string; user_id: string }
         Returns: boolean
       }
     }
