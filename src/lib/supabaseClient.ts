@@ -1,28 +1,34 @@
-import { createClient } from '@supabase/supabase-js'
-import { useAuth } from '@clerk/clerk-react'
-import { useMemo } from 'react'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-export function useSupabase() {
-  const { getToken } = useAuth() // Clerk session JWT
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
-  return useMemo(() => {
-    const url  = import.meta.env.VITE_SUPABASE_URL!
-    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY!
-    if (!url || !anon) console.error('[Supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY')
+// will be set by AuthProvider once Clerk is loaded
+let tokenGetter: null | (() => Promise<string | null>) = null
+export const setClerkTokenGetter = (fn: () => Promise<string | null>) => { tokenGetter = fn }
 
-    // Use a custom fetch so *every* request carries both headers.
-    return createClient(url, anon, {
-      global: {
-        fetch: async (input, init) => {
-          const token = await getToken() // no template needed with Supabase 3rd-party auth
-          const headers = new Headers(init?.headers ?? {})
-          // Always set both:
-          if (anon && !headers.has('apikey')) headers.set('apikey', anon)
-          if (token && !headers.has('authorization')) headers.set('authorization', `Bearer ${token}`)
-          return fetch(input, { ...init, headers })
-        },
-      },
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
-  }, [getToken])
+let _client: SupabaseClient | null = null
+
+export function getSupabase(): SupabaseClient {
+  if (_client) return _client
+  _client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    // We are NOT using Supabase Auth—Clerk is the IdP. Disable GoTrue session.
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers ?? {})
+        // Always send apikey
+        if (!headers.has('apikey')) headers.set('apikey', SUPABASE_ANON_KEY)
+        // Always send Clerk JWT
+        try {
+          const token = tokenGetter ? await tokenGetter() : null
+          if (token && !headers.has('authorization')) {
+            headers.set('authorization', `Bearer ${token}`)
+          }
+        } catch (_) { /* ignore */ }
+        return fetch(input as RequestInfo, { ...init, headers })
+      }
+    }
+  })
+  return _client
 }
