@@ -74,29 +74,16 @@ const AcceptInvite = () => {
 
     setLoading(true);
     try {
-      // Add user to couple members
-      const { error: memberError } = await supabase
-        .from("clerk_couple_members")
-        .insert({
-          couple_id: invite.couple_id,
-          user_id: user.id,
-          role: "member" as const,
-        });
+      // Use the new atomic RPC function for accepting invites
+      const { data, error } = await supabase.rpc('accept_invite', {
+        p_token: token
+      });
 
-      if (memberError) {
-        throw memberError;
+      if (error) {
+        throw error;
       }
 
-      // Update invite status
-      const { error: inviteError } = await supabase
-        .from("invites")
-        .update({ status: "accepted" as const })
-        .eq("id", invite.id);
-
-      if (inviteError) {
-        throw inviteError;
-      }
-
+      console.log('Invite accepted successfully:', data);
       toast.success("Welcome to your shared Olive space!");
       navigate("/");
     } catch (error) {

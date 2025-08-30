@@ -14,6 +14,7 @@ import NoteDetails from "./pages/NoteDetails";
 import Welcome from "./pages/Welcome";
 import ListCategory from "./pages/ListCategory";
 import AcceptInvite from "./pages/AcceptInvite";
+import JoinInvite from "./pages/JoinInvite";
 import NavBar from "./components/NavBar";
 import MobileTabBar from "./components/MobileTabBar";
 import { AuthProvider } from "./providers/AuthProvider";
@@ -46,6 +47,7 @@ const App = () => (
                 <Route path="/sign-in" element={<SignInPage />} />
                 <Route path="/sign-up" element={<SignUpPage />} />
                 <Route path="/accept-invite" element={<AcceptInvite />} />
+                <Route path="/join/:token" element={<JoinInvite />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
