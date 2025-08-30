@@ -384,6 +384,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_invite: {
+        Args: { p_token: string }
+        Returns: {
+          couple_id: string | null
+          created_at: string
+          id: string
+          role: string
+          user_id: string | null
+        }
+      }
       create_couple: {
         Args: { p_partner_name?: string; p_title?: string; p_you_name?: string }
         Returns: {
