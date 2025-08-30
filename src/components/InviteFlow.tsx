@@ -131,7 +131,7 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
 
       // Generate invite URL using the token from RPC response
       const currentUrl = window.location.origin;
-      const inviteLink = `${currentUrl}/accept-invite?token=${inviteData.token}`;
+      const inviteLink = `${currentUrl}/join/${inviteData.token}`;
       
       // Create personalized message
       const message = `Hey ${partner}! 🌿\n\n${you} has invited you to join your shared Olive space where you can organize notes, lists, and tasks together.\n\nClick this link to join: ${inviteLink}\n\nThis link expires in 7 days. Looking forward to organizing together! 💚`;
