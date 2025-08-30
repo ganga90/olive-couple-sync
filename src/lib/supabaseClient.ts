@@ -1,4 +1,4 @@
-// src/lib/supabaseClient.ts
+// src/lib/supabaseClient.ts  
 import { createClient } from '@supabase/supabase-js'
 
 const URL = "https://wtfspzvcetxmcfftwonq.supabase.co"
@@ -21,3 +21,9 @@ export const supabase = createClient(URL, ANON, {
     },
   },
 })
+
+// Temporary export for backwards compatibility during cache clear
+export const getSupabase = () => {
+  console.warn('⚠️ DEPRECATED: getSupabase() is deprecated. Use supabase directly instead.')
+  return supabase
+}
