@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
-import { getSupabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 
 export type SupabaseCouple = {
@@ -30,7 +30,7 @@ export const useSupabaseCouples = () => {
     return stored ? JSON.parse(stored) : null;
   });
   const [loading, setLoading] = useState(true);
-  const supabase = getSupabase();
+  
 
   console.log('[useSupabaseCouples] Hook initialized with user:', !!user, 'loading:', loading);
 

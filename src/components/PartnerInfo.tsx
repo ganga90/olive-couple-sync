@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
-import { getSupabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/providers/AuthProvider";
 import { User2, Share2, Plus, Check, Clock, X, Copy } from "lucide-react";
 
@@ -17,7 +17,7 @@ export const PartnerInfo = () => {
   const [copied, setCopied] = useState(false);
   const { currentCouple, you, partner } = useSupabaseCouple();
   const { user } = useAuth();
-  const supabase = getSupabase();
+  
 
   const handleCreateInvite = async () => {
     if (!currentCouple) {
@@ -55,7 +55,6 @@ export const PartnerInfo = () => {
       const { data: inviteData, error: inviteError } = await supabase
         .rpc('create_invite', {
           p_couple_id: currentCouple.id,
-          p_invited_email: uniqueEmail.toLowerCase(),
         });
 
       if (inviteError) {

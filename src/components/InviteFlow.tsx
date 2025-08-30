@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
-import { getSupabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/providers/AuthProvider";
 import { Share2, User2, Copy, Check, AlertTriangle } from "lucide-react";
 
@@ -24,7 +24,7 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
   const [authDebug, setAuthDebug] = useState<string>("");
   const { createCouple } = useSupabaseCouple();
   const { user } = useAuth();
-  const supabase = getSupabase();
+  
 
   // Debug auth state
   useEffect(() => {

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect } from "react";
 import { useUser, useAuth as useClerkAuth } from "@clerk/clerk-react";
-import { getSupabase, setClerkTokenGetter } from "@/lib/supabaseClient";
+import { supabase, setClerkTokenGetter } from "@/lib/supabaseClient";
 
 type AuthContextValue = {
   user: any;
@@ -13,7 +13,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoaded } = useUser();
   const { getToken, isSignedIn } = useClerkAuth();
-  const supabase = getSupabase();
+  
 
   // Make the token getter available to the singleton client
   useEffect(() => {
@@ -68,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       syncProfile();
     }
-  }, [isLoaded, isSignedIn, user, supabase]);
+  }, [isLoaded, isSignedIn, user]);
 
   // Calculate auth state
   const isAuthenticated = Boolean(isLoaded && isSignedIn && user);

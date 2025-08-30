@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseCouples } from "@/hooks/useSupabaseCouples";
-import { getSupabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 import { useSEO } from "@/hooks/useSEO";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,7 +28,7 @@ const NoteDetails = () => {
   const { user } = useUser();
   const { notes, deleteNote, updateNote } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouples();
-  const supabase = getSupabase();
+  
   const note = useMemo(() => notes.find((n) => n.id === id), [notes, id]);
 
   useSEO({ title: note ? `${note.summary} — Olive` : "Note — Olive", description: note?.originalText });
