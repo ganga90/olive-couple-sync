@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CheckCircle, Calendar, User, Tag, List, Sparkles, Pencil, Check, X } from "lucide-react";
 import { format } from "date-fns";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
+import { useAuth } from "@/providers/AuthProvider";
+import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { toast } from "sonner";
 
 interface NoteRecapProps {
@@ -40,6 +42,28 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
     taskOwner: note.task_owner || ""
   });
   const { updateNote } = useSupabaseNotesContext();
+  const { user } = useAuth();
+  const { currentCouple } = useSupabaseCouple();
+
+  // Get available owners (current user and partner) - same logic as NoteDetails
+  const availableOwners = useMemo(() => {
+    const owners = [];
+    if (user?.fullName) {
+      owners.push({
+        id: user.id,
+        name: currentCouple?.you_name || user.fullName,
+        isCurrentUser: true
+      });
+    }
+    if (currentCouple?.partner_name) {
+      owners.push({
+        id: 'partner',
+        name: currentCouple.partner_name,
+        isCurrentUser: false
+      });
+    }
+    return owners;
+  }, [user, currentCouple]);
   const getPriorityColor = (priority?: string) => {
     switch (priority) {
       case "high": return "bg-red-100 text-red-800 border-red-200";
@@ -207,12 +231,22 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Task Owner</label>
-              <Input
-                value={editedNote.taskOwner}
-                onChange={(e) => setEditedNote(prev => ({ ...prev, taskOwner: e.target.value }))}
-                placeholder="Enter task owner..."
-                className="border-olive/30 focus:border-olive"
-              />
+              <Select
+                value={editedNote.taskOwner || "none"}
+                onValueChange={(value) => setEditedNote(prev => ({ ...prev, taskOwner: value === "none" ? "" : value }))}
+              >
+                <SelectTrigger className="border-olive/30 focus:border-olive focus:ring-olive/20 bg-white">
+                  <SelectValue placeholder="Select task owner..." />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-olive/20 shadow-lg z-50">
+                  <SelectItem value="none">No owner assigned</SelectItem>
+                  {availableOwners.map((owner) => (
+                    <SelectItem key={owner.id} value={owner.name}>
+                      {owner.name} {owner.isCurrentUser ? "(You)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         ) : (
