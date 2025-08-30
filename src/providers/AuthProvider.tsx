@@ -17,7 +17,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Make the token getter available to the singleton client
   useEffect(() => {
-    setClerkTokenGetter(() => () => getToken())
+    setClerkTokenGetter(getToken)
   }, [getToken]);
 
   console.log('[AuthProvider] Clerk state:', { 

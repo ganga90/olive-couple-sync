@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
-import { useSupabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 
 export type SupabaseNote = {
@@ -24,7 +24,7 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
   const { user } = useUser();
   const [notes, setNotes] = useState<SupabaseNote[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = useSupabase();
+  const supabase = getSupabase();
 
   const fetchNotes = useCallback(async () => {
     console.log('[useSupabaseNotes] fetchNotes called with user:', !!user, 'coupleId:', coupleId);

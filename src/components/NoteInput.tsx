@@ -6,7 +6,7 @@ import { Send, Sparkles } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
-import { useSupabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { NoteRecap } from "./NoteRecap";
 
@@ -21,7 +21,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const { user, loading, isAuthenticated } = useAuth();
   const { currentCouple, createCouple } = useSupabaseCouple();
   const { addNote } = useSupabaseNotesContext();
-  const supabase = useSupabase();
+  const supabase = getSupabase();
 
   // Debug authentication state in NoteInput
   console.log('[NoteInput] Auth State:', { 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
-import { useSupabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 
 export type SupabaseCouple = {
@@ -30,7 +30,7 @@ export const useSupabaseCouples = () => {
     return stored ? JSON.parse(stored) : null;
   });
   const [loading, setLoading] = useState(true);
-  const supabase = useSupabase();
+  const supabase = getSupabase();
 
   console.log('[useSupabaseCouples] Hook initialized with user:', !!user, 'loading:', loading);
 
@@ -193,15 +193,15 @@ export const useSupabaseCouples = () => {
         return null;
       }
 
-      if (data) {
-        console.log("[Couples] Couple created successfully via RPC:", data);
+      if (data?.couple) {
+        console.log("[Couples] Couple created successfully via RPC:", data.couple);
         
         // Refresh couples list and set current
         await fetchCouples();
-        setCurrentCouple(data);
+        setCurrentCouple(data.couple);
         toast.success("Your workspace is ready!");
         
-        return data;
+        return data.couple;
       }
 
       return null;
