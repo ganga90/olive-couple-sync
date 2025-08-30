@@ -17,7 +17,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Make the token getter available to the singleton client
   useEffect(() => {
-    setClerkTokenGetter(getToken)
+    console.log('[AuthProvider] Setting token getter, getToken function:', typeof getToken)
+    // Create a wrapper that gets the token with the supabase template
+    const tokenGetterWrapper = async () => {
+      try {
+        // Try with supabase template first, then fallback to no template
+        const token = await getToken({ template: 'supabase' }) || await getToken()
+        console.log('[AuthProvider] Token retrieved:', !!token, token?.substring(0, 50) + '...')
+        return token
+      } catch (error) {
+        console.error('[AuthProvider] Error getting token:', error)
+        return null
+      }
+    }
+    setClerkTokenGetter(tokenGetterWrapper)
   }, [getToken]);
 
   console.log('[AuthProvider] Clerk state:', { 

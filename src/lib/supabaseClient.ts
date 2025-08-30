@@ -17,15 +17,31 @@ export function getSupabase(): SupabaseClient {
     global: {
       fetch: async (input, init) => {
         const headers = new Headers(init?.headers ?? {})
+        
         // Always send apikey
         if (!headers.has('apikey')) headers.set('apikey', SUPABASE_ANON_KEY)
+        
         // Always send Clerk JWT
         try {
           const token = tokenGetter ? await tokenGetter() : null
+          console.log('[SupabaseClient] Token getter result:', !!token, token?.substring(0, 50) + '...')
+          
           if (token && !headers.has('authorization')) {
             headers.set('authorization', `Bearer ${token}`)
+            console.log('[SupabaseClient] Added authorization header')
+          } else if (!token) {
+            console.log('[SupabaseClient] No token available')
           }
-        } catch (_) { /* ignore */ }
+        } catch (err) {
+          console.error('[SupabaseClient] Error getting token:', err)
+        }
+        
+        console.log('[SupabaseClient] Request headers:', {
+          apikey: headers.has('apikey'),
+          authorization: headers.has('authorization'),
+          url: typeof input === 'string' ? input : 'Request object'
+        })
+        
         return fetch(input as RequestInfo, { ...init, headers })
       }
     }
