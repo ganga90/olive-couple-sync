@@ -21,8 +21,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Create a wrapper that gets the token with the supabase template
     const tokenGetterWrapper = async () => {
       try {
-        // Try with supabase template first, then fallback to no template
-        const token = await getToken({ template: 'supabase' }) || await getToken()
+        // Get the HS256 supabase template token
+        const token = await getToken({ template: 'supabase' })
+        
+        // VERIFICATION LOG: Check token algorithm
+        if (token) {
+          try {
+            const alg = JSON.parse(atob(token.split('.')[0])).alg;
+            console.log('[Auth] Supabase token alg:', alg); // MUST print "HS256"
+          } catch (e) {
+            console.error('[Auth] Could not parse token header:', e);
+          }
+        }
+        
         console.log('[AuthProvider] Token retrieved:', !!token, token?.substring(0, 50) + '...')
         return token
       } catch (error) {
