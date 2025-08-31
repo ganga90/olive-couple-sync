@@ -92,13 +92,13 @@ serve(async (req) => {
     // Fetch existing lists for the user/couple to provide context
     let existingListsQuery = supabase
       .from('clerk_lists')
-      .select('id, name, description, is_manual, category')
+      .select('id, name, description, is_manual')
       .eq('author_id', user_id);
 
     if (couple_id) {
       existingListsQuery = supabase
         .from('clerk_lists')
-        .select('id, name, description, is_manual, category')
+        .select('id, name, description, is_manual')
         .or(`and(author_id.eq.${user_id},couple_id.is.null),couple_id.eq.${couple_id}`);
     } else {
       existingListsQuery = existingListsQuery.is('couple_id', null);
@@ -182,54 +182,49 @@ serve(async (req) => {
 
     // Find or create appropriate list
     let listId = null;
+    const category = processedNote.category || 'general';
     
-    if (existingLists && existingLists.length > 0) {
-      // Try to find an existing list that matches the category
-      const category = processedNote.category || 'general';
-      const matchingList = existingLists.find(list => {
-        const listName = list.name.toLowerCase();
-        const categoryName = category.toLowerCase().replace(/_/g, ' ');
-        
-        // Direct name match
-        if (listName === categoryName) return true;
-        
-        // Category match (if list has a category field)
-        if (list.category && list.category.toLowerCase() === category.toLowerCase()) return true;
-        
-        // Fuzzy matching for common variations
-        if (listName.includes(categoryName) || categoryName.includes(listName)) return true;
-        
-        return false;
-      });
+    // Try to find an existing list that matches the category
+    const matchingList = existingLists && existingLists.length > 0 ? existingLists.find(list => {
+      const listName = list.name.toLowerCase();
+      const categoryName = category.toLowerCase().replace(/_/g, ' ');
       
-      if (matchingList) {
-        console.log('Found matching existing list:', matchingList.name);
-        listId = matchingList.id;
+      // Direct name match
+      if (listName === categoryName) return true;
+      
+      // Fuzzy matching for common variations
+      if (listName.includes(categoryName) || categoryName.includes(listName)) return true;
+      
+      return false;
+    }) : null;
+    
+    if (matchingList) {
+      console.log('Found matching existing list:', matchingList.name);
+      listId = matchingList.id;
+    } else {
+      // Create a new list for this category
+      const listName = category.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
+      
+      console.log('Creating new list for category:', category, '->', listName);
+      
+      const { data: newList, error: createError } = await supabase
+        .from('clerk_lists')
+        .insert([{
+          name: listName,
+          description: `Auto-generated list for ${listName.toLowerCase()} items`,
+          is_manual: false,
+          author_id: user_id,
+          couple_id: couple_id || null,
+        }])
+        .select()
+        .single();
+        
+      if (createError) {
+        console.error('Error creating new list:', createError);
+        // Continue without list assignment if creation fails
       } else {
-        // Create a new list for this category
-        const listName = category.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
-        
-        console.log('Creating new list for category:', category, '->', listName);
-        
-        const { data: newList, error: createError } = await supabase
-          .from('clerk_lists')
-          .insert([{
-            name: listName,
-            description: `Auto-generated list for ${listName.toLowerCase()} items`,
-            is_manual: false,
-            author_id: user_id,
-            couple_id: couple_id || null,
-          }])
-          .select()
-          .single();
-          
-        if (createError) {
-          console.error('Error creating new list:', createError);
-          // Continue without list assignment if creation fails
-        } else {
-          console.log('Successfully created new list:', newList);
-          listId = newList.id;
-        }
+        console.log('Successfully created new list:', newList);
+        listId = newList.id;
       }
     }
 
