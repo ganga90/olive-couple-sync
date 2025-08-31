@@ -2,14 +2,14 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Send, Sparkles, Mic, MicOff } from "lucide-react";
+import { Send, Sparkles } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { NoteRecap } from "./NoteRecap";
-import { useVoiceInput } from "@/hooks/useVoiceInput";
+import VoiceInput from "./voice/VoiceInput";
 
 interface NoteInputProps {
   onNoteAdded?: () => void;
@@ -22,19 +22,6 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const { user, loading, isAuthenticated } = useAuth();
   const { currentCouple, createCouple } = useSupabaseCouple();
   const { addNote, refetch: refetchNotes } = useSupabaseNotesContext();
-  
-  // Voice input hook
-  const { 
-    isRecording, 
-    transcript, 
-    interimTranscript,
-    startRecording, 
-    stopRecording, 
-    clearTranscript,
-    isSupported: voiceSupported
-  } = useVoiceInput({
-    onTranscript: (text) => setText(text),
-  });
   
 
   // Debug authentication state in NoteInput
@@ -182,7 +169,6 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
 
   const handleCloseRecap = () => {
     setProcessedNote(null);
-    clearTranscript(); // Clear voice transcript when closing recap
   };
 
   const handleNoteUpdated = (updatedNote: any) => {
@@ -227,32 +213,18 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
           <Textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={isRecording ? "Listening... speak now!" : "Type a note or use the mic button..."}
-            className={`min-h-[120px] border-olive/30 focus:border-olive resize-none text-base pr-20 ${
-              isRecording ? 'border-red-300 bg-red-50/50' : ''
-            }`}
+            placeholder="Type a note or use the mic button..."
+            className="min-h-[120px] border-olive/30 focus:border-olive resize-none text-base pr-20"
             disabled={isProcessing}
           />
           
           {/* Voice input controls */}
           <div className="absolute top-3 right-3 flex items-center gap-2">
-            {voiceSupported && (
-              <Button
-                type="button"
-                size="sm"
-                variant={isRecording ? "destructive" : "outline"}
-                onClick={isRecording ? stopRecording : startRecording}
-                disabled={isProcessing}
-                className={`${isRecording ? 'animate-pulse bg-red-500 hover:bg-red-600' : 'border-olive/30 hover:bg-olive/10'}`}
-                title={isRecording ? "Stop voice input" : "Start voice input"}
-              >
-                {isRecording ? (
-                  <MicOff className="h-4 w-4" />
-                ) : (
-                  <Mic className="h-4 w-4" />
-                )}
-              </Button>
-            )}
+            <VoiceInput 
+              text={text} 
+              setText={setText} 
+              disabled={isProcessing}
+            />
           </div>
           
           {/* Send button */}
@@ -274,19 +246,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
           )}
         </div>
         
-        {/* Voice input status */}
-        {isRecording && (
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-2 text-red-600">
-              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-              <span className="text-sm font-medium">Recording... {interimTranscript && "(processing speech)"}</span>
-            </div>
-          </div>
-        )}
-        
         <p className="text-xs text-center text-muted-foreground">
           {isProcessing ? "AI is organizing your note..." : 
-           isRecording ? "Speak clearly, I'm listening!" :
            "I'll automatically categorize, summarize, and organize your note"}
         </p>
       </form>
