@@ -21,7 +21,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const [processedNote, setProcessedNote] = useState<any>(null);
   const { user, loading, isAuthenticated } = useAuth();
   const { currentCouple, createCouple } = useSupabaseCouple();
-  const { addNote } = useSupabaseNotesContext();
+  const { addNote, refetch: refetchNotes } = useSupabaseNotesContext();
   
   // Voice input hook
   const { 
@@ -166,6 +166,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
         });
 
         setText("");
+        
+        // Refetch notes to update lists and ensure consistency
+        await refetchNotes();
         onNoteAdded?.();
         toast.success("Note added and organized!");
       }
