@@ -7,12 +7,16 @@ export async function fetchDeepgramAccessToken(ttl = 300): Promise<string> {
     headers: { 'Content-Type':'application/json' },
     body: JSON.stringify({ ttl }),
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Failed to fetch Deepgram token (${res.status}): ${text}`);
-  }
-  const json = await res.json(); // { access_token, expires_in }
-  return json.access_token;
+  const txt = await res.text();
+  if (!res.ok) throw new Error(`Failed to fetch Deepgram token (${res.status}): ${txt}`);
+
+  let json: any = {};
+  try { json = JSON.parse(txt); } catch { throw new Error(`Bad JSON from dg-token: ${txt}`); }
+
+  const token = json.access_token || json.token || json.key;
+  if (!token) throw new Error(`No token field in dg-token response: ${txt}`);
+
+  return token;
 }
 
 export function browserSupportsOpus(): boolean {

@@ -38,11 +38,11 @@ Deno.serve(async (req) => {
   const res = await fetch('https://api.deepgram.com/v1/auth/grant', {
     method: 'POST',
     headers: {
-      // IMPORTANT: raw key, not "Bearer" and not "Token"
-      'Authorization': DG_KEY,
+      // IMPORTANT: Deepgram expects "Token <key>" format
+      'Authorization': `Token ${DG_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ ttl_seconds: ttl }),
+    body: JSON.stringify({ ttl }),
   });
 
   if (!res.ok) {
