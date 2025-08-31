@@ -1,4 +1,6 @@
 // src/lib/deepgram-live.ts
+import { MicrophonePermissions } from './microphone-permissions';
+
 export type DGConnection = {
   ws: WebSocket | null;
   stop: () => void;
@@ -57,8 +59,8 @@ export async function startDeepgramLive(
     cleanup();
   });
 
-  // --- Microphone setup ---
-  const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  // --- Microphone setup with proper permission handling ---
+  const mediaStream = await MicrophonePermissions.getUserMediaStream();
 
   let recorder: MediaRecorder | null = null;
   let audioCtx: AudioContext | null = null;

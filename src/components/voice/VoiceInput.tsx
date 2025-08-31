@@ -2,8 +2,10 @@
 import React, { useRef, useState } from "react";
 import { startDeepgramLive, DGConnection } from "@/lib/deepgram-live";
 import { Button } from "@/components/ui/button";
-import { Mic, MicOff } from "lucide-react";
+import { Mic, MicOff, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { useMicrophonePermission } from "@/hooks/useMicrophonePermission";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 type Props = {
   // The parent passes and controls the note text value + setter
@@ -16,6 +18,7 @@ export default function VoiceInput({ text, setText, disabled }: Props) {
   const [recording, setRecording] = useState(false);
   const [partial, setPartial] = useState("");
   const connRef = useRef<DGConnection | null>(null);
+  const { permission, isLoading, error, hasPermission, isPermissionDenied, canRequestPermission } = useMicrophonePermission();
 
   const onStart = async () => {
     try {
@@ -72,30 +75,52 @@ export default function VoiceInput({ text, setText, disabled }: Props) {
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <Button
-        type="button"
-        size="sm"
-        variant={recording ? "destructive" : "outline"}
-        onClick={recording ? onStop : onStart}
-        disabled={disabled}
-        className={`${recording ? 'animate-pulse bg-red-500 hover:bg-red-600' : 'border-olive/30 hover:bg-olive/10'}`}
-        title={recording ? "Stop voice input" : "Start voice input"}
-        aria-pressed={recording}
-      >
-        {recording ? (
-          <MicOff className="h-4 w-4" />
-        ) : (
-          <Mic className="h-4 w-4" />
-        )}
-      </Button>
-
-      {/* Show live partials as a subtle hint */}
-      {partial && (
-        <span className="text-sm text-muted-foreground italic truncate max-w-[240px]">
-          {partial}...
-        </span>
+    <div className="flex flex-col gap-2">
+      {/* Permission warning */}
+      {isPermissionDenied && (
+        <Alert variant="destructive" className="text-sm">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Microphone access denied. Please enable microphone permissions in your browser or device settings to use voice input.
+          </AlertDescription>
+        </Alert>
       )}
+      
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={recording ? "destructive" : "outline"}
+          onClick={recording ? onStop : onStart}
+          disabled={disabled || isLoading || isPermissionDenied}
+          className={`${recording ? 'animate-pulse bg-red-500 hover:bg-red-600' : 'border-olive/30 hover:bg-olive/10'}`}
+          title={
+            isPermissionDenied 
+              ? "Microphone access denied" 
+              : isLoading 
+                ? "Checking microphone..." 
+                : recording 
+                  ? "Stop voice input" 
+                  : "Start voice input"
+          }
+          aria-pressed={recording}
+        >
+          {isLoading ? (
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent" />
+          ) : recording ? (
+            <MicOff className="h-4 w-4" />
+          ) : (
+            <Mic className="h-4 w-4" />
+          )}
+        </Button>
+
+        {/* Show live partials as a subtle hint */}
+        {partial && (
+          <span className="text-sm text-muted-foreground italic truncate max-w-[240px]">
+            {partial}...
+          </span>
+        )}
+      </div>
     </div>
   );
 }
