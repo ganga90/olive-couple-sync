@@ -11,15 +11,11 @@ const ALLOWED_ORIGINS = new Set([
 ]);
 
 const cors = (origin: string | null) => ({
-  "Access-Control-Allow-Origin":
-    origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://preview--olive-couple-sync.lovable.app",
+  "Access-Control-Allow-Origin": origin && ALLOWED_ORIGINS.has(origin) ? origin : "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-  "Access-Control-Allow-Headers":
-    // allow Supabase gateway + fetch() defaults
-    "Content-Type, Authorization, apikey, x-client-info, x-supabase-authorization",
-  "Access-Control-Max-Age": "86400",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
   "Vary": "Origin",
-  "Content-Type": "application/json",
+  "Content-Type": "application/json"
 });
 
 Deno.serve(async (req) => {
@@ -32,7 +28,7 @@ Deno.serve(async (req) => {
   try {
     // NEW: read the renamed secret; fallback to old name if present
     const DG_KEY =
-      Deno.env.get("DEEPGRAM_OLIVE_AI") || // ✅ new name
+      Deno.env.get("DEEPGRAM_OLIVE_AI") ?? // ✅ new name
       Deno.env.get("DEEPGRAM_OLIVEAI");    // legacy, if still set
 
     if (!DG_KEY) {
@@ -52,42 +48,29 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: cors(origin) });
     }
 
-    // TTL input (default 120s)
-    let ttl = 120;
+    // TTL input (default 60s, keep it short for browser tokens)
+    let ttl = 60;
     if (req.method === "POST") {
       try {
         const body = await req.json().catch(() => ({}));
-        if (body.ttl && typeof body.ttl === "number" && body.ttl > 0 && body.ttl <= 3600) {
-          ttl = body.ttl;
+        if (typeof body.ttl === "number") {
+          ttl = Math.max(30, Math.min(body.ttl, 600));
         }
       } catch {
         // ignore and use default
       }
     }
 
-    // Create ephemeral Deepgram key with listen permissions
-    // Some accounts expect "listen:stream", others "listen".
-    // Try ":stream" first; if 403, fall back to plain "listen".
-    const attemptCreateKey = async (scopes: string[]) => {
-      return fetch("https://api.deepgram.com/v1/keys", {
-        method: "POST",
-        headers: {
-          Authorization: `Token ${DG_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          comment: "olive-browser-temp",
-          time_to_live_in_seconds: ttl,
-          scopes,
-        }),
-      });
-    };
-
-    let dgRes = await attemptCreateKey(["usage:write", "listen:stream"]);
-    if (dgRes.status === 403) {
-      // fallback for accounts that use "listen"
-      dgRes = await attemptCreateKey(["usage:write", "listen"]);
-    }
+    // Create temporary access token for browser use via grant endpoint
+    const dgRes = await fetch("https://api.deepgram.com/v1/auth/grant", {
+      method: "POST",
+      headers: {
+        // Deepgram expects "Token <API_KEY>" (not Bearer) for this call
+        Authorization: `Token ${DG_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ttl }),
+    });
 
     if (!dgRes.ok) {
       const txt = await dgRes.text();
@@ -101,12 +84,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    const json = await dgRes.json(); // { key: "dg_temp_..." , ... }
+    const { access_token, expires_in } = await dgRes.json();
 
     return new Response(
       JSON.stringify({
-        token: json.key,
-        expires_in: ttl,
+        token: access_token,     // IMPORTANT: access_token, not key
+        expires_in: expires_in ?? ttl,
       }),
       { status: 200, headers: cors(origin) }
     );

@@ -1,6 +1,6 @@
 // src/components/voice/VoiceInput.tsx
 import React, { useRef, useState } from "react";
-import { startDeepgramLive, DGConnection } from "@/lib/deepgram-live";
+import { startLiveTranscription } from "@/lib/deepgram";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -17,13 +17,13 @@ type Props = {
 export default function VoiceInput({ text, setText, disabled }: Props) {
   const [recording, setRecording] = useState(false);
   const [partial, setPartial] = useState("");
-  const connRef = useRef<DGConnection | null>(null);
+  const stopFnRef = useRef<(() => void) | null>(null);
   const { permission, isLoading, error, hasPermission, isPermissionDenied, canRequestPermission } = useMicrophonePermission();
 
   const onStart = async () => {
     try {
       console.log("[VoiceInput] Starting Deepgram connection...");
-      const conn = await startDeepgramLive({
+      const stopFn = await startLiveTranscription({
         onPartial: (p) => {
           console.log("[VoiceInput] Partial:", p);
           setPartial(p);
@@ -43,7 +43,7 @@ export default function VoiceInput({ text, setText, disabled }: Props) {
           setPartial("");
         },
       });
-      connRef.current = conn;
+      stopFnRef.current = stopFn;
       setRecording(true);
       toast.success("Voice recording started");
     } catch (e) {
@@ -67,8 +67,8 @@ export default function VoiceInput({ text, setText, disabled }: Props) {
 
   const onStop = () => {
     console.log("[VoiceInput] Stopping voice input");
-    connRef.current?.stop();
-    connRef.current = null;
+    stopFnRef.current?.();
+    stopFnRef.current = null;
     setRecording(false);
     setPartial("");
     toast.success("Voice recording stopped");
