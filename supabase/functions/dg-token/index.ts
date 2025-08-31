@@ -1,19 +1,23 @@
 // supabase/functions/dg-token/index.ts
 // Public endpoint: returns a short-lived Deepgram token.
-// Requires the secret "DEEPGRAM_OLIVEAI" in Supabase.
+// Requires Supabase Edge Function Secret: DEEPGRAM_OLIVE_AI (new name).
+// Backward-compat: also accepts DEEPGRAM_OLIVEAI if present.
 
-const ALLOWED_ORIGINS = new Set<string>([
+const ALLOWED_ORIGINS = new Set([
   "http://localhost:3000",
   "http://localhost:5173",
   "https://preview--olive-couple-sync.lovable.app",
   "https://olive-couple-sync.lovable.app",
-  "https://id-preview--fe28fe11-6f80-433f-aa49-de1399a1110c.lovable.app", // Current preview URL
 ]);
 
 const cors = (origin: string | null) => ({
-  "Access-Control-Allow-Origin": origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://preview--olive-couple-sync.lovable.app",
+  "Access-Control-Allow-Origin":
+    origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://preview--olive-couple-sync.lovable.app",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers":
+    // allow Supabase gateway + fetch() defaults
+    "Content-Type, Authorization, apikey, x-client-info, x-supabase-authorization",
+  "Access-Control-Max-Age": "86400",
   "Vary": "Origin",
   "Content-Type": "application/json",
 });
@@ -26,93 +30,94 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const DG_KEY = Deno.env.get("DEEPGRAM_OLIVEAI");
+    // NEW: read the renamed secret; fallback to old name if present
+    const DG_KEY =
+      Deno.env.get("DEEPGRAM_OLIVE_AI") || // ✅ new name
+      Deno.env.get("DEEPGRAM_OLIVEAI");    // legacy, if still set
+
     if (!DG_KEY) {
-      console.error("Missing DEEPGRAM_OLIVEAI environment variable");
-      return new Response(JSON.stringify({ 
-        error: "Missing Deepgram key", 
-        message: "Voice input requires a valid Deepgram API key. Please configure DEEPGRAM_OLIVEAI secret." 
-      }), {
-        status: 500,
-        headers: cors(origin),
-      });
+      // Use 401 to make the problem clear (not server error)
+      return new Response(
+        JSON.stringify({
+          error: "Missing Deepgram key",
+          message:
+            "Set the Edge Function secret DEEPGRAM_OLIVE_AI in Supabase (Edge Functions → dg-token → Secrets).",
+        }),
+        { status: 401, headers: cors(origin) }
+      );
     }
 
-    console.log("Deepgram key found, attempting to create temporary token");
+    // Optional: quick health probe
+    if (req.method === "GET" && new URL(req.url).searchParams.get("health") === "1") {
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: cors(origin) });
+    }
 
-    // Optional: TTL can be passed from client; default to 60s
-    let ttl = 60;
-    try {
-      if (req.method === "POST") {
+    // TTL input (default 120s)
+    let ttl = 120;
+    if (req.method === "POST") {
+      try {
         const body = await req.json().catch(() => ({}));
-        if (body.ttl && typeof body.ttl === 'number' && body.ttl > 0 && body.ttl <= 3600) {
+        if (body.ttl && typeof body.ttl === "number" && body.ttl > 0 && body.ttl <= 3600) {
           ttl = body.ttl;
         }
+      } catch {
+        // ignore and use default
       }
-    } catch {
-      // Use default TTL if no body or invalid
     }
 
-    // Create a temporary Deepgram key with a short TTL and limited scope.
-    // Deepgram recommends this pattern to protect your main key.
-    const dgRes = await fetch("https://api.deepgram.com/v1/keys", {
-      method: "POST",
-      headers: {
-        "Authorization": `Token ${DG_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        comment: "olive-browser-temp",
-        time_to_live_in_seconds: ttl,
-        // Minimal scope to connect to Live listen:
-        scopes: ["usage:write"],
-      }),
-    });
+    // Create ephemeral Deepgram key with listen permissions
+    // Some accounts expect "listen:stream", others "listen".
+    // Try ":stream" first; if 403, fall back to plain "listen".
+    const attemptCreateKey = async (scopes: string[]) => {
+      return fetch("https://api.deepgram.com/v1/keys", {
+        method: "POST",
+        headers: {
+          Authorization: `Token ${DG_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          comment: "olive-browser-temp",
+          time_to_live_in_seconds: ttl,
+          scopes,
+        }),
+      });
+    };
 
-    console.log("Deepgram response status:", dgRes.status);
+    let dgRes = await attemptCreateKey(["usage:write", "listen:stream"]);
+    if (dgRes.status === 403) {
+      // fallback for accounts that use "listen"
+      dgRes = await attemptCreateKey(["usage:write", "listen"]);
+    }
 
     if (!dgRes.ok) {
       const txt = await dgRes.text();
-      console.error("Deepgram grant failed - Status:", dgRes.status, "Response:", txt);
-      
-      // Parse the error to provide better feedback
-      let errorMessage = "Deepgram API error";
-      try {
-        const errorData = JSON.parse(txt);
-        if (errorData.err_code === "FORBIDDEN") {
-          errorMessage = "Invalid or insufficient Deepgram API key permissions. Please check your Deepgram API key.";
-        }
-      } catch (_) {
-        // Use generic message if can't parse error
-      }
-      
-      return new Response(JSON.stringify({ 
-        error: errorMessage, 
-        details: txt,
-        status: dgRes.status 
-      }), {
-        status: 502,
-        headers: cors(origin),
-      });
+      return new Response(
+        JSON.stringify({
+          error: "Deepgram API error",
+          details: txt,
+          status: dgRes.status,
+        }),
+        { status: 502, headers: cors(origin) }
+      );
     }
 
-    const json = await dgRes.json();
-    console.log("Successfully created temporary Deepgram token");
-    
-    // Deepgram returns { key: "dg_temp_xxx", ... }
-    return new Response(JSON.stringify({ token: json.key, expires_in: ttl }), {
-      status: 200,
-      headers: cors(origin),
-    });
+    const json = await dgRes.json(); // { key: "dg_temp_..." , ... }
+
+    return new Response(
+      JSON.stringify({
+        token: json.key,
+        expires_in: ttl,
+      }),
+      { status: 200, headers: cors(origin) }
+    );
   } catch (e) {
-    console.error("Error in dg-token function:", e);
-    return new Response(JSON.stringify({ 
-      error: "Unexpected error", 
-      details: String(e),
-      message: "An unexpected error occurred while requesting Deepgram token"
-    }), {
-      status: 500,
-      headers: cors(origin),
-    });
+    return new Response(
+      JSON.stringify({
+        error: "Unexpected error",
+        details: String(e),
+        message: "An unexpected error occurred while requesting Deepgram token",
+      }),
+      { status: 500, headers: cors(origin) }
+    );
   }
 });
