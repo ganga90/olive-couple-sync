@@ -1,6 +1,6 @@
 // src/components/voice/VoiceInput.tsx
 import React, { useRef, useState } from "react";
-import { startLiveTranscription } from "@/lib/deepgram";
+import { startDeepgramLive } from "@/features/voice/deepgram";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -17,34 +17,26 @@ type Props = {
 export default function VoiceInput({ text, setText, disabled }: Props) {
   const [recording, setRecording] = useState(false);
   const [partial, setPartial] = useState("");
-  const stopFnRef = useRef<(() => void) | null>(null);
+  const recorderRef = useRef<{ stop: () => void } | null>(null);
   const { permission, isLoading, error, hasPermission, isPermissionDenied, canRequestPermission } = useMicrophonePermission();
 
   const onStart = async () => {
+    if (recording) return;
     try {
       console.log("[VoiceInput] Starting Deepgram connection...");
-      const stopFn = await startLiveTranscription({
-        onPartial: (p) => {
-          console.log("[VoiceInput] Partial:", p);
-          setPartial(p);
-        },
-        onFinal: (f) => {
-          console.log("[VoiceInput] Final:", f);
+      setRecording(true);
+      recorderRef.current = await startDeepgramLive((transcription, isFinal) => {
+        console.log(`[VoiceInput] ${isFinal ? 'Final' : 'Partial'}:`, transcription);
+        if (isFinal) {
           // Append final text to the input (with a space if needed)
           const needsSpace = text && !text.endsWith(" ") && !text.endsWith("\n");
-          const newText = needsSpace ? `${text} ${f}` : `${text}${f}`;
+          const newText = needsSpace ? `${text} ${transcription}` : `${text}${transcription}`;
           setText(newText);
           setPartial("");
-        },
-        onError: (e) => {
-          console.error("[VoiceInput] Deepgram error:", e);
-          toast.error("Voice input error. Please try again.");
-          setRecording(false);
-          setPartial("");
-        },
+        } else {
+          setPartial(transcription);
+        }
       });
-      stopFnRef.current = stopFn;
-      setRecording(true);
       toast.success("Voice recording started");
     } catch (e) {
       console.error("[VoiceInput] Failed to start:", e);
@@ -67,8 +59,8 @@ export default function VoiceInput({ text, setText, disabled }: Props) {
 
   const onStop = () => {
     console.log("[VoiceInput] Stopping voice input");
-    stopFnRef.current?.();
-    stopFnRef.current = null;
+    recorderRef.current?.stop();
+    recorderRef.current = null;
     setRecording(false);
     setPartial("");
     toast.success("Voice recording stopped");
