@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CheckCircle, Calendar, User, Tag, List, Sparkles, Pencil, Check, X } from "lucide-react";
+import { CheckCircle, Calendar, User, Tag, List, Sparkles, Pencil, Check, X, Plus } from "lucide-react";
 import { format } from "date-fns";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { toast } from "sonner";
 
 interface NoteRecapProps {
@@ -25,6 +26,7 @@ interface NoteRecapProps {
     author: string;
     createdAt: string;
     task_owner?: string | null;
+    list_id?: string | null;
   };
   onClose?: () => void;
   onNoteUpdated?: (updatedNote: any) => void;
@@ -39,11 +41,16 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
     tags: note.tags ? note.tags.join(", ") : "",
     items: note.items ? note.items.join("\n") : "",
     dueDate: note.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
-    taskOwner: note.task_owner || ""
+    taskOwner: note.task_owner || "",
+    listId: note.list_id || ""
   });
+  const [newListName, setNewListName] = useState("");
+  const [showNewListInput, setShowNewListInput] = useState(false);
+  
   const { updateNote } = useSupabaseNotesContext();
   const { user } = useAuth();
   const { currentCouple } = useSupabaseCouple();
+  const { lists, createList, loading: listsLoading } = useSupabaseLists(currentCouple?.id || null);
 
   // Get available owners (current user and partner) - same logic as NoteDetails
   const availableOwners = useMemo(() => {
@@ -92,6 +99,28 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
       return;
     }
 
+    // Handle new list creation if needed
+    let finalListId = editedNote.listId;
+    if (showNewListInput && newListName.trim()) {
+      try {
+        const newList = await createList({
+          name: newListName.trim(),
+          description: `Custom list for organizing notes`,
+          is_manual: true
+        });
+        if (newList) {
+          finalListId = newList.id;
+          setShowNewListInput(false);
+          setNewListName("");
+          toast.success(`Created new list: ${newList.name}`);
+        }
+      } catch (error) {
+        console.error("Error creating new list:", error);
+        toast.error("Failed to create new list");
+        return;
+      }
+    }
+
     try {
       const updates = {
         summary: editedNote.summary.trim(),
@@ -100,7 +129,8 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
         tags: editedNote.tags.split(",").map(tag => tag.trim()).filter(Boolean),
         items: editedNote.items.split("\n").map(item => item.trim()).filter(Boolean),
         due_date: editedNote.dueDate ? new Date(editedNote.dueDate).toISOString() : null,
-        task_owner: editedNote.taskOwner.trim() || null
+        task_owner: editedNote.taskOwner.trim() || null,
+        list_id: finalListId || null
       };
 
       const updatedNote = await updateNote(note.id, updates);
@@ -123,9 +153,12 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
       tags: note.tags ? note.tags.join(", ") : "",
       items: note.items ? note.items.join("\n") : "",
       dueDate: note.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
-      taskOwner: note.task_owner || ""
+      taskOwner: note.task_owner || "",
+      listId: note.list_id || ""
     });
     setIsEditing(false);
+    setShowNewListInput(false);
+    setNewListName("");
   };
 
   return (
@@ -247,6 +280,68 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Assign to List</label>
+              <div className="space-y-2">
+                <Select
+                  value={showNewListInput ? "new" : (editedNote.listId || "none")}
+                  onValueChange={(value) => {
+                    if (value === "new") {
+                      setShowNewListInput(true);
+                      setEditedNote(prev => ({ ...prev, listId: "" }));
+                    } else {
+                      setShowNewListInput(false);
+                      setEditedNote(prev => ({ ...prev, listId: value === "none" ? "" : value }));
+                    }
+                  }}
+                >
+                  <SelectTrigger className="border-olive/30 focus:border-olive focus:ring-olive/20 bg-white">
+                    <SelectValue placeholder="Select a list..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-olive/20 shadow-lg z-50">
+                    <SelectItem value="none">No list assigned</SelectItem>
+                    {lists.map((list) => (
+                      <SelectItem key={list.id} value={list.id}>
+                        {list.name} {!list.is_manual && "(Auto)"}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="new">
+                      <div className="flex items-center gap-2">
+                        <Plus className="h-4 w-4" />
+                        Create new list...
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                
+                {showNewListInput && (
+                  <div className="flex gap-2">
+                    <Input
+                      value={newListName}
+                      onChange={(e) => setNewListName(e.target.value)}
+                      placeholder="Enter new list name..."
+                      className="border-olive/30 focus:border-olive"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newListName.trim()) {
+                          handleSaveEdit();
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowNewListInput(false);
+                        setNewListName("");
+                      }}
+                      className="text-gray-500 hover:bg-gray-100"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ) : (

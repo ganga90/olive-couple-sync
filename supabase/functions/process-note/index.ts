@@ -13,20 +13,30 @@ For each raw note, perform the following steps:
 
 Understand the Context and Content:
 - Identify the main message and extract key points into a concise summary.
-- Detect the user who submitted the note.
+- Detect URLs, links, or web references and preserve them appropriately.
+- Identify if this is entertainment, events, or experience-related content.
 
 Summary Creation Rules:
 - For GROCERY/SHOPPING tasks: If the note mentions specific items to buy/get, focus the summary on the item itself (e.g., "Tell Almu to buy lemons" → summary: "lemons")
 - For ACTION-BASED tasks: Preserve important action verbs in the summary (e.g., "fix the kitchen sink" → "fix the kitchen sink", "book restaurant for date" → "book restaurant for date")
 - For ASSIGNMENT tasks: When someone is told to do something, focus on the action/item, not the telling (e.g., "Tell John to water plants" → "water plants")
+- For LINKS/TICKETS: If the note contains URLs or mentions buying tickets, booking events, focus on the event/experience (e.g., "buy concert tickets for Taylor Swift" → "Taylor Swift concert tickets")
 
-Categorization:
-- Assign one or more relevant categories from predefined lists (e.g., groceries, task, home improvement, travel idea, date idea, reminder, shopping list, personal note) based on the content.
-- If the note does not fit existing categories, suggest potential new custom categories.
+Enhanced Categorization Logic:
+- **concert_tickets**, **event_tickets**, **show_tickets** → category: "entertainment" or "date_ideas"
+- **restaurant reservations**, **dinner plans**, **date activities** → category: "date_ideas" 
+- **home repairs**, **fix**, **install**, **maintenance** → category: "home_improvement"
+- **vacation**, **trip planning**, **flights**, **hotels** → category: "travel"
+- **groceries**, **food shopping**, **supermarket** → category: "groceries"
+- **general shopping** (clothes, electronics, etc.) → category: "shopping"
+- **personal tasks**, **appointments**, **calls** → category: "personal"
+- **reminders**, **don't forget** → category: "reminder"
 
-Date Extraction:
-- Automatically detect any date, time, or deadline mentioned explicitly or implicitly (e.g., "tomorrow," "next Friday," "in 3 days").
-- If no date is found, leave the date field empty.
+URL and Link Handling:
+- If the note contains URLs, preserve them in the summary or items list
+- For ticket purchases, event bookings, or entertainment: categorize as "entertainment" or "date_ideas" based on context
+- Concert tickets, theater, movies, events → "entertainment"
+- Romantic dinners, date activities, couples experiences → "date_ideas"
 
 Task Owner Detection:
 - Scan for mentions of who should be responsible for or assigned to complete the task.
@@ -39,10 +49,12 @@ Task Owner Detection:
 
 Items Extraction:
 - For grocery/shopping lists: Extract specific items mentioned (e.g., "buy milk and eggs" → items: ["milk", "eggs"])
+- For events/tickets: Extract event details (e.g., "buy Taylor Swift tickets" → items: ["Taylor Swift concert tickets"])
 - For general tasks: Only use items array if the note contains multiple distinct sub-tasks or components
-- Focus on the actual items/objects, not the actions
+- Preserve URLs/links as items when relevant
 
 Actionability & Prioritization:
+- Entertainment, events, and time-sensitive bookings should be medium to high priority
 - Identify if the note represents an actionable task or idea.
 - Highlight important or urgent items when indicated.
 

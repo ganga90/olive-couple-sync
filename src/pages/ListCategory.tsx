@@ -11,13 +11,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, CheckCircle2, Circle } from "lucide-react";
 import { toast } from "sonner";
 
 const ListCategory = () => {
   const { listId = "" } = useParams();
   const navigate = useNavigate();
-  const { notes } = useSupabaseNotesContext();
+  const { notes, updateNote, deleteNote } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouple();
   const { lists, loading, updateList, deleteList } = useSupabaseLists(currentCouple?.id || null);
   
@@ -70,6 +70,30 @@ const ListCategory = () => {
       setEditName(currentList.name);
       setEditDescription(currentList.description || "");
       setEditDialogOpen(true);
+    }
+  };
+
+  const handleToggleComplete = async (noteId: string, completed: boolean) => {
+    try {
+      await updateNote(noteId, { completed });
+      toast.success(completed ? "Item marked as complete" : "Item marked as incomplete");
+    } catch (error) {
+      console.error("Error updating note:", error);
+      toast.error("Failed to update item");
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string, summary: string) => {
+    if (window.confirm(`Are you sure you want to delete "${summary}"?`)) {
+      try {
+        const success = await deleteNote(noteId);
+        if (success) {
+          toast.success("Item deleted successfully");
+        }
+      } catch (error) {
+        console.error("Error deleting note:", error);
+        toast.error("Failed to delete item");
+      }
     }
   };
 
@@ -163,36 +187,77 @@ const ListCategory = () => {
         ) : (
           <div className="space-y-3">
             {listNotes.map((note) => (
-              <Link key={note.id} to={`/notes/${note.id}`} className="block" aria-label={`Open ${note.summary}`}>
-                <Card className="bg-white/50 border-olive/20 shadow-soft transition-all duration-200 hover:shadow-lg hover:scale-[1.02]">
-                  <CardContent className="flex items-center justify-between p-4">
-                    <div className="flex-1">
-                      <div className="mb-1 text-sm font-medium text-olive-dark">{note.summary}</div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                        <Badge variant="secondary" className="bg-olive/10 text-olive border-olive/20">
-                          {note.category}
-                        </Badge>
-                        {note.priority && (
-                          <Badge variant="secondary" className={
-                            note.priority === 'high' ? 'bg-red-100 text-red-800' :
-                            note.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-green-100 text-green-800'
-                          }>
-                            {note.priority} priority
-                          </Badge>
-                        )}
-                        {note.dueDate && (
-                          <span>Due {new Date(note.dueDate).toLocaleDateString()}</span>
-                        )}
-                        {note.task_owner && (
-                          <span>• {note.task_owner}</span>
-                        )}
-                      </div>
+              <Card key={note.id} className="bg-white/50 border-olive/20 shadow-soft transition-all duration-200 hover:shadow-lg">
+                <CardContent className="flex items-center gap-3 p-4">
+                  {/* Checkbox for completion */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleToggleComplete(note.id, !note.completed);
+                    }}
+                    className={`p-1 rounded-full ${note.completed 
+                      ? 'text-green-600 hover:bg-green-50' 
+                      : 'text-gray-400 hover:bg-gray-50'
+                    }`}
+                  >
+                     {note.completed ? (
+                       <CheckCircle2 className="h-5 w-5" />
+                     ) : (
+                       <Circle className="h-5 w-5" />
+                     )}
+                  </Button>
+
+                  {/* Note content - clickable to view details */}
+                  <Link 
+                    to={`/notes/${note.id}`} 
+                    className="flex-1 min-w-0" 
+                    aria-label={`Open ${note.summary}`}
+                  >
+                    <div className={`mb-1 text-sm font-medium transition-all ${
+                      note.completed 
+                        ? 'text-muted-foreground line-through' 
+                        : 'text-olive-dark'
+                    }`}>
+                      {note.summary}
                     </div>
-                    <span className="text-olive">›</span>
-                  </CardContent>
-                </Card>
-              </Link>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                      <Badge variant="secondary" className="bg-olive/10 text-olive border-olive/20">
+                        {note.category}
+                      </Badge>
+                      {note.priority && (
+                        <Badge variant="secondary" className={
+                          note.priority === 'high' ? 'bg-red-100 text-red-800' :
+                          note.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-green-100 text-green-800'
+                        }>
+                          {note.priority} priority
+                        </Badge>
+                      )}
+                      {note.dueDate && (
+                        <span>Due {new Date(note.dueDate).toLocaleDateString()}</span>
+                      )}
+                      {note.task_owner && (
+                        <span>• {note.task_owner}</span>
+                      )}
+                    </div>
+                  </Link>
+
+                  {/* Delete button */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleDeleteNote(note.id, note.summary);
+                    }}
+                    className="p-1 text-red-500 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
             ))}
           </div>
         )}
