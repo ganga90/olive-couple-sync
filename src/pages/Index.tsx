@@ -1,13 +1,16 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { OliveLogoWithText } from "@/components/OliveLogo";
 import { Button } from "@/components/ui/button";
-import { Plus, Heart } from "lucide-react";
+import { Plus, Heart, Clock, AlertCircle } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { SimpleNoteInput } from "@/components/SimpleNoteInput";
 import { NoteInput } from "@/components/NoteInput";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
+import { RecentTasksSection } from "@/components/RecentTasksSection";
+import { TagSearch } from "@/components/TagSearch";
 
 const Index = () => {
   useSEO({ 
@@ -18,6 +21,7 @@ const Index = () => {
   const navigate = useNavigate();
   const [hasNotes, setHasNotes] = useState(false);
   const { user, loading, isAuthenticated } = useAuth();
+  const { notes } = useSupabaseNotesContext();
 
   // Debug authentication state
   console.log('[Index] Auth State:', { 
@@ -44,6 +48,26 @@ const Index = () => {
   const userName = isAuthenticatedUser ? (user.firstName || user.fullName || "there") : null;
 
   console.log('[Index] Computed States:', { isAuthenticatedUser, userName });
+
+  // Get last 3 tasks and top 3 high priority tasks
+  const { recentTasks, highPriorityTasks } = useMemo(() => {
+    if (!isAuthenticatedUser || !notes.length) {
+      return { recentTasks: [], highPriorityTasks: [] };
+    }
+
+    // Sort by creation date for recent tasks
+    const recent = [...notes]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 3);
+
+    // Get high priority tasks
+    const highPriority = notes
+      .filter(note => note.priority === 'high')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 3);
+
+    return { recentTasks: recent, highPriorityTasks: highPriority };
+  }, [notes, isAuthenticatedUser]);
 
   return (
     <main className="min-h-screen bg-gradient-soft">
@@ -73,6 +97,27 @@ const Index = () => {
             <NoteInput onNoteAdded={() => setHasNotes(true)} />
           ) : (
             <SimpleNoteInput onNoteAdded={() => setHasNotes(true)} />
+          )}
+
+          {/* Recent Tasks and High Priority Tasks - only show for authenticated users with notes */}
+          {isAuthenticatedUser && notes.length > 0 && (
+            <div className="space-y-6">
+              <RecentTasksSection
+                title="Recent Tasks"
+                tasks={recentTasks}
+                emptyMessage="No recent tasks yet"
+                icon={<Clock className="h-5 w-5 text-olive" />}
+              />
+              
+              <RecentTasksSection
+                title="High Priority Tasks"
+                tasks={highPriorityTasks}
+                emptyMessage="No high priority tasks"
+                icon={<AlertCircle className="h-5 w-5 text-olive" />}
+              />
+              
+              <TagSearch />
+            </div>
           )}
 
           {/* Welcome message */}

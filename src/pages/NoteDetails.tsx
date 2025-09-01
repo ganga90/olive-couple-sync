@@ -48,14 +48,22 @@ const NoteDetails = () => {
   const [localDueDate, setLocalDueDate] = useState<Date | undefined>(
     note?.dueDate ? new Date(note.dueDate) : undefined
   );
+  const [isEditingItems, setIsEditingItems] = useState(false);
+  const [localItems, setLocalItems] = useState<string[]>(note?.items || []);
+  const [isEditingTags, setIsEditingTags] = useState(false);
+  const [localTags, setLocalTags] = useState<string[]>(note?.tags || []);
+  const [newItem, setNewItem] = useState("");
+  const [newTag, setNewTag] = useState("");
 
-  // Sync localTaskOwner with note.task_owner when note changes
+  // Sync local state with note when note changes
   useEffect(() => {
     if (note) {
       setLocalTaskOwner(note.task_owner || null);
       setLocalDueDate(note.dueDate ? new Date(note.dueDate) : undefined);
+      setLocalItems(note.items || []);
+      setLocalTags(note.tags || []);
     }
-  }, [note?.task_owner, note?.dueDate]);
+  }, [note?.task_owner, note?.dueDate, note?.items, note?.tags]);
 
   // Get available owners (current user and partner)
   const availableOwners = useMemo(() => {
@@ -178,6 +186,98 @@ const NoteDetails = () => {
     }
   };
 
+  const updateItems = async (newItems: string[]) => {
+    if (!note) return;
+    
+    try {
+      setLocalItems(newItems);
+      
+      const result = await updateNote(note.id, { items: newItems });
+      
+      if (result) {
+        setIsEditingItems(false);
+        toast.success("Items updated");
+      } else {
+        setLocalItems(note.items || []);
+        toast.error("Failed to update items");
+      }
+    } catch (error) {
+      console.error("Error updating items:", error);
+      toast.error("Failed to update items");
+      setLocalItems(note.items || []);
+    }
+  };
+
+  const updateTags = async (newTags: string[]) => {
+    if (!note) return;
+    
+    try {
+      setLocalTags(newTags);
+      
+      const result = await updateNote(note.id, { tags: newTags });
+      
+      if (result) {
+        setIsEditingTags(false);
+        toast.success("Tags updated");
+      } else {
+        setLocalTags(note.tags || []);
+        toast.error("Failed to update tags");
+      }
+    } catch (error) {
+      console.error("Error updating tags:", error);
+      toast.error("Failed to update tags");
+      setLocalTags(note.tags || []);
+    }
+  };
+
+  const addItem = () => {
+    if (newItem.trim()) {
+      const updatedItems = [...localItems, newItem.trim()];
+      updateItems(updatedItems);
+      setNewItem("");
+    }
+  };
+
+  const removeItem = (index: number) => {
+    const updatedItems = localItems.filter((_, i) => i !== index);
+    updateItems(updatedItems);
+  };
+
+  const addTag = () => {
+    if (newTag.trim() && !localTags.includes(newTag.trim())) {
+      const updatedTags = [...localTags, newTag.trim()];
+      updateTags(updatedTags);
+      setNewTag("");
+    }
+  };
+
+  const removeTag = (index: number) => {
+    const updatedTags = localTags.filter((_, i) => i !== index);
+    updateTags(updatedTags);
+  };
+
+  const renderTextWithLinks = (text: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    
+    return parts.map((part, index) => {
+      if (urlRegex.test(part)) {
+        return (
+          <a
+            key={index}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-olive hover:text-olive/80 underline"
+          >
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
+  };
+
   return (
     <main className="min-h-screen bg-gradient-soft">
       <section className="mx-auto max-w-2xl px-4 py-6">
@@ -246,35 +346,157 @@ const NoteDetails = () => {
           </div>
 
           {/* Tags Section */}
-          {note.tags && note.tags.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Tag className="h-4 w-4" />
-                <span>Tags</span>
+          <Card className="bg-white/50 border-olive/20 shadow-soft">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-medium text-olive-dark">
+                  <Tag className="h-4 w-4 text-olive" />
+                  <span>Tags</span>
+                </div>
+                {!isEditingTags && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsEditingTags(true)}
+                    className="text-olive hover:bg-olive/10"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                )}
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                {note.tags.map((tag, idx) => (
-                  <Badge key={idx} variant="outline" className="bg-gray-50 border-gray-200 text-gray-600">
-                    {tag}
-                  </Badge>
-                ))}
+              <div className="mt-2">
+                {isEditingTags ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={newTag}
+                        onChange={(e) => setNewTag(e.target.value)}
+                        placeholder="Add a tag..."
+                        className="flex-1 px-3 py-2 border border-olive/30 rounded-md focus:border-olive focus:ring-olive/20 text-sm"
+                        onKeyPress={(e) => e.key === 'Enter' && addTag()}
+                      />
+                      <Button
+                        onClick={addTag}
+                        size="sm"
+                        className="bg-olive hover:bg-olive/90 text-white"
+                      >
+                        Add
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {localTags.map((tag, idx) => (
+                        <div key={idx} className="flex items-center gap-1 bg-olive/10 border border-olive/20 rounded-md px-2 py-1">
+                          <span className="text-sm text-olive-dark">{tag}</span>
+                          <Button
+                            onClick={() => removeTag(idx)}
+                            size="sm"
+                            variant="ghost"
+                            className="h-4 w-4 p-0 text-red-500 hover:text-red-700"
+                          >
+                            ×
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsEditingTags(false)}
+                      className="border-olive/30"
+                    >
+                      Done
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {localTags.length > 0 ? (
+                      localTags.map((tag, idx) => (
+                        <Badge key={idx} variant="outline" className="bg-olive/5 border-olive/20 text-olive-dark">
+                          {tag}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-sm text-muted-foreground">No tags yet</span>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            </CardContent>
+          </Card>
 
           {/* Items List */}
-          {note.items && note.items.length > 0 && (
-            <Card className="bg-white/50 border-olive/20 shadow-soft">
-              <CardContent className="p-4">
-                <div className="mb-3 text-xs font-medium text-olive-dark uppercase tracking-wide">Items</div>
+          <Card className="bg-white/50 border-olive/20 shadow-soft">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-xs font-medium text-olive-dark uppercase tracking-wide">Items</div>
+                {!isEditingItems && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsEditingItems(true)}
+                    className="text-olive hover:bg-olive/10"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+              {isEditingItems ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={newItem}
+                      onChange={(e) => setNewItem(e.target.value)}
+                      placeholder="Add an item..."
+                      className="flex-1 px-3 py-2 border border-olive/30 rounded-md focus:border-olive focus:ring-olive/20 text-sm"
+                      onKeyPress={(e) => e.key === 'Enter' && addItem()}
+                    />
+                    <Button
+                      onClick={addItem}
+                      size="sm"
+                      className="bg-olive hover:bg-olive/90 text-white"
+                    >
+                      Add
+                    </Button>
+                  </div>
+                  <ul className="space-y-2">
+                    {localItems.map((item, idx) => (
+                      <li key={idx} className="flex items-center justify-between p-2 bg-white/50 border border-olive/10 rounded-md">
+                        <span className="text-sm text-olive-dark flex-1">{renderTextWithLinks(item)}</span>
+                        <Button
+                          onClick={() => removeItem(idx)}
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditingItems(false)}
+                    className="border-olive/30"
+                  >
+                    Done
+                  </Button>
+                </div>
+              ) : (
                 <ul className="list-disc space-y-1 pl-5 text-sm text-olive-dark">
-                  {note.items.map((it, idx) => (
-                    <li key={idx}>{it}</li>
-                  ))}
+                  {localItems.length > 0 ? (
+                    localItems.map((item, idx) => (
+                      <li key={idx}>{renderTextWithLinks(item)}</li>
+                    ))
+                  ) : (
+                    <p className="text-muted-foreground">No items yet</p>
+                  )}
                 </ul>
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
 
           {/* Task Owner Section */}
           <Card className="bg-white/50 border-olive/20 shadow-soft">
@@ -421,7 +643,7 @@ const NoteDetails = () => {
           <Card className="bg-white/50 border-olive/20 shadow-soft">
             <CardContent className="p-4">
               <div className="mb-3 text-xs font-medium text-olive-dark uppercase tracking-wide">Original</div>
-              <p className="text-sm text-muted-foreground italic">"{note.originalText}"</p>
+              <p className="text-sm text-muted-foreground italic">"{renderTextWithLinks(note.originalText)}"</p>
             </CardContent>
           </Card>
 
