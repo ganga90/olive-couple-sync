@@ -11,37 +11,51 @@ type Props = {
   // The parent passes and controls the note text value + setter
   text: string;
   setText: (s: string) => void;
+  // Add interim text handling
+  interim?: string;
+  setInterim?: (s: string) => void;
   disabled?: boolean;
 };
 
-export default function VoiceInput({ text, setText, disabled }: Props) {
+export default function VoiceInput({ text, setText, interim, setInterim, disabled }: Props) {
   const [recording, setRecording] = useState(false);
-  const [partial, setPartial] = useState("");
+  const [localInterim, setLocalInterim] = useState("");
   const recorderRef = useRef<{ stop: () => void } | null>(null);
   const { permission, isLoading, error, hasPermission, isPermissionDenied, canRequestPermission } = useMicrophonePermission();
+
+  // Use parent interim state if provided, otherwise use local
+  const currentInterim = setInterim ? interim || "" : localInterim;
+  const updateInterim = setInterim || setLocalInterim;
+
+  // Handlers for transcript processing
+  const commitText = (transcription: string) => {
+    // Append final text to the input (with a space if needed)
+    const needsSpace = text && !text.endsWith(" ") && !text.endsWith("\n");
+    const newText = needsSpace ? `${text} ${transcription}` : `${text}${transcription}`;
+    setText(newText);
+  };
 
   const onStart = async () => {
     if (recording) return;
     try {
       console.log("[VoiceInput] Starting Deepgram connection...");
       setRecording(true);
+      updateInterim("");
+      
       recorderRef.current = await startDeepgramLive((transcription, isFinal) => {
-        console.log(`[VoiceInput] ${isFinal ? 'Final' : 'Partial'}:`, transcription);
+        console.log(`[VoiceInput] ${isFinal ? 'Final' : 'Interim'}:`, transcription);
         if (isFinal) {
-          // Append final text to the input (with a space if needed)
-          const needsSpace = text && !text.endsWith(" ") && !text.endsWith("\n");
-          const newText = needsSpace ? `${text} ${transcription}` : `${text}${transcription}`;
-          setText(newText);
-          setPartial("");
+          commitText(transcription);
+          updateInterim("");
         } else {
-          setPartial(transcription);
+          updateInterim(transcription);
         }
       });
       toast.success("Voice recording started");
     } catch (e) {
       console.error("[VoiceInput] Failed to start:", e);
       setRecording(false);
-      setPartial("");
+      updateInterim("");
       
       // Parse error message for better user feedback
       let errorMessage = "Couldn't start voice input. Check your microphone and try again.";
@@ -50,6 +64,8 @@ export default function VoiceInput({ text, setText, disabled }: Props) {
           errorMessage = "Microphone access denied. Please allow microphone permissions and try again.";
         } else if (e.message.includes("502") || e.message.includes("FORBIDDEN")) {
           errorMessage = "Voice service unavailable. Please check your Deepgram API key configuration.";
+        } else if (e.message.includes("timeout")) {
+          errorMessage = "Connection timeout. Please try again.";
         }
       }
       
@@ -62,7 +78,7 @@ export default function VoiceInput({ text, setText, disabled }: Props) {
     recorderRef.current?.stop();
     recorderRef.current = null;
     setRecording(false);
-    setPartial("");
+    updateInterim("");
     toast.success("Voice recording stopped");
   };
 
@@ -106,10 +122,10 @@ export default function VoiceInput({ text, setText, disabled }: Props) {
           )}
         </Button>
 
-        {/* Show live partials as a subtle hint */}
-        {partial && (
+        {/* Show live interim transcripts as a subtle hint */}
+        {currentInterim && (
           <span className="text-sm text-muted-foreground italic truncate max-w-[240px]">
-            {partial}...
+            {currentInterim}...
           </span>
         )}
       </div>

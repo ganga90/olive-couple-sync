@@ -17,6 +17,7 @@ interface NoteInputProps {
 
 export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const [text, setText] = useState("");
+  const [interim, setInterim] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedNote, setProcessedNote] = useState<any>(null);
   const { user, loading, isAuthenticated } = useAuth();
@@ -218,11 +219,20 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
             disabled={isProcessing}
           />
           
+          {/* Show interim transcript */}
+          {interim && (
+            <div className="absolute top-2 left-3 text-sm text-muted-foreground italic pointer-events-none">
+              {interim}...
+            </div>
+          )}
+          
           {/* Voice input controls */}
           <div className="absolute top-3 right-3 flex items-center gap-2">
             <VoiceInput 
               text={text} 
-              setText={setText} 
+              setText={setText}
+              interim={interim}
+              setInterim={setInterim}
               disabled={isProcessing}
             />
           </div>

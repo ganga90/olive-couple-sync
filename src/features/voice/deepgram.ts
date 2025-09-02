@@ -1,5 +1,3 @@
-import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk';
-
 export async function fetchDeepgramAccessToken(ttl = 300): Promise<string> {
   const url = `https://wtfspzvcetxmcfftwonq.supabase.co/functions/v1/dg-token`;
   const res = await fetch(url, {
@@ -19,100 +17,156 @@ export async function fetchDeepgramAccessToken(ttl = 300): Promise<string> {
   return token;
 }
 
-export function browserSupportsOpus(): boolean {
-  const mr = (window as any).MediaRecorder;
-  if (!mr) return false;
-  return mr.isTypeSupported?.('audio/webm;codecs=opus') ?? false;
+function getSupportedMime(): string | null {
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/ogg;codecs=opus',
+    'audio/webm'
+  ];
+  for (const m of candidates) {
+    if ((window as any).MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+  }
+  return null;
 }
 
-export function floatTo16BitPCM(float32Array: Float32Array): ArrayBuffer {
-  const buffer = new ArrayBuffer(float32Array.length * 2);
-  const view = new DataView(buffer);
-  let offset = 0;
-  for (let i = 0; i < float32Array.length; i++, offset += 2) {
-    let s = Math.max(-1, Math.min(1, float32Array[i]));
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+function buildDeepgramWsUrl(token: string, opts?: {pcm?: boolean; sampleRate?: number}) {
+  const base = 'wss://api.deepgram.com/v1/listen';
+  const params = new URLSearchParams({
+    model: 'nova-2',
+    smart_format: 'true',
+    interim_results: 'true',
+    punctuate: 'true',
+  });
+
+  if (opts?.pcm) {
+    params.set('encoding', 'linear16');
+    params.set('sample_rate', String(opts.sampleRate ?? 16000));
   }
-  return buffer;
+
+  // IMPORTANT: token via query param (browser-safe)
+  params.set('token', token);
+
+  return `${base}?${params.toString()}`;
+}
+
+// OPUS sender (Chrome/Edge/Firefox)
+async function startOpusSender(stream: MediaStream, ws: WebSocket) {
+  const mime = getSupportedMime();
+  if (!mime) throw new Error('No OPUS mime supported');
+
+  const rec = new MediaRecorder(stream, { mimeType: mime });
+  rec.ondataavailable = async (e) => {
+    if (e.data && e.data.size > 0 && ws.readyState === ws.OPEN) {
+      const buf = await e.data.arrayBuffer();
+      ws.send(buf);
+    }
+  };
+  rec.start(250); // 250ms chunks
+  return () => rec.state !== 'inactive' && rec.stop();
+}
+
+// PCM sender (Safari fallback)
+async function startPcmSender(stream: MediaStream, ws: WebSocket, sampleRate = 16000) {
+  const ctx = new AudioContext({ sampleRate });
+  const src = ctx.createMediaStreamSource(stream);
+  const proc = ctx.createScriptProcessor(4096, 1, 1);
+  
+  proc.onaudioprocess = (e) => {
+    if (ws.readyState !== ws.OPEN) return;
+    const input = e.inputBuffer.getChannelData(0);
+    // Float32 [-1,1] -> Int16 PCM
+    const pcm = new Int16Array(input.length);
+    for (let i = 0; i < input.length; i++) {
+      const s = Math.max(-1, Math.min(1, input[i]));
+      pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    ws.send(pcm.buffer);
+  };
+  
+  src.connect(proc);
+  proc.connect(ctx.destination);
+  
+  return () => { 
+    proc.disconnect(); 
+    src.disconnect(); 
+    ctx.close(); 
+  };
 }
 
 export async function startDeepgramLive(
   onTranscript: (text: string, isFinal: boolean) => void
-) {
-  const accessToken = await fetchDeepgramAccessToken(300);
-  const dg = createClient({ accessToken });
-
-  // Detect format per browser
-  const useOpus = browserSupportsOpus();
-
-  const connection = await dg.listen.live({
-    model: 'nova-2',
-    smart_format: true,
-    // Tell Deepgram what we will send
-    encoding: useOpus ? 'opus' : 'linear16',
-    sample_rate: useOpus ? 48000 : 16000, // 48k for Opus; use 16k for PCM fallback
-    punctuate: true,
-    interim_results: true,
-  });
-
-  connection.on(LiveTranscriptionEvents.Open, () => {
-    console.log('[Deepgram] Connected');
-  });
-  connection.on(LiveTranscriptionEvents.Close, (c) => {
-    console.log('[Deepgram] closed', c);
-  });
-  connection.on(LiveTranscriptionEvents.Error, (e) => {
-    console.error('[Deepgram] error', e);
-  });
-  connection.on(LiveTranscriptionEvents.Transcript, (t) => {
-    const alts = t.channel?.alternatives?.[0];
-    if (!alts) return;
-    const text = alts.transcript ?? '';
-    if (!text) return;
-    const isFinal = !!t.is_final;
-    onTranscript(text, isFinal);
-  });
-
-  // Capture microphone
+): Promise<{ stop: () => void }> {
+  const token = await fetchDeepgramAccessToken(300);
+  
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const opusOk = !!getSupportedMime();
+  const wsUrl = buildDeepgramWsUrl(token, { pcm: !opusOk, sampleRate: opusOk ? undefined : 16000 });
+  
+  console.log('[Deepgram] Connecting to:', wsUrl.replace(/token=[^&]+/, 'token=***'));
+  
+  const ws = new WebSocket(wsUrl);
+  let stopSender: (() => void) | null = null;
+  let sending = false;
 
-  // OPUS (MediaRecorder) path — Chrome/Edge/Firefox
-  if (useOpus) {
-    const rec = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 });
-    rec.addEventListener('dataavailable', async (evt) => {
-      if (evt.data && evt.data.size > 0) {
-        const buf = await evt.data.arrayBuffer();
-        connection.send(buf);
-      }
-    });
-    rec.start(250); // 250ms chunks
-    return {
-      stop: () => { rec.stop(); stream.getTracks().forEach(t => t.stop()); connection.finish(); }
-    };
-  }
-
-  // LINEAR16 fallback — Safari
-  const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-  const source = audioCtx.createMediaStreamSource(stream);
-
-  // ScriptProcessor is widely supported; Worklet is nicer but more boilerplate
-  const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-  source.connect(processor);
-  processor.connect(audioCtx.destination);
-
-  processor.onaudioprocess = (e) => {
-    const input = e.inputBuffer.getChannelData(0); // Float32 [-1, 1]
-    const pcm = floatTo16BitPCM(input);
-    connection.send(pcm);
-  };
-
-  return {
-    stop: () => {
-      processor.disconnect();
-      source.disconnect();
+  return new Promise((resolve, reject) => {
+    const hardStop = () => {
+      console.log('[Deepgram] Hard stop called');
+      stopSender?.();
       stream.getTracks().forEach(t => t.stop());
-      audioCtx.close();
-      connection.finish();
-    }
-  };
+      if (ws.readyState === ws.OPEN) ws.close();
+    };
+
+    ws.onopen = async () => {
+      try {
+        stopSender = opusOk
+          ? await startOpusSender(stream, ws)
+          : await startPcmSender(stream, ws, 16000);
+        sending = true;
+        console.log('[Deepgram] Streaming started:', opusOk ? 'OPUS' : 'PCM');
+        resolve({ stop: hardStop });
+      } catch (e) {
+        console.error('[Deepgram] Start sender failed:', e);
+        hardStop();
+        reject(e);
+      }
+    };
+
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        // Deepgram's shape: msg.channel.alternatives[0].transcript, msg.is_final
+        const alt = msg?.channel?.alternatives?.[0];
+        const transcript = alt?.transcript ?? '';
+        if (!transcript) return;
+
+        console.log('[Deepgram] Transcript:', transcript, 'Final:', msg.is_final);
+        
+        onTranscript(transcript, !!msg.is_final);
+      } catch (e) {
+        // Some frames (e.g., metadata) aren't results; ignore
+        console.log('[Deepgram] Non-transcript message:', ev.data);
+      }
+    };
+
+    ws.onerror = (e) => {
+      console.error('[Deepgram] WS error:', e);
+      reject(new Error('WebSocket connection failed'));
+    };
+
+    ws.onclose = (e) => {
+      console.log('[Deepgram] Closed:', e.code, e.reason);
+      sending = false;
+      stopSender?.();
+      stream.getTracks().forEach(t => t.stop());
+    };
+
+    // Timeout to prevent hanging
+    setTimeout(() => {
+      if (!sending) {
+        console.error('[Deepgram] Connection timeout');
+        hardStop();
+        reject(new Error('Connection timeout'));
+      }
+    }, 10000);
+  });
 }
