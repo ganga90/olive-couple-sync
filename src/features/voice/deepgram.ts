@@ -1,21 +1,4 @@
-export async function fetchDeepgramAccessToken(ttl = 300): Promise<string> {
-  const url = `https://wtfspzvcetxmcfftwonq.supabase.co/functions/v1/dg-token`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type':'application/json' },
-    body: JSON.stringify({ ttl }),
-  });
-  const txt = await res.text();
-  if (!res.ok) throw new Error(`Failed to fetch Deepgram token (${res.status}): ${txt}`);
-
-  let json: any = {};
-  try { json = JSON.parse(txt); } catch { throw new Error(`Bad JSON from dg-token: ${txt}`); }
-
-  const token = json.access_token || json.token || json.key;
-  if (!token) throw new Error(`No token field in dg-token response: ${txt}`);
-
-  return token;
-}
+// We now use WebSocket relay instead of direct token fetching
 
 function getSupportedMime(): string | null {
   const candidates = [
@@ -29,24 +12,9 @@ function getSupportedMime(): string | null {
   return null;
 }
 
-function buildDeepgramWsUrl(token: string, opts?: {pcm?: boolean; sampleRate?: number}) {
-  const base = 'wss://api.deepgram.com/v1/listen';
-  const params = new URLSearchParams({
-    model: 'nova-2',
-    smart_format: 'true',
-    interim_results: 'true',
-    punctuate: 'true',
-  });
-
-  if (opts?.pcm) {
-    params.set('encoding', 'linear16');
-    params.set('sample_rate', String(opts.sampleRate ?? 16000));
-  }
-
-  // IMPORTANT: token via query param (browser-safe)
-  params.set('token', token);
-
-  return `${base}?${params.toString()}`;
+function buildDeepgramRelayUrl() {
+  // Connect to our Supabase Edge Function WebSocket relay
+  return 'wss://wtfspzvcetxmcfftwonq.supabase.co/functions/v1/deepgram-relay';
 }
 
 // OPUS sender (Chrome/Edge/Firefox)
@@ -96,13 +64,11 @@ async function startPcmSender(stream: MediaStream, ws: WebSocket, sampleRate = 1
 export async function startDeepgramLive(
   onTranscript: (text: string, isFinal: boolean) => void
 ): Promise<{ stop: () => void }> {
-  const token = await fetchDeepgramAccessToken(300);
-  
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   const opusOk = !!getSupportedMime();
-  const wsUrl = buildDeepgramWsUrl(token, { pcm: !opusOk, sampleRate: opusOk ? undefined : 16000 });
+  const wsUrl = buildDeepgramRelayUrl();
   
-  console.log('[Deepgram] Connecting to:', wsUrl.replace(/token=[^&]+/, 'token=***'));
+  console.log('[Deepgram] Connecting to relay:', wsUrl);
   
   const ws = new WebSocket(wsUrl);
   let stopSender: (() => void) | null = null;
@@ -117,6 +83,42 @@ export async function startDeepgramLive(
     };
 
     ws.onopen = async () => {
+      console.log('[Deepgram] WebSocket opened, waiting for relay connection...');
+    };
+
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        
+        // Handle relay connection confirmation
+        if (msg.type === 'connected') {
+          console.log('[Deepgram] Relay connected, starting audio stream');
+          startAudioStream();
+          return;
+        }
+
+        // Handle relay errors
+        if (msg.type === 'error') {
+          console.error('[Deepgram] Relay error:', msg.message);
+          hardStop();
+          reject(new Error(msg.message));
+          return;
+        }
+
+        // Handle transcript messages from Deepgram
+        const alt = msg?.channel?.alternatives?.[0];
+        const transcript = alt?.transcript ?? '';
+        if (!transcript) return;
+
+        console.log('[Deepgram] Transcript:', transcript, 'Final:', msg.is_final);
+        onTranscript(transcript, !!msg.is_final);
+      } catch (e) {
+        // Some frames might not be JSON; ignore
+        console.log('[Deepgram] Non-JSON message:', ev.data);
+      }
+    };
+
+    const startAudioStream = async () => {
       try {
         stopSender = opusOk
           ? await startOpusSender(stream, ws)
@@ -131,22 +133,7 @@ export async function startDeepgramLive(
       }
     };
 
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        // Deepgram's shape: msg.channel.alternatives[0].transcript, msg.is_final
-        const alt = msg?.channel?.alternatives?.[0];
-        const transcript = alt?.transcript ?? '';
-        if (!transcript) return;
-
-        console.log('[Deepgram] Transcript:', transcript, 'Final:', msg.is_final);
-        
-        onTranscript(transcript, !!msg.is_final);
-      } catch (e) {
-        // Some frames (e.g., metadata) aren't results; ignore
-        console.log('[Deepgram] Non-transcript message:', ev.data);
-      }
-    };
+    // onmessage handler moved above
 
     ws.onerror = (e) => {
       console.error('[Deepgram] WS error:', e);
