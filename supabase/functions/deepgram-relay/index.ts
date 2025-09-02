@@ -22,6 +22,7 @@ serve(async (req) => {
 
   const DEEPGRAM_KEY = Deno.env.get('DEEPGRAM_OLIVE_AI');
   if (!DEEPGRAM_KEY) {
+    console.error('[Deepgram Relay] DEEPGRAM_OLIVE_AI environment variable not set');
     return new Response("Deepgram API key not configured", { 
       status: 500, 
       headers: corsHeaders 
@@ -37,62 +38,68 @@ serve(async (req) => {
     console.log('[Deepgram Relay] Client connected');
     
     try {
-      // Get temporary token from Deepgram
-      const tokenResponse = await fetch('https://api.deepgram.com/v1/auth/grant', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${DEEPGRAM_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ ttl: 300 }),
-      });
-
-      if (!tokenResponse.ok) {
-        const errorText = await tokenResponse.text();
-        console.error('[Deepgram Relay] Token generation failed:', errorText);
-        socket.close(1011, 'Token generation failed');
-        return;
-      }
-
-      const tokenData = await tokenResponse.json();
-      const token = tokenData.access_token;
-
-      // Build Deepgram WebSocket URL
+      // Connect directly to Deepgram using API key (simpler than token approach)
       const deepgramUrl = new URL('wss://api.deepgram.com/v1/listen');
       deepgramUrl.searchParams.set('model', 'nova-2');
       deepgramUrl.searchParams.set('smart_format', 'true');
       deepgramUrl.searchParams.set('interim_results', 'true');
       deepgramUrl.searchParams.set('punctuate', 'true');
-      deepgramUrl.searchParams.set('token', token);
 
-      console.log('[Deepgram Relay] Connecting to Deepgram...');
-      deepgramSocket = new WebSocket(deepgramUrl.toString());
+      console.log('[Deepgram Relay] Connecting to Deepgram with API key...');
+      deepgramSocket = new WebSocket(deepgramUrl.toString(), [], {
+        headers: {
+          'Authorization': `Token ${DEEPGRAM_KEY}`,
+        },
+      });
 
       deepgramSocket.onopen = () => {
-        console.log('[Deepgram Relay] Connected to Deepgram');
+        console.log('[Deepgram Relay] Connected to Deepgram successfully');
         socket.send(JSON.stringify({ type: 'connected' }));
       };
 
       deepgramSocket.onmessage = (event) => {
-        console.log('[Deepgram Relay] Received from Deepgram:', event.data);
-        socket.send(event.data);
+        try {
+          const data = typeof event.data === 'string' ? event.data : event.data.toString();
+          console.log('[Deepgram Relay] Received from Deepgram:', data.substring(0, 100));
+          socket.send(data);
+        } catch (e) {
+          console.error('[Deepgram Relay] Error forwarding message:', e);
+        }
       };
 
       deepgramSocket.onerror = (error) => {
-        console.error('[Deepgram Relay] Deepgram error:', error);
+        console.error('[Deepgram Relay] Deepgram WebSocket error:', error);
         socket.send(JSON.stringify({ 
           type: 'error', 
-          message: 'Deepgram connection error' 
+          message: 'Failed to connect to Deepgram service' 
         }));
       };
 
       deepgramSocket.onclose = (event) => {
-        console.log('[Deepgram Relay] Deepgram closed:', event.code, event.reason);
-        socket.close(event.code, event.reason);
+        console.log('[Deepgram Relay] Deepgram connection closed:', event.code, event.reason);
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.close(event.code, event.reason);
+        }
       };
+
+      // Set a timeout for connection
+      setTimeout(() => {
+        if (deepgramSocket.readyState !== WebSocket.OPEN) {
+          console.error('[Deepgram Relay] Connection timeout');
+          deepgramSocket.close();
+          socket.send(JSON.stringify({ 
+            type: 'error', 
+            message: 'Connection timeout' 
+          }));
+        }
+      }, 10000);
 
     } catch (error) {
       console.error('[Deepgram Relay] Setup error:', error);
+      socket.send(JSON.stringify({ 
+        type: 'error', 
+        message: `Setup failed: ${error.message}` 
+      }));
       socket.close(1011, 'Setup failed');
     }
   };

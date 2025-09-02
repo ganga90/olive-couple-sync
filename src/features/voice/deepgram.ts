@@ -14,7 +14,9 @@ function getSupportedMime(): string | null {
 
 function buildDeepgramRelayUrl() {
   // Connect to our Supabase Edge Function WebSocket relay
-  return 'wss://wtfspzvcetxmcfftwonq.supabase.co/functions/v1/deepgram-relay';
+  const url = 'wss://wtfspzvcetxmcfftwonq.supabase.co/functions/v1/deepgram-relay';
+  console.log('[Deepgram Client] Using relay URL:', url);
+  return url;
 }
 
 // OPUS sender (Chrome/Edge/Firefox)
