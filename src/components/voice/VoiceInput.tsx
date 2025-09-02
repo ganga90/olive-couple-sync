@@ -1,11 +1,17 @@
 // src/components/voice/VoiceInput.tsx
-import React, { useRef, useState } from "react";
-import { startDeepgramLive } from "@/features/voice/deepgram";
+import React, { useRef, useState, useEffect } from "react";
+import { makeDeepgramLive } from "@/integrations/voice/deepgram-live";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useMicrophonePermission } from "@/hooks/useMicrophonePermission";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+
+const DG_TOKEN_ENDPOINT = 
+  (import.meta as any).env?.VITE_DEEPGRAM_TOKEN_ENDPOINT 
+  ?? 'https://wtfspzvcetxmcfftwonq.functions.supabase.co/dg-token';
+
+const deepgram = makeDeepgramLive(DG_TOKEN_ENDPOINT);
 
 type Props = {
   // The parent passes and controls the note text value + setter
@@ -20,7 +26,7 @@ type Props = {
 export default function VoiceInput({ text, setText, interim, setInterim, disabled }: Props) {
   const [recording, setRecording] = useState(false);
   const [localInterim, setLocalInterim] = useState("");
-  const recorderRef = useRef<{ stop: () => void } | null>(null);
+  const [session, setSession] = useState<{ stop: () => void } | null>(null);
   const { permission, isLoading, error, hasPermission, isPermissionDenied, canRequestPermission } = useMicrophonePermission();
 
   // Use parent interim state if provided, otherwise use local
@@ -36,21 +42,24 @@ export default function VoiceInput({ text, setText, interim, setInterim, disable
   };
 
   const onStart = async () => {
-    if (recording) return;
+    if (session) return;
     try {
       console.log("[VoiceInput] Starting Deepgram connection...");
       setRecording(true);
       updateInterim("");
       
-      recorderRef.current = await startDeepgramLive((transcription, isFinal) => {
-        console.log(`[VoiceInput] ${isFinal ? 'Final' : 'Interim'}:`, transcription);
-        if (isFinal) {
-          commitText(transcription);
-          updateInterim("");
-        } else {
-          updateInterim(transcription);
+      const s = await deepgram.connect({
+        onTranscript: (transcription, isFinal) => {
+          console.log(`[VoiceInput] ${isFinal ? 'Final' : 'Interim'}:`, transcription);
+          if (isFinal) {
+            commitText(transcription);
+            updateInterim("");
+          } else {
+            updateInterim(transcription);
+          }
         }
       });
+      setSession(s);
       toast.success("Voice recording started");
     } catch (e) {
       console.error("[VoiceInput] Failed to start:", e);
@@ -75,12 +84,15 @@ export default function VoiceInput({ text, setText, interim, setInterim, disable
 
   const onStop = () => {
     console.log("[VoiceInput] Stopping voice input");
-    recorderRef.current?.stop();
-    recorderRef.current = null;
+    try { session?.stop(); } catch {}
+    setSession(null);
     setRecording(false);
     updateInterim("");
     toast.success("Voice recording stopped");
   };
+
+  // IMPORTANT: cleanup if component unmounts
+  useEffect(() => () => { try { session?.stop(); } catch {} }, [session]);
 
   return (
     <div className="flex flex-col gap-2">
