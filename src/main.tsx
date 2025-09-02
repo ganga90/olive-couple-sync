@@ -14,15 +14,13 @@ if (!PUBLISHABLE_KEY) {
 console.log('[Olive] Initializing Clerk with key:', PUBLISHABLE_KEY.substring(0, 20) + '...')
 
 createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ClerkProvider 
-      publishableKey={PUBLISHABLE_KEY}
-      signInFallbackRedirectUrl="/"
-      signUpFallbackRedirectUrl="/"
-      signInUrl="/sign-in"
-      signUpUrl="/sign-up"
-    >
-      <App />
-    </ClerkProvider>
-  </React.StrictMode>
+  <ClerkProvider 
+    publishableKey={PUBLISHABLE_KEY}
+    signInFallbackRedirectUrl="/"
+    signUpFallbackRedirectUrl="/"
+    signInUrl="/sign-in"
+    signUpUrl="/sign-up"
+  >
+    <App />
+  </ClerkProvider>
 )
