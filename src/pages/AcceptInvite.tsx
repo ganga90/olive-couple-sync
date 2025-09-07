@@ -36,7 +36,7 @@ const AcceptInvite = () => {
     try {
       const supabase = getSupabase();
       const { data, error } = await supabase
-        .from("invites")
+        .from("clerk_invites")
         .select(`
           *,
           clerk_couples!inner(*)
