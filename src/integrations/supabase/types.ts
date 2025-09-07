@@ -76,6 +76,47 @@ export type Database = {
         }
         Relationships: []
       }
+      clerk_invites: {
+        Row: {
+          couple_id: string
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          invited_email: string | null
+          status: string
+          token: string
+        }
+        Insert: {
+          couple_id: string
+          created_at?: string
+          created_by: string
+          expires_at?: string
+          id?: string
+          invited_email?: string | null
+          status?: string
+          token: string
+        }
+        Update: {
+          couple_id?: string
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          id?: string
+          invited_email?: string | null
+          status?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clerk_invites_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_couples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clerk_lists: {
         Row: {
           author_id: string | null
