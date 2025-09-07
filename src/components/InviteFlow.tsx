@@ -97,18 +97,29 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
 
       console.log('[create_couple] RPC response:', result);
       
-      // Handle array response from RPC
-      const coupleData = Array.isArray(result) && result.length > 0 ? result[0] : result;
-      
-      if (!coupleData || !coupleData.couple_id) {
+      // The RPC now returns just the couple_id UUID
+      if (!result) {
         console.error('Invalid RPC response - missing couple_id');
         throw new Error('Failed to create couple - invalid response');
       }
 
-      console.log('Couple created successfully:', coupleData);
+      const coupleId = result;
+      console.log('Couple created successfully with ID:', coupleId);
       
-      // The invite token is already created by the RPC
-      const inviteToken = coupleData.invite_token;
+      // Now create the invite using the couple_id
+      const { data: inviteData, error: inviteError } = await supabase.rpc('create_invite', {
+        p_couple_id: coupleId,
+      });
+
+      if (inviteError) {
+        console.error('Failed to create invite:', inviteError);
+        throw inviteError;
+      }
+
+      console.log('Invite created successfully:', inviteData);
+      
+      // Extract token from the returned jsonb object
+      const inviteToken = inviteData?.token;
       
       if (!inviteToken) {
         console.error('No invite token returned from RPC');

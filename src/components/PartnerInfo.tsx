@@ -52,7 +52,7 @@ export const PartnerInfo = () => {
       });
 
       const supabase = getSupabase();
-      const { data: inviteToken, error: inviteError } = await supabase.rpc('create_invite', {
+      const { data: inviteData, error: inviteError } = await supabase.rpc('create_invite', {
         p_couple_id: currentCouple.id,
       });
 
@@ -61,7 +61,13 @@ export const PartnerInfo = () => {
         throw inviteError;
       }
 
-      console.log('Invite created successfully with token:', inviteToken);
+      console.log('Invite created successfully with data:', inviteData);
+
+      // Extract token from the returned jsonb object
+      const inviteToken = inviteData?.token;
+      if (!inviteToken) {
+        throw new Error('Failed to get invite token from response');
+      }
 
       // Generate invite URL
       const currentUrl = window.location.origin;

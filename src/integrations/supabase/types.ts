@@ -427,25 +427,16 @@ export type Database = {
     Functions: {
       accept_invite: {
         Args: { p_token: string }
-        Returns: {
-          created_at: string
-          created_by: string | null
-          id: string
-          partner_name: string | null
-          title: string | null
-          updated_at: string
-          you_name: string | null
-        }
+        Returns: string
       }
       create_couple: {
         Args: { p_partner_name: string; p_title: string; p_you_name: string }
-        Returns: {
-          couple_id: string
-          invite_token: string
-        }[]
+        Returns: string
       }
       create_invite: {
-        Args: { p_couple_id: string }
+        Args:
+          | { p_couple_id: string }
+          | { p_couple_id: string; p_invited_email?: string }
         Returns: {
           couple_id: string
           created_at: string
