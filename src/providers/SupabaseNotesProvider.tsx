@@ -65,6 +65,9 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
       (currentCouple?.partner_name || "Partner")) : 
     supabaseNote.task_owner || undefined,
   list_id: supabaseNote.list_id || undefined,
+  // Add metadata to distinguish note types
+  isShared: supabaseNote.couple_id !== null,
+  coupleId: supabaseNote.couple_id || undefined,
 });
 
 // Convert app Note to Supabase note insert type

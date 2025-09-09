@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { OliveLogoWithText } from "@/components/OliveLogo";
 import { Button } from "@/components/ui/button";
-import { Plus, Heart, Clock, AlertCircle } from "lucide-react";
+import { Plus, Heart, Clock, AlertCircle, Users, User } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { SimpleNoteInput } from "@/components/SimpleNoteInput";
 import { NoteInput } from "@/components/NoteInput";
@@ -20,7 +20,9 @@ const Index = () => {
 
   const navigate = useNavigate();
   const [hasNotes, setHasNotes] = useState(false);
+  const [viewMode, setViewMode] = useState<'personal' | 'shared'>('shared'); // Default to shared view
   const { user, loading, isAuthenticated } = useAuth();
+  const { currentCouple } = useSupabaseCouple();
   const { notes } = useSupabaseNotesContext();
 
   // Debug authentication state
@@ -49,25 +51,37 @@ const Index = () => {
 
   console.log('[Index] Computed States:', { isAuthenticatedUser, userName });
 
-  // Get last 3 tasks and top 3 high priority tasks
+  // Get filtered notes based on view mode
+  const filteredNotes = useMemo(() => {
+    if (!isAuthenticatedUser) return [];
+    
+    if (viewMode === 'personal') {
+      return notes.filter(note => !note.isShared);
+    }
+    
+    // 'shared' mode shows all notes (personal + shared)
+    return notes;
+  }, [notes, viewMode, isAuthenticatedUser]);
+
+  // Get last 3 tasks and top 3 high priority tasks from filtered notes
   const { recentTasks, highPriorityTasks } = useMemo(() => {
-    if (!isAuthenticatedUser || !notes.length) {
+    if (!isAuthenticatedUser || !filteredNotes.length) {
       return { recentTasks: [], highPriorityTasks: [] };
     }
 
     // Sort by creation date for recent tasks
-    const recent = [...notes]
+    const recent = [...filteredNotes]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
 
     // Get high priority tasks
-    const highPriority = notes
+    const highPriority = filteredNotes
       .filter(note => note.priority === 'high')
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
 
     return { recentTasks: recent, highPriorityTasks: highPriority };
-  }, [notes, isAuthenticatedUser]);
+  }, [filteredNotes, isAuthenticatedUser]);
 
   return (
     <main className="min-h-screen bg-gradient-soft">
@@ -92,6 +106,40 @@ const Index = () => {
             </div>
           </div>
 
+          {/* Context Switcher - only show for authenticated users with a couple */}
+          {isAuthenticatedUser && currentCouple && (
+            <div className="flex justify-center">
+              <div className="inline-flex bg-card border border-border rounded-lg p-1">
+                <Button
+                  variant={viewMode === 'personal' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('personal')}
+                  className={`flex items-center gap-2 ${
+                    viewMode === 'personal' 
+                      ? 'bg-olive text-white shadow-olive' 
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <User className="h-4 w-4" />
+                  My Notes
+                </Button>
+                <Button
+                  variant={viewMode === 'shared' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('shared')}
+                  className={`flex items-center gap-2 ${
+                    viewMode === 'shared' 
+                      ? 'bg-olive text-white shadow-olive' 
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Users className="h-4 w-4" />
+                  Shared Space
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Note Input - use authenticated version if signed in */}
           {isAuthenticatedUser ? (
             <NoteInput onNoteAdded={() => setHasNotes(true)} />
@@ -100,7 +148,7 @@ const Index = () => {
           )}
 
           {/* Recent Tasks and High Priority Tasks - only show for authenticated users with notes */}
-          {isAuthenticatedUser && notes.length > 0 && (
+          {isAuthenticatedUser && filteredNotes.length > 0 && (
             <div className="space-y-6">
               <RecentTasksSection
                 title="Recent Tasks"

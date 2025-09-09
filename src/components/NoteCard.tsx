@@ -2,7 +2,7 @@ import React from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, User, MessageCircle, CheckCircle2, Circle } from "lucide-react";
+import { CalendarDays, User, Users, MessageCircle, CheckCircle2, Circle } from "lucide-react";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import type { Note } from "@/types/note";
@@ -104,9 +104,17 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         {/* Footer */}
         <div className="flex items-center justify-between pt-2">
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <User className="h-3 w-3" />
-              {authorName}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <User className="h-3 w-3" />
+                {authorName}
+              </div>
+              {note.isShared && (
+                <Badge variant="outline" className="text-xs bg-olive/10 text-olive border-olive/20">
+                  <Users className="h-3 w-3 mr-1" />
+                  Shared
+                </Badge>
+              )}
             </div>
             
             {note.dueDate && (

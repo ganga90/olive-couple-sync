@@ -39,30 +39,53 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
     }
 
     try {
-      let query = supabase
-        .from("clerk_notes")
-        .select("*")
-        .order("created_at", { ascending: false });
-      
       if (coupleId) {
-        // If couple ID is provided, fetch couple notes
-        console.log('[useSupabaseNotes] Fetching couple notes for couple:', coupleId);
-        query = query.eq("couple_id", coupleId);
+        // If couple ID is provided, fetch BOTH personal notes AND couple notes
+        console.log('[useSupabaseNotes] Fetching both personal and couple notes for couple:', coupleId);
+        
+        const [personalNotesResult, coupleNotesResult] = await Promise.all([
+          supabase
+            .from("clerk_notes")
+            .select("*")
+            .is("couple_id", null)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("clerk_notes")
+            .select("*")
+            .eq("couple_id", coupleId)
+            .order("created_at", { ascending: false })
+        ]);
+
+        if (personalNotesResult.error) throw personalNotesResult.error;
+        if (coupleNotesResult.error) throw coupleNotesResult.error;
+
+        // Combine both personal and couple notes
+        const combinedNotes = [
+          ...(personalNotesResult.data || []),
+          ...(coupleNotesResult.data || [])
+        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        console.log('[useSupabaseNotes] Combined notes:', {
+          personal: personalNotesResult.data?.length || 0,
+          couple: coupleNotesResult.data?.length || 0,
+          total: combinedNotes.length
+        });
+        
+        setNotes(combinedNotes);
       } else {
-        // If no couple ID, fetch personal notes (where couple_id is null)
-        console.log('[useSupabaseNotes] Fetching personal notes (couple_id is null)');
-        query = query.is("couple_id", null);
-      }
+        // If no couple ID, fetch only personal notes
+        console.log('[useSupabaseNotes] Fetching personal notes only (couple_id is null)');
+        const { data, error } = await supabase
+          .from("clerk_notes")
+          .select("*")
+          .is("couple_id", null)
+          .order("created_at", { ascending: false });
 
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('[useSupabaseNotes] Error fetching notes:', error);
-        throw error;
+        if (error) throw error;
+        
+        console.log('[useSupabaseNotes] Successfully fetched personal notes:', data?.length || 0);
+        setNotes(data || []);
       }
-      
-      console.log('[useSupabaseNotes] Successfully fetched notes:', data?.length || 0, 'notes');
-      setNotes(data || []);
     } catch (error) {
       console.error("[Notes] Error fetching notes:", error);
       toast.error("Failed to load notes");
