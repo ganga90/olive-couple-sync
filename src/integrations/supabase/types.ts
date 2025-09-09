@@ -476,6 +476,10 @@ export type Database = {
         Args: { couple_uuid: string; user_id: string }
         Returns: boolean
       }
+      is_couple_member_safe: {
+        Args: { couple_uuid: string; user_id: string }
+        Returns: boolean
+      }
       is_couple_owner: {
         Args: { couple_uuid: string; user_id: string }
         Returns: boolean
