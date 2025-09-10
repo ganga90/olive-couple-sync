@@ -434,19 +434,8 @@ export type Database = {
         Returns: string
       }
       create_invite: {
-        Args:
-          | { p_couple_id: string }
-          | { p_couple_id: string; p_invited_email?: string }
-        Returns: {
-          couple_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          invited_by: string | null
-          invited_email: string
-          status: Database["public"]["Enums"]["invite_status"]
-          token: string
-        }
+        Args: { p_couple_id: string; p_invited_email?: string }
+        Returns: Json
       }
       debug_claims: {
         Args: Record<PropertyKey, never>
