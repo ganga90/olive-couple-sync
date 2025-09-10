@@ -63,19 +63,22 @@ const Index = () => {
     return notes;
   }, [notes, viewMode, isAuthenticatedUser]);
 
-  // Get last 3 tasks and top 3 high priority tasks from filtered notes
+  // Get last 3 tasks and top 3 high priority tasks from filtered notes (excluding completed)
   const { recentTasks, highPriorityTasks } = useMemo(() => {
     if (!isAuthenticatedUser || !filteredNotes.length) {
       return { recentTasks: [], highPriorityTasks: [] };
     }
 
+    // Filter out completed tasks for home page display
+    const activeTasks = filteredNotes.filter(note => !note.completed);
+
     // Sort by creation date for recent tasks
-    const recent = [...filteredNotes]
+    const recent = [...activeTasks]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
 
     // Get high priority tasks
-    const highPriority = filteredNotes
+    const highPriority = activeTasks
       .filter(note => note.priority === 'high')
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);

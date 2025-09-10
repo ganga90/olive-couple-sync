@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Pencil, Trash2, CheckCircle2, Circle } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, CheckCircle2, Circle, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
 const ListCategory = () => {
@@ -24,16 +24,20 @@ const ListCategory = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [showCompletedTasks, setShowCompletedTasks] = useState(false);
   
   const currentList = useMemo(() => 
     lists.find(list => list.id === listId), 
     [lists, listId]
   );
   
-  const listNotes = useMemo(() => 
-    notes.filter(note => note.list_id === listId), 
-    [notes, listId]
-  );
+  const { activeTasks, completedTasks } = useMemo(() => {
+    const allListNotes = notes.filter(note => note.list_id === listId);
+    return {
+      activeTasks: allListNotes.filter(note => !note.completed),
+      completedTasks: allListNotes.filter(note => note.completed)
+    };
+  }, [notes, listId]);
 
   useSEO({ 
     title: `${currentList?.name || 'List'} — Olive`, 
@@ -180,85 +184,178 @@ const ListCategory = () => {
           )}
         </header>
 
-        {listNotes.length === 0 ? (
+        {activeTasks.length === 0 && completedTasks.length === 0 ? (
           <Card className="p-6 bg-white/50 border-olive/20 shadow-soft text-center">
             <p className="text-sm text-muted-foreground">No items yet in this list.</p>
           </Card>
         ) : (
-          <div className="space-y-3">
-            {listNotes.map((note) => (
-              <Card key={note.id} className="bg-white/50 border-olive/20 shadow-soft transition-all duration-200 hover:shadow-lg">
-                <CardContent className="flex items-center gap-3 p-4">
-                  {/* Checkbox for completion */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleToggleComplete(note.id, !note.completed);
-                    }}
-                    className={`p-1 rounded-full ${note.completed 
-                      ? 'text-green-600 hover:bg-green-50' 
-                      : 'text-gray-400 hover:bg-gray-50'
-                    }`}
-                  >
-                     {note.completed ? (
-                       <CheckCircle2 className="h-5 w-5" />
-                     ) : (
-                       <Circle className="h-5 w-5" />
-                     )}
-                  </Button>
+          <div className="space-y-4">
+            {/* Active Tasks */}
+            {activeTasks.length > 0 && (
+              <div className="space-y-3">
+                {activeTasks.map((note) => (
+                  <Card key={note.id} className="bg-white/50 border-olive/20 shadow-soft transition-all duration-200 hover:shadow-lg">
+                    <CardContent className="flex items-center gap-3 p-4">
+                      {/* Checkbox for completion */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleToggleComplete(note.id, !note.completed);
+                        }}
+                        className={`p-1 rounded-full ${note.completed 
+                          ? 'text-green-600 hover:bg-green-50' 
+                          : 'text-gray-400 hover:bg-gray-50'
+                        }`}
+                      >
+                         {note.completed ? (
+                           <CheckCircle2 className="h-5 w-5" />
+                         ) : (
+                           <Circle className="h-5 w-5" />
+                         )}
+                      </Button>
 
-                  {/* Note content - clickable to view details */}
-                  <Link 
-                    to={`/notes/${note.id}`} 
-                    className="flex-1 min-w-0" 
-                    aria-label={`Open ${note.summary}`}
-                  >
-                    <div className={`mb-1 text-sm font-medium transition-all ${
-                      note.completed 
-                        ? 'text-muted-foreground line-through' 
-                        : 'text-olive-dark'
-                    }`}>
-                      {note.summary}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                      <Badge variant="secondary" className="bg-olive/10 text-olive border-olive/20">
-                        {note.category}
-                      </Badge>
-                      {note.priority && (
-                        <Badge variant="secondary" className={
-                          note.priority === 'high' ? 'bg-red-100 text-red-800' :
-                          note.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-green-100 text-green-800'
-                        }>
-                          {note.priority} priority
-                        </Badge>
-                      )}
-                      {note.dueDate && (
-                        <span>Due {new Date(note.dueDate).toLocaleDateString()}</span>
-                      )}
-                      {note.task_owner && (
-                        <span>• {note.task_owner}</span>
-                      )}
-                    </div>
-                  </Link>
+                      {/* Note content - clickable to view details */}
+                      <Link 
+                        to={`/notes/${note.id}`} 
+                        className="flex-1 min-w-0" 
+                        aria-label={`Open ${note.summary}`}
+                      >
+                        <div className={`mb-1 text-sm font-medium transition-all ${
+                          note.completed 
+                            ? 'text-muted-foreground line-through' 
+                            : 'text-olive-dark'
+                        }`}>
+                          {note.summary}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                          <Badge variant="secondary" className="bg-olive/10 text-olive border-olive/20">
+                            {note.category}
+                          </Badge>
+                          {note.priority && (
+                            <Badge variant="secondary" className={
+                              note.priority === 'high' ? 'bg-red-100 text-red-800' :
+                              note.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-green-100 text-green-800'
+                            }>
+                              {note.priority} priority
+                            </Badge>
+                          )}
+                          {note.dueDate && (
+                            <span>Due {new Date(note.dueDate).toLocaleDateString()}</span>
+                          )}
+                          {note.task_owner && (
+                            <span>• {note.task_owner}</span>
+                          )}
+                        </div>
+                      </Link>
 
-                  {/* Delete button */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleDeleteNote(note.id, note.summary);
-                    }}
-                    className="p-1 text-red-500 hover:bg-red-50 hover:text-red-600"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+                      {/* Delete button */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleDeleteNote(note.id, note.summary);
+                        }}
+                        className="p-1 text-red-500 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Completed Tasks Toggle */}
+            {completedTasks.length > 0 && (
+              <div className="space-y-3">
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowCompletedTasks(!showCompletedTasks)}
+                  className="w-full justify-between p-3 text-left hover:bg-olive/5"
+                >
+                  <span className="text-sm text-muted-foreground">
+                    {showCompletedTasks ? 'Hide' : 'Show'} completed tasks ({completedTasks.length})
+                  </span>
+                  {showCompletedTasks ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+
+                {/* Completed Tasks List */}
+                {showCompletedTasks && (
+                  <div className="space-y-2">
+                    {completedTasks.map((note) => (
+                      <Card key={note.id} className="bg-white/30 border-olive/10 shadow-soft opacity-75">
+                        <CardContent className="flex items-center gap-3 p-4">
+                          {/* Checkbox for completion */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleToggleComplete(note.id, !note.completed);
+                            }}
+                            className="p-1 rounded-full text-green-600 hover:bg-green-50"
+                          >
+                            <CheckCircle2 className="h-5 w-5" />
+                          </Button>
+
+                          {/* Note content - clickable to view details */}
+                          <Link 
+                            to={`/notes/${note.id}`} 
+                            className="flex-1 min-w-0" 
+                            aria-label={`Open ${note.summary}`}
+                          >
+                            <div className="mb-1 text-sm font-medium text-muted-foreground line-through">
+                              {note.summary}
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                              <Badge variant="secondary" className="bg-olive/10 text-olive border-olive/20">
+                                {note.category}
+                              </Badge>
+                              {note.priority && (
+                                <Badge variant="secondary" className={
+                                  note.priority === 'high' ? 'bg-red-100 text-red-800' :
+                                  note.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-green-100 text-green-800'
+                                }>
+                                  {note.priority} priority
+                                </Badge>
+                              )}
+                              {note.dueDate && (
+                                <span>Due {new Date(note.dueDate).toLocaleDateString()}</span>
+                              )}
+                              {note.task_owner && (
+                                <span>• {note.task_owner}</span>
+                              )}
+                            </div>
+                          </Link>
+
+                          {/* Delete button */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleDeleteNote(note.id, note.summary);
+                            }}
+                            className="p-1 text-red-500 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
