@@ -466,7 +466,7 @@ export type Database = {
         Returns: boolean
       }
       is_couple_member_safe: {
-        Args: { couple_uuid: string; user_id: string }
+        Args: { couple_uuid: string; p_user_id: string }
         Returns: boolean
       }
       is_couple_owner: {
