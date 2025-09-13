@@ -1,17 +1,11 @@
 // src/components/voice/VoiceInput.tsx
 import React, { useRef, useState, useEffect } from "react";
-import { makeDeepgramLive } from "@/integrations/voice/deepgram-live";
+import { createDeepgramLive, type DGConnection } from "@/lib/deepgramLive";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useMicrophonePermission } from "@/hooks/useMicrophonePermission";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-
-const DG_TOKEN_ENDPOINT = 
-  (import.meta as any).env?.VITE_DEEPGRAM_TOKEN_ENDPOINT 
-  ?? 'https://wtfspzvcetxmcfftwonq.functions.supabase.co/dg-token';
-
-const deepgram = makeDeepgramLive(DG_TOKEN_ENDPOINT);
 
 type Props = {
   // The parent passes and controls the note text value + setter
@@ -24,9 +18,9 @@ type Props = {
 };
 
 export default function VoiceInput({ text, setText, interim, setInterim, disabled }: Props) {
+  const dgRef = useRef<DGConnection | null>(null);
   const [recording, setRecording] = useState(false);
   const [localInterim, setLocalInterim] = useState("");
-  const [session, setSession] = useState<{ stop: () => void } | null>(null);
   const { permission, isLoading, error, hasPermission, isPermissionDenied, canRequestPermission } = useMicrophonePermission();
 
   // Use parent interim state if provided, otherwise use local
@@ -42,36 +36,64 @@ export default function VoiceInput({ text, setText, interim, setInterim, disable
   };
 
   const onStart = async () => {
-    if (session) return;
+    if (recording || dgRef.current) return;
+    
     try {
       console.log("[VoiceInput] Starting Deepgram connection...");
       setRecording(true);
       updateInterim("");
       
-      const s = await deepgram.connect({
-        onTranscript: (transcription, isFinal) => {
-          console.log(`[VoiceInput] ${isFinal ? 'Final' : 'Interim'}:`, transcription);
-          if (isFinal) {
-            commitText(transcription);
-            updateInterim("");
-          } else {
-            updateInterim(transcription);
+      dgRef.current = createDeepgramLive({
+        onOpen() {
+          console.log('[VoiceInput] Deepgram connected');
+          toast.success("Voice recording started");
+        },
+        onInterim(text) {
+          console.log('[VoiceInput] Interim:', text);
+          updateInterim(text);
+        },
+        onFinal(text) {
+          console.log('[VoiceInput] Final:', text);
+          commitText(text);
+          updateInterim(''); // clear interim
+        },
+        onError(err) {
+          console.error('[VoiceInput] Deepgram error:', err);
+          setRecording(false);
+          
+          let errorMessage = "Voice input error. Please try again.";
+          if (err instanceof Error) {
+            if (err.message.includes("Permission denied") || err.message.includes("NotAllowedError")) {
+              errorMessage = "Microphone access denied. Please allow microphone permissions and try again.";
+            } else if (err.message.includes("Failed to fetch Deepgram token")) {
+              errorMessage = "Voice service unavailable. Please check your Deepgram API key configuration.";
+            }
+          }
+          
+          toast.error(errorMessage);
+        },
+        onClose(code, reason) {
+          console.log('[VoiceInput] Deepgram closed:', code, reason);
+          setRecording(false);
+          if (code !== 1000) {
+            toast.error("Voice connection closed unexpectedly");
           }
         }
       });
-      setSession(s);
-      toast.success("Voice recording started");
+
+      await dgRef.current.start();
     } catch (e) {
       console.error("[VoiceInput] Failed to start:", e);
       setRecording(false);
       updateInterim("");
+      dgRef.current = null;
       
       // Parse error message for better user feedback
       let errorMessage = "Couldn't start voice input. Check your microphone and try again.";
       if (e instanceof Error) {
         if (e.message.includes("Permission denied") || e.message.includes("NotAllowedError")) {
           errorMessage = "Microphone access denied. Please allow microphone permissions and try again.";
-        } else if (e.message.includes("502") || e.message.includes("FORBIDDEN")) {
+        } else if (e.message.includes("Failed to fetch Deepgram token")) {
           errorMessage = "Voice service unavailable. Please check your Deepgram API key configuration.";
         } else if (e.message.includes("timeout")) {
           errorMessage = "Connection timeout. Please try again.";
@@ -84,15 +106,21 @@ export default function VoiceInput({ text, setText, interim, setInterim, disable
 
   const onStop = () => {
     console.log("[VoiceInput] Stopping voice input");
-    try { session?.stop(); } catch {}
-    setSession(null);
+    try { 
+      dgRef.current?.stop();
+    } catch {}
+    dgRef.current = null;
     setRecording(false);
     updateInterim("");
     toast.success("Voice recording stopped");
   };
 
   // IMPORTANT: cleanup if component unmounts
-  useEffect(() => () => { try { session?.stop(); } catch {} }, [session]);
+  useEffect(() => () => { 
+    try { 
+      dgRef.current?.stop();
+    } catch {} 
+  }, []);
 
   return (
     <div className="flex flex-col gap-2">
