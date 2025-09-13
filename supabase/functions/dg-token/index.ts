@@ -3,6 +3,7 @@ const ALLOWED_ORIGINS = new Set([
   'http://localhost:5173',
   'https://preview--olive-couple-sync.lovable.app',
   'https://olive-couple-sync.lovable.app',
+  'https://fe28fe11-6f80-433f-aa49-de1399a1110c.sandbox.lovable.dev',
 ]);
 
 const cors = (origin: string | null) => ({
@@ -55,5 +56,5 @@ Deno.serve(async (req) => {
   }
 
   const json = await res.json(); // { access_token, expires_in }
-  return new Response(JSON.stringify(json), { status: 200, headers: cors(origin) });
+  return new Response(JSON.stringify({ token: json.access_token }), { status: 200, headers: cors(origin) });
 });
