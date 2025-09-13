@@ -57,19 +57,40 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
   const start = async () => {
     stopped = false;
 
-    // 1) Get ephemeral token
-    const tokenRes = await fetch('https://wtfspzvcetxmcfftwonq.functions.supabase.co/dg-token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      // optional TTL override if you like
-      body: JSON.stringify({ ttl: 300 })
-    });
-    if (!tokenRes.ok) {
-      const txt = await tokenRes.text();
-      throw new Error(`Failed to fetch Deepgram token (${tokenRes.status}): ${txt}`);
+    let token: string;
+    
+    try {
+      console.log('[Deepgram] Fetching token from dg-token endpoint...');
+      // 1) Get ephemeral token
+      const tokenRes = await fetch('https://wtfspzvcetxmcfftwonq.functions.supabase.co/dg-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // optional TTL override if you like
+        body: JSON.stringify({ ttl: 300 })
+      });
+      
+      console.log('[Deepgram] Token response status:', tokenRes.status);
+      
+      if (!tokenRes.ok) {
+        const txt = await tokenRes.text();
+        console.error('[Deepgram] Token fetch failed:', txt);
+        throw new Error(`Failed to fetch Deepgram token (${tokenRes.status}): ${txt}`);
+      }
+      
+      const tokenData = await tokenRes.json();
+      console.log('[Deepgram] Token data received:', Object.keys(tokenData));
+      
+      token = tokenData.token;
+      if (!token) {
+        console.error('[Deepgram] No token in response:', tokenData);
+        throw new Error('Deepgram token missing from response');
+      }
+      
+      console.log('[Deepgram] Token received, length:', token.length);
+    } catch (error) {
+      console.error('[Deepgram] Error during token fetch:', error);
+      throw error;
     }
-    const { token } = await tokenRes.json();
-    if (!token) throw new Error('Deepgram token missing from response');
 
     // 2) Build WS URL with params matching our recording
     const sampleRate = await getSampleRate();
