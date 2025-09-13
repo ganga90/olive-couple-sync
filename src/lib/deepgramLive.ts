@@ -87,6 +87,7 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
       }
       
       console.log('[Deepgram] Token received, length:', token.length);
+      console.log('[Deepgram] Using temp token (first 12):', token.slice(0, 12));
     } catch (error) {
       console.error('[Deepgram] Error during token fetch:', error);
       throw error;
@@ -98,19 +99,19 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
       model: 'nova-2',
       smart_format: 'true',
       interim_results: 'true',
-      vad_events: 'false',
       encoding: 'opus',
       sample_rate: String(sampleRate),
-      // optional:
-      punctuate: 'true',
-      diarize: 'false'
+      punctuate: 'true'
+      // omit vad_events and diarize until connection succeeds
     });
+
+    console.log('[Deepgram] WebSocket URL params:', params.toString());
 
     // 3) Open WS with token as subprotocol
     ws = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, ['token', token]);
 
     ws.onopen = async () => {
-      console.log('[Deepgram] WebSocket connected');
+      console.log('[Deepgram] WebSocket connected successfully');
       onOpen?.();
 
       // 4) Start microphone -> MediaRecorder (Opus)
@@ -124,12 +125,14 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
       });
 
       const mimeType = pickMimeType();
+      console.log('[Deepgram] Using MIME type:', mimeType);
       rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
 
       rec.ondataavailable = async (e) => {
         if (stopped || !ws || ws.readyState !== WebSocket.OPEN) return;
         if (!e.data || e.data.size === 0) return;
         const buf = await e.data.arrayBuffer();
+        console.log('[Deepgram] Sending audio chunk, size:', buf.byteLength);
         ws.send(buf);
       };
 
