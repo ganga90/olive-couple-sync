@@ -17,10 +17,10 @@ export function makeDeepgramLive(getTokenEndpoint: string): DeepgramLive {
     if (!res.ok) {
       throw new Error(`Failed to fetch Deepgram token (${res.status}): ${await res.text()}`);
     }
-    const { token } = await res.json();
+    const { access_token } = await res.json();
 
     // 2) Deepgram client
-    const dg = createClient(token);
+    const dg = createClient(access_token);
 
     // 3) Live connection (Opus)
     const live = await dg.listen.live({
