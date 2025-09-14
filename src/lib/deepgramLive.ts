@@ -63,7 +63,8 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
       console.log('[Deepgram] Fetching token from dg-token endpoint...');
       // 1) Get ephemeral token
       const tokenRes = await fetch('https://wtfspzvcetxmcfftwonq.supabase.co/functions/v1/dg-token', {
-        method: 'GET'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
       });
       
       console.log('[Deepgram] Token response status:', tokenRes.status);
@@ -77,7 +78,8 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
       const tokenData = await tokenRes.json();
       console.log('[Deepgram] Token data received:', tokenData);
       
-      token = tokenData.access_token;
+      // MUST be a string like "eyJ..."
+      token = tokenData.access_token as string;
       if (!token || typeof token !== 'string') {
         console.error('[Deepgram] No valid access_token in response:', tokenData);
         throw new Error('Deepgram access_token missing from response');
@@ -101,20 +103,27 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
     
     // Use Opus for supported browsers (not Safari), PCM for Safari
     const useOpus = supportsOpus && !isSafari;
-    const params = new URLSearchParams({
-      model: 'nova-2',
-      smart_format: 'true',
-      interim_results: 'true',
-      encoding: useOpus ? 'opus' : 'linear16',
-      sample_rate: String(sampleRate),
-      punctuate: 'true'
-    });
+    
+    function buildWsUrl() {
+      const base = 'wss://api.deepgram.com/v1/listen';
+      const qp = new URLSearchParams({
+        model: 'nova-2',
+        smart_format: 'true',
+        interim_results: 'true',
+        punctuate: 'true',
+        // Encoding & rate depend on browser:
+        encoding: useOpus ? 'opus' : 'linear16',
+        sample_rate: '48000'
+      });
+      return `${base}?${qp.toString()}`;
+    }
 
-    console.log('[Deepgram] WebSocket URL params:', params.toString());
+    console.log('[Deepgram] WebSocket URL:', buildWsUrl());
     console.log('[Deepgram] Protocol check - token type:', typeof token, 'length:', token.length);
 
     // 3) Open WS with token as subprotocol (ensure raw string, not stringified)
-    ws = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, ['token', token]);
+    ws = new WebSocket(buildWsUrl(), ['token', token]); // <- raw string token
+    ws.binaryType = 'arraybuffer';
 
     ws.onopen = async () => {
       console.log('[Deepgram] WebSocket connected successfully');
@@ -133,10 +142,8 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
       if (useOpus) {
         // OPUS path (Chrome/Edge/Firefox)
         console.log('[Deepgram] Using Opus encoding path');
-        const mimeType = pickMimeType();
-        console.log('[Deepgram] Using MIME type:', mimeType);
-        rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-
+        const rec = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+        
         rec.ondataavailable = async (e) => {
           if (stopped || !ws || ws.readyState !== WebSocket.OPEN) return;
           if (!e.data || e.data.size === 0) return;
@@ -147,6 +154,13 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
 
         rec.start(250); // ~4 chunks/sec
         console.log('[Deepgram] MediaRecorder started');
+        
+        // Store cleanup function
+        (window as any).__dg_stop = () => { 
+          try { rec.stop(); } catch {} 
+          ws.close(); 
+          stream.getTracks().forEach(t => t.stop()); 
+        };
       } else {
         // PCM path (Safari)
         console.log('[Deepgram] Using PCM encoding path for Safari');
@@ -170,39 +184,46 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
         src.connect(proc);
         proc.connect(audioCtx.destination);
         console.log('[Deepgram] PCM processor started');
+        
+        // Store cleanup function
+        (window as any).__dg_stop = () => { 
+          proc.disconnect(); 
+          src.disconnect(); 
+          audioCtx.close(); 
+          ws.close(); 
+          stream.getTracks().forEach(t => t.stop()); 
+        };
       }
     };
 
-    ws.onmessage = (e) => {
-      // Deepgram sends JSON messages with results
+    ws.onmessage = (ev) => {
       try {
-        const data = JSON.parse(e.data);
-        // Handle various shapes: 'type' may be 'Results', etc.
-        // Current Live API: data.channel.alternatives[0].transcript, data.is_final
-        const alt = data?.channel?.alternatives?.[0];
-        const text = alt?.transcript?.trim();
-        if (text) {
-          const isFinal = !!data.is_final || data.speech_final === true;
-          console.log(`[Deepgram] ${isFinal ? 'Final' : 'Interim'}:`, text);
-          if (isFinal) onFinal?.(text);
-          else onInterim?.(text);
-        }
+        const msg = JSON.parse(ev.data as string);
+        const alt = msg?.channel?.alternatives?.[0];
+        if (!alt?.transcript) return;
+        
+        const text = alt.transcript.trim();
+        const isFinal = !!msg?.is_final;
+        
+        console.log(`[Deepgram] ${isFinal ? 'Final' : 'Interim'}:`, text);
+        if (isFinal) onFinal?.(text);
+        else onInterim?.(text);
       } catch {
         // ignore non-JSON (keep-alives etc.)
       }
     };
 
-    ws.onerror = (err) => {
-      console.error('[Deepgram] WebSocket error:', err);
-      onError?.(err);
+    ws.onerror = (e) => {
+      console.error('[Deepgram] WebSocket error:', e);
+      onError?.(e);
     };
 
-    ws.onclose = (ev) => {
-      console.log('[Deepgram] WebSocket closed:', ev.code, ev.reason || 'No reason provided');
-      if (ev.code === 1006) {
+    ws.onclose = (e) => {
+      console.log('[Deepgram] WebSocket closed:', e.code, '–', e.reason || 'No reason provided');
+      if (e.code === 1006) {
         console.error('[Deepgram] WebSocket closed abnormally (1006) - usually authentication or protocol issue');
       }
-      onClose?.(ev.code, ev.reason);
+      onClose?.(e.code, e.reason);
       cleanup();
     };
   };
