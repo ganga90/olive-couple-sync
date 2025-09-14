@@ -29,8 +29,14 @@ const AcceptInvite = () => {
       return;
     }
 
-    loadInvite();
-  }, [token]);
+    // Only load invite data if user is authenticated
+    if (user) {
+      loadInvite();
+    } else {
+      // If no user, just stop loading - we'll show sign-in prompt
+      setLoading(false);
+    }
+  }, [token, user]);
 
   const loadInvite = async () => {
     try {
@@ -154,13 +160,13 @@ const AcceptInvite = () => {
             
             <div className="space-y-3">
               <Button 
-                onClick={() => navigate(`/sign-in?redirect=/accept-invite?token=${token}`)}
+                onClick={() => navigate(`/sign-in?redirect=${encodeURIComponent(`/accept-invite?token=${token}`)}`)}
                 className="w-full bg-olive hover:bg-olive/90 text-white"
               >
                 Sign In
               </Button>
               <Button 
-                onClick={() => navigate(`/sign-up?redirect=/accept-invite?token=${token}`)}
+                onClick={() => navigate(`/sign-up?redirect=${encodeURIComponent(`/accept-invite?token=${token}`)}`)}
                 variant="outline"
                 className="w-full border-olive/30 text-olive hover:bg-olive/10"
               >
