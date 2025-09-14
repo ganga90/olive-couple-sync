@@ -75,43 +75,52 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
       }
       
       const tokenData = await tokenRes.json();
-      console.log('[Deepgram] Token data received:', Object.keys(tokenData));
+      console.log('[Deepgram] Token data received:', tokenData);
       
       token = tokenData.access_token;
-      if (!token) {
-        console.error('[Deepgram] No access_token in response:', tokenData);
+      if (!token || typeof token !== 'string') {
+        console.error('[Deepgram] No valid access_token in response:', tokenData);
         throw new Error('Deepgram access_token missing from response');
       }
       
       console.log('[Deepgram] Token received, length:', token.length);
       console.log('[Deepgram] Using temp token (first 12):', token.slice(0, 12));
+      console.log('[Deepgram] Token type:', typeof token);
     } catch (error) {
       console.error('[Deepgram] Error during token fetch:', error);
       throw error;
     }
 
-    // 2) Build WS URL with params matching our recording
+    // 2) Detect browser capabilities for audio encoding
     const sampleRate = await getSampleRate();
+    const supportsOpus = typeof window.MediaRecorder !== 'undefined' && 
+                        MediaRecorder.isTypeSupported('audio/webm;codecs=opus');
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    
+    console.log('[Deepgram] Browser capabilities - supportsOpus:', supportsOpus, 'isSafari:', isSafari);
+    
+    // Use Opus for supported browsers (not Safari), PCM for Safari
+    const useOpus = supportsOpus && !isSafari;
     const params = new URLSearchParams({
       model: 'nova-2',
       smart_format: 'true',
       interim_results: 'true',
-      encoding: 'opus',
+      encoding: useOpus ? 'opus' : 'linear16',
       sample_rate: String(sampleRate),
       punctuate: 'true'
-      // omit vad_events and diarize until connection succeeds
     });
 
     console.log('[Deepgram] WebSocket URL params:', params.toString());
+    console.log('[Deepgram] Protocol check - token type:', typeof token, 'length:', token.length);
 
-    // 3) Open WS with token as subprotocol
+    // 3) Open WS with token as subprotocol (ensure raw string, not stringified)
     ws = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, ['token', token]);
 
     ws.onopen = async () => {
       console.log('[Deepgram] WebSocket connected successfully');
       onOpen?.();
 
-      // 4) Start microphone -> MediaRecorder (Opus)
+      // 4) Start microphone with proper encoding path
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
@@ -121,20 +130,47 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
         }
       });
 
-      const mimeType = pickMimeType();
-      console.log('[Deepgram] Using MIME type:', mimeType);
-      rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      if (useOpus) {
+        // OPUS path (Chrome/Edge/Firefox)
+        console.log('[Deepgram] Using Opus encoding path');
+        const mimeType = pickMimeType();
+        console.log('[Deepgram] Using MIME type:', mimeType);
+        rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
 
-      rec.ondataavailable = async (e) => {
-        if (stopped || !ws || ws.readyState !== WebSocket.OPEN) return;
-        if (!e.data || e.data.size === 0) return;
-        const buf = await e.data.arrayBuffer();
-        console.log('[Deepgram] Sending audio chunk, size:', buf.byteLength);
-        ws.send(buf);
-      };
+        rec.ondataavailable = async (e) => {
+          if (stopped || !ws || ws.readyState !== WebSocket.OPEN) return;
+          if (!e.data || e.data.size === 0) return;
+          const buf = await e.data.arrayBuffer();
+          console.log('[Deepgram] Sending Opus audio chunk, size:', buf.byteLength);
+          ws.send(buf);
+        };
 
-      rec.start(250); // ~4 chunks/sec
-      console.log('[Deepgram] MediaRecorder started');
+        rec.start(250); // ~4 chunks/sec
+        console.log('[Deepgram] MediaRecorder started');
+      } else {
+        // PCM path (Safari)
+        console.log('[Deepgram] Using PCM encoding path for Safari');
+        const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext);
+        const audioCtx = new AudioCtx({ sampleRate: 48000 });
+        const src = audioCtx.createMediaStreamSource(stream);
+        const proc = audioCtx.createScriptProcessor(4096, 1, 1);
+        
+        proc.onaudioprocess = (e) => {
+          if (stopped || !ws || ws.readyState !== WebSocket.OPEN) return;
+          const input = e.inputBuffer.getChannelData(0); // Float32 [-1..1]
+          const buf = new ArrayBuffer(input.length * 2);
+          const view = new DataView(buf);
+          for (let i = 0; i < input.length; i++) {
+            let s = Math.max(-1, Math.min(1, input[i]));
+            view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+          }
+          ws.send(buf);
+        };
+        
+        src.connect(proc);
+        proc.connect(audioCtx.destination);
+        console.log('[Deepgram] PCM processor started');
+      }
     };
 
     ws.onmessage = (e) => {
@@ -162,7 +198,10 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
     };
 
     ws.onclose = (ev) => {
-      console.log('[Deepgram] WebSocket closed:', ev.code, ev.reason);
+      console.log('[Deepgram] WebSocket closed:', ev.code, ev.reason || 'No reason provided');
+      if (ev.code === 1006) {
+        console.error('[Deepgram] WebSocket closed abnormally (1006) - usually authentication or protocol issue');
+      }
       onClose?.(ev.code, ev.reason);
       cleanup();
     };
