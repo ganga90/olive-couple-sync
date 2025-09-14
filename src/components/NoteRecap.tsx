@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -93,6 +93,33 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
     }
   };
 
+  // Helper function to derive category from list
+  const deriveCategoryFromList = useCallback((listId: string) => {
+    if (!listId) return editedNote.category;
+    
+    const selectedList = lists.find(list => list.id === listId);
+    if (!selectedList) return editedNote.category;
+    
+    // Convert list name back to category format
+    const listName = selectedList.name.toLowerCase();
+    
+    // Map common list names to categories
+    const categoryMap: { [key: string]: string } = {
+      'groceries': 'groceries',
+      'shopping': 'shopping',
+      'date ideas': 'dateIdeas',
+      'home improvement': 'homeImprovement',
+      'travel': 'travel',
+      'travel ideas': 'travel',
+      'reminder': 'reminder',
+      'personal': 'personal',
+      'task': 'task',
+      'tasks': 'task'
+    };
+    
+    return categoryMap[listName] || 'task';
+  }, [lists, editedNote.category]);
+
   const handleSaveEdit = async () => {
     if (!note.id) {
       toast.error("Cannot edit note - no ID found");
@@ -101,6 +128,8 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
 
     // Handle new list creation if needed
     let finalListId = editedNote.listId;
+    let finalCategory = editedNote.category;
+    
     if (showNewListInput && newListName.trim()) {
       try {
         const newList = await createList({
@@ -110,6 +139,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
         });
         if (newList) {
           finalListId = newList.id;
+          finalCategory = deriveCategoryFromList(newList.id);
           setShowNewListInput(false);
           setNewListName("");
           toast.success(`Created new list: ${newList.name}`);
@@ -119,12 +149,15 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
         toast.error("Failed to create new list");
         return;
       }
+    } else if (finalListId) {
+      // Derive category from selected list
+      finalCategory = deriveCategoryFromList(finalListId);
     }
 
     try {
       const updates = {
         summary: editedNote.summary.trim(),
-        category: editedNote.category,
+        category: finalCategory,
         priority: editedNote.priority,
         tags: editedNote.tags.split(",").map(tag => tag.trim()).filter(Boolean),
         items: editedNote.items.split("\n").map(item => item.trim()).filter(Boolean),
@@ -220,26 +253,9 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
           )}
         </div>
 
-        {/* Category and Priority */}
+        {/* Priority and Task Details */}
         {isEditing ? (
           <div className="space-y-3">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Category</label>
-              <Select value={editedNote.category} onValueChange={(value) => setEditedNote(prev => ({ ...prev, category: value }))}>
-                <SelectTrigger className="border-olive/30 focus:border-olive">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="groceries">Groceries</SelectItem>
-                  <SelectItem value="shopping">Shopping</SelectItem>
-                  <SelectItem value="dateIdeas">Date Ideas</SelectItem>
-                  <SelectItem value="homeImprovement">Home Improvement</SelectItem>
-                  <SelectItem value="travel">Travel</SelectItem>
-                  <SelectItem value="reminder">Reminder</SelectItem>
-                  <SelectItem value="personal">Personal</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Priority</label>
               <Select value={editedNote.priority} onValueChange={(value) => setEditedNote(prev => ({ ...prev, priority: value as "low" | "medium" | "high" }))}>

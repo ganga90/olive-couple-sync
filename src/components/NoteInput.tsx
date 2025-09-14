@@ -186,13 +186,21 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
           onClose={handleCloseRecap} 
           onNoteUpdated={handleNoteUpdated}
         />
-        <Button 
-          onClick={handleCloseRecap}
-          variant="outline" 
-          className="w-full border-olive/30 text-olive hover:bg-olive/10"
-        >
-          Add Another Note
-        </Button>
+        <div className="space-y-3">
+          <Button 
+            onClick={handleCloseRecap}
+            className="w-full bg-olive hover:bg-olive/90 text-white"
+          >
+            Save Changes & Continue
+          </Button>
+          <Button 
+            onClick={handleCloseRecap}
+            variant="outline" 
+            className="w-full border-olive/30 text-olive hover:bg-olive/10"
+          >
+            Add Another Note
+          </Button>
+        </div>
       </div>
     );
   }
