@@ -10,7 +10,7 @@ import { useSEO } from "@/hooks/useSEO";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, parseISO } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, parseISO, startOfWeek, endOfWeek, addWeeks, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Note } from "@/types/note";
 
@@ -65,10 +65,14 @@ const CalendarPage = () => {
     );
   };
 
-  // Get calendar month data
+  // Get calendar data based on view mode
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const calendarDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  
+  const weekStart = startOfWeek(currentDate);
+  const weekEnd = endOfWeek(currentDate);
+  const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
   const handleDateAssignment = async (task: Note, date: Date | undefined) => {
     await updateNote(task.id, { 
@@ -150,19 +154,26 @@ const CalendarPage = () => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setCurrentDate(subMonths(currentDate, 1))}
+            onClick={() => setCurrentDate(
+              viewMode === 'month' ? subMonths(currentDate, 1) : subWeeks(currentDate, 1)
+            )}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           
           <h2 className="text-lg font-semibold">
-            {format(currentDate, 'MMMM yyyy')}
+            {viewMode === 'month' 
+              ? format(currentDate, 'MMMM yyyy')
+              : `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`
+            }
           </h2>
           
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setCurrentDate(addMonths(currentDate, 1))}
+            onClick={() => setCurrentDate(
+              viewMode === 'month' ? addMonths(currentDate, 1) : addWeeks(currentDate, 1)
+            )}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -227,8 +238,69 @@ const CalendarPage = () => {
                 })}
               </div>
             ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                Week view coming soon!
+              <div className="grid grid-cols-7 gap-1">
+                {/* Day headers for week view */}
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                  <div key={day} className="p-2 text-center text-sm font-medium text-muted-foreground">
+                    {day}
+                  </div>
+                ))}
+                
+                {/* Week days */}
+                {weekDays.map(day => {
+                  const dayTasks = getTasksForDate(day);
+                  const isToday = isSameDay(day, new Date());
+                  
+                  return (
+                    <div
+                      key={day.toISOString()}
+                      className={cn(
+                        "min-h-[120px] p-3 border border-border/20 cursor-pointer hover:bg-olive/5 transition-colors",
+                        isToday && "bg-olive/10 border-olive/30"
+                      )}
+                      onClick={() => setSelectedDate(day)}
+                    >
+                      <div className="text-lg font-semibold mb-2 text-center">
+                        {format(day, 'd')}
+                      </div>
+                      <div className="space-y-2">
+                        {dayTasks.map(task => (
+                          <div
+                            key={task.id}
+                            className={cn(
+                              "text-xs p-2 rounded-md cursor-pointer transition-colors border",
+                              task.completed ? "opacity-50 line-through" : "",
+                              task.priority === 'high' ? "bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20" :
+                              task.priority === 'medium' ? "bg-olive/10 text-olive border-olive/20 hover:bg-olive/20" :
+                              "bg-muted text-muted-foreground border-border hover:bg-muted/80"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigateToTask(task.id);
+                            }}
+                          >
+                            <div className="font-medium truncate">{task.summary}</div>
+                            <div className="flex items-center justify-between mt-1">
+                              <span className="text-xs opacity-70">
+                                {getAuthorName(task)}
+                              </span>
+                              {task.task_owner && (
+                                <span className="text-xs opacity-70">
+                                  → {task.task_owner}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        {dayTasks.length === 0 && (
+                          <div className="text-xs text-muted-foreground/50 text-center py-2">
+                            No tasks
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>
