@@ -196,6 +196,7 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
           // Map camelCase to snake_case for Supabase
           switch (key) {
             case 'dueDate':
+            case 'due_date': // Handle both camelCase and snake_case
               supabaseUpdates.due_date = value;
               break;
             case 'coupleId':
