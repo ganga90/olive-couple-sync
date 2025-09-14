@@ -130,11 +130,9 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     if (updates.items !== undefined) supabaseUpdates.items = updates.items;
     if (updates.task_owner !== undefined) supabaseUpdates.task_owner = updates.task_owner;
     if (updates.list_id !== undefined) supabaseUpdates.list_id = updates.list_id;
-    
-    // Handle privacy changes - map coupleId to couple_id in database
-    if (updates.coupleId !== undefined) supabaseUpdates.couple_id = updates.coupleId;
 
-    const result = await updateSupabaseNote(id, supabaseUpdates);
+    // Let useSupabaseNotes handle all field mapping, just pass through the Note fields
+    const result = await updateSupabaseNote(id, updates);
     return result ? convertSupabaseNoteToNote(result, user, currentCouple) : null;
   };
 

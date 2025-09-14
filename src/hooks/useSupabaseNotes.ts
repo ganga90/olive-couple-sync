@@ -195,6 +195,9 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
         if (value !== undefined) {
           // Map camelCase to snake_case for Supabase
           switch (key) {
+            case 'originalText':
+              supabaseUpdates.original_text = value;
+              break;
             case 'dueDate':
             case 'due_date': // Handle both camelCase and snake_case
               supabaseUpdates.due_date = value;
@@ -208,15 +211,20 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
             case 'list_id':
               supabaseUpdates.list_id = value;
               break;
+            case 'category':
+              // Apply category transformation for AI format
+              supabaseUpdates.category = typeof value === 'string' ? value.toLowerCase().replace(/\s+/g, '_') : value;
+              break;
             // Direct mappings for fields that match
             case 'summary':
-            case 'category':
             case 'priority':
             case 'tags':
             case 'items':
             case 'completed':
-            case 'isShared':
               supabaseUpdates[key] = value;
+              break;
+            case 'isShared':
+              // Ignore isShared - privacy is controlled by couple_id
               break;
             default:
               console.warn("[useSupabaseNotes] Ignoring unknown field:", key);
