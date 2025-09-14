@@ -13,6 +13,7 @@ import Profile from "./pages/Profile";
 import NoteDetails from "./pages/NoteDetails";
 import Welcome from "./pages/Welcome";
 import ListCategory from "./pages/ListCategory";
+import CalendarPage from "./pages/CalendarPage";
 import AcceptInvite from "./pages/AcceptInvite";
 import JoinInvite from "./pages/JoinInvite";
 import NavBar from "./components/NavBar";
@@ -40,6 +41,7 @@ const App = () => (
                 <Route path="/home" element={<Index />} />
                 <Route path="/lists" element={<Lists />} />
                 <Route path="/lists/:listId" element={<ListCategory />} />
+                <Route path="/calendar" element={<CalendarPage />} />
                 <Route path="/onboarding" element={<Onboarding />} />
                 <Route path="/welcome" element={<Welcome />} />
                 <Route path="/profile" element={<Profile />} />

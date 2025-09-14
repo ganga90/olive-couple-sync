@@ -198,6 +198,9 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
             case 'dueDate':
               supabaseUpdates.due_date = value;
               break;
+            case 'coupleId':
+              supabaseUpdates.couple_id = value;
+              break;
             case 'task_owner':
               supabaseUpdates.task_owner = value;
               break;
@@ -211,6 +214,7 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
             case 'tags':
             case 'items':
             case 'completed':
+            case 'isShared':
               supabaseUpdates[key] = value;
               break;
             default:

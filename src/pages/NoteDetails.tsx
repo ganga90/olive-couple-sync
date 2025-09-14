@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Separator } from "@/components/ui/separator";
+import { NotePrivacyToggle } from "@/components/NotePrivacyToggle";
 import { toast } from "sonner";
 import { ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle, Tag, UserCheck, Calendar as CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
@@ -52,6 +53,8 @@ const NoteDetails = () => {
   const [localItems, setLocalItems] = useState<string[]>(note?.items || []);
   const [isEditingTags, setIsEditingTags] = useState(false);
   const [localTags, setLocalTags] = useState<string[]>(note?.tags || []);
+  const [isEditingCategory, setIsEditingCategory] = useState(false);
+  const [localCategory, setLocalCategory] = useState<string>(note?.category || "task");
   const [newItem, setNewItem] = useState("");
   const [newTag, setNewTag] = useState("");
 
@@ -62,8 +65,9 @@ const NoteDetails = () => {
       setLocalDueDate(note.dueDate ? new Date(note.dueDate) : undefined);
       setLocalItems(note.items || []);
       setLocalTags(note.tags || []);
+      setLocalCategory(note.category || "task");
     }
-  }, [note?.task_owner, note?.dueDate, note?.items, note?.tags]);
+  }, [note?.task_owner, note?.dueDate, note?.items, note?.tags, note?.category]);
 
   // Get available owners (current user and partner)
   const availableOwners = useMemo(() => {
@@ -230,6 +234,28 @@ const NoteDetails = () => {
     }
   };
 
+  const updateCategory = async (newCategory: string) => {
+    if (!note) return;
+    
+    try {
+      setLocalCategory(newCategory);
+      
+      const result = await updateNote(note.id, { category: newCategory });
+      
+      if (result) {
+        setIsEditingCategory(false);
+        toast.success("Category updated");
+      } else {
+        setLocalCategory(note.category || "task");
+        toast.error("Failed to update category");
+      }
+    } catch (error) {
+      console.error("Error updating category:", error);
+      toast.error("Failed to update category");
+      setLocalCategory(note.category || "task");
+    }
+  };
+
   const addItem = () => {
     if (newItem.trim()) {
       const updatedItems = [...localItems, newItem.trim()];
@@ -328,9 +354,55 @@ const NoteDetails = () => {
 
           {/* Category and Priority */}
           <div className="flex items-center gap-3 flex-wrap">
-            <Badge variant="secondary" className="bg-olive/10 text-olive border-olive/20 px-3 py-1">
-              {note.category}
-            </Badge>
+            {isEditingCategory ? (
+              <div className="flex items-center gap-2">
+                <Select
+                  value={localCategory}
+                  onValueChange={(value) => updateCategory(value)}
+                >
+                  <SelectTrigger className="w-40 border-olive/30 focus:border-olive focus:ring-olive/20 bg-white">
+                    <SelectValue placeholder="Select category..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-olive/20 shadow-lg z-50">
+                    <SelectItem value="task">Task</SelectItem>
+                    <SelectItem value="groceries">Groceries</SelectItem>
+                    <SelectItem value="shopping">Shopping</SelectItem>
+                    <SelectItem value="home_improvement">Home Improvement</SelectItem>
+                    <SelectItem value="travel">Travel</SelectItem>
+                    <SelectItem value="date_ideas">Date Ideas</SelectItem>
+                    <SelectItem value="entertainment">Entertainment</SelectItem>
+                    <SelectItem value="personal">Personal</SelectItem>
+                    <SelectItem value="reminder">Reminder</SelectItem>
+                    <SelectItem value="work">Work</SelectItem>
+                    <SelectItem value="health">Health</SelectItem>
+                    <SelectItem value="finance">Finance</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditingCategory(false)}
+                  className="border-olive/30"
+                >
+                  Done
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="bg-olive/10 text-olive border-olive/20 px-3 py-1">
+                  {localCategory}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsEditingCategory(true)}
+                  className="text-olive hover:bg-olive/10 p-1 h-auto"
+                >
+                  <Pencil className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+            
             {note.priority && (
               <Badge 
                 variant="outline" 
@@ -628,15 +700,19 @@ const NoteDetails = () => {
           </Card>
 
           {/* Metadata */}
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <User className="h-4 w-4 text-olive" /> 
-              <span>Added by {note.addedBy || 'You'}</span>
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-olive" /> 
+                <span>Added by {note.addedBy || 'You'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-olive" /> 
+                <span>{format(new Date(note.createdAt), "MMM d, yyyy 'at' h:mm a")}</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-olive" /> 
-              <span>{format(new Date(note.createdAt), "MMM d, yyyy 'at' h:mm a")}</span>
-            </div>
+            
+            <NotePrivacyToggle note={note} size="sm" variant="outline" />
           </div>
 
           {/* Original Text */}

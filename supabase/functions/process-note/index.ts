@@ -184,7 +184,7 @@ serve(async (req) => {
       // Fallback to basic processing
       processedNote = {
         summary: text.length > 100 ? text.substring(0, 97) + "..." : text,
-        category: "general",
+        category: "task", // Changed from "general" to "task" as default
         due_date: null,
         priority: "medium",
         tags: [],
@@ -243,7 +243,7 @@ serve(async (req) => {
     // Ensure required fields
     const result = {
       summary: processedNote.summary || text,
-      category: processedNote.category || "general",
+      category: processedNote.category || "task", // Changed from "general" to "task"
       due_date: processedNote.due_date || null,
       priority: processedNote.priority || "medium",
       tags: processedNote.tags || [],
@@ -264,7 +264,7 @@ serve(async (req) => {
       error: error.message,
       // Fallback processing
       summary: 'Note processing failed',
-      category: 'general',
+      category: 'task', // Changed from 'general'
       due_date: null,
       priority: 'medium',
       tags: [],
