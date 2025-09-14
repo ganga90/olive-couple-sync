@@ -33,25 +33,13 @@ const Index = () => {
     userId: user?.id 
   });
 
-  // Show loading state while authentication is loading
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-soft flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-olive mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading your space...</p>
-        </div>
-      </div>
-    );
-  }
-
   // If user is authenticated AND auth has loaded, show enhanced experience
   const isAuthenticatedUser = isAuthenticated && user;
   const userName = isAuthenticatedUser ? (user.firstName || user.fullName || "there") : null;
 
   console.log('[Index] Computed States:', { isAuthenticatedUser, userName });
 
-  // Get filtered notes based on view mode
+  // Get filtered notes based on view mode - ALWAYS call this hook
   const filteredNotes = useMemo(() => {
     if (!isAuthenticatedUser) return [];
     
@@ -63,7 +51,7 @@ const Index = () => {
     return notes;
   }, [notes, viewMode, isAuthenticatedUser]);
 
-  // Get last 3 tasks and top 3 high priority tasks from filtered notes (excluding completed)
+  // Get last 3 tasks and top 3 high priority tasks from filtered notes (excluding completed) - ALWAYS call this hook
   const { recentTasks, highPriorityTasks } = useMemo(() => {
     if (!isAuthenticatedUser || !filteredNotes.length) {
       return { recentTasks: [], highPriorityTasks: [] };
@@ -85,6 +73,18 @@ const Index = () => {
 
     return { recentTasks: recent, highPriorityTasks: highPriority };
   }, [filteredNotes, isAuthenticatedUser]);
+
+  // Show loading state while authentication is loading - MOVED AFTER ALL HOOKS
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-soft flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-olive mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading your space...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-gradient-soft">
