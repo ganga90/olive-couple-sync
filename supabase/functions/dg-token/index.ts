@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     }
   } catch { /* ignore */ }
 
-  const res = await fetch('https://api.deepgram.com/v1/keys', {
+  const res = await fetch('https://api.deepgram.com/v1/auth/token', {
     method: 'POST',
     headers: {
       // IMPORTANT: Deepgram expects "Token <key>" format
@@ -44,12 +44,7 @@ Deno.serve(async (req) => {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      comment: 'olive-browser-ephemeral',
-      time_to_live_in_seconds: ttl,
-      scopes: [
-        'listen:stream',  // ✅ REQUIRED for Live WS
-        'usage:write'     // good to keep
-      ]
+      ttl_seconds: ttl
     }),
   });
 
@@ -62,6 +57,6 @@ Deno.serve(async (req) => {
     }), { status: 502, headers: cors(origin) });
   }
 
-  const json = await res.json(); // { key, ... } from /v1/keys endpoint
-  return new Response(JSON.stringify({ token: json.key }), { status: 200, headers: cors(origin) });
+  const json = await res.json(); // { access_token, expires_in } from /v1/auth/token endpoint
+  return new Response(JSON.stringify({ token: json.access_token }), { status: 200, headers: cors(origin) });
 });
