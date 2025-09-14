@@ -203,6 +203,7 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
               supabaseUpdates.due_date = value;
               break;
             case 'coupleId':
+            case 'couple_id': // Handle both camelCase and snake_case
               supabaseUpdates.couple_id = value;
               break;
             case 'task_owner':
