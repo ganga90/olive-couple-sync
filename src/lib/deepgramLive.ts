@@ -62,11 +62,8 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
     try {
       console.log('[Deepgram] Fetching token from dg-token endpoint...');
       // 1) Get ephemeral token
-      const tokenRes = await fetch('https://wtfspzvcetxmcfftwonq.functions.supabase.co/dg-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // optional TTL override if you like
-        body: JSON.stringify({ ttl: 300 })
+      const tokenRes = await fetch('https://wtfspzvcetxmcfftwonq.supabase.co/functions/v1/dg-token', {
+        method: 'GET'
       });
       
       console.log('[Deepgram] Token response status:', tokenRes.status);
@@ -80,10 +77,10 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
       const tokenData = await tokenRes.json();
       console.log('[Deepgram] Token data received:', Object.keys(tokenData));
       
-      token = tokenData.token;
+      token = tokenData.access_token;
       if (!token) {
-        console.error('[Deepgram] No token in response:', tokenData);
-        throw new Error('Deepgram token missing from response');
+        console.error('[Deepgram] No access_token in response:', tokenData);
+        throw new Error('Deepgram access_token missing from response');
       }
       
       console.log('[Deepgram] Token received, length:', token.length);
