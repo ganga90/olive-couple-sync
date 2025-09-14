@@ -13,6 +13,9 @@ const NavBar = () => {
           <NavLink to="/lists" className="text-sm text-muted-foreground hover:text-foreground">
             Lists
           </NavLink>
+          <NavLink to="/calendar" className="text-sm text-muted-foreground hover:text-foreground">
+            Calendar
+          </NavLink>
           <NavLink to="/profile" className="text-sm text-muted-foreground hover:text-foreground">
             Profile
           </NavLink>
