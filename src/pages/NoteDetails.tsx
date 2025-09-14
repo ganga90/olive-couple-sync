@@ -43,6 +43,11 @@ const NoteDetails = () => {
       : []
   );
   const [input, setInput] = useState("");
+  
+  // Master edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  
+  // Local editing state for individual fields (existing)
   const [isEditingOwner, setIsEditingOwner] = useState(false);
   const [localTaskOwner, setLocalTaskOwner] = useState<string | null>(note?.task_owner || null);
   const [isEditingDueDate, setIsEditingDueDate] = useState(false);
@@ -57,6 +62,17 @@ const NoteDetails = () => {
   const [localCategory, setLocalCategory] = useState<string>(note?.category || "task");
   const [newItem, setNewItem] = useState("");
   const [newTag, setNewTag] = useState("");
+  
+  // Combined edit state for all fields
+  const [editedNote, setEditedNote] = useState({
+    summary: note?.summary || "",
+    category: note?.category || "task",
+    priority: note?.priority || "medium",
+    tags: note?.tags ? note.tags.join(", ") : "",
+    items: note?.items ? note.items.join("\n") : "",
+    dueDate: note?.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
+    taskOwner: note?.task_owner || ""
+  });
 
   // Sync local state with note when note changes
   useEffect(() => {
@@ -66,8 +82,19 @@ const NoteDetails = () => {
       setLocalItems(note.items || []);
       setLocalTags(note.tags || []);
       setLocalCategory(note.category || "task");
+      
+      // Also sync the combined edit state
+      setEditedNote({
+        summary: note.summary || "",
+        category: note.category || "task",
+        priority: note.priority || "medium",
+        tags: note.tags ? note.tags.join(", ") : "",
+        items: note.items ? note.items.join("\n") : "",
+        dueDate: note.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
+        taskOwner: note.task_owner || ""
+      });
     }
-  }, [note?.task_owner, note?.dueDate, note?.items, note?.tags, note?.category]);
+  }, [note?.task_owner, note?.dueDate, note?.items, note?.tags, note?.category, note?.summary, note?.priority]);
 
   // Get available owners (current user and partner)
   const availableOwners = useMemo(() => {
@@ -282,6 +309,56 @@ const NoteDetails = () => {
     updateTags(updatedTags);
   };
 
+  const handleSaveEdit = async () => {
+    if (!note) return;
+    
+    try {
+      const updates = {
+        summary: editedNote.summary.trim(),
+        category: editedNote.category,
+        priority: editedNote.priority,
+        tags: editedNote.tags.split(",").map(tag => tag.trim()).filter(Boolean),
+        items: editedNote.items.split("\n").map(item => item.trim()).filter(Boolean),
+        dueDate: editedNote.dueDate ? new Date(editedNote.dueDate).toISOString() : null,
+        task_owner: editedNote.taskOwner.trim() || null
+      };
+
+      const result = await updateNote(note.id, updates);
+      if (result) {
+        setIsEditing(false);
+        // Reset all individual edit modes
+        setIsEditingOwner(false);
+        setIsEditingDueDate(false);
+        setIsEditingItems(false);
+        setIsEditingTags(false);
+        setIsEditingCategory(false);
+        toast.success("Note updated successfully!");
+      }
+    } catch (error) {
+      console.error("Error updating note:", error);
+      toast.error("Failed to update note");
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedNote({
+      summary: note?.summary || "",
+      category: note?.category || "task",
+      priority: note?.priority || "medium",
+      tags: note?.tags ? note.tags.join(", ") : "",
+      items: note?.items ? note.items.join("\n") : "",
+      dueDate: note?.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
+      taskOwner: note?.task_owner || ""
+    });
+    setIsEditing(false);
+    // Reset all individual edit modes
+    setIsEditingOwner(false);
+    setIsEditingDueDate(false);
+    setIsEditingItems(false);
+    setIsEditingTags(false);
+    setIsEditingCategory(false);
+  };
+
   const renderTextWithLinks = (text: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = text.split(urlRegex);
@@ -318,15 +395,36 @@ const NoteDetails = () => {
           </Button>
           <h1 className="text-lg font-semibold text-olive-dark">Note Details</h1>
           <div className="flex items-center gap-2">
-            <Button 
-              variant="outline" 
-              size="icon" 
-              aria-label="Edit note" 
-              onClick={() => toast.message("Edit coming soon")}
-              className="border-olive/30 hover:bg-olive/10 hover:text-olive"
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
+            {!isEditing ? (
+              <Button 
+                variant="outline" 
+                size="icon" 
+                aria-label="Edit note" 
+                onClick={() => setIsEditing(true)}
+                className="border-olive/30 hover:bg-olive/10 hover:text-olive"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSaveEdit}
+                  className="border-green-500/30 text-green-600 hover:bg-green-50"
+                >
+                  Save
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCancelEdit}
+                  className="border-red-500/30 text-red-600 hover:bg-red-50"
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
             <Button 
               variant="outline" 
               size="icon" 
@@ -349,16 +447,25 @@ const NoteDetails = () => {
           {/* AI Summary Section */}
           <div className="space-y-3">
             <div className="text-sm font-medium text-muted-foreground uppercase tracking-wide">AI Summary</div>
-            <h2 className="text-2xl font-semibold leading-tight text-olive-dark">{note.summary}</h2>
+            {isEditing ? (
+              <Textarea
+                value={editedNote.summary}
+                onChange={(e) => setEditedNote(prev => ({ ...prev, summary: e.target.value }))}
+                className="text-lg font-semibold border-olive/30 focus:border-olive resize-none"
+                rows={2}
+              />
+            ) : (
+              <h2 className="text-2xl font-semibold leading-tight text-olive-dark">{note.summary}</h2>
+            )}
           </div>
 
           {/* Category and Priority */}
           <div className="flex items-center gap-3 flex-wrap">
-            {isEditingCategory ? (
-              <div className="flex items-center gap-2">
+            {isEditing ? (
+              <div className="flex items-center gap-3">
                 <Select
-                  value={localCategory}
-                  onValueChange={(value) => updateCategory(value)}
+                  value={editedNote.category}
+                  onValueChange={(value) => setEditedNote(prev => ({ ...prev, category: value }))}
                 >
                   <SelectTrigger className="w-40 border-olive/30 focus:border-olive focus:ring-olive/20 bg-white">
                     <SelectValue placeholder="Select category..." />
@@ -378,112 +485,61 @@ const NoteDetails = () => {
                     <SelectItem value="finance">Finance</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsEditingCategory(false)}
-                  className="border-olive/30"
+                <Select
+                  value={editedNote.priority}
+                  onValueChange={(value) => setEditedNote(prev => ({ ...prev, priority: value as "low" | "medium" | "high" }))}
                 >
-                  Done
-                </Button>
+                  <SelectTrigger className="w-32 border-olive/30 focus:border-olive focus:ring-olive/20 bg-white">
+                    <SelectValue placeholder="Priority..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-olive/20 shadow-lg z-50">
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <Badge variant="secondary" className="bg-olive/10 text-olive border-olive/20 px-3 py-1">
-                  {localCategory}
+                  {note.category}
                 </Badge>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsEditingCategory(true)}
-                  className="text-olive hover:bg-olive/10 p-1 h-auto"
-                >
-                  <Pencil className="h-3 w-3" />
-                </Button>
+                {note.priority && (
+                  <Badge 
+                    variant="outline" 
+                    className={`px-3 py-1 ${
+                      note.priority === 'high' ? 'border-destructive/30 text-destructive bg-destructive/5' :
+                      note.priority === 'medium' ? 'border-yellow-500/30 text-yellow-600 bg-yellow-50' :
+                      'border-green-500/30 text-green-600 bg-green-50'
+                    }`}
+                  >
+                    {note.priority} priority
+                  </Badge>
+                )}
               </div>
-            )}
-            
-            {note.priority && (
-              <Badge 
-                variant="outline" 
-                className={`px-3 py-1 ${
-                  note.priority === 'high' ? 'border-destructive/30 text-destructive bg-destructive/5' :
-                  note.priority === 'medium' ? 'border-yellow-500/30 text-yellow-600 bg-yellow-50' :
-                  'border-green-500/30 text-green-600 bg-green-50'
-                }`}
-              >
-                {note.priority} priority
-              </Badge>
             )}
           </div>
 
           {/* Tags Section */}
           <Card className="bg-white/50 border-olive/20 shadow-soft">
             <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm font-medium text-olive-dark">
-                  <Tag className="h-4 w-4 text-olive" />
-                  <span>Tags</span>
-                </div>
-                {!isEditingTags && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsEditingTags(true)}
-                    className="text-olive hover:bg-olive/10"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                )}
+              <div className="flex items-center gap-2 text-sm font-medium text-olive-dark mb-2">
+                <Tag className="h-4 w-4 text-olive" />
+                <span>Tags</span>
               </div>
-              <div className="mt-2">
-                {isEditingTags ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={newTag}
-                        onChange={(e) => setNewTag(e.target.value)}
-                        placeholder="Add a tag..."
-                        className="flex-1 px-3 py-2 border border-olive/30 rounded-md focus:border-olive focus:ring-olive/20 text-sm"
-                        onKeyPress={(e) => e.key === 'Enter' && addTag()}
-                      />
-                      <Button
-                        onClick={addTag}
-                        size="sm"
-                        className="bg-olive hover:bg-olive/90 text-white"
-                      >
-                        Add
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {localTags.map((tag, idx) => (
-                        <div key={idx} className="flex items-center gap-1 bg-olive/10 border border-olive/20 rounded-md px-2 py-1">
-                          <span className="text-sm text-olive-dark">{tag}</span>
-                          <Button
-                            onClick={() => removeTag(idx)}
-                            size="sm"
-                            variant="ghost"
-                            className="h-4 w-4 p-0 text-red-500 hover:text-red-700"
-                          >
-                            ×
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsEditingTags(false)}
-                      className="border-olive/30"
-                    >
-                      Done
-                    </Button>
-                  </div>
+              <div>
+                {isEditing ? (
+                  <Textarea
+                    value={editedNote.tags}
+                    onChange={(e) => setEditedNote(prev => ({ ...prev, tags: e.target.value }))}
+                    placeholder="Enter tags separated by commas..."
+                    className="border-olive/30 focus:border-olive resize-none"
+                    rows={2}
+                  />
                 ) : (
                   <div className="flex items-center gap-2 flex-wrap">
-                    {localTags.length > 0 ? (
-                      localTags.map((tag, idx) => (
+                    {note.tags && note.tags.length > 0 ? (
+                      note.tags.map((tag, idx) => (
                         <Badge key={idx} variant="outline" className="bg-olive/5 border-olive/20 text-olive-dark">
                           {tag}
                         </Badge>
@@ -500,66 +556,19 @@ const NoteDetails = () => {
           {/* Items List */}
           <Card className="bg-white/50 border-olive/20 shadow-soft">
             <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-xs font-medium text-olive-dark uppercase tracking-wide">Items</div>
-                {!isEditingItems && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsEditingItems(true)}
-                    className="text-olive hover:bg-olive/10"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
-              {isEditingItems ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={newItem}
-                      onChange={(e) => setNewItem(e.target.value)}
-                      placeholder="Add an item..."
-                      className="flex-1 px-3 py-2 border border-olive/30 rounded-md focus:border-olive focus:ring-olive/20 text-sm"
-                      onKeyPress={(e) => e.key === 'Enter' && addItem()}
-                    />
-                    <Button
-                      onClick={addItem}
-                      size="sm"
-                      className="bg-olive hover:bg-olive/90 text-white"
-                    >
-                      Add
-                    </Button>
-                  </div>
-                  <ul className="space-y-2">
-                    {localItems.map((item, idx) => (
-                      <li key={idx} className="flex items-center justify-between p-2 bg-white/50 border border-olive/10 rounded-md">
-                        <span className="text-sm text-olive-dark flex-1">{renderTextWithLinks(item)}</span>
-                        <Button
-                          onClick={() => removeItem(idx)}
-                          size="sm"
-                          variant="ghost"
-                          className="text-red-500 hover:text-red-700"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsEditingItems(false)}
-                    className="border-olive/30"
-                  >
-                    Done
-                  </Button>
-                </div>
+              <div className="text-xs font-medium text-olive-dark uppercase tracking-wide mb-3">Items</div>
+              {isEditing ? (
+                <Textarea
+                  value={editedNote.items}
+                  onChange={(e) => setEditedNote(prev => ({ ...prev, items: e.target.value }))}
+                  placeholder="Enter items, one per line..."
+                  className="border-olive/30 focus:border-olive resize-none"
+                  rows={4}
+                />
               ) : (
                 <ul className="list-disc space-y-1 pl-5 text-sm text-olive-dark">
-                  {localItems.length > 0 ? (
-                    localItems.map((item, idx) => (
+                  {note.items && note.items.length > 0 ? (
+                    note.items.map((item, idx) => (
                       <li key={idx}>{renderTextWithLinks(item)}</li>
                     ))
                   ) : (
@@ -573,53 +582,31 @@ const NoteDetails = () => {
           {/* Task Owner Section */}
           <Card className="bg-white/50 border-olive/20 shadow-soft">
             <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm font-medium text-olive-dark">
-                  <UserCheck className="h-4 w-4 text-olive" />
-                  <span>Task Owner</span>
-                </div>
-                {!isEditingOwner && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsEditingOwner(true)}
-                    className="text-olive hover:bg-olive/10"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                )}
+              <div className="flex items-center gap-2 text-sm font-medium text-olive-dark mb-2">
+                <UserCheck className="h-4 w-4 text-olive" />
+                <span>Task Owner</span>
               </div>
-              <div className="mt-2">
-                {isEditingOwner ? (
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={localTaskOwner || "none"}
-                      onValueChange={(value) => updateTaskOwner(value)}
-                    >
-                      <SelectTrigger className="flex-1 border-olive/30 focus:border-olive focus:ring-olive/20 bg-white">
-                        <SelectValue placeholder="Select task owner..." />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-olive/20 shadow-lg z-50">
-                        <SelectItem value="none">No owner assigned</SelectItem>
-                        {availableOwners.map((owner) => (
-                          <SelectItem key={owner.id} value={owner.name}>
-                            {owner.name} {owner.isCurrentUser ? "(You)" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsEditingOwner(false)}
-                      className="border-olive/30"
-                    >
-                      Done
-                    </Button>
-                  </div>
+              <div>
+                {isEditing ? (
+                  <Select
+                    value={editedNote.taskOwner || "none"}
+                    onValueChange={(value) => setEditedNote(prev => ({ ...prev, taskOwner: value === "none" ? "" : value }))}
+                  >
+                    <SelectTrigger className="border-olive/30 focus:border-olive focus:ring-olive/20 bg-white">
+                      <SelectValue placeholder="Select task owner..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-olive/20 shadow-lg z-50">
+                      <SelectItem value="none">No owner assigned</SelectItem>
+                      {availableOwners.map((owner) => (
+                        <SelectItem key={owner.id} value={owner.name}>
+                          {owner.name} {owner.isCurrentUser ? "(You)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    {localTaskOwner || "No owner assigned"}
+                    {note.task_owner || "No owner assigned"}
                   </p>
                 )}
               </div>
@@ -629,70 +616,21 @@ const NoteDetails = () => {
           {/* Due Date Section */}
           <Card className="bg-white/50 border-olive/20 shadow-soft">
             <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm font-medium text-olive-dark">
-                  <CalendarIcon className="h-4 w-4 text-olive" />
-                  <span>Due Date</span>
-                </div>
-                {!isEditingDueDate && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsEditingDueDate(true)}
-                    className="text-olive hover:bg-olive/10"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                )}
+              <div className="flex items-center gap-2 text-sm font-medium text-olive-dark mb-2">
+                <CalendarIcon className="h-4 w-4 text-olive" />
+                <span>Due Date</span>
               </div>
-              <div className="mt-2">
-                {isEditingDueDate ? (
-                  <div className="flex items-center gap-2">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "flex-1 justify-start text-left font-normal border-olive/30 focus:border-olive",
-                            !localDueDate && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {localDueDate ? format(localDueDate, "PPP") : <span>Pick a date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={localDueDate}
-                          onSelect={(date) => updateDueDate(date)}
-                          initialFocus
-                          className={cn("p-3 pointer-events-auto")}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        updateDueDate(undefined);
-                      }}
-                      className="border-olive/30 text-red-600 hover:bg-red-50"
-                    >
-                      Clear
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsEditingDueDate(false)}
-                      className="border-olive/30"
-                    >
-                      Done
-                    </Button>
-                  </div>
+              <div>
+                {isEditing ? (
+                  <input
+                    type="date"
+                    value={editedNote.dueDate}
+                    onChange={(e) => setEditedNote(prev => ({ ...prev, dueDate: e.target.value }))}
+                    className="w-full px-3 py-2 border border-olive/30 rounded-md focus:border-olive focus:ring-olive/20 text-sm"
+                  />
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    {localDueDate ? format(localDueDate, "PPP") : "No due date set"}
+                    {note.dueDate ? format(new Date(note.dueDate), "PPP") : "No due date set"}
                   </p>
                 )}
               </div>
