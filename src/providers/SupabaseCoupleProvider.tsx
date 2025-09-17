@@ -13,13 +13,14 @@ type SupabaseCoupleContextValue = {
   updateCouple: (id: string, updates: { title?: string; you_name?: string; partner_name?: string }) => Promise<SupabaseCouple | null>;
   switchCouple: (couple: SupabaseCouple) => void;
   setNames: (you: string, partner: string) => Promise<void>;
+  refetch: () => Promise<void>;
 };
 
 const SupabaseCoupleContext = createContext<SupabaseCoupleContextValue | undefined>(undefined);
 
 export const SupabaseCoupleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const { couples, currentCouple, loading, createCouple, updateCouple, switchCouple } = useSupabaseCouples();
+  const { couples, currentCouple, loading, createCouple, updateCouple, switchCouple, refetch } = useSupabaseCouples();
 
   const setNames = async (you: string, partner: string) => {
     if (!currentCouple) {
@@ -61,8 +62,9 @@ export const SupabaseCoupleProvider: React.FC<{ children: React.ReactNode }> = (
       updateCouple,
       switchCouple,
       setNames,
+      refetch,
     };
-  }, [currentCouple, couples, loading, createCouple, updateCouple, switchCouple]);
+  }, [currentCouple, couples, loading, createCouple, updateCouple, switchCouple, refetch]);
 
   return (
     <SupabaseCoupleContext.Provider value={value}>

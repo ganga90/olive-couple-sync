@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
+import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { getSupabase } from "@/lib/supabaseClient";
 import { OliveLogo } from "@/components/OliveLogo";
 import { useSEO } from "@/hooks/useSEO";
@@ -13,6 +14,7 @@ const AcceptInvite = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { refetch: refetchCouples } = useSupabaseCouple();
   
   const [loading, setLoading] = useState(true);
   const [invite, setInvite] = useState<any>(null);
@@ -92,6 +94,10 @@ const AcceptInvite = () => {
       }
 
       console.log('Invite accepted successfully, couple ID:', coupleId);
+      
+      // Refresh couples list to include the new shared space
+      await refetchCouples();
+      
       toast.success("Welcome to your shared Olive space!");
       navigate("/");
     } catch (error) {
