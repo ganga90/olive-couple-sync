@@ -2,8 +2,12 @@ import { SignUp } from "@clerk/clerk-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Card } from "@/components/ui/card";
 import { OliveLogo } from "@/components/OliveLogo";
+import { useSearchParams } from "react-router-dom";
 
 const SignUpPage = () => {
+  const [searchParams] = useSearchParams();
+  const redirectUrl = searchParams.get("redirect") || "/";
+  
   useSEO({ title: "Sign up — Olive", description: "Create your Olive account to start organizing together." });
 
   return (
@@ -19,7 +23,7 @@ const SignUpPage = () => {
         <p className="mb-6 text-center text-muted-foreground">Join Olive and set up your space in minutes.</p>
         
         <Card className="p-4 bg-white/50 border-olive/20 shadow-soft">
-          <SignUp fallbackRedirectUrl="/" />
+          <SignUp fallbackRedirectUrl={redirectUrl} />
         </Card>
       </section>
     </main>

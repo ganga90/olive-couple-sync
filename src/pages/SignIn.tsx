@@ -2,8 +2,12 @@ import { SignIn } from "@clerk/clerk-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Card } from "@/components/ui/card";
 import { OliveLogo } from "@/components/OliveLogo";
+import { useSearchParams } from "react-router-dom";
 
 const SignInPage = () => {
+  const [searchParams] = useSearchParams();
+  const redirectUrl = searchParams.get("redirect") || "/";
+  
   useSEO({ title: "Sign in — Olive", description: "Sign in to your Olive account to manage notes and lists." });
 
   return (
@@ -19,7 +23,7 @@ const SignInPage = () => {
         <p className="mb-6 text-center text-muted-foreground">Access your notes, lists, and preferences.</p>
         
         <Card className="p-4 bg-white/50 border-olive/20 shadow-soft">
-          <SignIn fallbackRedirectUrl="/" />
+          <SignIn fallbackRedirectUrl={redirectUrl} />
         </Card>
       </section>
     </main>
