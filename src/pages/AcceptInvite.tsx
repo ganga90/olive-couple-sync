@@ -13,7 +13,7 @@ import { Check, X, Clock, Heart } from "lucide-react";
 const AcceptInvite = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading, isAuthenticated } = useAuth();
   const { refetch: refetchCouples } = useSupabaseCouple();
   
   const [loading, setLoading] = useState(true);
@@ -24,21 +24,38 @@ const AcceptInvite = () => {
 
   const token = searchParams.get("token");
 
+  // Debug authentication state
+  console.log('[AcceptInvite] Auth state:', { 
+    user: !!user, 
+    authLoading, 
+    isAuthenticated, 
+    token 
+  });
+
   useEffect(() => {
+    console.log('[AcceptInvite] useEffect triggered:', { token, user: !!user, authLoading });
+    
     if (!token) {
       setError("Invalid invite link");
       setLoading(false);
       return;
     }
 
+    // Wait for auth to finish loading before making decisions
+    if (authLoading) {
+      console.log('[AcceptInvite] Auth still loading, waiting...');
+      return;
+    }
+
     // Only load invite data if user is authenticated
     if (user) {
+      console.log('[AcceptInvite] User found, loading invite data');
       loadInvite();
     } else {
-      // If no user, just stop loading - we'll show sign-in prompt
+      console.log('[AcceptInvite] No user, showing sign-in prompt');
       setLoading(false);
     }
-  }, [token, user]);
+  }, [token, user, authLoading]);
 
   const loadInvite = async () => {
     try {
@@ -108,7 +125,8 @@ const AcceptInvite = () => {
     }
   };
 
-  if (loading) {
+  // Show loading if auth is loading OR component is loading
+  if (authLoading || loading) {
     return (
       <main className="min-h-screen bg-gradient-soft flex items-center justify-center">
         <div className="text-center">
