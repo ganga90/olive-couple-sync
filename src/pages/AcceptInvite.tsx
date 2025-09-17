@@ -14,7 +14,7 @@ const AcceptInvite = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, loading: authLoading, isAuthenticated } = useAuth();
-  const { refetch: refetchCouples } = useSupabaseCouple();
+  const { refetch: refetchCouples, switchCouple } = useSupabaseCouple();
   
   const [loading, setLoading] = useState(true);
   const [invite, setInvite] = useState<any>(null);
@@ -114,6 +114,21 @@ const AcceptInvite = () => {
       
       // Refresh couples list to include the new shared space
       await refetchCouples();
+      
+      // Fetch the specific couple that was just joined and set it as current
+      const { data: joinedCouple, error: fetchError } = await supabase
+        .from('clerk_couples')
+        .select('*')
+        .eq('id', coupleId)
+        .single();
+      
+      if (fetchError) {
+        console.error('Failed to fetch joined couple:', fetchError);
+      } else {
+        // Switch to the shared space that was just joined
+        switchCouple(joinedCouple);
+        console.log('Switched to joined couple:', joinedCouple);
+      }
       
       toast.success("Welcome to your shared Olive space!");
       navigate("/");
