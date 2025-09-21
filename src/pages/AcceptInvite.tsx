@@ -157,6 +157,7 @@ const AcceptInvite = () => {
 
   // Show loading if auth is loading OR component is loading
   if (authLoading || loading) {
+    console.log('[AcceptInvite] Showing loading state:', { authLoading, loading });
     return (
       <main className="min-h-screen bg-gradient-soft flex items-center justify-center">
         <div className="text-center">
@@ -170,6 +171,7 @@ const AcceptInvite = () => {
   }
 
   if (error) {
+    console.log('[AcceptInvite] Showing error state:', error);
     return (
       <main className="min-h-screen bg-gradient-soft">
         <section className="mx-auto max-w-md px-4 py-10">
@@ -197,6 +199,7 @@ const AcceptInvite = () => {
   }
 
   if (!user) {
+    console.log('[AcceptInvite] Showing sign-in prompt - no user');
     return (
       <main className="min-h-screen bg-gradient-soft">
         <section className="mx-auto max-w-md px-4 py-10">
@@ -232,6 +235,8 @@ const AcceptInvite = () => {
       </main>
     );
   }
+
+  console.log('[AcceptInvite] Showing main invite UI with invite:', invite);
 
   return (
     <main className="min-h-screen bg-gradient-soft">
