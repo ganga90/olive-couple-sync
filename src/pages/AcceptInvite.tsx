@@ -231,22 +231,22 @@ const AcceptInvite = () => {
         <div className="text-center space-y-4 mb-6">
           <h1 className="text-2xl font-bold text-foreground">You're Invited!</h1>
           <p className="text-muted-foreground">
-            Join <strong>{invite.clerk_couples.title}</strong> on Olive to share notes, lists, and organize your life together.
+            Join <strong>{invite?.clerk_couples?.title || 'a shared space'}</strong> on Olive to share notes, lists, and organize your life together.
           </p>
         </div>
 
         <Card className="p-6 bg-white/50 border-olive/20 shadow-soft space-y-6">
           <div className="space-y-2">
             <h3 className="font-semibold text-foreground">Couple Space</h3>
-            <p className="text-sm text-muted-foreground">{invite.clerk_couples.title}</p>
+            <p className="text-sm text-muted-foreground">{invite?.clerk_couples?.title || 'Shared Space'}</p>
           </div>
 
           <div className="space-y-2">
             <h3 className="font-semibold text-foreground">Invited to</h3>
-            <p className="text-sm text-muted-foreground">{invite.invited_email}</p>
+            <p className="text-sm text-muted-foreground">{invite?.invited_email || 'Your email'}</p>
           </div>
 
-          {invite.expires_at && (
+          {invite?.expires_at && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4" />
               Expires {new Date(invite.expires_at).toLocaleDateString()}
