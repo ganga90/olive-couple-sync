@@ -70,7 +70,7 @@ const AcceptInvite = () => {
           clerk_couples(*)
         `)
         .eq("token", token)
-        .single();
+        .maybeSingle();
 
       console.log('[AcceptInvite] Raw invite data:', data);
       console.log('[AcceptInvite] Query error:', error);
