@@ -145,21 +145,49 @@ export const PartnerInfo = () => {
       console.log(`Successfully moved ${notesCount} notes to private space`);
 
       // Then remove user from couple members
-      const { error: memberError } = await supabase
+      console.log("Removing user from couple members...", {
+        couple_id: currentCouple.id,
+        user_id: user.id
+      });
+      
+      const { data: deletedData, error: memberError } = await supabase
         .from("clerk_couple_members")
         .delete()
         .eq("couple_id", currentCouple.id)
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .select(); // Add select to see what was deleted
 
       if (memberError) {
         console.error("Error removing user from couple:", memberError);
         throw memberError;
       }
 
+      console.log("Successfully removed from couple members:", deletedData);
+      
+      // Verify deletion worked by checking if any records remain
+      const { data: remainingMembers, error: checkError } = await supabase
+        .from("clerk_couple_members")
+        .select("*")
+        .eq("couple_id", currentCouple.id)
+        .eq("user_id", user.id);
+        
+      if (checkError) {
+        console.error("Error checking remaining members:", checkError);
+      } else {
+        console.log("Remaining members after deletion:", remainingMembers);
+        if (remainingMembers && remainingMembers.length > 0) {
+          console.error("WARNING: User still appears in couple members after deletion!");
+        }
+      }
+
       // Clear localStorage to remove persisted couple data
       localStorage.removeItem('olive_current_couple');
       console.log("Cleared couple data from localStorage");
 
+      // Force clear the current couple state immediately
+      // Don't wait for refetch, clear it now
+      console.log("Force clearing couple state before refetch");
+      
       if (notesCount > 0) {
         toast.success(`Successfully unlinked from couple space! ${notesCount} of your notes have been moved to your private space.`);
       } else {
@@ -167,12 +195,14 @@ export const PartnerInfo = () => {
       }
       
       // Force refetch couple data to update the UI
+      console.log("Starting refetch to verify couple removal...");
       await refetch();
       
       // Small delay to ensure state is updated before navigation
       setTimeout(() => {
+        console.log("Navigating to onboarding...");
         navigate("/onboarding");
-      }, 500);
+      }, 1000); // Increased delay to ensure cleanup
       
     } catch (error) {
       console.error("Failed to unlink from couple:", error);
