@@ -29,7 +29,8 @@ const AcceptInvite = () => {
     user: !!user, 
     authLoading, 
     isAuthenticated, 
-    token 
+    token,
+    currentUrl: window.location.href
   });
 
   useEffect(() => {

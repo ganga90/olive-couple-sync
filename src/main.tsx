@@ -16,8 +16,6 @@ console.log('[Olive] Initializing Clerk with key:', PUBLISHABLE_KEY.substring(0,
 createRoot(document.getElementById('root')!).render(
   <ClerkProvider 
     publishableKey={PUBLISHABLE_KEY}
-    signInFallbackRedirectUrl="/"
-    signUpFallbackRedirectUrl="/"
     signInUrl="/sign-in"
     signUpUrl="/sign-up"
   >
