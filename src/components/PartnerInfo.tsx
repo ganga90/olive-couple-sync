@@ -127,7 +127,24 @@ export const PartnerInfo = () => {
     try {
       const supabase = getSupabase();
       
-      // Remove user from couple members
+      // First, move user's notes from shared space to private space
+      console.log("Moving user's notes to private space...");
+      const { data: movedNotes, error: notesError } = await supabase
+        .from("clerk_notes")
+        .update({ couple_id: null }) // Set to null for private notes
+        .eq("couple_id", currentCouple.id)
+        .eq("author_id", user.id)
+        .select();
+
+      if (notesError) {
+        console.error("Error moving notes to private space:", notesError);
+        throw notesError;
+      }
+
+      const notesCount = movedNotes?.length || 0;
+      console.log(`Successfully moved ${notesCount} notes to private space`);
+
+      // Then remove user from couple members
       const { error: memberError } = await supabase
         .from("clerk_couple_members")
         .delete()
@@ -139,7 +156,11 @@ export const PartnerInfo = () => {
         throw memberError;
       }
 
-      toast.success("Successfully unlinked from couple space!");
+      if (notesCount > 0) {
+        toast.success(`Successfully unlinked from couple space! ${notesCount} of your notes have been moved to your private space.`);
+      } else {
+        toast.success("Successfully unlinked from couple space!");
+      }
       
       // Refetch couple data to update the UI
       await refetch();
