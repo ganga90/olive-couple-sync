@@ -78,32 +78,44 @@ export type Database = {
       }
       clerk_invites: {
         Row: {
+          accepted_at: string | null
+          accepted_by: string | null
           couple_id: string
           created_at: string
           created_by: string
           expires_at: string
           id: string
           invited_email: string | null
+          revoked: boolean
+          role: Database["public"]["Enums"]["member_role"]
           status: string
           token: string
         }
         Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
           couple_id: string
           created_at?: string
           created_by: string
           expires_at?: string
           id?: string
           invited_email?: string | null
+          revoked?: boolean
+          role?: Database["public"]["Enums"]["member_role"]
           status?: string
           token: string
         }
         Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
           couple_id?: string
           created_at?: string
           created_by?: string
           expires_at?: string
           id?: string
           invited_email?: string | null
+          revoked?: boolean
+          role?: Database["public"]["Enums"]["member_role"]
           status?: string
           token?: string
         }
