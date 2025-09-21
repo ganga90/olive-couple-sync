@@ -44,31 +44,59 @@ const mapAICategory = (aiCategory: string): string => {
 };
 
 // Convert Supabase note to app Note type
-const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any, currentCouple?: any): Note => ({
-  id: supabaseNote.id,
-  originalText: supabaseNote.original_text,
-  summary: supabaseNote.summary,
-  category: mapAICategory(supabaseNote.category),
-  dueDate: supabaseNote.due_date,
-  addedBy: supabaseNote.author_id === currentUser?.id ? 
-    (currentUser?.firstName || currentUser?.fullName || "You") : 
-    supabaseNote.author_id || "Unknown",
-  createdAt: supabaseNote.created_at,
-  updatedAt: supabaseNote.updated_at,
-  completed: supabaseNote.completed,
-  priority: supabaseNote.priority || undefined,
-  tags: supabaseNote.tags || undefined,
-  items: supabaseNote.items || undefined,
-  task_owner: supabaseNote.task_owner && supabaseNote.task_owner.startsWith('user_') ? 
-    (supabaseNote.task_owner === currentUser?.id ? 
-      (currentCouple?.you_name || currentUser?.firstName || currentUser?.fullName || "You") : 
-      (currentCouple?.partner_name || "Partner")) : 
-    supabaseNote.task_owner || undefined,
-  list_id: supabaseNote.list_id || undefined,
-  // Add metadata to distinguish note types
-  isShared: supabaseNote.couple_id !== null,
-  coupleId: supabaseNote.couple_id || undefined,
-});
+const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any, currentCouple?: any): Note => {
+  // Map author_id to display name
+  const getAuthorName = (authorId: string): string => {
+    if (authorId === currentUser?.id) {
+      return currentCouple?.you_name || currentUser?.firstName || currentUser?.fullName || "You";
+    }
+    
+    // For shared notes, if it's not the current user, it must be the partner
+    if (currentCouple && supabaseNote.couple_id) {
+      return currentCouple.partner_name || "Partner";
+    }
+    
+    // For personal notes from unknown users, fall back to "Unknown"
+    return "Unknown";
+  };
+
+  // Map task_owner to display name
+  const getTaskOwnerName = (taskOwner: string | null): string | undefined => {
+    if (!taskOwner) return undefined;
+    
+    if (taskOwner.startsWith('user_')) {
+      if (taskOwner === currentUser?.id) {
+        return currentCouple?.you_name || currentUser?.firstName || currentUser?.fullName || "You";
+      }
+      if (currentCouple) {
+        return currentCouple.partner_name || "Partner";
+      }
+      return "Unknown";
+    }
+    
+    return taskOwner;
+  };
+
+  return {
+    id: supabaseNote.id,
+    originalText: supabaseNote.original_text,
+    summary: supabaseNote.summary,
+    category: mapAICategory(supabaseNote.category),
+    dueDate: supabaseNote.due_date,
+    addedBy: getAuthorName(supabaseNote.author_id || ""),
+    createdAt: supabaseNote.created_at,
+    updatedAt: supabaseNote.updated_at,
+    completed: supabaseNote.completed,
+    priority: supabaseNote.priority || undefined,
+    tags: supabaseNote.tags || undefined,
+    items: supabaseNote.items || undefined,
+    task_owner: getTaskOwnerName(supabaseNote.task_owner),
+    list_id: supabaseNote.list_id || undefined,
+    // Add metadata to distinguish note types
+    isShared: supabaseNote.couple_id !== null,
+    coupleId: supabaseNote.couple_id || undefined,
+  };
+};
 
 // Convert app Note to Supabase note insert type
 const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => ({

@@ -3,11 +3,13 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/providers/AuthProvider";
-import { User2, Share2, Plus, Check, Clock, X, Copy } from "lucide-react";
+import { User2, Share2, Plus, Check, Clock, X, Copy, Trash2, AlertTriangle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export const PartnerInfo = () => {
   const [loading, setLoading] = useState(false);
@@ -15,8 +17,10 @@ export const PartnerInfo = () => {
   const [inviteUrl, setInviteUrl] = useState("");
   const [inviteMessage, setInviteMessage] = useState("");
   const [copied, setCopied] = useState(false);
-  const { currentCouple, you, partner } = useSupabaseCouple();
+  const [unlinkLoading, setUnlinkLoading] = useState(false);
+  const { currentCouple, you, partner, refetch } = useSupabaseCouple();
   const { user } = useAuth();
+  const navigate = useNavigate();
   
 
   const handleCreateInvite = async () => {
@@ -110,6 +114,44 @@ export const PartnerInfo = () => {
         return <Badge variant="destructive" className="bg-red-100 text-red-800 border-red-200"><X className="h-3 w-3 mr-1" />Expired</Badge>;
       default:
         return null;
+    }
+  };
+
+  const handleUnlinkSpace = async () => {
+    if (!currentCouple || !user) {
+      toast.error("Unable to unlink - missing couple or user information");
+      return;
+    }
+
+    setUnlinkLoading(true);
+    try {
+      const supabase = getSupabase();
+      
+      // Remove user from couple members
+      const { error: memberError } = await supabase
+        .from("clerk_couple_members")
+        .delete()
+        .eq("couple_id", currentCouple.id)
+        .eq("user_id", user.id);
+
+      if (memberError) {
+        console.error("Error removing user from couple:", memberError);
+        throw memberError;
+      }
+
+      toast.success("Successfully unlinked from couple space!");
+      
+      // Refetch couple data to update the UI
+      await refetch();
+      
+      // Navigate to onboarding to create a new space
+      navigate("/onboarding");
+      
+    } catch (error) {
+      console.error("Failed to unlink from couple:", error);
+      toast.error("Failed to unlink from couple space. Please try again.");
+    } finally {
+      setUnlinkLoading(false);
     }
   };
 
@@ -257,6 +299,58 @@ export const PartnerInfo = () => {
               </Button>
             </div>
           )}
+        </div>
+
+        {/* Delete Space Section */}
+        <div className="border-t pt-4 space-y-3">
+          <Label className="text-sm font-medium text-destructive">Danger Zone</Label>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Unlink from this couple space. This will remove you from the shared space and you can create a new one.
+            </p>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                  disabled={unlinkLoading}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  {unlinkLoading ? "Unlinking..." : "Unlink from Space"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="bg-white border-olive/20">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                    <AlertTriangle className="h-5 w-5" />
+                    Unlink from Couple Space?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="space-y-2">
+                    <p>
+                      This will remove you from the "{currentCouple.title || `${you} & ${partner}`}" space.
+                    </p>
+                    <p className="font-medium">
+                      You will lose access to all shared notes and lists in this space.
+                    </p>
+                    <p>
+                      After unlinking, you'll be able to create a new couple space or continue with a personal space.
+                    </p>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={handleUnlinkSpace}
+                    className="bg-destructive hover:bg-destructive/90"
+                    disabled={unlinkLoading}
+                  >
+                    {unlinkLoading ? "Unlinking..." : "Yes, Unlink"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
       </div>
     </Card>
