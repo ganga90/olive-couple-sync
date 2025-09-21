@@ -82,10 +82,15 @@ export const useSupabaseCouples = () => {
       console.log("[Couples] Found couples:", userCouples);
       setCouples(userCouples);
       
-      // Set the first couple as current if none selected
+      // Set the first couple as current if none selected, or clear if no couples
       if (userCouples.length > 0 && !currentCouple) {
         console.log("[Couples] Setting current couple to:", userCouples[0]);
         setCurrentCouple(userCouples[0]);
+      } else if (userCouples.length === 0) {
+        console.log("[Couples] No couples found, clearing current couple");
+        setCurrentCouple(null);
+        // Also clear from localStorage
+        localStorage.removeItem('olive_current_couple');
       }
     } catch (error) {
       console.error("[Couples] Error fetching couples:", error);

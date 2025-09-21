@@ -156,17 +156,23 @@ export const PartnerInfo = () => {
         throw memberError;
       }
 
+      // Clear localStorage to remove persisted couple data
+      localStorage.removeItem('olive_current_couple');
+      console.log("Cleared couple data from localStorage");
+
       if (notesCount > 0) {
         toast.success(`Successfully unlinked from couple space! ${notesCount} of your notes have been moved to your private space.`);
       } else {
         toast.success("Successfully unlinked from couple space!");
       }
       
-      // Refetch couple data to update the UI
+      // Force refetch couple data to update the UI
       await refetch();
       
-      // Navigate to onboarding to create a new space
-      navigate("/onboarding");
+      // Small delay to ensure state is updated before navigation
+      setTimeout(() => {
+        navigate("/onboarding");
+      }, 500);
       
     } catch (error) {
       console.error("Failed to unlink from couple:", error);
