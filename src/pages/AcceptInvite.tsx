@@ -61,17 +61,30 @@ const AcceptInvite = () => {
   const loadInvite = async () => {
     try {
       const supabase = getSupabase();
+      console.log('[AcceptInvite] Loading invite with token:', token);
+      
       const { data, error } = await supabase
         .from("clerk_invites")
         .select(`
           *,
-          clerk_couples!inner(*)
+          clerk_couples(*)
         `)
         .eq("token", token)
         .single();
 
+      console.log('[AcceptInvite] Raw invite data:', data);
+      console.log('[AcceptInvite] Query error:', error);
+
       if (error || !data) {
+        console.error('[AcceptInvite] No invite found:', error);
         setError("Invite not found or expired");
+        return;
+      }
+
+      // Check if the couple exists
+      if (!data.clerk_couples) {
+        console.error('[AcceptInvite] No couple found for invite:', data);
+        setError("The shared space for this invite no longer exists");
         return;
       }
 
@@ -87,6 +100,7 @@ const AcceptInvite = () => {
         return;
       }
 
+      console.log('[AcceptInvite] Setting invite data:', data);
       setInvite(data);
     } catch (err) {
       console.error("Failed to load invite:", err);
