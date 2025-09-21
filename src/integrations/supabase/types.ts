@@ -473,6 +473,10 @@ export type Database = {
         Args: { couple_uuid: string; user_id: string }
         Returns: boolean
       }
+      is_member_of_couple: {
+        Args: { p_couple_id: string; p_user_id?: string }
+        Returns: boolean
+      }
       jwt: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -480,6 +484,19 @@ export type Database = {
       jwt_sub: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      validate_invite: {
+        Args: { p_token: string }
+        Returns: {
+          accepted: boolean
+          couple_id: string
+          expires_at: string
+          partner_name: string
+          revoked: boolean
+          role: string
+          title: string
+          you_name: string
+        }[]
       }
     }
     Enums: {

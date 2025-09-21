@@ -63,45 +63,60 @@ const AcceptInvite = () => {
       const supabase = getSupabase();
       console.log('[AcceptInvite] Loading invite with token:', token);
       
-      const { data, error } = await supabase
-        .from("clerk_invites")
-        .select(`
-          *,
-          clerk_couples(*)
-        `)
-        .eq("token", token)
-        .maybeSingle();
+      // Use the new RPC function instead of direct table query
+      const { data, error } = await supabase.rpc('validate_invite', {
+        p_token: token
+      });
 
-      console.log('[AcceptInvite] Raw invite data:', data);
-      console.log('[AcceptInvite] Query error:', error);
+      console.log('[AcceptInvite] RPC validate_invite result:', data);
+      console.log('[AcceptInvite] RPC error:', error);
 
-      if (error || !data) {
-        console.error('[AcceptInvite] No invite found:', error);
+      if (error) {
+        console.error('[AcceptInvite] RPC error:', error);
+        setError("Failed to validate invite");
+        return;
+      }
+
+      // data is an array from the RPC function
+      const inviteData = Array.isArray(data) ? data[0] : null;
+      
+      if (!inviteData) {
+        console.error('[AcceptInvite] No invite found');
         setError("Invite not found or expired");
         return;
       }
 
-      // Check if the couple exists
-      if (!data.clerk_couples) {
-        console.error('[AcceptInvite] No couple found for invite:', data);
-        setError("The shared space for this invite no longer exists");
-        return;
-      }
-
       // Check if invite is expired
-      if (data.expires_at && new Date(data.expires_at) < new Date()) {
+      if (new Date(inviteData.expires_at) < new Date()) {
         setError("This invite has expired");
         return;
       }
 
       // Check if already accepted
-      if (data.status === "accepted") {
+      if (inviteData.accepted) {
         setError("This invite has already been accepted");
         return;
       }
 
-      console.log('[AcceptInvite] Setting invite data:', data);
-      setInvite(data);
+      // Check if revoked
+      if (inviteData.revoked) {
+        setError("This invite has been revoked");
+        return;
+      }
+
+      console.log('[AcceptInvite] Setting invite data:', inviteData);
+      // Transform the data to match the expected format
+      const transformedInvite = {
+        couple_id: inviteData.couple_id,
+        role: inviteData.role,
+        clerk_couples: {
+          title: inviteData.title,
+          you_name: inviteData.you_name,
+          partner_name: inviteData.partner_name
+        },
+        expires_at: inviteData.expires_at
+      };
+      setInvite(transformedInvite);
     } catch (err) {
       console.error("Failed to load invite:", err);
       setError("Failed to load invite");
@@ -116,13 +131,28 @@ const AcceptInvite = () => {
     setLoading(true);
     try {
       const supabase = getSupabase();
-      // Use the new atomic RPC function for accepting invites
+      
+      // Use the new RPC function for accepting invites
       const { data: coupleId, error } = await supabase.rpc('accept_invite', {
         p_token: token
       });
 
       if (error) {
-        throw error;
+        console.error('Failed to accept invite:', error);
+        
+        // Handle specific error messages from the RPC
+        if (error.message?.includes('INVITE_NOT_FOUND')) {
+          toast.error("Invite not found");
+        } else if (error.message?.includes('INVITE_EXPIRED')) {
+          toast.error("This invite has expired");
+        } else if (error.message?.includes('INVITE_ALREADY_ACCEPTED')) {
+          toast.error("This invite has already been accepted");
+        } else if (error.message?.includes('INVITE_REVOKED')) {
+          toast.error("This invite has been revoked");
+        } else {
+          toast.error("Failed to accept invite. Please try again.");
+        }
+        return;
       }
 
       console.log('Invite accepted successfully, couple ID:', coupleId);
