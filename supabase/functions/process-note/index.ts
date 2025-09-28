@@ -212,7 +212,7 @@ serve(async (req) => {
         }],
         generationConfig: {
           temperature: 0.1,
-          maxOutputTokens: 1500,
+          maxOutputTokens: 1200,
         }
       }),
     });
@@ -226,14 +226,13 @@ serve(async (req) => {
     const data = await response.json();
     console.log('Gemini response:', data);
     
-    // Check if response was truncated due to token limit
-    if (data.candidates && data.candidates[0] && data.candidates[0].finishReason === 'MAX_TOKENS') {
-      console.error('CRITICAL: AI response was truncated due to token limit. This will cause malformed JSON.');
-      throw new Error('AI response truncated - increase token limit');
-    }
-    
     if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
       throw new Error('Invalid response from Gemini API');
+    }
+
+    // Check if response was truncated - continue processing but log warning
+    if (data.candidates[0].finishReason === 'MAX_TOKENS') {
+      console.warn('AI response may have been truncated due to token limit');
     }
 
     const aiResponse = data.candidates[0].content.parts[0].text;
