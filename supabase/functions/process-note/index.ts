@@ -115,10 +115,20 @@ Formatting Output:
     {
       "summary": "task 2 summary", 
       "category": "category2",
-      // ... etc
+      "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
+      "priority": "high/medium/low", 
+      "tags": ["tag2"],
+      "items": ["item3", "item4"],
+      "task_owner": "name or null"
     }
   ]
 }
+
+**CRITICAL EXAMPLES FOR SPLITTING:**
+- "buy concert ticket and call doctor" → MUST return 2 notes
+- "grocery shopping and pick up dry cleaning" → MUST return 2 notes  
+- "book flight and reserve hotel" → MUST return 2 notes
+- Any text with "and" connecting different actions → MULTIPLE notes
 
 **If single task detected, return standard single note format:**
 {
@@ -202,7 +212,7 @@ serve(async (req) => {
         }],
         generationConfig: {
           temperature: 0.1,
-          maxOutputTokens: 1000,
+          maxOutputTokens: 1500,
         }
       }),
     });
@@ -215,6 +225,12 @@ serve(async (req) => {
 
     const data = await response.json();
     console.log('Gemini response:', data);
+    
+    // Check if response was truncated due to token limit
+    if (data.candidates && data.candidates[0] && data.candidates[0].finishReason === 'MAX_TOKENS') {
+      console.error('CRITICAL: AI response was truncated due to token limit. This will cause malformed JSON.');
+      throw new Error('AI response truncated - increase token limit');
+    }
     
     if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
       throw new Error('Invalid response from Gemini API');
