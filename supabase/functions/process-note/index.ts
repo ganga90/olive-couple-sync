@@ -44,12 +44,11 @@ CRITICAL: Analyze if the input contains MULTIPLE DISTINCT TASKS or if it should 
 For each note (single or multiple), perform these steps:
 
 Understand the Context and Content:
-- Identify distinct tasks separated by semicolons, "and", "also", commas between different actions, or clear topic changes
-- Look for compound tasks joined by "and" that represent different actions (e.g., "buy X and call Y" = 2 tasks)
+- Identify distinct tasks separated by semicolons, "and", or clear topic changes
+- Look for compound tasks joined by "and" that represent different actions
 - Extract key points into concise summaries for each task
 - Detect URLs, links, or web references and preserve them appropriately
 - Identify if tasks are entertainment, events, or experience-related content
-- CRITICAL: "and" between different verbs or actions usually indicates multiple tasks
 
 Summary Creation Rules:
 - For GROCERY/SHOPPING tasks: Focus on the item itself (e.g., "Tell Almu to buy lemons" → summary: "lemons")
@@ -203,7 +202,7 @@ serve(async (req) => {
         }],
         generationConfig: {
           temperature: 0.1,
-          maxOutputTokens: 2000,
+          maxOutputTokens: 1000,
         }
       }),
     });
@@ -219,12 +218,6 @@ serve(async (req) => {
     
     if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
       throw new Error('Invalid response from Gemini API');
-    }
-
-    // Check if response was truncated due to token limit
-    if (data.candidates[0].finishReason === 'MAX_TOKENS') {
-      console.error('AI response was truncated due to token limit. Response may be incomplete.');
-      // Continue processing but log the issue
     }
 
     const aiResponse = data.candidates[0].content.parts[0].text;
