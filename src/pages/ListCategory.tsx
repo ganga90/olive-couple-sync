@@ -245,7 +245,14 @@ const ListCategory = () => {
                           </Badge>
                         )}
                         {note.dueDate && (
-                          <span>Due {new Date(note.dueDate).toLocaleDateString()}</span>
+                        <span>Due {(() => {
+                          try {
+                            const date = new Date(note.dueDate);
+                            return isNaN(date.getTime()) ? "Invalid Date" : date.toLocaleDateString();
+                          } catch {
+                            return "Invalid Date";
+                          }
+                        })()}</span>
                         )}
                         {note.task_owner && (
                           <span>• {note.task_owner}</span>
@@ -322,7 +329,14 @@ const ListCategory = () => {
                                 </Badge>
                               )}
                               {note.dueDate && (
-                                <span>Due {new Date(note.dueDate).toLocaleDateString()}</span>
+                                <span>Due {(() => {
+                                  try {
+                                    const date = new Date(note.dueDate);
+                                    return isNaN(date.getTime()) ? "Invalid Date" : date.toLocaleDateString();
+                                  } catch {
+                                    return "Invalid Date";
+                                  }
+                                })()}</span>
                               )}
                               {note.task_owner && (
                                 <span>• {note.task_owner}</span>

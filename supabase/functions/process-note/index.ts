@@ -68,11 +68,21 @@ Items Extraction:
 - For events/tickets: Extract event details
 - For general tasks: Only use items array if the note contains multiple distinct sub-tasks
 
-Due Date Intelligence:
-- "tonight" → today's date
-- "tomorrow" → tomorrow's date  
-- "Friday", "next week", "next month" → appropriate future dates
-- "monthly", "weekly" → set as recurring (note in tags)
+Due Date Intelligence (CRITICAL - Use actual date calculation):
+- Calculate the current date and time when processing
+- "tonight" → today's date at 23:59 in ISO format
+- "tomorrow" → tomorrow's date at 09:00 in ISO format  
+- "Friday", "next Friday" → calculate the next occurrence of that weekday at 09:00 in ISO format
+- "next week" → 7 days from now at 09:00 in ISO format
+- "next month" → same day next month at 09:00 in ISO format
+- "monthly", "weekly" → set as recurring (note in tags) and set first occurrence
+- CRITICAL: Always return actual ISO date strings (YYYY-MM-DDTHH:mm:ss.sssZ), never relative text
+- CRITICAL: Calculate dates based on current time: ${new Date().toISOString()}
+
+Date Calculation Examples (assuming today is ${new Date().toDateString()}):
+- Input: "next Friday" → Calculate which date is the next Friday and return as "2024-XX-XXTXX:XX:XX.XXXZ"
+- Input: "tomorrow" → Return "${new Date(Date.now() + 86400000).toISOString().split('T')[0]}T09:00:00.000Z"
+- Input: "tonight" → Return "${new Date().toISOString().split('T')[0]}T23:59:00.000Z"
 
 Priority Detection:
 - Bills, rent, flights, passport renewals → HIGH priority
@@ -87,7 +97,7 @@ Formatting Output:
     {
       "summary": "task 1 summary",
       "category": "category1", 
-      "due_date": "ISO date or null",
+      "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
       "priority": "high/medium/low",
       "tags": ["tag1"],
       "items": ["item1", "item2"],
@@ -105,7 +115,7 @@ Formatting Output:
 {
   "summary": "concise summary (max 100 characters)",
   "category": "assigned category (lowercase, use underscores)",
-  "due_date": "standardized ISO date if detected, otherwise null", 
+  "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null", 
   "priority": "low/medium/high",
   "tags": ["relevant", "tags"],
   "items": ["individual", "items"],

@@ -201,7 +201,14 @@ export const MultipleNotesRecap: React.FC<MultipleNotesRecapProps> = ({
                         )}
                         {note.dueDate && (
                           <Badge variant="outline">
-                            Due: {new Date(note.dueDate).toLocaleDateString()}
+                            Due: {(() => {
+                              try {
+                                const date = new Date(note.dueDate);
+                                return isNaN(date.getTime()) ? "Invalid Date" : date.toLocaleDateString();
+                              } catch {
+                                return "Invalid Date";
+                              }
+                            })()}
                           </Badge>
                         )}
                       </div>
