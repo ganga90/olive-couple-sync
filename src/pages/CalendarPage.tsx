@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar, ChevronLeft, ChevronRight, Plus, User, Users, Clock, CheckCircle2 } from "lucide-react";
+import { CreateNoteDialog } from "@/components/CreateNoteDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -98,8 +99,8 @@ const CalendarPage = () => {
   };
 
   const getAuthorName = (note: Note) => {
-    const isYourNote = note.addedBy === "you" || you === note.addedBy;
-    return isYourNote ? "You" : partner || "Partner";
+    // The addedBy field is already mapped correctly in the provider
+    return note.addedBy;
   };
 
   if (!isAuthenticated) {
@@ -129,23 +130,31 @@ const CalendarPage = () => {
             <h1 className="text-2xl font-bold text-foreground">Calendar</h1>
           </div>
           
-          <div className="flex items-center gap-2">
-            <Button
-              variant={viewMode === 'month' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setViewMode('month')}
-              className={viewMode === 'month' ? 'bg-olive text-white' : ''}
-            >
-              Month
-            </Button>
-            <Button
-              variant={viewMode === 'week' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setViewMode('week')}
-              className={viewMode === 'week' ? 'bg-olive text-white' : ''}
-            >
-              Week
-            </Button>
+          <div className="flex items-center gap-3">
+            <CreateNoteDialog 
+              onNoteCreated={() => {
+                // The provider will automatically refetch and update the notes
+              }}
+              preselectedDate={selectedDate || undefined}
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                variant={viewMode === 'month' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('month')}
+                className={viewMode === 'month' ? 'bg-olive text-white' : ''}
+              >
+                Month
+              </Button>
+              <Button
+                variant={viewMode === 'week' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('week')}
+                className={viewMode === 'week' ? 'bg-olive text-white' : ''}
+              >
+                Week
+              </Button>
+            </div>
           </div>
         </div>
 
