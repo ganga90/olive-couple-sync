@@ -236,6 +236,11 @@ serve(async (req) => {
 
     // Helper function to find or create list for a category
     const findOrCreateList = async (category: string) => {
+      if (!category) {
+        console.log('No category provided, returning null');
+        return null;
+      }
+
       // Try to find an existing list that matches the category
       const matchingList = existingLists && existingLists.length > 0 ? existingLists.find(list => {
         const listName = list.name.toLowerCase();
@@ -251,7 +256,7 @@ serve(async (req) => {
       }) : null;
       
       if (matchingList) {
-        console.log('Found matching existing list:', matchingList.name);
+        console.log('Found matching existing list:', matchingList.name, 'with ID:', matchingList.id);
         return matchingList.id;
       } else {
         // Create a new list for this category
@@ -259,24 +264,38 @@ serve(async (req) => {
         
         console.log('Creating new list for category:', category, '->', listName);
         
-        const { data: newList, error: createError } = await supabase
-          .from('clerk_lists')
-          .insert([{
-            name: listName,
-            description: `Auto-generated list for ${listName.toLowerCase()} items`,
-            is_manual: false,
-            author_id: user_id,
-            couple_id: couple_id || null,
-          }])
-          .select()
-          .single();
-          
-        if (createError) {
-          console.error('Error creating new list:', createError);
+        try {
+          const { data: newList, error: createError } = await supabase
+            .from('clerk_lists')
+            .insert([{
+              name: listName,
+              description: `Auto-generated list for ${listName.toLowerCase()} items`,
+              is_manual: false,
+              author_id: user_id,
+              couple_id: couple_id || null,
+            }])
+            .select()
+            .single();
+            
+          if (createError) {
+            console.error('Error creating new list:', createError);
+            console.error('List creation data attempted:', {
+              name: listName,
+              description: `Auto-generated list for ${listName.toLowerCase()} items`,
+              is_manual: false,
+              author_id: user_id,
+              couple_id: couple_id || null,
+            });
+            
+            // Return null but ensure the note is still created without a list
+            return null;
+          } else {
+            console.log('Successfully created new list:', newList.name, 'with ID:', newList.id);
+            return newList.id;
+          }
+        } catch (error) {
+          console.error('Exception during list creation:', error);
           return null;
-        } else {
-          console.log('Successfully created new list:', newList);
-          return newList.id;
         }
       }
     };
@@ -287,8 +306,10 @@ serve(async (req) => {
       
       // Process each note and assign lists
       const processedNotes = await Promise.all(
-        processedResponse.notes.map(async (note: any) => {
+        processedResponse.notes.map(async (note: any, index: number) => {
+          console.log(`Processing note ${index + 1}:`, { category: note.category, summary: note.summary });
           const listId = note.category ? await findOrCreateList(note.category) : null;
+          console.log(`Note ${index + 1} assigned list_id:`, listId);
           
           return {
             summary: note.summary || text,
@@ -303,6 +324,8 @@ serve(async (req) => {
           };
         })
       );
+
+      console.log('All processed notes with list assignments:', processedNotes.map(n => ({ summary: n.summary, category: n.category, list_id: n.list_id })));
 
       const result = {
         multiple: true,
