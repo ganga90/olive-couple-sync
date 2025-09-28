@@ -22,14 +22,16 @@ export const useSupabaseLists = (coupleId?: string | null) => {
   console.log('[useSupabaseLists] Hook initialized with coupleId:', coupleId);
 
   const fetchLists = useCallback(async () => {
-    if (!user) {
+    if (!user?.id) {
       console.log("[Lists] No user, clearing state");
       setLists([]);
       setLoading(false);
       return;
     }
 
+    console.log("[Lists] Starting fetchLists for user:", user.id, "coupleId:", coupleId);
     setLoading(true);
+    
     try {
       console.log("[Lists] Fetching lists for user:", user.id, "coupleId:", coupleId);
       
@@ -52,19 +54,25 @@ export const useSupabaseLists = (coupleId?: string | null) => {
         query = query.is("couple_id", null);
       }
 
+      console.log("[Lists] Executing query...");
       const { data, error } = await query.order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("[Lists] Database error:", error);
+        throw error;
+      }
 
-      console.log("[Lists] Successfully fetched lists:", data?.length || 0);
+      console.log("[Lists] Successfully fetched lists:", data?.length || 0, data);
       setLists(data || []);
     } catch (error) {
       console.error("[Lists] Error fetching lists:", error);
       toast.error("Failed to load lists");
+      setLists([]); // Set empty array on error to prevent infinite loading
     } finally {
+      console.log("[Lists] fetchLists completed, setting loading to false");
       setLoading(false);
     }
-  }, [user, coupleId]);
+  }, [user?.id, coupleId]);
 
   useEffect(() => {
     fetchLists();
@@ -96,7 +104,7 @@ export const useSupabaseLists = (coupleId?: string | null) => {
   }, [fetchLists]);
 
   const createList = useCallback(async (listData: { name: string; description?: string; is_manual?: boolean }) => {
-    if (!user) {
+    if (!user?.id) {
       toast.error("You must be signed in to create lists");
       return null;
     }
@@ -130,10 +138,10 @@ export const useSupabaseLists = (coupleId?: string | null) => {
       toast.error(`Failed to create list: ${error.message}`);
       return null;
     }
-  }, [user, coupleId]);
+  }, [user?.id, coupleId]);
 
   const updateList = useCallback(async (id: string, updates: { name?: string; description?: string }) => {
-    if (!user) {
+    if (!user?.id) {
       toast.error("You must be signed in to update lists");
       return null;
     }
@@ -161,10 +169,10 @@ export const useSupabaseLists = (coupleId?: string | null) => {
       toast.error(`Failed to update list: ${error.message}`);
       return null;
     }
-  }, [user]);
+  }, [user?.id]);
 
   const deleteList = useCallback(async (id: string) => {
-    if (!user) {
+    if (!user?.id) {
       toast.error("You must be signed in to delete lists");
       return false;
     }
@@ -190,7 +198,7 @@ export const useSupabaseLists = (coupleId?: string | null) => {
       toast.error(`Failed to delete list: ${error.message}`);
       return false;
     }
-  }, [user]);
+  }, [user?.id]);
 
   const getListByName = useCallback((name: string) => {
     return lists.find(list => list.name.toLowerCase() === name.toLowerCase());
