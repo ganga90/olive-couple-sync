@@ -7,8 +7,8 @@ import { OliveLogo } from "@/components/OliveLogo";
 
 const Welcome = () => {
   useSEO({
-    title: "Welcome — Olive",
-    description: "Welcome to Olive: your shared second brain for couples. Start onboarding to set up shared notes and AI features.",
+    title: "Drop a brain-dump. Olive turns it into next steps.",
+    description: "Type or speak whatever's on your mind—Olive auto-categorizes into lists, assigns owners & dates, and keeps you both in sync.",
   });
 
   return (
@@ -20,11 +20,11 @@ const Welcome = () => {
           </div>
         </div>
 
-        <h1 className="mb-2 text-center text-3xl font-bold tracking-tight text-olive-dark md:text-4xl">Welcome to Olive</h1>
-        <p className="text-center text-base text-sage">Your shared second brain for couples</p>
+        <h1 className="mb-2 text-center text-3xl font-bold tracking-tight text-olive-dark md:text-4xl">Drop a brain-dump. Olive turns it into next steps.</h1>
+        <p className="text-center text-base text-sage">Type or speak whatever's on your mind—we'll organize it</p>
 
         <p className="mx-auto mt-4 max-w-prose text-center text-sm text-muted-foreground">
-          Capture thoughts, organize life, and grow together with AI-powered notes that understand you both.
+          Auto-categorizes into lists, assigns owners & dates, and keeps you both in sync. Ask Olive to help with any task.
         </p>
 
         <Card className="mx-auto mt-6 max-w-sm p-4 bg-white/50 border-olive/20 shadow-soft">
@@ -33,19 +33,19 @@ const Welcome = () => {
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-olive/10">
                 <Heart className="h-4 w-4 text-olive" aria-hidden />
               </div>
-              <span className="text-sm text-olive-dark">Shared notes & lists</span>
+              <span className="text-sm text-olive-dark">AI brain-dump organizing</span>
             </li>
             <li className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-olive/10">
                 <Sparkles className="h-4 w-4 text-olive" aria-hidden />
               </div>
-              <span className="text-sm text-olive-dark">AI categorization</span>
+              <span className="text-sm text-olive-dark">Owner & date detection</span>
             </li>
             <li className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-olive/10">
                 <Bot className="h-4 w-4 text-olive" aria-hidden />
               </div>
-              <span className="text-sm text-olive-dark">Personal AI assistant</span>
+              <span className="text-sm text-olive-dark">Ask Olive anything</span>
             </li>
           </ul>
         </Card>
