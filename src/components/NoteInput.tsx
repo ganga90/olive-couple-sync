@@ -9,6 +9,7 @@ import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { NoteRecap } from "./NoteRecap";
+import { MultipleNotesRecap } from "./MultipleNotesRecap";
 import VoiceInput from "./voice/VoiceInput";
 
 interface NoteInputProps {
@@ -20,6 +21,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const [interim, setInterim] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedNote, setProcessedNote] = useState<any>(null);
+  const [multipleNotes, setMultipleNotes] = useState<any>(null);
   const { user, loading, isAuthenticated } = useAuth();
   const { currentCouple, createCouple } = useSupabaseCouple();
   const { addNote, refetch: refetchNotes } = useSupabaseNotesContext();
@@ -110,12 +112,38 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
 
       console.log('[NoteInput] AI processed note:', aiProcessedNote);
       
+      // Check if we got multiple notes
+      if (aiProcessedNote.multiple && aiProcessedNote.notes) {
+        console.log('[NoteInput] Got multiple notes:', aiProcessedNote.notes.length);
+        
+        // Show multiple notes recap for user review before saving
+        setMultipleNotes({
+          notes: aiProcessedNote.notes.map((note: any) => ({
+            summary: note.summary,
+            category: note.category,
+            dueDate: note.due_date,
+            priority: note.priority,
+            tags: note.tags,
+            items: note.items,
+            originalText: text.trim(),
+            task_owner: note.task_owner,
+            list_id: note.list_id
+          })),
+          originalText: text.trim()
+        });
+
+        setText("");
+        toast.success(`AI identified ${aiProcessedNote.notes.length} separate tasks!`);
+        return;
+      }
+      
+      // Handle single note (existing logic)
       // Triple-check auth state before saving to Supabase
       if (!user) {
         throw new Error('User authentication lost before saving note');
       }
 
-      console.log('[NoteInput] Saving note to Supabase for user:', user.id);
+      console.log('[NoteInput] Saving single note to Supabase for user:', user.id);
       
       // Prepare note data
       const noteData = {
@@ -150,7 +178,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
           items: aiProcessedNote.items,
           originalText: text.trim(),
           author: user.firstName || user.fullName || "You",
-          createdAt: savedNote.createdAt
+          createdAt: savedNote.createdAt,
+          task_owner: aiProcessedNote.task_owner,
+          list_id: aiProcessedNote.list_id
         });
 
         setText("");
@@ -170,6 +200,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
 
   const handleCloseRecap = () => {
     setProcessedNote(null);
+    setMultipleNotes(null);
   };
 
   const handleNoteUpdated = (updatedNote: any) => {
@@ -177,7 +208,24 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
     onNoteAdded?.(); // Refresh the notes list
   };
 
-  // If we have a processed note, show the recap
+  const handleMultipleNotesAdded = () => {
+    onNoteAdded?.();
+    refetchNotes();
+  };
+
+  // If we have multiple notes, show the multiple notes recap
+  if (multipleNotes) {
+    return (
+      <MultipleNotesRecap
+        notes={multipleNotes.notes}
+        originalText={multipleNotes.originalText}
+        onClose={handleCloseRecap}
+        onNotesAdded={handleMultipleNotesAdded}
+      />
+    );
+  }
+
+  // If we have a single processed note, show the single recap
   if (processedNote) {
     return (
       <div className="space-y-4">

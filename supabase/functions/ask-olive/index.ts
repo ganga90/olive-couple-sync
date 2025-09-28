@@ -111,10 +111,10 @@ Please provide helpful, contextual assistance based on this specific note and th
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('[Ask Olive] Error:', error);
     return new Response(JSON.stringify({ 
-      error: error.message,
+      error: error?.message || 'Unknown error occurred',
       reply: "I'm sorry, I'm having trouble processing your request right now. Please try again in a moment."
     }), {
       status: 500,

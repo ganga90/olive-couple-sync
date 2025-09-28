@@ -163,10 +163,10 @@ Please provide focused, actionable assistance for this specific note and questio
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('[Ask Olive Individual] Error:', error);
     return new Response(JSON.stringify({ 
-      error: error.message,
+      error: error?.message || 'Unknown error occurred',
       reply: "I'm sorry, I'm having trouble processing your request right now. Please try again in a moment."
     }), {
       status: 500,

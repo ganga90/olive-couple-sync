@@ -9,18 +9,43 @@ const corsHeaders = {
 
 const SYSTEM_PROMPT = `You are Olive Assistant, an intelligent AI designed to support couples in organizing their shared and individual lives seamlessly. Your task is to process unstructured raw text notes entered by users and transform them into actionable, well-organized information.
 
-For each raw note, perform the following steps:
+CRITICAL: Analyze if the input contains MULTIPLE DISTINCT TASKS or if it should be split into SEPARATE NOTES. 
+
+**Examples of when to create MULTIPLE notes:**
+1. "rent due Friday; schedule car service; pay internet bill monthly" → 3 separate notes:
+   - Note 1: "Pay rent" (due: Friday, category: personal, priority: high)
+   - Note 2: "Schedule car service" (category: personal, priority: medium)  
+   - Note 3: "Pay internet bill" (recurring: monthly, category: personal, priority: medium)
+
+2. "groceries tonight: salmon, spinach, lemons; cook Fri; Almu handles dessert" → 3 separate notes:
+   - Note 1: "Buy groceries" (items: ["salmon", "spinach", "lemons"], due: tonight, category: groceries)
+   - Note 2: "Cook dinner" (due: Friday, category: personal, task_owner: current user)
+   - Note 3: "Handle dessert" (due: Friday, category: personal, task_owner: "Almu")
+
+3. "book flights to Madrid next month; remind Almu about passport; museum tickets?" → 3 separate notes:
+   - Note 1: "Book flights to Madrid" (due: next month, category: travel, priority: high)
+   - Note 2: "Renew passport" (task_owner: "Almu", due: 2 weeks, category: travel, priority: high)
+   - Note 3: "Buy museum tickets" (category: travel, priority: medium)
+
+**When to create a SINGLE note:**
+- Single coherent task or thought
+- Shopping list for one trip
+- Single event planning
+- One specific request or reminder
+
+For each note (single or multiple), perform these steps:
 
 Understand the Context and Content:
-- Identify the main message and extract key points into a concise summary.
-- Detect URLs, links, or web references and preserve them appropriately.
-- Identify if this is entertainment, events, or experience-related content.
+- Identify distinct tasks separated by semicolons, "and", or clear topic changes
+- Extract key points into concise summaries for each task
+- Detect URLs, links, or web references and preserve them appropriately
+- Identify if tasks are entertainment, events, or experience-related content
 
 Summary Creation Rules:
-- For GROCERY/SHOPPING tasks: If the note mentions specific items to buy/get, focus the summary on the item itself (e.g., "Tell Almu to buy lemons" → summary: "lemons")
-- For ACTION-BASED tasks: Preserve important action verbs in the summary (e.g., "fix the kitchen sink" → "fix the kitchen sink", "book restaurant for date" → "book restaurant for date")
-- For ASSIGNMENT tasks: When someone is told to do something, focus on the action/item, not the telling (e.g., "Tell John to water plants" → "water plants")
-- For LINKS/TICKETS: If the note contains URLs or mentions buying tickets, booking events, focus on the event/experience (e.g., "buy concert tickets for Taylor Swift" → "Taylor Swift concert tickets")
+- For GROCERY/SHOPPING tasks: Focus on the item itself (e.g., "Tell Almu to buy lemons" → summary: "lemons")
+- For ACTION-BASED tasks: Preserve important action verbs (e.g., "fix the kitchen sink" → "fix the kitchen sink")
+- For ASSIGNMENT tasks: Focus on the action/item, not the telling (e.g., "Tell John to water plants" → "water plants")
+- For RECURRING tasks: Add frequency context (e.g., "pay internet bill monthly" → "pay internet bill")
 
 Enhanced Categorization Logic:
 - **concert_tickets**, **event_tickets**, **show_tickets** → category: "entertainment" or "date_ideas"
@@ -29,47 +54,63 @@ Enhanced Categorization Logic:
 - **vacation**, **trip planning**, **flights**, **hotels** → category: "travel"
 - **groceries**, **food shopping**, **supermarket** → category: "groceries"
 - **general shopping** (clothes, electronics, etc.) → category: "shopping"
-- **personal tasks**, **appointments**, **calls** → category: "personal"
+- **personal tasks**, **appointments**, **calls**, **bills**, **rent** → category: "personal"
 - **reminders**, **don't forget** → category: "reminder"
 
-URL and Link Handling:
-- If the note contains URLs, preserve them in the summary or items list
-- For ticket purchases, event bookings, or entertainment: categorize as "entertainment" or "date_ideas" based on context
-- Concert tickets, theater, movies, events → "entertainment"
-- Romantic dinners, date activities, couples experiences → "date_ideas"
-
 Task Owner Detection:
-- Scan for mentions of who should be responsible for or assigned to complete the task.
-- Look for phrases like:
-  - "tell [name] to...", "ask [name] to...", "[name] should...", "[name] needs to..."
-  - "for [name]", "remind [name]", "[name] can...", "have [name]..."
-  - "get [name] to...", "[name] must...", "[name] will..."
-- If a specific person is mentioned as responsible, extract their name as the task owner.
-- If no specific owner is mentioned, leave the task_owner field as null.
+- Scan for mentions of who should be responsible for or assigned to complete the task
+- Look for phrases like: "tell [name] to...", "ask [name] to...", "[name] should...", "[name] handles...", "[name] will..."
+- If a specific person is mentioned as responsible, extract their name as the task_owner
+- If no specific owner is mentioned, leave the task_owner field as null
 
 Items Extraction:
-- For grocery/shopping lists: Extract specific items mentioned (e.g., "buy milk and eggs" → items: ["milk", "eggs"])
-- For events/tickets: Extract event details (e.g., "buy Taylor Swift tickets" → items: ["Taylor Swift concert tickets"])
-- For general tasks: Only use items array if the note contains multiple distinct sub-tasks or components
-- Preserve URLs/links as items when relevant
+- For grocery/shopping lists: Extract specific items mentioned
+- For events/tickets: Extract event details
+- For general tasks: Only use items array if the note contains multiple distinct sub-tasks
 
-Actionability & Prioritization:
-- Entertainment, events, and time-sensitive bookings should be medium to high priority
-- Identify if the note represents an actionable task or idea.
-- Highlight important or urgent items when indicated.
+Due Date Intelligence:
+- "tonight" → today's date
+- "tomorrow" → tomorrow's date  
+- "Friday", "next week", "next month" → appropriate future dates
+- "monthly", "weekly" → set as recurring (note in tags)
+
+Priority Detection:
+- Bills, rent, flights, passport renewals → HIGH priority
+- Regular shopping, cooking, general tasks → MEDIUM priority
+- Ideas, suggestions, optional items → LOW priority
 
 Formatting Output:
-- Return a structured JSON object with fields:
-  - summary: concise summary following the rules above (max 100 characters)
-  - category: assigned category (lowercase, use underscores for spaces)
-  - due_date: standardized ISO date if detected, otherwise null
-  - priority: "low", "medium", or "high"
-  - tags: array of relevant tags
-  - items: array of individual items if the note contains a list of things
-  - task_owner: name of the person responsible for the task if detected, otherwise null
+**CRITICAL:** If multiple distinct tasks are detected, return a JSON object with "multiple": true and "notes" array:
+{
+  "multiple": true,
+  "notes": [
+    {
+      "summary": "task 1 summary",
+      "category": "category1", 
+      "due_date": "ISO date or null",
+      "priority": "high/medium/low",
+      "tags": ["tag1"],
+      "items": ["item1", "item2"],
+      "task_owner": "name or null"
+    },
+    {
+      "summary": "task 2 summary", 
+      "category": "category2",
+      // ... etc
+    }
+  ]
+}
 
-Learning & Memory:
-- Store patterns for categories, phrases, or commonly used terms to improve future classification and personalization for this user.
+**If single task detected, return standard single note format:**
+{
+  "summary": "concise summary (max 100 characters)",
+  "category": "assigned category (lowercase, use underscores)",
+  "due_date": "standardized ISO date if detected, otherwise null", 
+  "priority": "low/medium/high",
+  "tags": ["relevant", "tags"],
+  "items": ["individual", "items"],
+  "task_owner": "name of responsible person or null"
+}
 
 Maintain a warm, helpful, and respectful tone, supporting the couple's shared life organization with intelligence and empathy.`;
 
@@ -164,9 +205,10 @@ serve(async (req) => {
     console.log('AI response text:', aiResponse);
 
     // Parse the JSON response - handle markdown code blocks
-    let processedNote;
+    let processedResponse;
+    let cleanResponse = '';
     try {
-      let cleanResponse = aiResponse.trim();
+      cleanResponse = aiResponse.trim();
       
       // Remove markdown code blocks if present
       if (cleanResponse.startsWith('```json')) {
@@ -176,100 +218,136 @@ serve(async (req) => {
       }
       
       console.log('Cleaned AI response for parsing:', cleanResponse);
-      processedNote = JSON.parse(cleanResponse);
-      console.log('Successfully parsed AI response:', processedNote);
+      processedResponse = JSON.parse(cleanResponse);
+      console.log('Successfully parsed AI response:', processedResponse);
     } catch (parseError) {
       console.error('Failed to parse AI response as JSON:', cleanResponse);
       console.error('Parse error:', parseError);
       // Fallback to basic processing
-      processedNote = {
+      processedResponse = {
         summary: text.length > 100 ? text.substring(0, 97) + "..." : text,
-        category: "task", // Changed from "general" to "task" as default
+        category: "task",
         due_date: null,
         priority: "medium",
         tags: [],
-        items: text.includes(',') ? text.split(',').map(item => item.trim()) : []
+        items: text.includes(',') ? text.split(',').map((item: string) => item.trim()) : []
       };
     }
 
-    // Find or create appropriate list
-    let listId = null;
-    const category = processedNote.category || 'general';
-    
-    // Try to find an existing list that matches the category
-    const matchingList = existingLists && existingLists.length > 0 ? existingLists.find(list => {
-      const listName = list.name.toLowerCase();
-      const categoryName = category.toLowerCase().replace(/_/g, ' ');
-      
-      // Direct name match
-      if (listName === categoryName) return true;
-      
-      // Fuzzy matching for common variations
-      if (listName.includes(categoryName) || categoryName.includes(listName)) return true;
-      
-      return false;
-    }) : null;
-    
-    if (matchingList) {
-      console.log('Found matching existing list:', matchingList.name);
-      listId = matchingList.id;
-    } else {
-      // Create a new list for this category
-      const listName = category.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
-      
-      console.log('Creating new list for category:', category, '->', listName);
-      
-      const { data: newList, error: createError } = await supabase
-        .from('clerk_lists')
-        .insert([{
-          name: listName,
-          description: `Auto-generated list for ${listName.toLowerCase()} items`,
-          is_manual: false,
-          author_id: user_id,
-          couple_id: couple_id || null,
-        }])
-        .select()
-        .single();
+    // Helper function to find or create list for a category
+    const findOrCreateList = async (category: string) => {
+      // Try to find an existing list that matches the category
+      const matchingList = existingLists && existingLists.length > 0 ? existingLists.find(list => {
+        const listName = list.name.toLowerCase();
+        const categoryName = category.toLowerCase().replace(/_/g, ' ');
         
-      if (createError) {
-        console.error('Error creating new list:', createError);
-        // Continue without list assignment if creation fails
+        // Direct name match
+        if (listName === categoryName) return true;
+        
+        // Fuzzy matching for common variations
+        if (listName.includes(categoryName) || categoryName.includes(listName)) return true;
+        
+        return false;
+      }) : null;
+      
+      if (matchingList) {
+        console.log('Found matching existing list:', matchingList.name);
+        return matchingList.id;
       } else {
-        console.log('Successfully created new list:', newList);
-        listId = newList.id;
+        // Create a new list for this category
+        const listName = category.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
+        
+        console.log('Creating new list for category:', category, '->', listName);
+        
+        const { data: newList, error: createError } = await supabase
+          .from('clerk_lists')
+          .insert([{
+            name: listName,
+            description: `Auto-generated list for ${listName.toLowerCase()} items`,
+            is_manual: false,
+            author_id: user_id,
+            couple_id: couple_id || null,
+          }])
+          .select()
+          .single();
+          
+        if (createError) {
+          console.error('Error creating new list:', createError);
+          return null;
+        } else {
+          console.log('Successfully created new list:', newList);
+          return newList.id;
+        }
       }
-    }
-
-    // Ensure required fields
-    const result = {
-      summary: processedNote.summary || text,
-      category: processedNote.category || "task", // Changed from "general" to "task"
-      due_date: processedNote.due_date || null,
-      priority: processedNote.priority || "medium",
-      tags: processedNote.tags || [],
-      items: processedNote.items || [],
-      task_owner: processedNote.task_owner || null,
-      list_id: listId, // Assign to the found/created list
-      original_text: text
     };
 
-    console.log('Processed note result:', result);
+    // Handle multiple notes or single note response
+    if (processedResponse.multiple && processedResponse.notes && Array.isArray(processedResponse.notes)) {
+      console.log('Processing multiple notes:', processedResponse.notes.length);
+      
+      // Process each note and assign lists
+      const processedNotes = await Promise.all(
+        processedResponse.notes.map(async (note: any) => {
+          const listId = note.category ? await findOrCreateList(note.category) : null;
+          
+          return {
+            summary: note.summary || text,
+            category: note.category || "task",
+            due_date: note.due_date || null,
+            priority: note.priority || "medium",
+            tags: note.tags || [],
+            items: note.items || [],
+            task_owner: note.task_owner || null,
+            list_id: listId,
+            original_text: text
+          };
+        })
+      );
 
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  } catch (error) {
+      const result = {
+        multiple: true,
+        notes: processedNotes,
+        original_text: text
+      };
+
+      console.log('Processed multiple notes result:', result);
+      return new Response(JSON.stringify(result), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    } else {
+      // Handle single note
+      const listId = processedResponse.category ? await findOrCreateList(processedResponse.category) : null;
+      
+      const result = {
+        summary: processedResponse.summary || text,
+        category: processedResponse.category || "task",
+        due_date: processedResponse.due_date || null,
+        priority: processedResponse.priority || "medium",
+        tags: processedResponse.tags || [],
+        items: processedResponse.items || [],
+        task_owner: processedResponse.task_owner || null,
+        list_id: listId,
+        original_text: text
+      };
+
+      console.log('Processed single note result:', result);
+      return new Response(JSON.stringify(result), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+  } catch (error: any) {
     console.error('Error in process-note function:', error);
     return new Response(JSON.stringify({ 
-      error: error.message,
-      // Fallback processing
+      error: error?.message || 'Unknown error occurred',
+      // Fallback processing for single note
       summary: 'Note processing failed',
-      category: 'task', // Changed from 'general'
+      category: 'task',
       due_date: null,
       priority: 'medium',
       tags: [],
       items: [],
-      list_id: null
+      list_id: null,
+      original_text: 'Failed to process'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
