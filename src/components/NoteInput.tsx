@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { NoteRecap } from "./NoteRecap";
 import { MultipleNotesRecap } from "./MultipleNotesRecap";
 import VoiceInput from "./voice/VoiceInput";
+import { LoginPromptDialog } from "./LoginPromptDialog";
 
 interface NoteInputProps {
   onNoteAdded?: () => void;
@@ -22,6 +23,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedNote, setProcessedNote] = useState<any>(null);
   const [multipleNotes, setMultipleNotes] = useState<any>(null);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const { user, loading, isAuthenticated } = useAuth();
   const { currentCouple, createCouple } = useSupabaseCouple();
   const { addNote, refetch: refetchNotes } = useSupabaseNotesContext();
@@ -70,12 +72,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
 
     if (!isAuthenticated || !user) {
       console.log('[NoteInput] FAILED: Not authenticated or no user', { isAuthenticated, user: !!user });
-      toast.error("Please sign in to add notes", {
-        action: {
-          label: "Sign In",
-          onClick: () => window.location.href = "/sign-in"
-        }
-      });
+      setShowLoginPrompt(true);
       return;
     }
 
@@ -317,6 +314,11 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
            "I'll automatically categorize, summarize, and organize your note"}
         </p>
       </form>
+      
+      <LoginPromptDialog 
+        open={showLoginPrompt}
+        onOpenChange={setShowLoginPrompt}
+      />
     </Card>
   );
 };
