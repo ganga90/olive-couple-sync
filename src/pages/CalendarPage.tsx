@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar, ChevronLeft, ChevronRight, Plus, User, Users, Clock, CheckCircle2 } from "lucide-react";
-import { CreateNoteDialog } from "@/components/CreateNoteDialog";
+import { NoteInput } from "@/components/NoteInput";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -124,19 +124,13 @@ const CalendarPage = () => {
     <main className="min-h-screen bg-gradient-soft pb-20">
       <div className="container mx-auto px-4 py-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-6 w-6 text-olive" />
-            <h1 className="text-2xl font-bold text-foreground">Calendar</h1>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <CreateNoteDialog 
-              onNoteCreated={() => {
-                // The provider will automatically refetch and update the notes
-              }}
-              preselectedDate={selectedDate || undefined}
-            />
+        <div className="space-y-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-6 w-6 text-olive" />
+              <h1 className="text-2xl font-bold text-foreground">Calendar</h1>
+            </div>
+            
             <div className="flex items-center gap-2">
               <Button
                 variant={viewMode === 'month' ? 'default' : 'outline'}
@@ -156,6 +150,11 @@ const CalendarPage = () => {
               </Button>
             </div>
           </div>
+
+          {/* Note Input */}
+          <NoteInput onNoteAdded={() => {
+            // The provider will automatically refetch and update the notes
+          }} />
         </div>
 
         {/* Calendar Navigation */}
