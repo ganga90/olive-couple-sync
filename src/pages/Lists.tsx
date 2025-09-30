@@ -6,8 +6,9 @@ import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSEO } from "@/hooks/useSEO";
 import { Input } from "@/components/ui/input";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { CreateListDialog } from "@/components/CreateListDialog";
+import { useAuth } from "@/providers/AuthProvider";
 import { 
   ShoppingCart, 
   CheckSquare, 
@@ -65,6 +66,8 @@ const getCategoryIcon = (category: string) => {
 };
 
 const Lists = () => {
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [query, setQuery] = useState("");
   const { notes } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouple();
@@ -101,6 +104,23 @@ const Lists = () => {
       refetch();
     }
   };
+
+  if (!isAuthenticated) {
+    return (
+      <main className="min-h-screen bg-gradient-soft">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-lg mx-auto text-center space-y-4">
+            <ListIcon className="h-16 w-16 mx-auto text-olive" />
+            <h1 className="text-2xl font-bold text-foreground">Lists</h1>
+            <p className="text-muted-foreground">Sign in to create new lists or manage your lists</p>
+            <Button onClick={() => navigate("/sign-in")} className="bg-gradient-olive text-white">
+              Sign In
+            </Button>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-gradient-soft">
