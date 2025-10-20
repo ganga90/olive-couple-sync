@@ -95,7 +95,7 @@ const Lists = () => {
   }, [query, lists]);
 
   const getListNoteCount = (listId: string) => {
-    return notes.filter(note => note.list_id === listId).length;
+    return notes.filter(note => note.list_id === listId && !note.completed).length;
   };
 
   const handleDeleteList = async (listId: string, listName: string) => {

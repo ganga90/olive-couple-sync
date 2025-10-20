@@ -15,9 +15,10 @@ import { LoginPromptDialog } from "./LoginPromptDialog";
 
 interface NoteInputProps {
   onNoteAdded?: () => void;
+  listId?: string | null;
 }
 
-export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
+export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => {
   const [text, setText] = useState("");
   const [interim, setInterim] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -93,7 +94,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
         body: { 
           text: text.trim(),
           user_id: user.id,
-          couple_id: currentCouple?.id || null
+          couple_id: currentCouple?.id || null,
+          list_id: listId || null
         }
       });
 
@@ -152,7 +154,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded }) => {
         priority: aiProcessedNote.priority,
         tags: aiProcessedNote.tags,
         items: aiProcessedNote.items,
-        list_id: aiProcessedNote.list_id, // Include the list_id from AI processing
+        list_id: listId || aiProcessedNote.list_id, // Use provided listId or AI-assigned list_id
         task_owner: aiProcessedNote.task_owner,
       };
       

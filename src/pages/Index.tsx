@@ -10,7 +10,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { RecentTasksSection } from "@/components/RecentTasksSection";
-import { TagSearch } from "@/components/TagSearch";
+import { UniversalSearch } from "@/components/UniversalSearch";
 
 const Index = () => {
   useSEO({ 
@@ -167,7 +167,7 @@ const Index = () => {
                 icon={<AlertCircle className="h-5 w-5 text-olive" />}
               />
               
-              <TagSearch />
+              <UniversalSearch />
             </div>
           )}
 

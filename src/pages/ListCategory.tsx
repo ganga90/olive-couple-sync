@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Pencil, Trash2, CheckCircle2, Circle } from "lucide-react";
 import { toast } from "sonner";
+import { NoteInput } from "@/components/NoteInput";
 
 const ListCategory = () => {
   const { listId = "" } = useParams();
@@ -186,6 +187,16 @@ const ListCategory = () => {
             </div>
           )}
         </header>
+
+        {/* Add Note Input */}
+        <div className="mb-6">
+          <NoteInput 
+            listId={listId} 
+            onNoteAdded={() => {
+              // Notes will automatically refresh through the provider
+            }} 
+          />
+        </div>
 
         {listNotes.length === 0 ? (
           <Card className="p-6 bg-white/50 border-olive/20 shadow-soft text-center">
