@@ -212,6 +212,30 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     refetchNotes();
   };
 
+  // Dynamic placeholder based on day/time
+  const getDynamicPlaceholder = () => {
+    const hour = new Date().getHours();
+    const day = new Date().getDay();
+    
+    // Weekend suggestions
+    if (day === 0 || day === 6) {
+      return "Weekend plans, errands, or fun activities...";
+    }
+    
+    // Morning suggestions
+    if (hour < 12) {
+      return "Morning tasks, groceries, or today's priorities...";
+    }
+    
+    // Afternoon suggestions
+    if (hour < 18) {
+      return "Afternoon goals, errands, or evening plans...";
+    }
+    
+    // Evening suggestions
+    return "Tomorrow's prep, shopping lists, or date ideas...";
+  };
+
   // If we have multiple notes, show the multiple notes recap
   if (multipleNotes) {
     return (
@@ -269,8 +293,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           <Textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Try typing or saying 'buy groceries and call mom' or 'book dinner reservation for Friday'..."
-            className="min-h-[120px] border-olive/30 focus:border-olive resize-none text-base pr-20 shadow-[var(--shadow-inset)]"
+            placeholder={getDynamicPlaceholder()}
+            className="min-h-[120px] border-olive/30 focus:border-olive resize-none text-base pr-20 bg-background/50 shadow-[var(--shadow-inset)]"
             disabled={isProcessing}
           />
           

@@ -102,6 +102,30 @@ export const SimpleNoteInput: React.FC<SimpleNoteInputProps> = ({ onNoteAdded })
     setShowResult(false);
   };
 
+  // Dynamic placeholder based on day/time
+  const getDynamicPlaceholder = () => {
+    const hour = new Date().getHours();
+    const day = new Date().getDay();
+    
+    // Weekend suggestions
+    if (day === 0 || day === 6) {
+      return "Weekend plans, errands, or fun activities...";
+    }
+    
+    // Morning suggestions
+    if (hour < 12) {
+      return "Morning tasks, groceries, or today's priorities...";
+    }
+    
+    // Afternoon suggestions
+    if (hour < 18) {
+      return "Afternoon goals, errands, or evening plans...";
+    }
+    
+    // Evening suggestions
+    return "Tomorrow's prep, shopping lists, or date ideas...";
+  };
+
   if (showResult && processedNote) {
     return (
       <div className="space-y-4">
@@ -199,7 +223,7 @@ export const SimpleNoteInput: React.FC<SimpleNoteInputProps> = ({ onNoteAdded })
           <Textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Grocery shopping this weekend, need to plan date night, fix the kitchen sink..."
+            placeholder={getDynamicPlaceholder()}
             className="min-h-[120px] border-olive/30 focus:border-olive resize-none text-base"
             disabled={isProcessing}
           />

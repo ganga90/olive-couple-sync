@@ -52,28 +52,61 @@ const Index = () => {
     return notes;
   }, [notes, viewMode, isAuthenticatedUser]);
 
-  // Get last 3 tasks and top 3 high priority tasks from filtered notes (excluding completed) - ALWAYS call this hook
-  const { recentTasks, highPriorityTasks } = useMemo(() => {
+  // Get organized task sections - ALWAYS call this hook
+  const { focusToday, highPriorityTasks, yourFlow, focusScore } = useMemo(() => {
     if (!isAuthenticatedUser || !filteredNotes.length) {
-      return { recentTasks: [], highPriorityTasks: [] };
+      return { focusToday: [], highPriorityTasks: [], yourFlow: [], focusScore: 0 };
     }
 
     // Filter out completed tasks for home page display
     const activeTasks = filteredNotes.filter(note => !note.completed);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    // Sort by creation date for recent tasks
-    const recent = [...activeTasks]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 3);
+    // Focus Today: All tasks due today or overdue
+    const todayTasks = activeTasks.filter(note => {
+      if (!note.dueDate) return false;
+      const dueDate = new Date(note.dueDate);
+      dueDate.setHours(0, 0, 0, 0);
+      return dueDate <= today;
+    }).sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime());
 
-    // Get high priority tasks
+    // High Priority: All high priority tasks not due today
     const highPriority = activeTasks
-      .filter(note => note.priority === 'high')
+      .filter(note => {
+        if (note.priority !== 'high') return false;
+        if (!note.dueDate) return true;
+        const dueDate = new Date(note.dueDate);
+        dueDate.setHours(0, 0, 0, 0);
+        return dueDate > today;
+      })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
 
-    return { recentTasks: recent, highPriorityTasks: highPriority };
+    // Your Flow: Recently created, non-urgent tasks
+    const flowTasks = activeTasks
+      .filter(note => {
+        // Exclude if already in today or high priority
+        const isDueToday = note.dueDate && new Date(note.dueDate).setHours(0,0,0,0) <= today.getTime();
+        const isHighPriority = note.priority === 'high';
+        return !isDueToday && !isHighPriority;
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 3);
+
+    // Focus score: count of tasks due today or overdue
+    const score = todayTasks.length;
+
+    return { focusToday: todayTasks, highPriorityTasks: highPriority, yourFlow: flowTasks, focusScore: score };
   }, [filteredNotes, isAuthenticatedUser]);
+
+  // Get time-based greeting
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good Morning";
+    if (hour < 18) return "Good Afternoon";
+    return "Good Evening";
+  };
 
   // Show loading state while authentication is loading - MOVED AFTER ALL HOOKS
   if (loading) {
@@ -103,7 +136,7 @@ const Index = () => {
             <div className="space-y-2">
               <h1 className="text-2xl font-bold text-foreground">
                 {isAuthenticatedUser 
-                  ? `Welcome back, ${userName}!` 
+                  ? `${getGreeting()}, ${userName}. Ready to tackle the day?` 
                   : "Your AI-powered note organizer"
                 }
               </h1>
@@ -114,6 +147,16 @@ const Index = () => {
                 }
               </p>
             </div>
+
+            {/* Olive Focus Score - show if authenticated and has tasks */}
+            {isAuthenticatedUser && filteredNotes.length > 0 && (
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-[hsl(var(--ai-accent))]/10 border border-[hsl(var(--ai-accent))]/20 rounded-lg">
+                <AlertCircle className="h-4 w-4 text-[hsl(var(--ai-accent))]" />
+                <span className="text-sm font-medium text-foreground">
+                  Your Day Ahead: <span className="text-[hsl(var(--ai-accent))] font-bold">{focusScore}</span> {focusScore === 1 ? 'Task' : 'Tasks'} Due
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Context Switcher - only show for authenticated users with a couple */}
@@ -157,21 +200,31 @@ const Index = () => {
             <SimpleNoteInput onNoteAdded={() => setHasNotes(true)} />
           )}
 
-          {/* Recent Tasks and High Priority Tasks - only show for authenticated users with notes */}
+          {/* Task Sections - only show for authenticated users with notes */}
           {isAuthenticatedUser && filteredNotes.length > 0 && (
             <div className="space-y-6">
+              {/* Focus Today Section */}
               <RecentTasksSection
-                title="Recent Tasks"
-                tasks={recentTasks}
-                emptyMessage="No recent tasks yet"
-                icon={<Clock className="h-5 w-5 text-olive" />}
+                title="Focus Today"
+                tasks={focusToday}
+                emptyMessage="No tasks due today"
+                icon={<AlertCircle className="h-5 w-5 text-[hsl(var(--ai-accent))]" />}
               />
               
+              {/* High Priority Section */}
               <RecentTasksSection
                 title="High Priority Tasks"
                 tasks={highPriorityTasks}
                 emptyMessage="No high priority tasks"
-                icon={<AlertCircle className="h-5 w-5 text-olive" />}
+                icon={<AlertCircle className="h-5 w-5 text-[hsl(var(--priority-high))]" />}
+              />
+
+              {/* Your Flow Section */}
+              <RecentTasksSection
+                title="Your Flow"
+                tasks={yourFlow}
+                emptyMessage="You're all caught up!"
+                icon={<Clock className="h-5 w-5 text-olive" />}
               />
             </div>
           )}

@@ -26,10 +26,23 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   const isYourNote = note.addedBy === "you" || you === note.addedBy;
   const authorName = isYourNote ? "You" : partner || "Partner";
   
+  const [isCompleting, setIsCompleting] = React.useState(false);
+
   const handleToggleComplete = async () => {
     const newCompleted = !note.completed;
-    await updateNote(note.id, { completed: newCompleted });
-    onToggleComplete?.(note.id, newCompleted);
+    
+    // Trigger animation when completing
+    if (newCompleted) {
+      setIsCompleting(true);
+      setTimeout(async () => {
+        await updateNote(note.id, { completed: newCompleted });
+        onToggleComplete?.(note.id, newCompleted);
+        setIsCompleting(false);
+      }, 300);
+    } else {
+      await updateNote(note.id, { completed: newCompleted });
+      onToggleComplete?.(note.id, newCompleted);
+    }
   };
 
   const getPriorityVariant = (priority?: string) => {
@@ -42,9 +55,9 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   };
 
   return (
-    <Card className={`p-4 transition-all duration-200 shadow-[var(--shadow-raised)] hover:shadow-soft ${
+    <Card className={`p-4 transition-all duration-300 shadow-[var(--shadow-raised)] hover:shadow-soft ${
       note.completed ? "opacity-75 bg-muted/30" : "bg-card"
-    }`}>
+    } ${isCompleting ? "scale-95 opacity-50 bg-olive/20" : ""}`}>
       <div className="space-y-3">
         {/* Header with completion toggle */}
         <div className="flex items-start justify-between gap-3">
