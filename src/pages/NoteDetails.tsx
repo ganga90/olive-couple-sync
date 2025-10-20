@@ -459,6 +459,35 @@ const NoteDetails = () => {
             )}
           </div>
 
+          {/* Assistant and Complete Actions */}
+          <div className="flex gap-3">
+            <Button 
+              size="lg" 
+              className="flex-1 bg-olive hover:bg-olive/90 text-white shadow-soft"
+              onClick={() => setChatOpen(true)}
+            >
+              <OliveLogo size={20} className="mr-2" />
+              Ask Olive Assistant
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="border-green-500/30 text-green-600 hover:bg-green-50 shadow-soft"
+              onClick={async () => {
+                await updateNote(note.id, { completed: true });
+                toast.success("Note marked as complete!");
+                if (note.list_id) {
+                  navigate(`/lists/${note.list_id}`);
+                } else {
+                  navigate("/");
+                }
+              }}
+            >
+              <CheckCircle className="h-5 w-5 mr-2" />
+              Complete
+            </Button>
+          </div>
+
           {/* Category and Priority */}
           <div className="flex items-center gap-3 flex-wrap">
             {isEditing ? (
@@ -661,16 +690,6 @@ const NoteDetails = () => {
             </CardContent>
           </Card>
 
-          <Separator className="my-6 bg-olive/20" />
-
-          <Button 
-            size="lg" 
-            className="w-full bg-olive hover:bg-olive/90 text-white shadow-soft"
-            onClick={() => setChatOpen(true)}
-          >
-            <OliveLogo size={20} className="mr-2" />
-            Ask Olive for help
-          </Button>
         </div>
       </section>
 
