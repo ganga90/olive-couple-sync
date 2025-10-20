@@ -212,7 +212,7 @@ export const SimpleNoteInput: React.FC<SimpleNoteInputProps> = ({ onNoteAdded })
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         <div className="text-center mb-4">
           <h2 className="text-lg font-semibold text-foreground mb-1">
-            Drop a note here
+            Drop task or thought here
           </h2>
           <p className="text-sm text-muted-foreground">
             I'll organize it for you with AI
