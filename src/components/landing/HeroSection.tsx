@@ -42,10 +42,10 @@ export const HeroSection = () => {
           size="lg" 
           variant="outline" 
           onClick={scrollToDemo}
-          className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-50 text-lg px-8 py-6"
+          className="w-full sm:w-auto border-[hsl(var(--ai-accent))]/30 text-[hsl(var(--ai-accent))] hover:bg-[hsl(var(--ai-accent))]/10 text-lg px-8 py-6 font-semibold"
         >
-          <Play className="mr-2 h-5 w-5" />
-          See it in action
+          <Play className="mr-2 h-5 w-5 fill-[hsl(var(--ai-accent))]/20" />
+          Watch the Magic Happen: See the AI in Action
         </Button>
       </div>
     </section>

@@ -6,6 +6,7 @@ import { FeatureSections } from "@/components/landing/FeatureSections";
 import { ExampleScenarios } from "@/components/landing/ExampleScenarios";
 import { PricingSection } from "@/components/landing/PricingSection";
 import { FAQSection } from "@/components/landing/FAQSection";
+import { FloatingActionButton } from "@/components/FloatingActionButton";
 
 const Landing = () => {
   useSEO({ 
@@ -15,6 +16,7 @@ const Landing = () => {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-olive-50 via-white to-emerald-50">
+      <FloatingActionButton />
       <div className="container mx-auto px-4 py-12 max-w-6xl">
         
         <HeroSection />

@@ -11,6 +11,7 @@ import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { RecentTasksSection } from "@/components/RecentTasksSection";
 import { UniversalSearch } from "@/components/UniversalSearch";
+import { FloatingActionButton } from "@/components/FloatingActionButton";
 
 const Index = () => {
   useSEO({ 
@@ -88,8 +89,14 @@ const Index = () => {
 
   return (
     <main className="min-h-screen bg-gradient-soft">
+      <FloatingActionButton />
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-lg mx-auto space-y-8">
+          {/* Global Search - Prominent at top for authenticated users */}
+          {isAuthenticatedUser && filteredNotes.length > 0 && (
+            <UniversalSearch />
+          )}
+          
           {/* Header */}
           <div className="text-center space-y-4">
             <OliveLogoWithText size="lg" className="justify-center" />
@@ -166,8 +173,6 @@ const Index = () => {
                 emptyMessage="No high priority tasks"
                 icon={<AlertCircle className="h-5 w-5 text-olive" />}
               />
-              
-              <UniversalSearch />
             </div>
           )}
 

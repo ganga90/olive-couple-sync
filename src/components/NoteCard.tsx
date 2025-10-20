@@ -2,7 +2,7 @@ import React from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, User, Users, MessageCircle, CheckCircle2, Circle } from "lucide-react";
+import { CalendarDays, User, Users, MessageCircle, CheckCircle2, Circle, Sparkles } from "lucide-react";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { NotePrivacyToggle } from "@/components/NotePrivacyToggle";
@@ -32,23 +32,23 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     onToggleComplete?.(note.id, newCompleted);
   };
 
-  const getPriorityColor = (priority?: string) => {
+  const getPriorityVariant = (priority?: string) => {
     switch (priority) {
-      case "high": return "bg-destructive/10 text-destructive border-destructive/20";
-      case "medium": return "bg-olive/10 text-olive border-olive/20";
-      case "low": return "bg-muted text-muted-foreground border-border";
-      default: return "bg-muted text-muted-foreground border-border";
+      case "high": return "priority-high";
+      case "medium": return "priority-medium";
+      case "low": return "priority-low";
+      default: return "outline";
     }
   };
 
   return (
-    <Card className={`p-4 transition-all duration-200 hover:shadow-soft ${
+    <Card className={`p-4 transition-all duration-200 shadow-[var(--shadow-raised)] hover:shadow-soft ${
       note.completed ? "opacity-75 bg-muted/30" : "bg-card"
     }`}>
       <div className="space-y-3">
         {/* Header with completion toggle */}
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1">
             <Button
               variant="ghost"
               size="sm"
@@ -68,11 +68,20 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             </h3>
           </div>
           
-          {note.priority && (
-            <Badge variant="outline" className={`text-xs ${getPriorityColor(note.priority)}`}>
-              {note.priority}
+          <div className="flex items-center gap-2">
+            {/* AI Auto tag - shown for all AI-processed notes */}
+            <Badge variant="ai" className="text-xs flex items-center gap-1">
+              <Sparkles className="h-3 w-3" />
+              Auto
             </Badge>
-          )}
+            
+            {/* Priority tag with more visual weight */}
+            {note.priority && (
+              <Badge variant={getPriorityVariant(note.priority) as any} className="text-xs uppercase">
+                {note.priority}
+              </Badge>
+            )}
+          </div>
         </div>
 
         {/* Tags */}

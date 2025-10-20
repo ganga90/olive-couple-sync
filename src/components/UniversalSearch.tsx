@@ -45,17 +45,17 @@ export const UniversalSearch: React.FC = () => {
   const hasResults = searchResults.notes.length > 0 || searchResults.lists.length > 0;
 
   return (
-    <Card className="bg-white/50 border-olive/20 shadow-soft">
+    <Card className="bg-white/50 border-olive/20 shadow-[var(--shadow-raised)]">
       <CardContent className="p-4 space-y-4">
         {/* Search Input */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[hsl(var(--ai-accent))]" />
           <Input
             type="text"
             placeholder="Search tasks and lists..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 border-olive/30 focus:border-olive focus:ring-olive/20"
+            className="pl-11 h-12 text-base border-olive/30 focus:border-[hsl(var(--ai-accent))] focus:ring-[hsl(var(--ai-accent))]/20 shadow-[var(--shadow-inset)]"
           />
         </div>
 

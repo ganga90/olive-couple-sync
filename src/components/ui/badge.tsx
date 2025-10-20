@@ -15,6 +15,10 @@ const badgeVariants = cva(
         destructive:
           "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",
+        ai: "border-transparent bg-[hsl(var(--ai-accent))] text-white hover:bg-[hsl(var(--ai-accent))]/90 font-bold",
+        "priority-high": "border-transparent bg-[hsl(var(--priority-high))] text-white hover:bg-[hsl(var(--priority-high))]/90 font-bold",
+        "priority-medium": "border-transparent bg-[hsl(var(--priority-medium))] text-white hover:bg-[hsl(var(--priority-medium))]/90 font-bold",
+        "priority-low": "border-transparent bg-[hsl(var(--priority-low))] text-white hover:bg-[hsl(var(--priority-low))]/90",
       },
     },
     defaultVariants: {

@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, ChevronLeft, ChevronRight, Plus, User, Users, Clock, CheckCircle2 } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, Plus, CalendarDays, User, Users, Clock, MessageCircle, CheckCircle2, Circle, Sparkles } from "lucide-react";
 import { NoteInput } from "@/components/NoteInput";
+import { FloatingActionButton } from "@/components/FloatingActionButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -89,12 +90,12 @@ const CalendarPage = () => {
     navigate(`/notes/${taskId}`);
   };
 
-  const getPriorityColor = (priority?: string) => {
+  const getPriorityVariant = (priority?: string) => {
     switch (priority) {
-      case "high": return "bg-destructive/10 text-destructive border-destructive/20";
-      case "medium": return "bg-olive/10 text-olive border-olive/20";
-      case "low": return "bg-muted text-muted-foreground border-border";
-      default: return "bg-muted text-muted-foreground border-border";
+      case "high": return "priority-high";
+      case "medium": return "priority-medium";
+      case "low": return "priority-low";
+      default: return "outline";
     }
   };
 
@@ -122,6 +123,7 @@ const CalendarPage = () => {
 
   return (
     <main className="min-h-screen bg-gradient-soft pb-20">
+      <FloatingActionButton />
       <div className="container mx-auto px-4 py-6">
         {/* Header */}
         <div className="space-y-6 mb-6">
@@ -370,7 +372,7 @@ const CalendarPage = () => {
                       
                       <div className="flex items-center gap-2">
                         {task.priority && (
-                          <Badge variant="outline" className={`text-xs ${getPriorityColor(task.priority)}`}>
+                          <Badge variant={getPriorityVariant(task.priority) as any} className="text-xs uppercase">
                             {task.priority}
                           </Badge>
                         )}

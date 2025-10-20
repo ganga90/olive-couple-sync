@@ -270,7 +270,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Try typing or saying 'buy groceries and call mom' or 'book dinner reservation for Friday'..."
-            className="min-h-[120px] border-olive/30 focus:border-olive resize-none text-base pr-20"
+            className="min-h-[120px] border-olive/30 focus:border-olive resize-none text-base pr-20 shadow-[var(--shadow-inset)]"
             disabled={isProcessing}
           />
           

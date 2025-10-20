@@ -8,6 +8,7 @@ import { useSEO } from "@/hooks/useSEO";
 import { Input } from "@/components/ui/input";
 import { Link, useNavigate } from "react-router-dom";
 import { CreateListDialog } from "@/components/CreateListDialog";
+import { FloatingActionButton } from "@/components/FloatingActionButton";
 import { useAuth } from "@/providers/AuthProvider";
 import { 
   ShoppingCart, 
@@ -124,6 +125,7 @@ const Lists = () => {
 
   return (
     <main className="min-h-screen bg-gradient-soft">
+      <FloatingActionButton />
       <section className="mx-auto max-w-2xl px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold text-olive-dark">Lists</h1>
@@ -156,7 +158,7 @@ const Lists = () => {
                const count = getListNoteCount(list.id);
                const ListIconComponent = getCategoryIcon(list.name);
                return (
-                <Card key={list.id} className="bg-white/50 border-olive/20 shadow-soft transition-all duration-200 hover:shadow-lg group">
+                <Card key={list.id} className="bg-white/50 border-olive/20 shadow-[var(--shadow-raised)] transition-all duration-200 hover:shadow-soft group">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <Link 

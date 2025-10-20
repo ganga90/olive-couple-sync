@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, Pencil, Trash2, CheckCircle2, Circle, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { NoteInput } from "@/components/NoteInput";
+import { FloatingActionButton } from "@/components/FloatingActionButton";
 
 const ListCategory = () => {
   const { listId = "" } = useParams();
@@ -139,6 +140,7 @@ const ListCategory = () => {
 
   return (
     <main className="min-h-screen bg-gradient-soft">
+      <FloatingActionButton />
       <section className="mx-auto max-w-2xl px-4 py-6">
         <header className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
