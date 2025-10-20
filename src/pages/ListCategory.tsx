@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Pencil, Trash2, CheckCircle2, Circle } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, CheckCircle2, Circle, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { NoteInput } from "@/components/NoteInput";
 
@@ -26,6 +26,7 @@ const ListCategory = () => {
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
+  const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false);
   
   const currentList = useMemo(() => 
     lists.find(list => list.id === listId), 
@@ -188,14 +189,15 @@ const ListCategory = () => {
           )}
         </header>
 
-        {/* Add Note Input */}
+        {/* Add Note Button */}
         <div className="mb-6">
-          <NoteInput 
-            listId={listId} 
-            onNoteAdded={() => {
-              // Notes will automatically refresh through the provider
-            }} 
-          />
+          <Button
+            onClick={() => setAddNoteDialogOpen(true)}
+            className="w-full bg-olive hover:bg-olive/90 text-white shadow-soft"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add a note
+          </Button>
         </div>
 
         {listNotes.length === 0 ? (
@@ -376,6 +378,21 @@ const ListCategory = () => {
             )}
           </div>
         )}
+
+        {/* Add Note Dialog */}
+        <Dialog open={addNoteDialogOpen} onOpenChange={setAddNoteDialogOpen}>
+          <DialogContent className="bg-white max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-olive-dark">Add Note to {currentList.name}</DialogTitle>
+            </DialogHeader>
+            <NoteInput 
+              listId={listId} 
+              onNoteAdded={() => {
+                setAddNoteDialogOpen(false);
+              }} 
+            />
+          </DialogContent>
+        </Dialog>
 
         {/* Edit List Dialog */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
