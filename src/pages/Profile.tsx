@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { OliveLogo } from "@/components/OliveLogo";
 import { PartnerInfo } from "@/components/PartnerInfo";
+import { PhoneNumberField } from "@/components/PhoneNumberField";
 
 const Profile = () => {
   useSEO({ title: "Profile — Olive", description: "Manage your Olive account profile and settings." });
@@ -34,6 +35,9 @@ const Profile = () => {
           <div className="space-y-6">
             {/* Partner Information */}
             <PartnerInfo />
+            
+            {/* Phone Number for WhatsApp */}
+            <PhoneNumberField />
             
             {/* User Profile */}
             <Card className="p-2 bg-white/50 border-olive/20 shadow-soft">

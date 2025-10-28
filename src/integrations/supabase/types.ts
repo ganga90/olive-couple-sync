@@ -236,18 +236,21 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          phone_number: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
           display_name?: string | null
           id: string
+          phone_number?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
           display_name?: string | null
           id?: string
+          phone_number?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -437,10 +440,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      accept_invite: {
-        Args: { p_token: string }
-        Returns: string
-      }
+      accept_invite: { Args: { p_token: string }; Returns: string }
       create_couple: {
         Args: { p_partner_name: string; p_title: string; p_you_name: string }
         Returns: string
@@ -449,30 +449,12 @@ export type Database = {
         Args: { p_couple_id: string; p_invited_email?: string }
         Returns: Json
       }
-      debug_claims: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
-      debug_clerk_jwt: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
-      debug_clerk_user_id: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
-      debug_clerk_user_id_fixed: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
-      debug_jwt_claims: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
-      get_clerk_user_id: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
+      debug_claims: { Args: never; Returns: Json }
+      debug_clerk_jwt: { Args: never; Returns: string }
+      debug_clerk_user_id: { Args: never; Returns: string }
+      debug_clerk_user_id_fixed: { Args: never; Returns: string }
+      debug_jwt_claims: { Args: never; Returns: Json }
+      get_clerk_user_id: { Args: never; Returns: string }
       is_couple_member: {
         Args: { couple_uuid: string; user_id: string }
         Returns: boolean
@@ -489,14 +471,8 @@ export type Database = {
         Args: { p_couple_id: string; p_user_id?: string }
         Returns: boolean
       }
-      jwt: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
-      jwt_sub: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
+      jwt: { Args: never; Returns: Json }
+      jwt_sub: { Args: never; Returns: string }
       validate_invite: {
         Args: { p_token: string }
         Returns: {
