@@ -1,13 +1,14 @@
 import { Link, NavLink } from "react-router-dom";
 import { SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
+import { OliveLogoWithText } from "@/components/OliveLogo";
 
 const NavBar = () => {
   return (
     <header className="border-b bg-background">
       <nav className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <Link to="/" className="text-base font-semibold">
-          Olive
+        <Link to="/" className="hover:opacity-80 transition-opacity">
+          <OliveLogoWithText size="sm" />
         </Link>
         <div className="flex items-center gap-3">
           <NavLink to="/lists" className="text-sm text-muted-foreground hover:text-foreground">
