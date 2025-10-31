@@ -15,7 +15,7 @@ const Landing = () => {
   });
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-olive-50 via-white to-emerald-50">
+    <main className="min-h-screen bg-background">
       <FloatingActionButton />
       <div className="container mx-auto px-4 py-12 max-w-6xl">
         
@@ -29,7 +29,7 @@ const Landing = () => {
 
         {/* Footer */}
         <div className="text-center pt-12 pb-8">
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             Made with ❤️ for couples who want to stay organized together
           </p>
         </div>

@@ -7,43 +7,44 @@ All colors MUST be HSL.
 */
 
 @layer base {
-  /* Olive-inspired color palette */
+  /* Olive-inspired color palette - Design System */
   :root {
-    --background: 250 100% 98%;
-    --foreground: 95 15% 15%;
+    --background: 0 0% 100%;           /* Clean White #FFFFFF */
+    --foreground: 0 0% 10%;            /* Text Black #1A1A1A */
 
     --card: 0 0% 100%;
-    --card-foreground: 95 15% 15%;
+    --card-foreground: 0 0% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 95 15% 15%;
+    --popover-foreground: 0 0% 10%;
 
-    --primary: 75 35% 45%;        /* Olive green */
-    --primary-foreground: 0 0% 98%;
+    --primary: 150 30% 28%;            /* Deep Olive Green #2C5E3D */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 75 25% 90%;      /* Light olive */
-    --secondary-foreground: 75 15% 25%;
+    --secondary: 0 0% 96%;             /* Secondary Background #F5F5F5 */
+    --secondary-foreground: 0 0% 10%;
 
-    --muted: 75 15% 96%;
-    --muted-foreground: 75 10% 45%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 42%;      /* Supporting Text #6B6B6B */
 
-    --accent: 85 40% 85%;         /* Sage green accent */
-    --accent-foreground: 75 20% 25%;
+    --accent: 43 50% 48%;              /* Warm Gold #B8933D */
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 75 20% 85%;
-    --input: 75 20% 90%;
-    --ring: 75 35% 45%;
+    --border: 0 0% 90%;
+    --input: 0 0% 96%;
+    --ring: 150 30% 28%;
 
     --radius: 1rem;
 
-    /* Olive-specific colors */
-    --olive-primary: 75 35% 45%;
-    --olive-light: 85 40% 85%;
-    --olive-dark: 65 25% 35%;
-    --sage: 85 30% 75%;
+    /* Olive Brand Colors */
+    --olive-primary: 150 30% 28%;      /* Deep Olive #2C5E3D */
+    --olive-accent: 43 50% 48%;        /* Warm Gold #B8933D */
+    --olive-light: 0 0% 96%;           /* Light Background */
+    --olive-dark: 0 0% 10%;            /* Dark Text */
+    --sage: 150 20% 70%;
     --cream: 45 30% 95%;
     
     /* AI & Priority colors */
@@ -73,40 +74,41 @@ All colors MUST be HSL.
   }
 
   .dark {
-    --background: 95 15% 8%;
-    --foreground: 75 15% 95%;
+    --background: 0 0% 8%;
+    --foreground: 0 0% 95%;
 
-    --card: 95 15% 10%;
-    --card-foreground: 75 15% 95%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 95%;
 
-    --popover: 95 15% 10%;
-    --popover-foreground: 75 15% 95%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 95%;
 
-    --primary: 85 35% 65%;        /* Lighter olive for dark mode */
-    --primary-foreground: 95 15% 15%;
+    --primary: 150 35% 45%;           /* Lighter Deep Olive for dark mode */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 75 15% 15%;
-    --secondary-foreground: 75 15% 85%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 85%;
 
-    --muted: 75 10% 15%;
-    --muted-foreground: 75 15% 65%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 65%;
 
-    --accent: 85 25% 25%;
-    --accent-foreground: 85 15% 85%;
+    --accent: 43 55% 55%;             /* Brighter Warm Gold for dark mode */
+    --accent-foreground: 0 0% 10%;
 
     --destructive: 0 62% 50%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 75 15% 20%;
-    --input: 75 15% 15%;
-    --ring: 85 35% 65%;
+    --border: 0 0% 20%;
+    --input: 0 0% 15%;
+    --ring: 150 35% 45%;
 
     /* Dark mode olive colors */
-    --olive-primary: 85 35% 65%;
-    --olive-light: 85 25% 25%;
-    --olive-dark: 95 25% 85%;
-    --sage: 85 20% 30%;
-    --cream: 75 15% 12%;
+    --olive-primary: 150 35% 45%;
+    --olive-accent: 43 55% 55%;
+    --olive-light: 0 0% 15%;
+    --olive-dark: 0 0% 95%;
+    --sage: 150 20% 30%;
+    --cream: 0 0% 12%;
     
     /* AI & Priority colors (dark mode) */
     --ai-accent: 195 100% 60%;        /* Brighter Electric Blue for dark mode */

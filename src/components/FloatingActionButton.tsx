@@ -17,7 +17,7 @@ export const FloatingActionButton = () => {
       {/* Floating Action Button */}
       <Button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-24 right-6 h-14 w-14 rounded-full shadow-[var(--shadow-raised)] hover:shadow-olive bg-[hsl(var(--olive-primary))] hover:bg-[hsl(var(--olive-primary))]/90 text-white z-40 transition-all duration-200 hover:scale-110"
+        className="fixed bottom-24 right-6 h-14 w-14 rounded-full shadow-lg hover:shadow-xl bg-primary hover:bg-primary/90 text-primary-foreground z-40 transition-all duration-200 hover:scale-110"
         size="icon"
       >
         <Plus className="h-6 w-6" />
@@ -25,9 +25,9 @@ export const FloatingActionButton = () => {
 
       {/* Quick Add Dialog */}
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="bg-white max-w-2xl">
+        <DialogContent className="bg-background max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="text-[hsl(var(--olive-dark))]">Quick Add Note</DialogTitle>
+            <DialogTitle className="text-foreground">Quick Add Note</DialogTitle>
           </DialogHeader>
           <NoteInput 
             onNoteAdded={() => {
