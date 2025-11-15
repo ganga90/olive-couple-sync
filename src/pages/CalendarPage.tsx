@@ -1,18 +1,13 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, ChevronLeft, ChevronRight, Plus, CalendarDays, User, Users, Clock, MessageCircle, CheckCircle2, Circle, Sparkles } from "lucide-react";
-import { NoteInput } from "@/components/NoteInput";
+import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 import { FloatingActionButton } from "@/components/FloatingActionButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { useSEO } from "@/hooks/useSEO";
 import { useAuth } from "@/providers/AuthProvider";
-import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, parseISO, startOfWeek, endOfWeek, addWeeks, subWeeks } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Note } from "@/types/note";
 
@@ -23,41 +18,15 @@ const CalendarPage = () => {
   });
 
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
-  const { currentCouple, you, partner } = useSupabaseCouple();
-  const { notes, updateNote } = useSupabaseNotesContext();
+  const { isAuthenticated } = useAuth();
+  const { notes } = useSupabaseNotesContext();
   
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  // Filter notes with due dates and without due dates
-  const { tasksWithDates, tasksWithoutDates } = useMemo(() => {
-    const withDates: Note[] = [];
-    const withoutDates: Note[] = [];
-    
-    notes.forEach(note => {
-      if (note.dueDate) {
-        withDates.push(note);
-      } else {
-        withoutDates.push(note);
-      }
-    });
-
-    // Sort tasks without dates by priority and creation date
-    withoutDates.sort((a, b) => {
-      const priorityOrder = { high: 3, medium: 2, low: 1 };
-      const aPriority = priorityOrder[a.priority as keyof typeof priorityOrder] || 0;
-      const bPriority = priorityOrder[b.priority as keyof typeof priorityOrder] || 0;
-      
-      if (aPriority !== bPriority) return bPriority - aPriority;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-
-    return {
-      tasksWithDates: withDates,
-      tasksWithoutDates: withoutDates.slice(0, 10) // Top 10 tasks
-    };
+  // Filter notes with due dates
+  const tasksWithDates = useMemo(() => {
+    return notes.filter(note => note.dueDate);
   }, [notes]);
 
   // Get tasks for a specific date
@@ -67,343 +36,196 @@ const CalendarPage = () => {
     );
   };
 
-  // Get calendar data based on view mode
+  // Get calendar days
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const calendarDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
-  
-  const weekStart = startOfWeek(currentDate);
-  const weekEnd = endOfWeek(currentDate);
-  const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
-
-  const handleDateAssignment = async (task: Note, date: Date | undefined) => {
-    await updateNote(task.id, { 
-      dueDate: date ? date.toISOString() : null 
-    });
-  };
-
-  const handleToggleComplete = async (task: Note) => {
-    await updateNote(task.id, { completed: !task.completed });
-  };
 
   const navigateToTask = (taskId: string) => {
     navigate(`/notes/${taskId}`);
   };
 
-  const getPriorityVariant = (priority?: string) => {
-    switch (priority) {
-      case "high": return "priority-high";
-      case "medium": return "priority-medium";
-      case "low": return "priority-low";
-      default: return "outline";
-    }
-  };
-
-  const getAuthorName = (note: Note) => {
-    // The addedBy field is already mapped correctly in the provider
-    return note.addedBy;
-  };
-
   if (!isAuthenticated) {
     return (
-      <main className="min-h-screen bg-gradient-soft">
-        <div className="container mx-auto px-4 py-8">
-          <div className="max-w-lg mx-auto text-center space-y-4">
-            <Calendar className="h-16 w-16 mx-auto text-olive" />
-            <h1 className="text-2xl font-bold text-foreground">Calendar</h1>
-            <p className="text-muted-foreground">Please sign in to view your calendar</p>
-            <Button onClick={() => navigate("/sign-in")} className="bg-gradient-olive text-white">
-              Sign In
-            </Button>
-          </div>
-        </div>
-      </main>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
+        <Calendar className="h-16 w-16 text-primary mb-4" />
+        <h1 className="text-2xl font-semibold mb-2">Calendar</h1>
+        <p className="text-muted-foreground mb-6">Sign in to view your calendar</p>
+        <Button onClick={() => navigate("/sign-in")}>Sign In</Button>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-soft pb-20">
+    <div className="h-full overflow-y-auto">
       <FloatingActionButton />
-      <div className="container mx-auto px-4 py-6">
+      
+      <div className="px-4 py-6 space-y-4">
         {/* Header */}
-        <div className="space-y-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-6 w-6 text-olive" />
-              <h1 className="text-2xl font-bold text-foreground">Calendar</h1>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <Button
-                variant={viewMode === 'month' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setViewMode('month')}
-                className={viewMode === 'month' ? 'bg-olive text-white' : ''}
-              >
-                Month
-              </Button>
-              <Button
-                variant={viewMode === 'week' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setViewMode('week')}
-                className={viewMode === 'week' ? 'bg-olive text-white' : ''}
-              >
-                Week
-              </Button>
-            </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-6 w-6 text-primary" />
+            <h1 className="text-2xl font-bold text-foreground">Calendar</h1>
           </div>
-
-          {/* Note Input */}
-          <NoteInput onNoteAdded={() => {
-            // The provider will automatically refetch and update the notes
-          }} />
         </div>
 
         {/* Calendar Navigation */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between">
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setCurrentDate(
-              viewMode === 'month' ? subMonths(currentDate, 1) : subWeeks(currentDate, 1)
-            )}
+            onClick={() => setCurrentDate(subMonths(currentDate, 1))}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           
           <h2 className="text-lg font-semibold">
-            {viewMode === 'month' 
-              ? format(currentDate, 'MMMM yyyy')
-              : `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`
-            }
+            {format(currentDate, 'MMMM yyyy')}
           </h2>
           
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setCurrentDate(
-              viewMode === 'month' ? addMonths(currentDate, 1) : addWeeks(currentDate, 1)
-            )}
+            onClick={() => setCurrentDate(addMonths(currentDate, 1))}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
 
         {/* Calendar Grid */}
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            {viewMode === 'month' ? (
-              <div className="grid grid-cols-7 gap-1">
-                {/* Day headers */}
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                  <div key={day} className="p-2 text-center text-sm font-medium text-muted-foreground">
-                    {day}
-                  </div>
-                ))}
+        <Card className="shadow-[var(--shadow-card)]">
+          <CardContent className="p-2 sm:p-4">
+            <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
+              {/* Day headers */}
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
+                <div key={i} className="p-1 sm:p-2 text-center text-xs sm:text-sm font-medium text-muted-foreground">
+                  <span className="hidden sm:inline">
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][i]}
+                  </span>
+                  <span className="sm:hidden">{day}</span>
+                </div>
+              ))}
+              
+              {/* Calendar days */}
+              {calendarDays.map(day => {
+                const dayTasks = getTasksForDate(day);
+                const isToday = isSameDay(day, new Date());
                 
-                {/* Calendar days */}
-                {calendarDays.map(day => {
-                  const dayTasks = getTasksForDate(day);
-                  const isToday = isSameDay(day, new Date());
-                  
-                  return (
-                    <div
-                      key={day.toISOString()}
-                      className={cn(
-                        "min-h-[80px] p-2 border border-border/20 cursor-pointer hover:bg-olive/5 transition-colors",
-                        isToday && "bg-olive/10 border-olive/30"
-                      )}
-                      onClick={() => setSelectedDate(day)}
-                    >
-                      <div className="text-sm font-medium mb-1">
-                        {format(day, 'd')}
-                      </div>
-                      <div className="space-y-1">
-                        {dayTasks.slice(0, 2).map(task => (
-                          <div
-                            key={task.id}
-                            className={cn(
-                              "text-xs p-1 rounded truncate cursor-pointer",
-                              task.completed ? "opacity-50 line-through" : "",
-                              task.priority === 'high' ? "bg-destructive/20 text-destructive" :
-                              task.priority === 'medium' ? "bg-olive/20 text-olive" :
-                              "bg-muted text-muted-foreground"
-                            )}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigateToTask(task.id);
-                            }}
-                          >
-                            {task.summary}
-                          </div>
-                        ))}
-                        {dayTasks.length > 2 && (
-                          <div className="text-xs text-muted-foreground">
-                            +{dayTasks.length - 2} more
-                          </div>
-                        )}
-                      </div>
+                return (
+                  <div
+                    key={day.toISOString()}
+                    className={cn(
+                      "min-h-[60px] sm:min-h-[80px] p-1 sm:p-2 border border-border/20 rounded-[var(--radius-sm)] cursor-pointer hover:bg-primary/5 transition-colors",
+                      isToday && "bg-primary/10 border-primary/30 ring-1 ring-primary/20"
+                    )}
+                    onClick={() => setSelectedDate(day)}
+                  >
+                    <div className={cn(
+                      "text-xs sm:text-sm font-medium mb-1",
+                      isToday && "text-primary font-bold"
+                    )}>
+                      {format(day, 'd')}
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="grid grid-cols-7 gap-1">
-                {/* Day headers for week view */}
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                  <div key={day} className="p-2 text-center text-sm font-medium text-muted-foreground">
-                    {day}
+                    
+                    {/* Task indicators */}
+                    <div className="space-y-0.5">
+                      {dayTasks.slice(0, 2).map(task => (
+                        <div
+                          key={task.id}
+                          className={cn(
+                            "text-[10px] sm:text-xs p-0.5 sm:p-1 rounded truncate cursor-pointer",
+                            task.completed ? "opacity-50 line-through" : "",
+                            task.priority === 'high' ? "bg-[hsl(var(--priority-high))]/20 text-[hsl(var(--priority-high))]" :
+                            task.priority === 'medium' ? "bg-[hsl(var(--priority-medium))]/20 text-[hsl(var(--priority-medium))]" :
+                            "bg-muted text-muted-foreground"
+                          )}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigateToTask(task.id);
+                          }}
+                        >
+                          {task.summary}
+                        </div>
+                      ))}
+                      {dayTasks.length > 2 && (
+                        <div className="text-[10px] text-muted-foreground pl-0.5 sm:pl-1">
+                          +{dayTasks.length - 2}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                ))}
-                
-                {/* Week days */}
-                {weekDays.map(day => {
-                  const dayTasks = getTasksForDate(day);
-                  const isToday = isSameDay(day, new Date());
-                  
-                  return (
-                    <div
-                      key={day.toISOString()}
-                      className={cn(
-                        "min-h-[120px] p-3 border border-border/20 cursor-pointer hover:bg-olive/5 transition-colors",
-                        isToday && "bg-olive/10 border-olive/30"
-                      )}
-                      onClick={() => setSelectedDate(day)}
-                    >
-                      <div className="text-lg font-semibold mb-2 text-center">
-                        {format(day, 'd')}
-                      </div>
-                      <div className="space-y-2">
-                        {dayTasks.map(task => (
-                          <div
-                            key={task.id}
-                            className={cn(
-                              "text-xs p-2 rounded-md cursor-pointer transition-colors border",
-                              task.completed ? "opacity-50 line-through" : "",
-                              task.priority === 'high' ? "bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20" :
-                              task.priority === 'medium' ? "bg-olive/10 text-olive border-olive/20 hover:bg-olive/20" :
-                              "bg-muted text-muted-foreground border-border hover:bg-muted/80"
-                            )}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigateToTask(task.id);
-                            }}
-                          >
-                            <div className="font-medium truncate">{task.summary}</div>
-                            <div className="flex items-center justify-between mt-1">
-                              <span className="text-xs opacity-70">
-                                {getAuthorName(task)}
-                              </span>
-                              {task.task_owner && (
-                                <span className="text-xs opacity-70">
-                                  → {task.task_owner}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                        {dayTasks.length === 0 && (
-                          <div className="text-xs text-muted-foreground/50 text-center py-2">
-                            No tasks
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
 
-        {/* Tasks without dates */}
-        <Card>
-          <CardContent className="p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Clock className="h-5 w-5 text-olive" />
-              Unscheduled Tasks
-            </h3>
-            
-            {tasksWithoutDates.length === 0 ? (
-              <p className="text-muted-foreground text-center py-4">
-                All tasks are scheduled! 🎉
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {tasksWithoutDates.map(task => (
-                  <Card key={task.id} className="p-4 hover:shadow-soft transition-shadow">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3 flex-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleToggleComplete(task)}
-                          className="p-0 h-auto hover:bg-transparent"
-                        >
-                          <CheckCircle2 className={cn(
-                            "h-5 w-5",
-                            task.completed ? "text-olive" : "text-muted-foreground hover:text-olive"
-                          )} />
-                        </Button>
-                        
+        {/* Selected Date Details */}
+        {selectedDate && (
+          <Card className="shadow-[var(--shadow-card)]">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold">
+                  {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedDate(null)}
+                >
+                  Close
+                </Button>
+              </div>
+              
+              {getTasksForDate(selectedDate).length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No tasks scheduled for this day
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {getTasksForDate(selectedDate).map(task => (
+                    <div
+                      key={task.id}
+                      onClick={() => navigateToTask(task.id)}
+                      className={cn(
+                        "p-3 rounded-[var(--radius-md)] border cursor-pointer hover:bg-muted/50 transition-colors",
+                        task.completed && "opacity-60"
+                      )}
+                    >
+                      <div className="flex items-start gap-2">
                         <div className="flex-1">
-                          <h4 
-                            className={cn(
-                              "font-medium text-sm cursor-pointer hover:text-olive",
-                              task.completed && "line-through text-muted-foreground"
-                            )}
-                            onClick={() => navigateToTask(task.id)}
-                          >
+                          <p className={cn(
+                            "font-medium text-sm",
+                            task.completed && "line-through"
+                          )}>
                             {task.summary}
-                          </h4>
-                          
-                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              <User className="h-3 w-3" />
-                              {getAuthorName(task)}
-                            </div>
-                            <div>{format(new Date(task.createdAt), "MMM d")}</div>
-                            <Badge variant="secondary" className="text-xs">
-                              {task.category}
-                            </Badge>
-                          </div>
+                          </p>
+                          {task.priority && (
+                            <p className="text-xs text-muted-foreground mt-1 capitalize">
+                              {task.priority} priority
+                            </p>
+                          )}
                         </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
                         {task.priority && (
-                          <Badge variant={getPriorityVariant(task.priority) as any} className="text-xs uppercase">
-                            {task.priority}
-                          </Badge>
+                          <div 
+                            className={cn(
+                              "w-1 h-12 rounded-full flex-shrink-0",
+                              task.priority === 'high' && "bg-[hsl(var(--priority-high))]",
+                              task.priority === 'medium' && "bg-[hsl(var(--priority-medium))]",
+                              task.priority === 'low' && "bg-[hsl(var(--priority-low))]"
+                            )}
+                          />
                         )}
-                        
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button variant="outline" size="sm" className="text-xs h-7">
-                              <Plus className="h-3 w-3 mr-1" />
-                              Date
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="end">
-                            <CalendarComponent
-                              mode="single"
-                              selected={undefined}
-                              onSelect={(date) => handleDateAssignment(task, date)}
-                              initialFocus
-                              className="pointer-events-auto"
-                            />
-                          </PopoverContent>
-                        </Popover>
                       </div>
                     </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
-    </main>
+    </div>
   );
 };
 
