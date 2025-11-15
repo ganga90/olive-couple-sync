@@ -23,8 +23,7 @@ export const HeroSection = () => {
         </h1>
         
         <p className="text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-          Type or speak whatever's on your mind—Olive auto-categorizes into lists, 
-          assigns owners & dates, and keeps you both in sync. Ask Olive to help with any task.
+          Brain-dump anything. Olive organizes, assigns, and syncs automatically.
         </p>
       </div>
 
