@@ -8,7 +8,6 @@ import { useSEO } from "@/hooks/useSEO";
 import { Input } from "@/components/ui/input";
 import { Link, useNavigate } from "react-router-dom";
 import { CreateListDialog } from "@/components/CreateListDialog";
-import { FloatingActionButton } from "@/components/FloatingActionButton";
 import { useAuth } from "@/providers/AuthProvider";
 import { 
   ShoppingCart, 
@@ -27,11 +26,10 @@ import {
   Book, 
   UtensilsCrossed,
   List as ListIcon,
-  Pencil,
+  ChevronRight,
   Trash2
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
 
 const getCategoryIcon = (category: string) => {
   const iconMap: Record<string, any> = {
@@ -108,125 +106,111 @@ const Lists = () => {
 
   if (!isAuthenticated) {
     return (
-      <main className="min-h-screen bg-gradient-soft">
-        <div className="container mx-auto px-4 py-8">
-          <div className="max-w-lg mx-auto text-center space-y-4">
-            <ListIcon className="h-16 w-16 mx-auto text-olive" />
-            <h1 className="text-2xl font-bold text-foreground">Lists</h1>
-            <p className="text-muted-foreground">Sign in to create new lists or manage your lists</p>
-            <Button onClick={() => navigate("/sign-in")} className="bg-gradient-olive text-white">
-              Sign In
-            </Button>
-          </div>
-        </div>
-      </main>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
+        <ListIcon className="h-16 w-16 text-primary mb-4" />
+        <h1 className="text-2xl font-semibold mb-2">Lists</h1>
+        <p className="text-muted-foreground mb-6">Sign in to manage your lists</p>
+        <Button onClick={() => navigate("/sign-in")}>Sign In</Button>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-soft">
-      <FloatingActionButton />
-      <section className="mx-auto max-w-2xl px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-semibold text-olive-dark">Lists</h1>
+    <div className="h-full overflow-y-auto">
+      <div className="px-4 py-6 space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-foreground">Lists</h1>
           <CreateListDialog onListCreated={refetch} />
         </div>
 
-        <div className="mb-6">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search lists..."
-            aria-label="Search lists"
-            className="border-olive/30 focus:border-olive focus:ring-olive/20 bg-white/50"
-          />
-        </div>
+        {/* Search */}
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search lists..."
+          className="rounded-[var(--radius-md)]"
+        />
 
+        {/* Lists */}
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
+          <div className="text-center py-8">
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          </div>
         ) : filteredLists.length === 0 ? (
-          <Card className="p-8 bg-white/50 border-olive/20 shadow-soft text-center">
-            <ListIcon className="h-12 w-12 text-olive/50 mx-auto mb-4" />
-            <p className="text-muted-foreground mb-4">
-              {query ? "No lists match your search." : "No lists yet. Create your first list to get organized!"}
-            </p>
-            {!query && <CreateListDialog onListCreated={refetch} />}
+          <Card className="shadow-[var(--shadow-card)]">
+            <CardContent className="p-8 text-center">
+              <ListIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground mb-4">
+                {query ? "No lists match your search." : "No lists yet. Create your first list!"}
+              </p>
+              {!query && <CreateListDialog onListCreated={refetch} />}
+            </CardContent>
           </Card>
         ) : (
           <div className="space-y-3">
-             {filteredLists.map((list) => {
-               const count = getListNoteCount(list.id);
-               const ListIconComponent = getCategoryIcon(list.name);
-               return (
-                <Card key={list.id} className="bg-white/50 border-olive/20 shadow-[var(--shadow-raised)] transition-all duration-200 hover:shadow-soft group">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <Link 
-                        to={`/lists/${encodeURIComponent(list.id)}`} 
-                        aria-label={`Open ${list.name} list`}
-                        className="flex items-center gap-3 flex-1 hover:text-olive"
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-olive/10 border border-olive/20">
-                          <ListIconComponent className="h-5 w-5 text-olive" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="font-medium text-olive-dark flex items-center gap-2">
+            {filteredLists.map((list) => {
+              const count = getListNoteCount(list.id);
+              const ListIconComponent = getCategoryIcon(list.name);
+              return (
+                <Card 
+                  key={list.id} 
+                  className="shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-raised)] transition-shadow group"
+                >
+                  <CardContent className="p-0">
+                    <Link 
+                      to={`/lists/${encodeURIComponent(list.id)}`}
+                      className="flex items-center gap-3 p-4 w-full active:scale-[0.98] transition-transform"
+                    >
+                      {/* Icon */}
+                      <div className="flex h-12 w-12 items-center justify-center rounded-[var(--radius-md)] bg-primary/10">
+                        <ListIconComponent className="h-6 w-6 text-primary" />
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-foreground truncate">
                             {list.name}
-                            {!list.is_manual && (
-                              <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600">
-                                Auto
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {count} {count === 1 ? "item" : "items"}
-                            {list.description && (
-                              <span className="ml-2">• {list.description}</span>
-                            )}
-                          </div>
+                          </h3>
+                          {!list.is_manual && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-[hsl(var(--ai-accent))] text-white">
+                              AI
+                            </Badge>
+                          )}
                         </div>
-                        <span className="text-olive">›</span>
-                      </Link>
-                      
-                      {/* Action buttons - only show for manual lists */}
-                      {list.is_manual && (
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              // TODO: Add edit list functionality
-                              toast.info("Edit functionality coming soon!");
-                            }}
-                            className="h-8 w-8 p-0 hover:bg-olive/10"
-                          >
-                            <Pencil className="h-3 w-3 text-olive" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
+                        <p className="text-xs text-muted-foreground">
+                          {count} {count === 1 ? "item" : "items"}
+                          {list.description && ` • ${list.description}`}
+                        </p>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2">
+                        {list.is_manual && (
+                          <button
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
                               handleDeleteList(list.id, list.name);
                             }}
-                            className="h-8 w-8 p-0 hover:bg-red-50 hover:text-red-600"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-destructive/10 rounded-[var(--radius-sm)]"
+                            aria-label="Delete list"
                           >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </button>
+                        )}
+                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                    </Link>
                   </CardContent>
                 </Card>
-               );
-             })}
+              );
+            })}
           </div>
         )}
-      </section>
-    </main>
+      </div>
+    </div>
   );
 };
 
