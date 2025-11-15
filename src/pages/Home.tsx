@@ -100,6 +100,28 @@ const Home = () => {
             </p>
           </div>
 
+          {/* Input Box */}
+          <div 
+            onClick={() => setIsInputOpen(true)}
+            className="bg-card border rounded-[var(--radius-lg)] p-4 shadow-[var(--shadow-card)] cursor-pointer hover:shadow-[var(--shadow-raised)] transition-shadow active:scale-[0.99]"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <p className="text-muted-foreground text-base">
+                  Drop a brain-dump here...
+                </p>
+              </div>
+              <Plus className="h-5 w-5 text-muted-foreground" />
+            </div>
+          </div>
+
+          {/* Guidance Hint */}
+          <div className="text-center px-2">
+            <p className="text-xs text-muted-foreground">
+              Try: <span className="italic">"dinner with Luca next Wed 7pm, ask Almu about tickets"</span>
+            </p>
+          </div>
+
           {/* Focus Widget */}
           <Card className="shadow-[var(--shadow-card)]">
             <CardContent className="p-4">
@@ -148,13 +170,6 @@ const Home = () => {
             </CardContent>
           </Card>
 
-          {/* Guidance Hint */}
-          <div className="text-center px-2">
-            <p className="text-xs text-muted-foreground">
-              Try: <span className="italic">"dinner with Luca next Wed 7pm, ask Almu about tickets"</span>
-            </p>
-          </div>
-
           {/* Motivation Link */}
           {completedThisWeek > 0 && (
             <button
@@ -168,17 +183,6 @@ const Home = () => {
             </button>
           )}
         </div>
-      </div>
-
-      {/* Fixed Input Button - Bottom (Thumb Zone) */}
-      <div className="fixed bottom-20 right-6 z-30">
-        <Button
-          onClick={() => setIsInputOpen(true)}
-          size="lg"
-          className="h-14 w-14 rounded-full shadow-[var(--shadow-raised)] hover:shadow-xl transition-all hover:scale-110"
-        >
-          <Plus className="h-6 w-6" />
-        </Button>
       </div>
 
       {/* Input Dialog */}
