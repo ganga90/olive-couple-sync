@@ -69,10 +69,10 @@ export const PhoneNumberField = () => {
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Phone className="h-5 w-5 text-olive" />
-          <h3 className="text-lg font-semibold text-olive-dark">WhatsApp Integration - COMING SOON!</h3>
+          <h3 className="text-lg font-semibold text-olive-dark">WhatsApp Integration 🫒</h3>
         </div>
         <p className="text-sm text-muted-foreground">
-          Add your phone number to receive and send messages to Olive via WhatsApp
+          Connect your WhatsApp to chat with Olive, dump brain notes, and get instant updates about your tasks and lists!
         </p>
         <div className="space-y-2">
           <Label htmlFor="phone-number">Phone Number</Label>
