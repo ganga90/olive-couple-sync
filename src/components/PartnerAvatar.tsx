@@ -1,0 +1,63 @@
+import React from 'react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { cn } from '@/lib/utils';
+
+interface PartnerAvatarProps {
+  name?: string;
+  imageUrl?: string;
+  isActive?: boolean;
+  lastActiveMinutesAgo?: number;
+  className?: string;
+}
+
+export const PartnerAvatar: React.FC<PartnerAvatarProps> = ({
+  name,
+  imageUrl,
+  isActive = false,
+  lastActiveMinutesAgo,
+  className
+}) => {
+  const getInitials = (name?: string) => {
+    if (!name) return '?';
+    const parts = name.split(' ');
+    if (parts.length >= 2) {
+      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+  };
+
+  const getStatusColor = () => {
+    if (isActive) return 'ring-[hsl(var(--status-active))]';
+    return 'ring-[hsl(var(--status-offline))]';
+  };
+
+  const getTooltipText = () => {
+    if (!name) return 'No partner';
+    if (isActive) return `${name} (Active)`;
+    if (lastActiveMinutesAgo !== undefined) {
+      if (lastActiveMinutesAgo < 60) {
+        return `${name} (${lastActiveMinutesAgo}m ago)`;
+      }
+      const hours = Math.floor(lastActiveMinutesAgo / 60);
+      return `${name} (${hours}h ago)`;
+    }
+    return `${name} (Offline)`;
+  };
+
+  return (
+    <div className={cn("relative", className)} title={getTooltipText()}>
+      <Avatar className={cn(
+        "h-8 w-8 ring-2 ring-offset-1 ring-offset-background transition-all",
+        getStatusColor()
+      )}>
+        {imageUrl && <AvatarImage src={imageUrl} alt={name || 'Partner'} />}
+        <AvatarFallback className="text-xs bg-muted text-muted-foreground">
+          {getInitials(name)}
+        </AvatarFallback>
+      </Avatar>
+      {isActive && (
+        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[hsl(var(--status-active))] rounded-full border-2 border-background" />
+      )}
+    </div>
+  );
+};

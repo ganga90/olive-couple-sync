@@ -1,60 +1,56 @@
 import { NavLink } from "react-router-dom";
-import { Home, ListTodo, User, Calendar } from "lucide-react";
+import { Home, ListTodo, Calendar } from "lucide-react";
 
 const MobileTabBar = () => {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 md:hidden"
+      className="fixed inset-x-0 bottom-0 z-50 border-t bg-background shadow-[var(--shadow-bottom-bar)] md:hidden"
     >
-      <div className="mx-auto flex max-w-5xl items-stretch px-4 pb-[env(safe-area-inset-bottom)]">
+      <div className="mx-auto flex max-w-5xl items-center justify-center gap-4 px-8 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
         <NavLink
-          to="/"
+          to="/home"
           className={({ isActive }) =>
-            `flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs transition-colors ${
-              isActive ? "text-foreground" : "text-muted-foreground"
+            `flex flex-col items-center justify-center gap-1 py-1 px-6 rounded-[var(--radius-md)] transition-all ${
+              isActive 
+                ? "text-primary" 
+                : "text-muted-foreground"
             }`
           }
           aria-label="Home"
         >
-          <Home className="h-5 w-5" aria-hidden="true" />
-          <span>Home</span>
+          <Home className="h-6 w-6" aria-hidden="true" strokeWidth={2.5} />
+          <span className="text-xs font-medium">Home</span>
         </NavLink>
+        
         <NavLink
           to="/lists"
           className={({ isActive }) =>
-            `flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs transition-colors ${
-              isActive ? "text-foreground" : "text-muted-foreground"
+            `flex flex-col items-center justify-center gap-1 py-1 px-6 rounded-[var(--radius-md)] transition-all ${
+              isActive 
+                ? "text-primary" 
+                : "text-muted-foreground"
             }`
           }
           aria-label="Lists"
         >
-          <ListTodo className="h-5 w-5" aria-hidden="true" />
-          <span>Lists</span>
+          <ListTodo className="h-6 w-6" aria-hidden="true" strokeWidth={2.5} />
+          <span className="text-xs font-medium">Lists</span>
         </NavLink>
+        
         <NavLink
           to="/calendar"
           className={({ isActive }) =>
-            `flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs transition-colors ${
-              isActive ? "text-foreground" : "text-muted-foreground"
+            `flex flex-col items-center justify-center gap-1 py-1 px-6 rounded-[var(--radius-md)] transition-all ${
+              isActive 
+                ? "text-primary" 
+                : "text-muted-foreground"
             }`
           }
           aria-label="Calendar"
         >
-          <Calendar className="h-5 w-5" aria-hidden="true" />
-          <span>Calendar</span>
-        </NavLink>
-        <NavLink
-          to="/profile"
-          className={({ isActive }) =>
-            `flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs transition-colors ${
-              isActive ? "text-foreground" : "text-muted-foreground"
-            }`
-          }
-          aria-label="Profile"
-        >
-          <User className="h-5 w-5" aria-hidden="true" />
-          <span>Profile</span>
+          <Calendar className="h-6 w-6" aria-hidden="true" strokeWidth={2.5} />
+          <span className="text-xs font-medium">Calendar</span>
         </NavLink>
       </div>
     </nav>

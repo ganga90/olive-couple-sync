@@ -57,11 +57,19 @@ All colors MUST be HSL.
     --gradient-olive: linear-gradient(135deg, hsl(75 35% 45%), hsl(85 40% 55%));
     --gradient-soft: linear-gradient(180deg, hsl(75 25% 98%), hsl(75 15% 96%));
     
-    /* Shadows - Neumorphism-lite */
-    --shadow-olive: 0 4px 20px hsl(75 35% 45% / 0.15);
-    --shadow-soft: 0 2px 12px hsl(75 15% 60% / 0.1);
-    --shadow-raised: 0 2px 8px hsl(75 15% 60% / 0.08), 0 1px 3px hsl(75 15% 60% / 0.06);
-    --shadow-inset: inset 0 2px 4px hsl(75 15% 60% / 0.06);
+    /* Shadows - Mobile-friendly, subtle */
+    --shadow-card: 0 1px 3px hsl(0 0% 0% / 0.06), 0 1px 2px hsl(0 0% 0% / 0.04);
+    --shadow-raised: 0 2px 8px hsl(0 0% 0% / 0.08), 0 1px 3px hsl(0 0% 0% / 0.06);
+    --shadow-bottom-bar: 0 -2px 8px hsl(0 0% 0% / 0.04);
+    
+    /* Border Radius - Soft, consistent */
+    --radius-sm: 0.5rem;
+    --radius-md: 0.75rem;
+    --radius-lg: 1rem;
+    
+    /* Sync Status Colors */
+    --status-active: 150 30% 28%;     /* Deep Olive Green - Active/Synced */
+    --status-offline: 0 0% 60%;       /* Soft Grey - Offline */
 
     --sidebar-background: 75 15% 96%;
     --sidebar-foreground: 75 15% 25%;
