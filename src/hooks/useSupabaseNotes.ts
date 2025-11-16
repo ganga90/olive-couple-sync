@@ -14,6 +14,7 @@ export type SupabaseNote = {
   items?: string[];
   tags?: string[];
   due_date?: string;
+  reminder_time?: string | null;
   completed: boolean;
   priority?: 'low' | 'medium' | 'high';
   task_owner?: string | null;
@@ -201,6 +202,10 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
             case 'dueDate':
             case 'due_date': // Handle both camelCase and snake_case
               supabaseUpdates.due_date = value;
+              break;
+            case 'reminderTime':
+            case 'reminder_time': // Handle both camelCase and snake_case
+              supabaseUpdates.reminder_time = value;
               break;
             case 'coupleId':
             case 'couple_id': // Handle both camelCase and snake_case

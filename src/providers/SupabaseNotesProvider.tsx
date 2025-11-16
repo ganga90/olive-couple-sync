@@ -83,6 +83,7 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
     summary: supabaseNote.summary,
     category: mapAICategory(supabaseNote.category),
     dueDate: supabaseNote.due_date,
+    reminder_time: supabaseNote.reminder_time,
     addedBy: getAuthorName(supabaseNote.author_id || ""),
     createdAt: supabaseNote.created_at,
     updatedAt: supabaseNote.updated_at,
