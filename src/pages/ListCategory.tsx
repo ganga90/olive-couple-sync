@@ -109,87 +109,89 @@ const ListCategory = () => {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gradient-soft">
-        <section className="mx-auto max-w-2xl px-4 py-6">
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        </section>
-      </main>
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3"></div>
+          <p className="text-sm text-muted-foreground">Loading list...</p>
+        </div>
+      </div>
     );
   }
 
   if (!currentList) {
     return (
-      <main className="min-h-screen bg-gradient-soft">
-        <section className="mx-auto max-w-2xl px-4 py-6">
-          <Button 
-            variant="ghost" 
-            onClick={() => navigate('/lists')} 
-            aria-label="Go back to lists"
-            className="hover:bg-olive/10 hover:text-olive mb-4"
-          >
-            <ArrowLeft className="h-5 w-5 mr-2" />
-            Back to Lists
-          </Button>
-          <Card className="p-6 bg-white/50 border-olive/20 shadow-soft text-center">
+      <div className="h-full flex items-center justify-center px-4">
+        <Card className="max-w-md w-full shadow-[var(--shadow-card)] border-border/50">
+          <CardContent className="p-8 text-center">
+            <Button 
+              variant="ghost" 
+              onClick={() => navigate('/lists')} 
+              aria-label="Go back to lists"
+              className="mb-4"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Lists
+            </Button>
             <p className="text-sm text-muted-foreground">List not found.</p>
-          </Card>
-        </section>
-      </main>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-soft">
+    <div className="h-full overflow-y-auto pb-6">
       <FloatingActionButton />
-      <section className="mx-auto max-w-2xl px-4 py-6">
-        <header className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button 
-              variant="ghost" 
-              onClick={() => navigate(-1)} 
-              aria-label="Go back"
-              className="hover:bg-olive/10 hover:text-olive"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-xl font-semibold text-olive-dark flex items-center gap-2">
+      <div className="px-4 pt-6 max-w-2xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-start gap-3">
+          <Button 
+            variant="ghost" 
+            size="icon"
+            onClick={() => navigate(-1)} 
+            aria-label="Go back"
+            className="flex-shrink-0 mt-0.5"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <h1 className="text-xl md:text-2xl font-bold text-foreground truncate">
                 {currentList.name}
-                {!currentList.is_manual && (
-                  <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600">
-                    Auto
-                  </Badge>
-                )}
               </h1>
-              {currentList.description && (
-                <p className="text-sm text-muted-foreground">{currentList.description}</p>
+              {!currentList.is_manual && (
+                <Badge variant="secondary" className="text-xs bg-accent/80 text-accent-foreground flex-shrink-0">
+                  Auto
+                </Badge>
               )}
             </div>
+            {currentList.description && (
+              <p className="text-sm text-muted-foreground">{currentList.description}</p>
+            )}
           </div>
           
           {/* Edit/Delete buttons for manual lists */}
           {currentList.is_manual && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 flex-shrink-0">
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon"
                 onClick={openEditDialog}
-                className="border-olive/30 hover:bg-olive/10"
               >
-                <Pencil className="h-4 w-4 mr-1" />
-                Edit
+                <Pencil className="h-4 w-4" />
               </Button>
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon"
                 onClick={handleDeleteList}
-                className="border-red-200 text-red-600 hover:bg-red-50"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>
           )}
-        </header>
+        </div>
 
         {/* Add Note Button */}
         <div className="mb-6">
