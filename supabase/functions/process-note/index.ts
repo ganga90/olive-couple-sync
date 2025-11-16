@@ -79,56 +79,57 @@ Items Extraction:
 
 Due Date Intelligence (CRITICAL - Use actual date calculation):
 - Calculate the current date and time when processing
-- "in X hours" or "in X hour" → add X hours to current time in ISO format
-- "in X minutes" or "in X minute" → add X minutes to current time in ISO format  
-- "in X days" or "in X day" → add X days to current time at 09:00 in ISO format
-- "tonight" → today's date at 23:59 in ISO format
-- "tomorrow" → tomorrow's date at 09:00 in ISO format  
-- "Friday", "next Friday" → calculate the next occurrence of that weekday at 09:00 in ISO format
-- "next week" → 7 days from now at 09:00 in ISO format
-- "next month" → same day next month at 09:00 in ISO format
-- "monthly", "weekly" → set as recurring (note in tags) and set first occurrence
-- CRITICAL: Always return actual ISO date strings (YYYY-MM-DDTHH:mm:ss.sssZ), never relative text
-- CRITICAL: Calculate dates based on current time: ${new Date().toISOString()}
+- "today", "tonight" → use current date with appropriate time
+- "tomorrow" → current date + 1 day
+- "next week" → current date + 7 days
+- "next month" → current date + 30 days
+- Specific days like "Friday", "Monday" → calculate the next occurrence of that day
+- Specific dates like "March 15", "12/25" → use the mentioned date with current or next year
+- Times like "at 3pm", "by 5:00" → include the time component
+- Always return dates in ISO 8601 format: YYYY-MM-DDTHH:MM:SS.SSSZ
 
-Reminder vs Due Date (CRITICAL):
-- If user says "remind me" → set ONLY reminder_time (not due_date)
-- If user mentions a deadline/due date → set ONLY due_date (not reminder_time)
-- Only set both if explicitly mentioned
-- Examples:
-  * "remind me to call doctor in 2 minutes" → reminder_time set, due_date null
-  * "project due tomorrow" → due_date set, reminder_time null
-  * "remind me tomorrow about the meeting due on Friday" → both set
-- CRITICAL: For reminders, extract the time and add priority: high
+Recurrence Detection:
+- Look for keywords: "every", "daily", "weekly", "monthly", "yearly", "recurring"
+- If found, extract frequency and interval:
+  - "every day" / "daily" → {frequency: "daily", interval: 1}
+  - "every week" / "weekly" → {frequency: "weekly", interval: 1}
+  - "every month" / "monthly" → {frequency: "monthly", interval: 1}
+  - "every 2 weeks" → {frequency: "weekly", interval: 2}
+  - "every 3 months" → {frequency: "monthly", interval: 3}
+- If no recurrence keywords, leave null
 
-Date Calculation Examples (assuming today is ${new Date().toDateString()}):
-- Input: "next Friday" → Calculate which date is the next Friday and return as "2024-XX-XXTXX:XX:XX.XXXZ"
-- Input: "tomorrow" → Return "${new Date(Date.now() + 86400000).toISOString().split('T')[0]}T09:00:00.000Z"
-- Input: "tonight" → Return "${new Date().toISOString().split('T')[0]}T23:59:00.000Z"
+Priority Assignment:
+- High: urgent, ASAP, important, critical, today, tonight
+- Medium: soon, this week, next few days
+- Low: someday, eventually, when possible, no urgency
 
-Priority Detection:
-- Bills, rent, flights, passport renewals → HIGH priority
-- Regular shopping, cooking, general tasks → MEDIUM priority
-- Ideas, suggestions, optional items → LOW priority
+Reminder Time Intelligence:
+- If user explicitly mentions "remind me" with a time, set reminder_time
+- If user says "remind me the day before", calculate reminder_time as due_date - 1 day
+- If user says "remind me 2 hours before", calculate reminder_time as due_date - 2 hours
+- If no explicit reminder request, leave reminder_time as null
+- Always return in ISO 8601 format: YYYY-MM-DDTHH:MM:SS.SSSZ
 
-Formatting Output:
-**CRITICAL:** If multiple distinct tasks are detected, return a JSON object with "multiple": true and "notes" array:
+**If multiple notes detected, return this JSON structure:**
 {
-  "multiple": true,
   "notes": [
     {
-      "summary": "task 1 summary",
-      "category": "category1", 
+      "summary": "concise summary 1 (max 100 characters)",
+      "category": "assigned category 1 (lowercase, use underscores)",
       "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
       "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null",
-      "priority": "high/medium/low",
+      "recurrence": {
+        "frequency": "daily/weekly/monthly/yearly",
+        "interval": 1
+      } or null,
+      "priority": "high/medium/low", 
       "tags": ["tag1"],
       "items": ["item1", "item2"],
       "task_owner": "name or null"
     },
     {
-      "summary": "task 2 summary", 
-      "category": "category2",
+      "summary": "concise summary 2 (max 100 characters)",
+      "category": "assigned category 2 (lowercase, use underscores)",
       "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
       "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null",
       "priority": "high/medium/low", 
@@ -158,6 +159,56 @@ Formatting Output:
 }
 
 Maintain a warm, helpful, and respectful tone, supporting the couple's shared life organization with intelligence and empathy.`;
+
+const SIMPLIFIED_PROMPT = `You are Olive Assistant. Process this note and return structured information.
+
+Split into multiple notes if there are distinct tasks separated by semicolons, "and", or topic changes.
+
+For each note, extract:
+- summary: concise title
+- category: personal, groceries, shopping, travel, entertainment, date_ideas, home_improvement, reminder, or health
+- priority: low, medium, or high
+- due_date: ISO format if mentioned
+- items: array of items (for shopping/groceries)
+- task_owner: name if assigned to someone specific
+- reminder_time: ISO format if specified
+- recurrence: {frequency: "daily"/"weekly"/"monthly"/"yearly", interval: number} if recurring
+
+Return ONLY valid JSON: {"notes": [...]} for multiple tasks or single note object for one task.`;
+
+// Helper function to call Gemini API
+async function callGeminiAPI(prompt: string, text: string, maxOutputTokens: number = 1200) {
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+  if (!GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY not found');
+  }
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{
+          text: `${prompt}\n\nProcess this note:\n"${text}"\n\nRespond with ONLY a valid JSON object, no other text.`
+        }]
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens,
+      }
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Gemini API error:', errorText);
+    throw new Error('Failed to process note with AI');
+  }
+
+  return await response.json();
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -214,42 +265,37 @@ serve(async (req) => {
       ? `\n\nExisting lists available:\n${existingLists.map(list => `- ${list.name}${list.description ? ` (${list.description})` : ''}`).join('\n')}\n\nWhen categorizing, consider if this note belongs to one of these existing lists. If it matches an existing list's purpose, use a category that would map to that list.`
       : '';
 
-    // Call Gemini API with enhanced context
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: `${SYSTEM_PROMPT}${listsContext}\n\nProcess this note:\n"${text}"\n\nRespond with ONLY a valid JSON object, no other text.`
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 1200,
-        }
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Gemini API error:', errorText);
-      throw new Error('Failed to process note with AI');
+    // Try with full prompt first, then retry with simplified prompt if token limit hit
+    let data;
+    let aiResponse;
+    
+    try {
+      // First attempt with full prompt and lists context
+      console.log('Attempting AI processing with full prompt...');
+      data = await callGeminiAPI(SYSTEM_PROMPT + listsContext, text);
+      console.log('Gemini response (full prompt):', data);
+      
+      // Check if response was truncated
+      if (data.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+        console.warn('Token limit hit with full prompt, retrying with simplified prompt...');
+        
+        // Retry with simplified prompt (no lists context, no examples)
+        data = await callGeminiAPI(SIMPLIFIED_PROMPT, text, 800);
+        console.log('Gemini response (simplified prompt):', data);
+      }
+    } catch (error) {
+      console.error('Error calling Gemini API:', error);
+      throw error;
     }
-
-    const data = await response.json();
-    console.log('Gemini response:', data);
     
     if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
       throw new Error('Invalid response from Gemini API');
     }
 
-    // Check if response was truncated or empty
+    // Check if still hitting token limit after retry
     if (data.candidates[0].finishReason === 'MAX_TOKENS') {
-      console.error('AI response was truncated due to token limit');
-      throw new Error('AI response was incomplete. Please try with a shorter message.');
+      console.error('AI response was truncated even with simplified prompt');
+      throw new Error('Message too complex to process. Please try breaking it into smaller parts.');
     }
 
     // Validate that we have the parts array with content
@@ -258,7 +304,7 @@ serve(async (req) => {
       throw new Error('AI returned an empty response. Please try again.');
     }
 
-    const aiResponse = data.candidates[0].content.parts[0].text;
+    aiResponse = data.candidates[0].content.parts[0].text;
     console.log('AI response text:', aiResponse);
 
     // Parse the JSON response - handle markdown code blocks
