@@ -25,31 +25,37 @@ function standardizePhoneNumber(rawNumber: string): string {
   return cleaned;
 }
 
-// Call Gemini API
-async function callGemini(systemPrompt: string, userMessage: string, temperature = 0.7): Promise<any> {
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API');
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API key not configured');
+// Call Lovable AI
+async function callAI(systemPrompt: string, userMessage: string, temperature = 0.7): Promise<string> {
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY not configured');
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: systemPrompt + '\n\nUser message: ' + userMessage }] }],
-        generationConfig: { temperature, maxOutputTokens: 1000 }
-      })
-    }
-  );
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage }
+      ],
+      temperature,
+      max_tokens: 1000
+    })
+  });
 
   if (!response.ok) {
-    console.error('Gemini API error:', await response.text());
-    throw new Error('Gemini API call failed');
+    const errorText = await response.text();
+    console.error('Lovable AI error:', response.status, errorText);
+    throw new Error(`AI call failed: ${response.status}`);
   }
 
   const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('No response from Gemini');
+  const text = data.choices?.[0]?.message?.content;
+  if (!text) throw new Error('No response from AI');
   return text;
 }
 
@@ -254,7 +260,7 @@ serve(async (req) => {
     }
 
     // IDLE state: Classify intent
-    const intentResponse = await callGemini(INTENT_CLASSIFIER_PROMPT, messageBody, 0.3);
+    const intentResponse = await callAI(INTENT_CLASSIFIER_PROMPT, messageBody, 0.3);
     let intent: any;
     
     try {
@@ -442,7 +448,7 @@ ${tasksContext}
 
 User question: ${messageBody}`;
       
-      const answer = await callGemini(consultPrompt, '', 0.7);
+      const answer = await callAI(consultPrompt, '', 0.7);
       
       // Add quick action suggestions
       const quickActions = '\n\n💡 Try:\n• "What\'s urgent?"\n• "Show recent tasks"\n• Send 📍 location for location-based tasks';
@@ -460,7 +466,7 @@ If this seems like it might be a task or reminder (even if unclear), respond war
 
 Otherwise, respond warmly and briefly (1-2 sentences), and gently remind them you can help organize tasks or answer questions about their to-do list.`;
       
-      const reply = await callGemini(chatPrompt, messageBody, 0.8);
+      const reply = await callAI(chatPrompt, messageBody, 0.8);
       
       const helpHint = '\n\n💬 You can also:\n• Share 📍 location\n• Send 📸 images\n• Voice note 🎤';
 
