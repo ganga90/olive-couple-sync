@@ -34,30 +34,71 @@ serve(async (req) => {
 
     console.log('Checking for reminders between:', now.toISOString(), 'and', fiveMinutesFromNow.toISOString());
 
-    const { data: dueNotes, error: notesError } = await supabase
+    const { data: explicitReminders, error: notesError } = await supabase
       .from('clerk_notes')
-      .select('id, summary, reminder_time, author_id, tags, category, recurrence_frequency, recurrence_interval, last_reminded_at')
+      .select('id, summary, reminder_time, author_id, tags, category, recurrence_frequency, recurrence_interval, last_reminded_at, due_date, auto_reminders_sent')
       .not('reminder_time', 'is', null)
       .lte('reminder_time', fiveMinutesFromNow.toISOString())
       .gte('reminder_time', now.toISOString())
       .eq('completed', false);
 
     if (notesError) {
-      console.error('Error fetching due notes:', notesError);
+      console.error('Error fetching explicit reminders:', notesError);
       return new Response(
         JSON.stringify({ error: 'Failed to fetch notes' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
-    console.log(`Found ${dueNotes?.length || 0} notes due for reminders`);
+    console.log(`Found ${explicitReminders?.length || 0} notes with explicit reminders`);
 
-    if (!dueNotes || dueNotes.length === 0) {
+    // Find notes with due_date for automatic reminders (24h and 2h before)
+    const { data: dueDateNotes, error: dueDateError } = await supabase
+      .from('clerk_notes')
+      .select('id, summary, due_date, author_id, tags, category, auto_reminders_sent')
+      .not('due_date', 'is', null)
+      .eq('completed', false);
+
+    if (dueDateError) {
+      console.error('Error fetching due date notes:', dueDateError);
+    }
+
+    console.log(`Found ${dueDateNotes?.length || 0} notes with due dates to check for automatic reminders`);
+
+    // Filter notes that need 24h or 2h reminders
+    const autoReminders: any[] = [];
+    if (dueDateNotes && dueDateNotes.length > 0) {
+      for (const note of dueDateNotes) {
+        const dueDate = new Date(note.due_date);
+        const timeDiff = dueDate.getTime() - now.getTime();
+        const hoursUntilDue = timeDiff / (1000 * 60 * 60);
+        
+        const alreadySent = note.auto_reminders_sent || [];
+        
+        // Check if we should send 24h reminder (23.9 to 24.1 hours before)
+        if (hoursUntilDue >= 23.9 && hoursUntilDue <= 24.1 && !alreadySent.includes('24h')) {
+          autoReminders.push({ ...note, reminder_type: '24h', reminder_message: 'in 24 hours' });
+        }
+        // Check if we should send 2h reminder (1.9 to 2.1 hours before)
+        else if (hoursUntilDue >= 1.9 && hoursUntilDue <= 2.1 && !alreadySent.includes('2h')) {
+          autoReminders.push({ ...note, reminder_type: '2h', reminder_message: 'in 2 hours' });
+        }
+      }
+    }
+
+    console.log(`Found ${autoReminders.length} notes needing automatic due date reminders`);
+
+    // Combine both types of reminders
+    const allReminders = [...(explicitReminders || []), ...autoReminders];
+    
+    if (allReminders.length === 0) {
       return new Response(
         JSON.stringify({ message: 'No reminders to send', count: 0 }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const dueNotes = allReminders;
 
     let sentCount = 0;
     const errors: string[] = [];
@@ -84,10 +125,10 @@ serve(async (req) => {
         continue;
       }
 
-      // Prepare reminder message
+      // Prepare reminder message with due date context
       const reminderText = notes.length === 1
-        ? `⏰ Here's your reminder: "${notes[0].summary}"\n\nLet me know if you have completed it or if you want me to remind you later! 🙂`
-        : `⏰ Here are your ${notes.length} reminders:\n\n${notes.map((n, i) => `${i + 1}. ${n.summary}`).join('\n')}\n\nLet me know which ones you've completed or if you want me to remind you later! 🙂`;
+        ? `⏰ ${notes[0].reminder_type ? `Reminder: "${notes[0].summary}" is due ${notes[0].reminder_message}` : `Here's your reminder: "${notes[0].summary}"`}\n\nLet me know if you have completed it or if you want me to remind you later! 🙂`
+        : `⏰ You have ${notes.length} reminders:\n\n${notes.map((n, i) => `${i + 1}. ${n.summary}${n.reminder_type ? ` (due ${n.reminder_message})` : ''}`).join('\n')}\n\nLet me know which ones you've completed or if you want me to remind you later! 🙂`;
 
       // Send WhatsApp message via Twilio
       try {
@@ -125,8 +166,14 @@ serve(async (req) => {
             updated_at: new Date().toISOString()
           };
 
-          // Calculate next reminder time for recurring reminders
-          if (note.recurrence_frequency && note.recurrence_frequency !== 'none' && note.reminder_time) {
+          // If this is an automatic due date reminder, track it
+          if (note.reminder_type) {
+            const alreadySent = note.auto_reminders_sent || [];
+            updateData.auto_reminders_sent = [...alreadySent, note.reminder_type];
+            console.log(`Marked ${note.reminder_type} reminder as sent for note ${note.id}`);
+          }
+          // Handle recurring explicit reminders
+          else if (note.recurrence_frequency && note.recurrence_frequency !== 'none' && note.reminder_time) {
             const currentReminder = new Date(note.reminder_time);
             const interval = note.recurrence_interval || 1;
             let nextReminder = new Date(currentReminder);
@@ -148,8 +195,8 @@ serve(async (req) => {
 
             updateData.reminder_time = nextReminder.toISOString();
             console.log(`Scheduled next recurring reminder for note ${note.id}: ${nextReminder.toISOString()}`);
-          } else {
-            // For non-recurring reminders, clear the reminder_time after sending
+          } else if (note.reminder_time) {
+            // For non-recurring explicit reminders, clear the reminder_time after sending
             updateData.reminder_time = null;
           }
 
