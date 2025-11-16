@@ -132,16 +132,18 @@ serve(async (req) => {
     const { data: profile, error: profileError } = await supabase
       .from('clerk_profiles')
       .select('id, display_name')
-      .eq('whatsapp_id', fromNumber)
+      .eq('phone_number', fromNumber)
       .single();
 
     if (profileError || !profile) {
+      console.error('Profile lookup error:', profileError);
       return new Response(
         '<?xml version="1.0" encoding="UTF-8"?><Response><Message>👋 Hi! To use Olive via WhatsApp, please link your account first:\n\n1. Open the Olive app\n2. Go to Profile/Settings\n3. Tap "Link WhatsApp"\n4. Send the token here\n\nThen I can help organize your tasks!</Message></Response>',
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
       );
     }
 
+    console.log('Authenticated user:', profile.id, profile.display_name);
     const userId = profile.id;
 
     // Get or create session
@@ -217,25 +219,60 @@ serve(async (req) => {
         );
       }
 
-      const taskSummary = processData.summary || 'Task';
+      const taskSummary = processData.summary || 'your task';
+      const taskCategory = processData.category ? ` in ${processData.category}` : '';
       return new Response(
-        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Got it! I've added "${taskSummary}" to your tasks.</Message></Response>`,
+        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Saved! I've added "${taskSummary}"${taskCategory} to your list.</Message></Response>`,
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
       );
 
     } else if (intent.intent === 'CONSULTATION') {
+      // Fetch user's tasks and couple info
       const { data: tasks } = await supabase
         .from('clerk_notes')
-        .select('summary, due_date, completed, priority, category')
+        .select('summary, due_date, completed, priority, category, list_id, task_owner')
         .eq('author_id', userId)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(20);
 
-      const tasksContext = tasks?.length 
-        ? `User's recent tasks:\n${tasks.map(t => `- ${t.summary} (${t.category}, ${t.completed ? 'Done' : 'Pending'})`).join('\n')}`
-        : 'User has no tasks yet.';
+      const { data: lists } = await supabase
+        .from('clerk_lists')
+        .select('id, name')
+        .eq('author_id', userId);
 
-      const consultPrompt = `You are Olive, a helpful task assistant. Based on the user's tasks, answer their question concisely (max 2-3 sentences).\n\n${tasksContext}\n\nUser question: ${messageBody}`;
+      const { data: coupleMembers } = await supabase
+        .from('clerk_couple_members')
+        .select('couple_id')
+        .eq('user_id', userId)
+        .limit(1)
+        .single();
+
+      let tasksContext = 'User has no tasks yet.';
+      if (tasks?.length) {
+        const urgentTasks = tasks.filter(t => t.priority === 'high' && !t.completed);
+        const recentTasks = tasks.slice(0, 5);
+        const listMap = new Map(lists?.map(l => [l.id, l.name]) || []);
+        
+        tasksContext = `
+User's tasks:
+- Total tasks: ${tasks.length}
+- Urgent (high priority): ${urgentTasks.length}
+- Completed: ${tasks.filter(t => t.completed).length}
+
+Recent tasks:
+${recentTasks.map(t => {
+  const listName = t.list_id ? listMap.get(t.list_id) : 'General';
+  return `- ${t.summary} [${t.category}${listName ? ', ' + listName : ''}] ${t.completed ? '✓' : t.priority === 'high' ? '⚡' : ''}`;
+}).join('\n')}
+`.trim();
+      }
+
+      const consultPrompt = `You are Olive, a helpful task management assistant. Answer the user's question about their tasks concisely and naturally (2-3 sentences max). If they ask about urgent tasks, focus on high priority items. If they ask about lists, mention the list names.
+
+${tasksContext}
+
+User question: ${messageBody}`;
+      
       const answer = await callGemini(consultPrompt, '', 0.7);
       
       return new Response(
@@ -244,7 +281,13 @@ serve(async (req) => {
       );
 
     } else {
-      const chatPrompt = `You are Olive, a friendly task assistant. Respond to the user's message warmly and briefly (1-2 sentences). Encourage them to share tasks or ask questions.`;
+      // CONVERSATION - casual chat or ambiguous intent
+      const chatPrompt = `You are Olive, a friendly task management assistant. The user sent: "${messageBody}"
+
+If this seems like it might be a task or reminder (even if unclear), respond warmly and ask for clarification like "Would you like me to save this as a task?" or "Should I add this to your list?"
+
+Otherwise, respond warmly and briefly (1-2 sentences), and gently remind them you can help organize tasks or answer questions about their to-do list.`;
+      
       const reply = await callGemini(chatPrompt, messageBody, 0.8);
 
       return new Response(
