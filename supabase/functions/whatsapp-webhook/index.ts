@@ -53,6 +53,14 @@ async function callGemini(systemPrompt: string, userMessage: string, temperature
   return text;
 }
 
+// Helper to create TwiML response with media
+function createTwimlResponse(messageText: string, mediaUrl?: string): string {
+  if (mediaUrl) {
+    return `<?xml version="1.0" encoding="UTF-8"?><Response><Message><Body>${messageText}</Body><Media>${mediaUrl}</Media></Message></Response>`;
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${messageText}</Message></Response>`;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -69,11 +77,53 @@ serve(async (req) => {
     const fromNumber = standardizePhoneNumber(formData.get('From') as string);
     const messageBody = (formData.get('Body') as string)?.trim();
     
-    console.log('Incoming WhatsApp message:', { fromNumber, messageBody });
+    // Extract location data if shared
+    const latitude = formData.get('Latitude') as string | null;
+    const longitude = formData.get('Longitude') as string | null;
+    
+    // Extract media information
+    const numMedia = parseInt(formData.get('NumMedia') as string || '0');
+    const mediaUrls: string[] = [];
+    const mediaTypes: string[] = [];
+    
+    for (let i = 0; i < numMedia; i++) {
+      const mediaUrl = formData.get(`MediaUrl${i}`) as string;
+      const mediaType = formData.get(`MediaContentType${i}`) as string;
+      if (mediaUrl) {
+        mediaUrls.push(mediaUrl);
+        mediaTypes.push(mediaType || 'unknown');
+      }
+    }
+    
+    console.log('Incoming WhatsApp message:', { 
+      fromNumber, 
+      messageBody, 
+      location: latitude && longitude ? { latitude, longitude } : null,
+      media: mediaUrls.length > 0 ? { count: mediaUrls.length, types: mediaTypes } : null
+    });
 
-    if (!messageBody) {
+    // Handle location sharing
+    if (latitude && longitude && !messageBody && mediaUrls.length === 0) {
       return new Response(
-        '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Please send a message.</Message></Response>',
+        createTwimlResponse(`📍 Thanks for sharing your location! (${latitude}, ${longitude})\n\nYou can add a task with this location by sending a message like:\n"Buy groceries at this location"`),
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      );
+    }
+
+    // Handle media messages
+    if (mediaUrls.length > 0 && !messageBody) {
+      const mediaTypeDesc = mediaTypes.includes('image') ? '🖼️ image' : 
+                           mediaTypes.includes('audio') ? '🎵 audio' : 
+                           mediaTypes.includes('video') ? '🎥 video' : '📄 file';
+      return new Response(
+        createTwimlResponse(`Received your ${mediaTypeDesc}! You can add a caption to create a task, or just send text to organize it.`),
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      );
+    }
+
+    if (!messageBody && mediaUrls.length === 0) {
+      return new Response(
+        createTwimlResponse('Please send a message, share your location 📍, or attach media 📎'),
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
       );
     }
@@ -122,8 +172,12 @@ serve(async (req) => {
 
       console.log('WhatsApp account linked successfully for user:', tokenData.user_id);
 
+      const successImage = 'https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?w=400&q=80'; // Checkmark/success image
       return new Response(
-        '<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Your Olive account is successfully linked! You can now send me your brain dumps and I\'ll organize them for you.</Message></Response>',
+        createTwimlResponse(
+          '✅ Your Olive account is successfully linked!\n\nYou can now:\n• Send brain dumps to organize\n• Share locations 📍 with tasks\n• Ask about your tasks\n• Send images 📸 or voice notes 🎤',
+          successImage
+        ),
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
       );
     }
@@ -138,7 +192,14 @@ serve(async (req) => {
     if (profileError || !profile) {
       console.error('Profile lookup error:', profileError);
       return new Response(
-        '<?xml version="1.0" encoding="UTF-8"?><Response><Message>👋 Hi! To use Olive via WhatsApp, please link your account first:\n\n1. Open the Olive app\n2. Go to Profile/Settings\n3. Tap "Link WhatsApp"\n4. Send the token here\n\nThen I can help organize your tasks!</Message></Response>',
+        createTwimlResponse(
+          '👋 Hi! To use Olive via WhatsApp, please link your account first:\n\n' +
+          '1️⃣ Open the Olive app\n' +
+          '2️⃣ Go to Profile/Settings\n' +
+          '3️⃣ Tap "Link WhatsApp"\n' +
+          '4️⃣ Send the token here\n\n' +
+          'Then I can help organize your tasks, locations, and more!'
+        ),
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
       );
     }
@@ -207,22 +268,48 @@ serve(async (req) => {
     console.log('Classified intent:', intent);
 
     if (intent.intent === 'ORGANIZATION') {
+      // Prepare note data with location and media if available
+      const notePayload: any = { 
+        text: messageBody, 
+        user_id: userId 
+      };
+      
+      // Add location context if provided
+      if (latitude && longitude) {
+        notePayload.location = { latitude, longitude };
+        notePayload.text = `${messageBody} (Location: ${latitude}, ${longitude})`;
+      }
+      
+      // Add media URLs if provided
+      if (mediaUrls.length > 0) {
+        notePayload.media = mediaUrls;
+        notePayload.text = `${messageBody} [Media: ${mediaUrls.length} file(s)]`;
+      }
+
       const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
-        body: { text: messageBody, user_id: userId }
+        body: notePayload
       });
 
       if (processError) {
         console.error('Error processing note:', processError);
         return new Response(
-          '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Sorry, I had trouble processing that. Please try again.</Message></Response>',
+          createTwimlResponse('Sorry, I had trouble processing that. Please try again.'),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
 
       const taskSummary = processData.summary || 'your task';
       const taskCategory = processData.category ? ` in ${processData.category}` : '';
+      const locationNote = latitude && longitude ? ' 📍' : '';
+      const mediaNote = mediaUrls.length > 0 ? ` 📎(${mediaUrls.length})` : '';
+      
+      // Quick reply options
+      const quickReply = '\n\nReply:\n1️⃣ "Make it urgent" to mark as high priority\n2️⃣ "Add details" to include more info';
+      
       return new Response(
-        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Saved! I've added "${taskSummary}"${taskCategory} to your list.</Message></Response>`,
+        createTwimlResponse(
+          `✅ Saved! I've added "${taskSummary}"${taskCategory}${locationNote}${mediaNote} to your list.${quickReply}`
+        ),
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
       );
 
@@ -275,8 +362,11 @@ User question: ${messageBody}`;
       
       const answer = await callGemini(consultPrompt, '', 0.7);
       
+      // Add quick action suggestions
+      const quickActions = '\n\n💡 Try:\n• "What\'s urgent?"\n• "Show recent tasks"\n• Send 📍 location for location-based tasks';
+      
       return new Response(
-        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${answer}</Message></Response>`,
+        createTwimlResponse(`${answer}${quickActions}`),
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
       );
 
@@ -289,9 +379,11 @@ If this seems like it might be a task or reminder (even if unclear), respond war
 Otherwise, respond warmly and briefly (1-2 sentences), and gently remind them you can help organize tasks or answer questions about their to-do list.`;
       
       const reply = await callGemini(chatPrompt, messageBody, 0.8);
+      
+      const helpHint = '\n\n💬 You can also:\n• Share 📍 location\n• Send 📸 images\n• Voice note 🎤';
 
       return new Response(
-        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${reply}</Message></Response>`,
+        createTwimlResponse(`${reply}${helpHint}`),
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
       );
     }
@@ -299,7 +391,7 @@ Otherwise, respond warmly and briefly (1-2 sentences), and gently remind them yo
   } catch (error) {
     console.error('WhatsApp webhook error:', error);
     return new Response(
-      '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Sorry, something went wrong. Please try again later.</Message></Response>',
+      createTwimlResponse('Sorry, something went wrong. Please try again later. 🔄'),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
     );
   }
