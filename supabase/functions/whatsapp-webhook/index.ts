@@ -8,13 +8,16 @@ const corsHeaders = {
 
 const INTENT_CLASSIFIER_PROMPT = `You are an intent classifier for a task management app. Analyze the user's message and classify it into ONE of these categories:
 
-ORGANIZATION: User wants to create a task, add a todo, organize something, or set a reminder
-CONSULTATION: User wants to retrieve information, check their tasks, or ask about existing data
+ORGANIZATION: User wants to CREATE A NEW task, add a new todo, or organize something new
+MODIFICATION: User wants to EDIT/UPDATE/CHANGE/DELETE an EXISTING task (e.g., "make it urgent", "mark as done", "delete last task", "change priority")
+CONSULTATION: User wants to retrieve information, check their tasks, see what's in a list, or ask about existing data
 CONVERSATION: Casual chat, greetings, or off-topic messages
+
+IMPORTANT: Commands like "make it urgent", "mark as done", "complete it", "delete it", "change to high priority" are MODIFICATION, not ORGANIZATION.
 
 Respond ONLY with valid JSON in this format:
 {
-  "intent": "ORGANIZATION" | "CONSULTATION" | "CONVERSATION",
+  "intent": "ORGANIZATION" | "MODIFICATION" | "CONSULTATION" | "CONVERSATION",
   "confidence": 0.0-1.0
 }`;
 
@@ -401,60 +404,193 @@ serve(async (req) => {
         );
       }
 
-    } else if (intent.intent === 'CONSULTATION') {
-      // Fetch user's tasks and couple info
-      const { data: tasks } = await supabase
+    } else if (intent.intent === 'MODIFICATION') {
+      // Handle modification of existing tasks
+      const { data: recentTask } = await supabase
         .from('clerk_notes')
-        .select('summary, due_date, completed, priority, category, list_id, task_owner')
+        .select('id, summary, priority, completed')
         .eq('author_id', userId)
         .order('created_at', { ascending: false })
-        .limit(20);
-
-      const { data: lists } = await supabase
-        .from('clerk_lists')
-        .select('id, name')
-        .eq('author_id', userId);
-
-      const { data: coupleMembers } = await supabase
-        .from('clerk_couple_members')
-        .select('couple_id')
-        .eq('user_id', userId)
         .limit(1)
         .single();
 
+      if (!recentTask) {
+        return new Response(
+          createTwimlResponse('You don\'t have any tasks yet. Create one first by sending a brain dump!'),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+      // Analyze the modification request
+      const modPrompt = `The user wants to modify their most recent task: "${recentTask.summary}"
+
+Current status:
+- Priority: ${recentTask.priority || 'medium'}
+- Completed: ${recentTask.completed ? 'Yes' : 'No'}
+
+User request: "${messageBody}"
+
+Determine what modification they want and respond ONLY with valid JSON:
+{
+  "action": "update_priority" | "mark_complete" | "mark_incomplete" | "delete" | "unknown",
+  "priority": "low" | "medium" | "high" (only if action is update_priority),
+  "response": "A brief confirmation message"
+}`;
+
+      const modResponse = await callAI(modPrompt, '', 0.3);
+      let modification: any;
+      
+      try {
+        const jsonMatch = modResponse.match(/\{[\s\S]*\}/);
+        modification = JSON.parse(jsonMatch ? jsonMatch[0] : modResponse);
+      } catch (e) {
+        console.error('Failed to parse modification:', e);
+        return new Response(
+          createTwimlResponse('I\'m not sure what you want to change. Try "make it urgent" or "mark as done"'),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+      // Execute the modification
+      if (modification.action === 'update_priority' && modification.priority) {
+        await supabase
+          .from('clerk_notes')
+          .update({ priority: modification.priority, updated_at: new Date().toISOString() })
+          .eq('id', recentTask.id);
+        
+        return new Response(
+          createTwimlResponse(`✅ Updated "${recentTask.summary}" to ${modification.priority} priority!`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } else if (modification.action === 'mark_complete') {
+        await supabase
+          .from('clerk_notes')
+          .update({ completed: true, updated_at: new Date().toISOString() })
+          .eq('id', recentTask.id);
+        
+        return new Response(
+          createTwimlResponse(`✅ Marked "${recentTask.summary}" as complete! 🎉`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } else if (modification.action === 'mark_incomplete') {
+        await supabase
+          .from('clerk_notes')
+          .update({ completed: false, updated_at: new Date().toISOString() })
+          .eq('id', recentTask.id);
+        
+        return new Response(
+          createTwimlResponse(`✅ Reopened "${recentTask.summary}"`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } else if (modification.action === 'delete') {
+        await supabase
+          .from('clerk_notes')
+          .delete()
+          .eq('id', recentTask.id);
+        
+        return new Response(
+          createTwimlResponse(`🗑️ Deleted "${recentTask.summary}"`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } else {
+        return new Response(
+          createTwimlResponse('I\'m not sure what you want to change. Try "make it urgent" or "mark as done"'),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+    } else if (intent.intent === 'CONSULTATION') {
+      // Fetch user's tasks and lists
+      const { data: tasks } = await supabase
+        .from('clerk_notes')
+        .select('id, summary, due_date, completed, priority, category, list_id, items, task_owner')
+        .eq('author_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      const { data: lists } = await supabase
+        .from('clerk_lists')
+        .select('id, name, description')
+        .eq('author_id', userId);
+
+      const listMap = new Map(lists?.map(l => [l.id, l.name.toLowerCase()]) || []);
+      const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
+
+      // Check if asking about a specific list
+      const listNameMatch = messageBody.toLowerCase().match(/(?:what'?s in|show me|list)\s+(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:list|tasks?)/i);
+      let specificList: string | null = null;
+      
+      if (listNameMatch) {
+        const requestedList = listNameMatch[1].toLowerCase();
+        for (const [listId, listName] of listMap) {
+          if (listName.includes(requestedList) || requestedList.includes(listName)) {
+            specificList = listId;
+            break;
+          }
+        }
+      }
+
       let tasksContext = 'User has no tasks yet.';
       if (tasks?.length) {
+        let relevantTasks = tasks;
+        
+        // Filter by specific list if requested
+        if (specificList) {
+          relevantTasks = tasks.filter(t => t.list_id === specificList && !t.completed);
+          
+          if (relevantTasks.length === 0) {
+            return new Response(
+              createTwimlResponse(`Your ${listIdToName.get(specificList)} list is empty! 🎉`),
+              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+            );
+          }
+          
+          // Return the actual list items
+          const listName = listIdToName.get(specificList);
+          const itemsList = relevantTasks.map((t, i) => {
+            const items = t.items && t.items.length > 0 ? `\n  ${t.items.join('\n  ')}` : '';
+            return `${i + 1}. ${t.summary}${items}`;
+          }).join('\n\n');
+          
+          return new Response(
+            createTwimlResponse(`📋 ${listName}:\n\n${itemsList}\n\n💡 Say "mark as done" to complete the last item`),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
         const urgentTasks = tasks.filter(t => t.priority === 'high' && !t.completed);
-        const recentTasks = tasks.slice(0, 5);
-        const listMap = new Map(lists?.map(l => [l.id, l.name]) || []);
+        const activeTasks = tasks.filter(t => !t.completed);
         
         tasksContext = `
 User's tasks:
 - Total tasks: ${tasks.length}
+- Active (not completed): ${activeTasks.length}
 - Urgent (high priority): ${urgentTasks.length}
 - Completed: ${tasks.filter(t => t.completed).length}
 
-Recent tasks:
-${recentTasks.map(t => {
-  const listName = t.list_id ? listMap.get(t.list_id) : 'General';
-  return `- ${t.summary} [${t.category}${listName ? ', ' + listName : ''}] ${t.completed ? '✓' : t.priority === 'high' ? '⚡' : ''}`;
+Recent active tasks:
+${activeTasks.slice(0, 10).map(t => {
+  const listName = t.list_id ? listIdToName.get(t.list_id) : 'General';
+  const itemsInfo = t.items && t.items.length > 0 ? ` (${t.items.length} items)` : '';
+  return `- ${t.summary}${itemsInfo} [${listName}] ${t.priority === 'high' ? '⚡ URGENT' : ''}`;
 }).join('\n')}
+
+Available lists: ${lists?.map(l => l.name).join(', ') || 'None'}
 `.trim();
       }
 
-      const consultPrompt = `You are Olive, a helpful task management assistant. Answer the user's question about their tasks concisely and naturally (2-3 sentences max). If they ask about urgent tasks, focus on high priority items. If they ask about lists, mention the list names.
+      const consultPrompt = `You are Olive, a helpful task management assistant. Answer the user's question about their tasks naturally and concisely.
 
 ${tasksContext}
 
-User question: ${messageBody}`;
+User question: ${messageBody}
+
+Provide a helpful answer based on the user's tasks.`;
       
       const answer = await callAI(consultPrompt, '', 0.7);
       
-      // Add quick action suggestions
-      const quickActions = '\n\n💡 Try:\n• "What\'s urgent?"\n• "Show recent tasks"\n• Send 📍 location for location-based tasks';
-      
       return new Response(
-        createTwimlResponse(`${answer}${quickActions}`),
+        createTwimlResponse(answer),
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
       );
 
