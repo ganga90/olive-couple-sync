@@ -136,59 +136,31 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         return;
       }
       
-      // Handle single note (existing logic)
-      // Triple-check auth state before saving to Supabase
-      if (!user) {
-        throw new Error('User authentication lost before saving note');
-      }
-
-      console.log('[NoteInput] Saving single note to Supabase for user:', user.id);
+      // Handle single note - show recap BEFORE saving to database
+      console.log('[NoteInput] Single note case, showing recap for review');
       
-      // Prepare note data
-      const noteData = {
+      // Store the AI-processed data for review (NOT saved to DB yet)
+      setProcessedNote({
         originalText: text.trim(),
         summary: aiProcessedNote.summary,
         category: aiProcessedNote.category,
         dueDate: aiProcessedNote.due_date,
-        completed: false,
         priority: aiProcessedNote.priority,
-        tags: aiProcessedNote.tags,
-        items: aiProcessedNote.items,
-        list_id: listId || aiProcessedNote.list_id, // Use provided listId or AI-assigned list_id
-        task_owner: aiProcessedNote.task_owner,
-      };
-      
-      console.log('[NoteInput] Note data to save:', noteData);
-      
-      // Add the note to Supabase
-      const savedNote = await addNote(noteData);
-      
-      console.log('[NoteInput] Saved note result:', savedNote);
+        tags: aiProcessedNote.tags || [],
+        items: aiProcessedNote.items || [],
+        taskOwner: aiProcessedNote.task_owner || null,
+        listId: aiProcessedNote.list_id || listId || null,
+        completed: false
+      });
 
-      if (savedNote) {
-        // Show the recap
-        setProcessedNote({
-          id: savedNote.id,
-          summary: aiProcessedNote.summary,
-          category: aiProcessedNote.category,
-          dueDate: aiProcessedNote.due_date,
-          priority: aiProcessedNote.priority,
-          tags: aiProcessedNote.tags,
-          items: aiProcessedNote.items,
-          originalText: text.trim(),
-          author: user.firstName || user.fullName || "You",
-          createdAt: savedNote.createdAt,
-          task_owner: aiProcessedNote.task_owner,
-          list_id: aiProcessedNote.list_id
-        });
-
-        setText("");
-        
-        // Refetch notes to update lists and ensure consistency
-        await refetchNotes();
-        onNoteAdded?.();
-        toast.success("Note added and organized!");
-      }
+      // Success feedback
+      toast.success("Note processed! Review and save below ✨");
+      
+      // Clear the input
+      setText("");
+      setInterim("");
+      
+      // Don't call onNoteAdded yet - wait for user to accept
     } catch (error) {
       console.error("Error processing note:", error);
       toast.error("Failed to process note. Please try again.");
@@ -203,8 +175,46 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   };
 
   const handleNoteUpdated = (updatedNote: any) => {
+    // Update the local state with edited values
     setProcessedNote(prev => prev ? { ...prev, ...updatedNote } : null);
-    onNoteAdded?.(); // Refresh the notes list
+  };
+
+  const handleSaveNote = async () => {
+    if (!processedNote || !user) return;
+    
+    try {
+      console.log('[NoteInput] Saving accepted note to database:', processedNote);
+      
+      // Prepare note data in the correct format for addNote
+      const noteData = {
+        originalText: processedNote.originalText,
+        summary: processedNote.summary,
+        category: processedNote.category,
+        dueDate: processedNote.dueDate,
+        completed: processedNote.completed || false,
+        priority: processedNote.priority,
+        tags: processedNote.tags || [],
+        items: processedNote.items || [],
+        listId: processedNote.listId,
+        taskOwner: processedNote.taskOwner
+      };
+      
+      const newNote = await addNote(noteData);
+      
+      if (!newNote) {
+        throw new Error('Failed to save note to database');
+      }
+      
+      toast.success("Note saved successfully! 🎉");
+      
+      // Refetch and close
+      await refetchNotes();
+      handleCloseRecap();
+      onNoteAdded?.(); // Notify parent to close dialog/refresh
+    } catch (error) {
+      console.error('[NoteInput] Error saving note:', error);
+      toast.error("Failed to save note");
+    }
   };
 
   const handleMultipleNotesAdded = () => {
@@ -259,17 +269,17 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         />
         <div className="space-y-3">
           <Button 
-            onClick={handleCloseRecap}
+            onClick={handleSaveNote}
             className="w-full bg-olive hover:bg-olive/90 text-white"
           >
-            Save Changes & Continue
+            Accept & Save Note
           </Button>
           <Button 
             onClick={handleCloseRecap}
             variant="outline" 
             className="w-full border-olive/30 text-olive hover:bg-olive/10"
           >
-            Add Another Note
+            Cancel & Start Over
           </Button>
         </div>
       </div>
