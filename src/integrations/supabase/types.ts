@@ -173,6 +173,8 @@ export type Database = {
           id: string
           items: string[] | null
           list_id: string | null
+          location: Json | null
+          media_urls: string[] | null
           original_text: string
           priority: Database["public"]["Enums"]["note_priority"] | null
           summary: string
@@ -190,6 +192,8 @@ export type Database = {
           id?: string
           items?: string[] | null
           list_id?: string | null
+          location?: Json | null
+          media_urls?: string[] | null
           original_text: string
           priority?: Database["public"]["Enums"]["note_priority"] | null
           summary: string
@@ -207,6 +211,8 @@ export type Database = {
           id?: string
           items?: string[] | null
           list_id?: string | null
+          location?: Json | null
+          media_urls?: string[] | null
           original_text?: string
           priority?: Database["public"]["Enums"]["note_priority"] | null
           summary?: string
