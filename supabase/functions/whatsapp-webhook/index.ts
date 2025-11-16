@@ -262,6 +262,55 @@ serve(async (req) => {
       );
     }
 
+    // Handle AWAITING_MORE_REMINDERS state
+    if (session.conversation_state === 'AWAITING_MORE_REMINDERS') {
+      const response = messageBody.toLowerCase();
+      const contextData = session.context_data as any;
+
+      if (response === 'yes' || response === 'y') {
+        const remainingReminders = contextData.remaining_reminders || [];
+        
+        if (remainingReminders.length === 0) {
+          await supabase
+            .from('user_sessions')
+            .update({ conversation_state: 'IDLE', context_data: null })
+            .eq('user_id', userId);
+          
+          return new Response(
+            createTwimlResponse('No more reminders to show! 🎉'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        const remindersList = remainingReminders.map((r: any, i: number) => {
+          const reminderDate = new Date(r.reminder_time);
+          const dateStr = reminderDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          const timeStr = reminderDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          return `${i + 1}. ${r.summary}\n   🔔 ${dateStr} at ${timeStr}`;
+        }).join('\n\n');
+        
+        await supabase
+          .from('user_sessions')
+          .update({ conversation_state: 'IDLE', context_data: null })
+          .eq('user_id', userId);
+        
+        return new Response(
+          createTwimlResponse(`🔔 Remaining reminders:\n\n${remindersList}\n\n📱 Manage all on witholive.app`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } else {
+        await supabase
+          .from('user_sessions')
+          .update({ conversation_state: 'IDLE', context_data: null })
+          .eq('user_id', userId);
+        
+        return new Response(
+          createTwimlResponse('No problem! 👍\n\n💡 Ask me anytime: "Show my reminders"'),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+    }
+
     // IDLE state: Check if message is a URL, or classify intent
     // Detect if message is primarily a URL/link
     const urlRegex = /(https?:\/\/[^\s]+)/gi;
@@ -528,7 +577,7 @@ Determine what modification they want and respond ONLY with valid JSON:
       // Fetch user's tasks and lists
       const { data: tasks } = await supabase
         .from('clerk_notes')
-        .select('id, summary, due_date, completed, priority, category, list_id, items, task_owner')
+        .select('id, summary, due_date, completed, priority, category, list_id, items, task_owner, reminder_time')
         .eq('author_id', userId)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -540,6 +589,56 @@ Determine what modification they want and respond ONLY with valid JSON:
 
       const listMap = new Map(lists?.map(l => [l.id, l.name.toLowerCase()]) || []);
       const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
+
+      // Check if asking about reminders
+      const reminderQuery = messageBody.toLowerCase().match(/(?:which|what|show|list)\s+(?:my\s+)?reminders?/i);
+      
+      if (reminderQuery) {
+        const reminders = tasks?.filter(t => t.reminder_time && !t.completed) || [];
+        
+        if (reminders.length === 0) {
+          return new Response(
+            createTwimlResponse('You have no reminders set! 🔔\n\n💡 Try: "Remind me to call mom tomorrow at 3pm"'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        // Sort by reminder_time (earliest first)
+        reminders.sort((a, b) => new Date(a.reminder_time!).getTime() - new Date(b.reminder_time!).getTime());
+        
+        const topReminders = reminders.slice(0, 3);
+        const remainingReminders = reminders.slice(3);
+        
+        const remindersList = topReminders.map((r, i) => {
+          const reminderDate = new Date(r.reminder_time!);
+          const dateStr = reminderDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          const timeStr = reminderDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          return `${i + 1}. ${r.summary}\n   🔔 ${dateStr} at ${timeStr}`;
+        }).join('\n\n');
+        
+        let message = `🔔 Your upcoming reminders:\n\n${remindersList}`;
+        
+        if (remainingReminders.length > 0) {
+          // Store remaining reminders in session state
+          await supabase
+            .from('user_sessions')
+            .upsert({
+              user_id: userId,
+              conversation_state: 'AWAITING_MORE_REMINDERS',
+              context_data: { remaining_reminders: remainingReminders.map(r => ({
+                summary: r.summary,
+                reminder_time: r.reminder_time
+              })) }
+            }, { onConflict: 'user_id' });
+          
+          message += `\n\n📋 You have ${remainingReminders.length} more reminder${remainingReminders.length > 1 ? 's' : ''}.\n\n💬 Reply "yes" to see them all`;
+        }
+        
+        return new Response(
+          createTwimlResponse(message),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
 
       // Check if asking about a specific list
       const listNameMatch = messageBody.toLowerCase().match(/(?:what'?s in|show me|list)\s+(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:list|tasks?)/i);
