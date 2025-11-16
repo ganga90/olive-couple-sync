@@ -116,11 +116,11 @@ const Lists = () => {
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="px-4 py-6 space-y-4">
+    <div className="h-full overflow-y-auto pb-6">
+      <div className="px-4 pt-6 space-y-4 max-w-2xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-foreground">Lists</h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Lists</h1>
           <CreateListDialog onListCreated={refetch} />
         </div>
 
@@ -129,18 +129,19 @@ const Lists = () => {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search lists..."
-          className="rounded-[var(--radius-md)]"
+          className="rounded-[var(--radius-lg)] border-border/50 focus:border-primary"
         />
 
         {/* Lists */}
         {loading ? (
-          <div className="text-center py-8">
-            <p className="text-sm text-muted-foreground">Loading...</p>
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3"></div>
+            <p className="text-sm text-muted-foreground">Loading lists...</p>
           </div>
         ) : filteredLists.length === 0 ? (
-          <Card className="shadow-[var(--shadow-card)]">
+          <Card className="shadow-[var(--shadow-card)] border-border/50">
             <CardContent className="p-8 text-center">
-              <ListIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <ListIcon className="h-14 w-14 text-muted-foreground/50 mx-auto mb-4" />
               <p className="text-muted-foreground mb-4">
                 {query ? "No lists match your search." : "No lists yet. Create your first list!"}
               </p>
@@ -148,45 +149,45 @@ const Lists = () => {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {filteredLists.map((list) => {
               const count = getListNoteCount(list.id);
               const ListIconComponent = getCategoryIcon(list.name);
               return (
                 <Card 
                   key={list.id} 
-                  className="shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-raised)] transition-shadow group"
+                  className="shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-raised)] transition-all duration-200 group border-border/50"
                 >
                   <CardContent className="p-0">
                     <Link 
                       to={`/lists/${encodeURIComponent(list.id)}`}
-                      className="flex items-center gap-3 p-4 w-full active:scale-[0.98] transition-transform"
+                      className="flex items-center gap-3 p-3 md:p-4 w-full active:scale-[0.98] transition-transform"
                     >
                       {/* Icon */}
-                      <div className="flex h-12 w-12 items-center justify-center rounded-[var(--radius-md)] bg-primary/10">
-                        <ListIconComponent className="h-6 w-6 text-primary" />
+                      <div className="flex h-10 w-10 md:h-12 md:w-12 flex-shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-primary/10">
+                        <ListIconComponent className="h-5 w-5 md:h-6 md:w-6 text-primary" />
                       </div>
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-foreground truncate">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <h3 className="font-semibold text-sm md:text-base text-foreground truncate">
                             {list.name}
                           </h3>
                           {!list.is_manual && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-[hsl(var(--ai-accent))] text-white">
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-accent/80 text-accent-foreground">
                               AI
                             </Badge>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground truncate">
                           {count} {count === 1 ? "item" : "items"}
                           {list.description && ` • ${list.description}`}
                         </p>
                       </div>
 
                       {/* Actions */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 flex-shrink-0">
                         {list.is_manual && (
                           <button
                             onClick={(e) => {
@@ -194,7 +195,7 @@ const Lists = () => {
                               e.stopPropagation();
                               handleDeleteList(list.id, list.name);
                             }}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-destructive/10 rounded-[var(--radius-sm)]"
+                            className="md:opacity-0 md:group-hover:opacity-100 transition-opacity p-2 hover:bg-destructive/10 rounded-[var(--radius-sm)]"
                             aria-label="Delete list"
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
