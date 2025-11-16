@@ -358,6 +358,33 @@ export type Database = {
           },
         ]
       }
+      linking_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          token: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          token: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          token?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       notes: {
         Row: {
           author_id: string | null
@@ -441,6 +468,7 @@ export type Database = {
     }
     Functions: {
       accept_invite: { Args: { p_token: string }; Returns: string }
+      cleanup_expired_linking_tokens: { Args: never; Returns: undefined }
       create_couple: {
         Args: { p_partner_name: string; p_title: string; p_you_name: string }
         Returns: string
