@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PartnerInfo } from "@/components/PartnerInfo";
 import { PhoneNumberField } from "@/components/PhoneNumberField";
+import { WhatsAppLink } from "@/components/WhatsAppLink";
 import { User, LogOut, Bell, Shield, HelpCircle } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
@@ -65,6 +66,16 @@ const Profile = () => {
           </CardHeader>
           <CardContent>
             <PhoneNumberField />
+          </CardContent>
+        </Card>
+
+        {/* WhatsApp AI Link */}
+        <Card className="shadow-[var(--shadow-card)]">
+          <CardHeader>
+            <CardTitle className="text-base">WhatsApp AI Assistant</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <WhatsAppLink />
           </CardContent>
         </Card>
 
