@@ -78,29 +78,32 @@ serve(async (req) => {
       );
     }
 
-    // Check for linking token
-    const tokenMatch = messageBody.match(/My Olive Token is ([A-Z0-9_]+)/i);
+    // Check for linking token (supports both formats: "My Olive Token is LINK_XXX" or just "LINK_XXX")
+    const tokenMatch = messageBody.match(/(?:My Olive Token is )?(LINK_[A-Z0-9]+)/i);
     if (tokenMatch) {
       const token = tokenMatch[1].toUpperCase();
+      console.log('Processing linking token:', token);
       
       const { data: tokenData, error: tokenError } = await supabase
         .from('linking_tokens')
         .select('user_id')
         .eq('token', token)
         .gt('expires_at', new Date().toISOString())
-        .eq('used', false)
+        .is('used_at', null)
         .single();
 
       if (tokenError || !tokenData) {
+        console.error('Token lookup error:', tokenError);
         return new Response(
           '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Invalid or expired token. Please generate a new one from the Olive app.</Message></Response>',
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
 
+      // Update user profile with phone number
       const { error: updateError } = await supabase
         .from('clerk_profiles')
-        .update({ whatsapp_id: fromNumber })
+        .update({ phone_number: fromNumber })
         .eq('id', tokenData.user_id);
 
       if (updateError) {
@@ -111,7 +114,13 @@ serve(async (req) => {
         );
       }
 
-      await supabase.from('linking_tokens').update({ used: true }).eq('token', token);
+      // Mark token as used
+      await supabase
+        .from('linking_tokens')
+        .update({ used_at: new Date().toISOString() })
+        .eq('token', token);
+
+      console.log('WhatsApp account linked successfully for user:', tokenData.user_id);
 
       return new Response(
         '<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Your Olive account is successfully linked! You can now send me your brain dumps and I\'ll organize them for you.</Message></Response>',
