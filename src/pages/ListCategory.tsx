@@ -447,8 +447,8 @@ const ListCategory = () => {
             </div>
           </DialogContent>
         </Dialog>
-      </section>
-    </main>
+      </div>
+    </div>
   );
 };
 
