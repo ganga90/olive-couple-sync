@@ -3,13 +3,22 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bell, X } from "lucide-react";
-import { format } from "date-fns";
+import { Bell, X, Clock } from "lucide-react";
+import { format, addMinutes, addHours, addDays } from "date-fns";
 
 interface ReminderPickerProps {
   value?: string | null;
   onChange: (value: string | null) => void;
 }
+
+const QUICK_REMINDERS = [
+  { label: "5 min", minutes: 5 },
+  { label: "15 min", minutes: 15 },
+  { label: "30 min", minutes: 30 },
+  { label: "1 hour", minutes: 60 },
+  { label: "2 hours", minutes: 120 },
+  { label: "Tomorrow 9am", special: "tomorrow9am" },
+];
 
 export function ReminderPicker({ value, onChange }: ReminderPickerProps) {
   const [date, setDate] = useState<Date | undefined>(
@@ -38,6 +47,24 @@ export function ReminderPicker({ value, onChange }: ReminderPickerProps) {
     const combined = new Date(date);
     combined.setHours(parseInt(hours), parseInt(minutes), 0, 0);
     onChange(combined.toISOString());
+  };
+
+  const handleQuickReminder = (minutes?: number, special?: string) => {
+    const now = new Date();
+    let newDate: Date;
+    
+    if (special === "tomorrow9am") {
+      newDate = addDays(now, 1);
+      newDate.setHours(9, 0, 0, 0);
+    } else if (minutes) {
+      newDate = addMinutes(now, minutes);
+    } else {
+      return;
+    }
+    
+    setDate(newDate);
+    setTime(format(newDate, "HH:mm"));
+    onChange(newDate.toISOString());
   };
 
   const handleClear = () => {
@@ -73,6 +100,32 @@ export function ReminderPicker({ value, onChange }: ReminderPickerProps) {
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
           <div className="p-3 space-y-3">
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                Quick Reminders
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {QUICK_REMINDERS.map((reminder) => (
+                  <Button
+                    key={reminder.label}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleQuickReminder(reminder.minutes, reminder.special)}
+                    className="text-xs"
+                  >
+                    {reminder.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            
+            <div className="relative flex items-center">
+              <div className="flex-1 border-t border-border" />
+              <span className="px-2 text-xs text-muted-foreground">or pick custom</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+            
             <Calendar
               mode="single"
               selected={date}
