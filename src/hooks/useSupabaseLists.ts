@@ -182,6 +182,20 @@ export const useSupabaseLists = (coupleId?: string | null) => {
       
       const supabase = getSupabase();
       
+      // First, unlink all notes from this list by setting their list_id to NULL
+      const { error: unlinkError } = await supabase
+        .from("clerk_notes")
+        .update({ list_id: null })
+        .eq("list_id", id);
+
+      if (unlinkError) {
+        console.error("[Lists] Error unlinking notes:", unlinkError);
+        throw unlinkError;
+      }
+
+      console.log("[Lists] Successfully unlinked notes from list");
+
+      // Now delete the list
       const { error } = await supabase
         .from("clerk_lists")
         .delete()
