@@ -268,10 +268,21 @@ serve(async (req) => {
     console.log('Classified intent:', intent);
 
     if (intent.intent === 'ORGANIZATION') {
+      // Get user's couple_id for shared notes
+      const { data: coupleMember } = await supabase
+        .from('clerk_couple_members')
+        .select('couple_id')
+        .eq('user_id', userId)
+        .limit(1)
+        .single();
+
+      const coupleId = coupleMember?.couple_id || null;
+
       // Prepare note data with location and media if available
       const notePayload: any = { 
         text: messageBody, 
-        user_id: userId 
+        user_id: userId,
+        couple_id: coupleId
       };
       
       // Add location context if provided
@@ -298,20 +309,91 @@ serve(async (req) => {
         );
       }
 
-      const taskSummary = processData.summary || 'your task';
-      const taskCategory = processData.category ? ` in ${processData.category}` : '';
-      const locationNote = latitude && longitude ? ' 📍' : '';
-      const mediaNote = mediaUrls.length > 0 ? ` 📎(${mediaUrls.length})` : '';
-      
-      // Quick reply options
-      const quickReply = '\n\nReply:\n1️⃣ "Make it urgent" to mark as high priority\n2️⃣ "Add details" to include more info';
-      
-      return new Response(
-        createTwimlResponse(
-          `✅ Saved! I've added "${taskSummary}"${taskCategory}${locationNote}${mediaNote} to your list.${quickReply}`
-        ),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
+      // Insert the processed note(s) into the database
+      try {
+        if (processData.multiple && Array.isArray(processData.notes)) {
+          // Insert multiple notes
+          const notesToInsert = processData.notes.map((note: any) => ({
+            author_id: userId,
+            couple_id: coupleId,
+            original_text: messageBody,
+            summary: note.summary,
+            category: note.category || 'task',
+            due_date: note.due_date,
+            priority: note.priority || 'medium',
+            tags: note.tags || [],
+            items: note.items || [],
+            task_owner: note.task_owner,
+            list_id: note.list_id,
+            location: latitude && longitude ? { latitude, longitude } : null,
+            media_urls: mediaUrls.length > 0 ? mediaUrls : null,
+            completed: false
+          }));
+
+          const { error: insertError } = await supabase
+            .from('clerk_notes')
+            .insert(notesToInsert);
+
+          if (insertError) {
+            console.error('Error inserting multiple notes:', insertError);
+            throw insertError;
+          }
+
+          const count = notesToInsert.length;
+          return new Response(
+            createTwimlResponse(
+              `✅ Saved ${count} tasks! Check your Olive app to see them.\n\n💡 Try: "Show my tasks" or "What's urgent?"`
+            ),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        } else {
+          // Insert single note
+          const { error: insertError } = await supabase
+            .from('clerk_notes')
+            .insert([{
+              author_id: userId,
+              couple_id: coupleId,
+              original_text: messageBody,
+              summary: processData.summary,
+              category: processData.category || 'task',
+              due_date: processData.due_date,
+              priority: processData.priority || 'medium',
+              tags: processData.tags || [],
+              items: processData.items || [],
+              task_owner: processData.task_owner,
+              list_id: processData.list_id,
+              location: latitude && longitude ? { latitude, longitude } : null,
+              media_urls: mediaUrls.length > 0 ? mediaUrls : null,
+              completed: false
+            }]);
+
+          if (insertError) {
+            console.error('Error inserting note:', insertError);
+            throw insertError;
+          }
+
+          const taskSummary = processData.summary || 'your task';
+          const taskCategory = processData.category ? ` in ${processData.category}` : '';
+          const locationNote = latitude && longitude ? ' 📍' : '';
+          const mediaNote = mediaUrls.length > 0 ? ` 📎(${mediaUrls.length})` : '';
+          
+          // Quick reply options
+          const quickReply = '\n\n💡 Try:\n• "Make it urgent"\n• "Show my tasks"\n• Send more tasks!';
+          
+          return new Response(
+            createTwimlResponse(
+              `✅ Saved! "${taskSummary}"${taskCategory}${locationNote}${mediaNote}${quickReply}`
+            ),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+      } catch (insertError) {
+        console.error('Database insertion error:', insertError);
+        return new Response(
+          createTwimlResponse('I understood your task but had trouble saving it. Please try again.'),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
 
     } else if (intent.intent === 'CONSULTATION') {
       // Fetch user's tasks and couple info
