@@ -12,6 +12,8 @@ import { QuickEditBottomSheet } from "@/components/QuickEditBottomSheet";
 import type { Note } from "@/types/note";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NoteInput } from "@/components/NoteInput";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { format, addDays, startOfDay, endOfDay, isSameDay } from "date-fns";
 
 const Home = () => {
   useSEO({ 
@@ -28,14 +30,41 @@ const Home = () => {
 
   const userName = isAuthenticated ? (user?.firstName || user?.fullName || you || "there") : "there";
 
-  // Get focus tasks (3-5 high priority tasks, ordered by creation date)
-  const focusTasks = useMemo(() => {
-    const highPriorityTasks = notes
-      .filter(note => !note.completed && note.priority === 'high')
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  // Get priority tasks (top 5 ordered by priority)
+  const priorityTasks = useMemo(() => {
+    const priorityOrder = { high: 3, medium: 2, low: 1 };
+    return notes
+      .filter(note => !note.completed)
+      .sort((a, b) => {
+        const aPriority = priorityOrder[a.priority || 'low'];
+        const bPriority = priorityOrder[b.priority || 'low'];
+        if (aPriority !== bPriority) return bPriority - aPriority;
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      })
       .slice(0, 5);
+  }, [notes]);
+
+  // Get daily view tasks (next 3 days)
+  const dailyViewTasks = useMemo(() => {
+    const today = startOfDay(new Date());
+    const next3Days = [0, 1, 2].map(offset => addDays(today, offset));
     
-    return highPriorityTasks;
+    return next3Days.map(day => ({
+      date: day,
+      tasks: notes
+        .filter(note => {
+          if (note.completed) return false;
+          if (!note.dueDate) return false;
+          const taskDate = startOfDay(new Date(note.dueDate));
+          return isSameDay(taskDate, day);
+        })
+        .sort((a, b) => {
+          const priorityOrder = { high: 3, medium: 2, low: 1 };
+          const aPriority = priorityOrder[a.priority || 'low'];
+          const bPriority = priorityOrder[b.priority || 'low'];
+          return bPriority - aPriority;
+        })
+    }));
   }, [notes]);
 
   // Get completed tasks this week
@@ -92,18 +121,18 @@ const Home = () => {
             </p>
           </div>
 
-          {/* Input Box */}
+          {/* Input Box - Prominent with Green Border */}
           <div 
             onClick={() => setIsInputOpen(true)}
-            className="bg-card border rounded-[var(--radius-lg)] p-4 shadow-[var(--shadow-card)] cursor-pointer hover:shadow-[var(--shadow-raised)] transition-shadow active:scale-[0.99]"
+            className="bg-card border-2 border-primary rounded-[var(--radius-lg)] p-5 shadow-[var(--shadow-raised)] cursor-pointer hover:border-primary/80 hover:shadow-lg transition-all active:scale-[0.99]"
           >
             <div className="flex items-center gap-3">
               <div className="flex-1">
-                <p className="text-muted-foreground text-base">
+                <p className="text-foreground font-medium text-base">
                   Drop a brain-dump here...
                 </p>
               </div>
-              <Plus className="h-5 w-5 text-muted-foreground" />
+              <Plus className="h-6 w-6 text-primary" />
             </div>
           </div>
 
@@ -113,54 +142,6 @@ const Home = () => {
               Try: <span className="italic">"dinner with Luca next Wed 7pm, ask Almu about tickets"</span>
             </p>
           </div>
-
-          {/* Focus Widget */}
-          <Card className="shadow-[var(--shadow-card)]">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold">Your Focus</h2>
-                {focusTasks.length > 0 && (
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {focusTasks.length} {focusTasks.length === 1 ? 'task' : 'tasks'}
-                  </span>
-                )}
-              </div>
-
-              {focusTasks.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground mb-2">
-                    No critical tasks right now
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    You're all caught up! 🎉
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {focusTasks.map((task) => (
-                    <TaskItem
-                      key={task.id}
-                      task={task}
-                      onToggleComplete={handleToggleComplete}
-                      onTaskClick={handleTaskClick}
-                      authorName={getAuthorName(task)}
-                    />
-                  ))}
-                  
-                  {notes.filter(n => !n.completed && n.priority === 'high').length > 5 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full text-xs"
-                      onClick={() => navigate('/lists')}
-                    >
-                      +{notes.filter(n => !n.completed && n.priority === 'high').length - 5} More High Priority Tasks
-                    </Button>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
           {/* Motivation Link */}
           {completedThisWeek > 0 && (
