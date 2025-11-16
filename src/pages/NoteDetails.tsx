@@ -16,12 +16,13 @@ import { Calendar } from "@/components/ui/calendar";
 import { Separator } from "@/components/ui/separator";
 import { NotePrivacyToggle } from "@/components/NotePrivacyToggle";
 import { toast } from "sonner";
-import { ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle, Tag, UserCheck, Calendar as CalendarIcon } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle, Tag, UserCheck, Calendar as CalendarIcon, Bell } from "lucide-react";
 import { format } from "date-fns";
 import { assistWithNote } from "@/utils/oliveAssistant";
 import { OliveLogo } from "@/components/OliveLogo";
 import ReactMarkdown from 'react-markdown';
 import { cn } from "@/lib/utils";
+import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
 
 const NoteDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -62,6 +63,7 @@ const NoteDetails = () => {
   const [localCategory, setLocalCategory] = useState<string>(note?.category || "task");
   const [newItem, setNewItem] = useState("");
   const [newTag, setNewTag] = useState("");
+  const [showReminderDialog, setShowReminderDialog] = useState(false);
   
   // Combined edit state for all fields
   const [editedNote, setEditedNote] = useState({
@@ -666,6 +668,44 @@ const NoteDetails = () => {
             </CardContent>
           </Card>
 
+          {/* Reminder Section */}
+          <Card className="bg-white/50 border-olive/20 shadow-soft">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-olive-dark">
+                  <Bell className="h-4 w-4 text-olive" />
+                  <span>Reminder</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowReminderDialog(true)}
+                  className="text-olive hover:text-olive-dark hover:bg-olive/10"
+                >
+                  {note.reminder_time ? "Edit" : "Set"} Reminder
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {note.reminder_time ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      {format(new Date(note.reminder_time), "PPP 'at' p")}
+                    </p>
+                    {note.recurrence_frequency && note.recurrence_frequency !== 'none' && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="font-medium">Repeats:</span>
+                        Every {note.recurrence_interval && note.recurrence_interval > 1 ? note.recurrence_interval : ''} {note.recurrence_frequency}
+                        {note.recurrence_interval && note.recurrence_interval > 1 ? 's' : ''}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No reminder set</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Metadata */}
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <div className="flex items-center gap-4">
@@ -746,6 +786,15 @@ const NoteDetails = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Reminder Dialog */}
+      {note && (
+        <QuickEditReminderDialog
+          open={showReminderDialog}
+          onOpenChange={setShowReminderDialog}
+          note={note}
+        />
+      )}
     </main>
   );
 };

@@ -84,6 +84,9 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
     category: mapAICategory(supabaseNote.category),
     dueDate: supabaseNote.due_date,
     reminder_time: supabaseNote.reminder_time,
+    recurrence_frequency: supabaseNote.recurrence_frequency || undefined,
+    recurrence_interval: supabaseNote.recurrence_interval || undefined,
+    last_reminded_at: supabaseNote.last_reminded_at || undefined,
     addedBy: getAuthorName(supabaseNote.author_id || ""),
     createdAt: supabaseNote.created_at,
     updatedAt: supabaseNote.updated_at,
@@ -159,6 +162,10 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     if (updates.items !== undefined) supabaseUpdates.items = updates.items;
     if (updates.task_owner !== undefined) supabaseUpdates.task_owner = updates.task_owner;
     if (updates.list_id !== undefined) supabaseUpdates.list_id = updates.list_id;
+    if (updates.reminder_time !== undefined) supabaseUpdates.reminder_time = updates.reminder_time;
+    if (updates.recurrence_frequency !== undefined) supabaseUpdates.recurrence_frequency = updates.recurrence_frequency;
+    if (updates.recurrence_interval !== undefined) supabaseUpdates.recurrence_interval = updates.recurrence_interval;
+    if (updates.last_reminded_at !== undefined) supabaseUpdates.last_reminded_at = updates.last_reminded_at;
 
     // Let useSupabaseNotes handle all field mapping, just pass through the Note fields
     const result = await updateSupabaseNote(id, updates);

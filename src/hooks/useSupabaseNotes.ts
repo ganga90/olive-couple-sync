@@ -15,6 +15,9 @@ export type SupabaseNote = {
   tags?: string[];
   due_date?: string;
   reminder_time?: string | null;
+  recurrence_frequency?: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly' | null;
+  recurrence_interval?: number | null;
+  last_reminded_at?: string | null;
   completed: boolean;
   priority?: 'low' | 'medium' | 'high';
   task_owner?: string | null;

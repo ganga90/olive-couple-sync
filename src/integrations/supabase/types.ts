@@ -172,11 +172,14 @@ export type Database = {
           due_date: string | null
           id: string
           items: string[] | null
+          last_reminded_at: string | null
           list_id: string | null
           location: Json | null
           media_urls: string[] | null
           original_text: string
           priority: Database["public"]["Enums"]["note_priority"] | null
+          recurrence_frequency: string | null
+          recurrence_interval: number | null
           reminder_time: string | null
           summary: string
           tags: string[] | null
@@ -192,11 +195,14 @@ export type Database = {
           due_date?: string | null
           id?: string
           items?: string[] | null
+          last_reminded_at?: string | null
           list_id?: string | null
           location?: Json | null
           media_urls?: string[] | null
           original_text: string
           priority?: Database["public"]["Enums"]["note_priority"] | null
+          recurrence_frequency?: string | null
+          recurrence_interval?: number | null
           reminder_time?: string | null
           summary: string
           tags?: string[] | null
@@ -212,11 +218,14 @@ export type Database = {
           due_date?: string | null
           id?: string
           items?: string[] | null
+          last_reminded_at?: string | null
           list_id?: string | null
           location?: Json | null
           media_urls?: string[] | null
           original_text?: string
           priority?: Database["public"]["Enums"]["note_priority"] | null
+          recurrence_frequency?: string | null
+          recurrence_interval?: number | null
           reminder_time?: string | null
           summary?: string
           tags?: string[] | null
