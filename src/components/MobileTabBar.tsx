@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Home, ListTodo, Calendar } from "lucide-react";
+import { Home, ListTodo, Calendar, Bell } from "lucide-react";
 
 const MobileTabBar = () => {
   return (
@@ -51,6 +51,21 @@ const MobileTabBar = () => {
         >
           <Calendar className="h-6 w-6" aria-hidden="true" strokeWidth={2.5} />
           <span className="text-xs font-medium">Calendar</span>
+        </NavLink>
+        
+        <NavLink
+          to="/reminders"
+          className={({ isActive }) =>
+            `flex flex-col items-center justify-center gap-1 py-1 px-6 rounded-[var(--radius-md)] transition-all ${
+              isActive 
+                ? "text-primary" 
+                : "text-muted-foreground"
+            }`
+          }
+          aria-label="Reminders"
+        >
+          <Bell className="h-6 w-6" aria-hidden="true" strokeWidth={2.5} />
+          <span className="text-xs font-medium">Reminders</span>
         </NavLink>
       </div>
     </nav>
