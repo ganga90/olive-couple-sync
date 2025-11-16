@@ -35,12 +35,21 @@ serve(async (req) => {
       },
     });
 
-    // Get user from JWT
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-    
-    if (userError || !user) {
+    // Extract user ID from JWT claims (already verified by Edge Function runtime)
+    let userId: string;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      userId = payload.sub;
+      
+      if (!userId) {
+        throw new Error('No user ID in token');
+      }
+      
+      console.log('[generate-whatsapp-link] User ID from JWT:', userId);
+    } catch (error) {
+      console.error('[generate-whatsapp-link] Error parsing JWT:', error);
       return new Response(
-        JSON.stringify({ error: 'Invalid token' }),
+        JSON.stringify({ error: 'Invalid token format' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -57,7 +66,7 @@ serve(async (req) => {
       .from('linking_tokens')
       .insert({
         token: linkToken,
-        user_id: user.id,
+        user_id: userId,
         expires_at: expiresAt,
       });
 
