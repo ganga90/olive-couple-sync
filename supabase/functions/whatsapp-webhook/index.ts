@@ -1,44 +1,32 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// System prompt for intent classification
-const INTENT_CLASSIFIER_PROMPT = `You are an intent classifier for Olive, a personal organization assistant.
+const INTENT_CLASSIFIER_PROMPT = `You are an intent classifier for a task management app. Analyze the user's message and classify it into ONE of these categories:
 
-Analyze the user's message and classify it into ONE of these categories:
-
-1. ORGANIZATION - User is providing tasks, to-dos, shopping items, or scheduling information that needs to be organized
-   Examples: "buy salmon tonight", "remind me to call mom tomorrow", "add milk to grocery list"
-
-2. CONSULTATION - User is asking about their existing data, tasks, or schedule
-   Examples: "what's on my grocery list?", "what are my top 5 tasks?", "what's due today?"
-
-3. CONVERSATION - General chat, thanks, or unrelated comments
-   Examples: "thanks!", "you're awesome", "how are you?"
+ORGANIZATION: User wants to create a task, add a todo, organize something, or set a reminder
+CONSULTATION: User wants to retrieve information, check their tasks, or ask about existing data
+CONVERSATION: Casual chat, greetings, or off-topic messages
 
 Respond ONLY with valid JSON in this format:
 {
   "intent": "ORGANIZATION" | "CONSULTATION" | "CONVERSATION",
-  "confidence": 0.0-1.0,
-  "reasoning": "brief explanation"
+  "confidence": 0.0-1.0
 }`;
 
-// Helper to standardize phone numbers
+// Standardize phone number format
 function standardizePhoneNumber(rawNumber: string): string {
-  // Remove "whatsapp:" prefix if present
-  let cleaned = rawNumber.replace(/^whatsapp:/, '');
-  // Remove all non-digit characters except +
-  cleaned = cleaned.replace(/[^\d+]/g, '');
+  let cleaned = rawNumber.replace(/^whatsapp:/, '').replace(/\D/g, '');
+  if (!cleaned.startsWith('+')) cleaned = '+' + cleaned;
   return cleaned;
 }
 
-// Helper to call Gemini API
-async function callGemini(systemPrompt: string, userMessage: string, temperature = 0.2): Promise<any> {
+// Call Gemini API
+async function callGemini(systemPrompt: string, userMessage: string, temperature = 0.7): Promise<any> {
   const GEMINI_API_KEY = Deno.env.get('GEMINI_API');
   if (!GEMINI_API_KEY) throw new Error('GEMINI_API key not configured');
 
@@ -48,33 +36,21 @@ async function callGemini(systemPrompt: string, userMessage: string, temperature
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [{ text: `${systemPrompt}\n\nUser message: ${userMessage}` }]
-        }],
-        generationConfig: {
-          temperature,
-          maxOutputTokens: 2048,
-        }
+        contents: [{ parts: [{ text: systemPrompt + '\n\nUser message: ' + userMessage }] }],
+        generationConfig: { temperature, maxOutputTokens: 1000 }
       })
     }
   );
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Gemini API error:', errorText);
-    throw new Error(`Gemini API failed: ${response.status}`);
+    console.error('Gemini API error:', await response.text());
+    throw new Error('Gemini API call failed');
   }
 
   const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-}
-
-// Generate TwiML response
-function generateTwiML(message: string): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>${message}</Message>
-</Response>`;
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('No response from Gemini');
+  return text;
 }
 
 serve(async (req) => {
@@ -83,190 +59,196 @@ serve(async (req) => {
   }
 
   try {
-    console.log('WhatsApp webhook received');
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    // Parse form data from Twilio
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Parse Twilio webhook body
     const formData = await req.formData();
-    const fromNumber = formData.get('From')?.toString() || '';
-    const messageBody = formData.get('Body')?.toString() || '';
+    const fromNumber = standardizePhoneNumber(formData.get('From') as string);
+    const messageBody = (formData.get('Body') as string)?.trim();
+    
+    console.log('Incoming WhatsApp message:', { fromNumber, messageBody });
 
-    console.log('From:', fromNumber, 'Message:', messageBody);
-
-    if (!fromNumber || !messageBody) {
-      return new Response(generateTwiML('Invalid request format'), {
-        headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
-      });
+    if (!messageBody) {
+      return new Response(
+        '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Please send a message.</Message></Response>',
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      );
     }
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Check for linking token
+    const tokenMatch = messageBody.match(/My Olive Token is ([A-Z0-9_]+)/i);
+    if (tokenMatch) {
+      const token = tokenMatch[1].toUpperCase();
+      
+      const { data: tokenData, error: tokenError } = await supabase
+        .from('linking_tokens')
+        .select('user_id')
+        .eq('token', token)
+        .gt('expires_at', new Date().toISOString())
+        .eq('used', false)
+        .single();
 
-    // PHASE 1: Authentication - Match phone number to user
-    const standardizedPhone = standardizePhoneNumber(fromNumber);
-    console.log('Standardized phone:', standardizedPhone);
+      if (tokenError || !tokenData) {
+        return new Response(
+          '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Invalid or expired token. Please generate a new one from the Olive app.</Message></Response>',
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
 
+      const { error: updateError } = await supabase
+        .from('clerk_profiles')
+        .update({ whatsapp_id: fromNumber })
+        .eq('id', tokenData.user_id);
+
+      if (updateError) {
+        console.error('Error linking WhatsApp:', updateError);
+        return new Response(
+          '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Failed to link your account. Please try again.</Message></Response>',
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+      await supabase.from('linking_tokens').update({ used: true }).eq('token', token);
+
+      return new Response(
+        '<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Your Olive account is successfully linked! You can now send me your brain dumps and I\'ll organize them for you.</Message></Response>',
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      );
+    }
+
+    // Authenticate user by WhatsApp number
     const { data: profile, error: profileError } = await supabase
       .from('clerk_profiles')
       .select('id, display_name')
-      .eq('phone_number', standardizedPhone)
+      .eq('whatsapp_id', fromNumber)
       .single();
 
     if (profileError || !profile) {
-      console.log('User not found for phone:', standardizedPhone);
       return new Response(
-        generateTwiML(
-          "Welcome to Olive! 🫒 I couldn't find your account. Please sign in to the Olive app and link your WhatsApp number in Profile Settings."
-        ),
+        '<?xml version="1.0" encoding="UTF-8"?><Response><Message>👋 Hi! To use Olive via WhatsApp, please link your account first:\n\n1. Open the Olive app\n2. Go to Profile/Settings\n3. Tap "Link WhatsApp"\n4. Send the token here\n\nThen I can help organize your tasks!</Message></Response>',
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
       );
     }
 
     const userId = profile.id;
-    const userName = profile.display_name || 'there';
-    console.log('Authenticated user:', userId, userName);
 
-    // Get user's couple_id if they're part of a couple
-    const { data: membership } = await supabase
-      .from('clerk_couple_members')
-      .select('couple_id')
+    // Get or create session
+    let { data: session } = await supabase
+      .from('user_sessions')
+      .select('*')
       .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .single();
 
-    const coupleId = membership?.couple_id || null;
+    if (!session) {
+      const { data: newSession, error: sessionError } = await supabase
+        .from('user_sessions')
+        .insert({ user_id: userId, conversation_state: 'IDLE' })
+        .select()
+        .single();
 
-    // PHASE 2: Intent Classification
-    console.log('Classifying intent...');
-    const intentResponse = await callGemini(INTENT_CLASSIFIER_PROMPT, messageBody, 0.1);
-    
-    let intent;
-    try {
-      // Extract JSON from response (handle markdown code blocks)
-      const jsonMatch = intentResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        intent = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error('No JSON found in response');
+      if (sessionError) {
+        console.error('Error creating session:', sessionError);
+        return new Response(
+          '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Sorry, there was an error. Please try again.</Message></Response>',
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
       }
+      session = newSession;
+    }
+
+    // Handle AWAITING_DETAIL state
+    if (session.conversation_state === 'AWAITING_DETAIL') {
+      const contextData = session.context_data as any;
+      
+      await supabase
+        .from('clerk_notes')
+        .update({ summary: `${contextData.summary} - ${messageBody}`, updated_at: new Date().toISOString() })
+        .eq('id', contextData.task_id);
+
+      await supabase
+        .from('user_sessions')
+        .update({ conversation_state: 'IDLE', context_data: null, updated_at: new Date().toISOString() })
+        .eq('id', session.id);
+
+      return new Response(
+        '<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Got it! Task updated successfully.</Message></Response>',
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      );
+    }
+
+    // IDLE state: Classify intent
+    const intentResponse = await callGemini(INTENT_CLASSIFIER_PROMPT, messageBody, 0.3);
+    let intent: any;
+    
+    try {
+      const jsonMatch = intentResponse.match(/\{[\s\S]*\}/);
+      intent = JSON.parse(jsonMatch ? jsonMatch[0] : intentResponse);
     } catch (e) {
-      console.error('Failed to parse intent:', e, intentResponse);
+      console.error('Failed to parse intent:', e);
       intent = { intent: 'CONVERSATION', confidence: 0.5 };
     }
 
-    console.log('Intent classified:', intent);
-
-    // PHASE 3: Route based on intent
-    let responseMessage = '';
+    console.log('Classified intent:', intent);
 
     if (intent.intent === 'ORGANIZATION') {
-      // Path A: Process and organize the brain dump
-      console.log('Processing organization request...');
+      const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
+        body: { text: messageBody, user_id: userId }
+      });
 
-      try {
-        // Call the existing process-note function
-        const { data: processedNote, error: processError } = await supabase.functions.invoke(
-          'process-note',
-          {
-            body: {
-              text: messageBody,
-              user_id: userId,
-              couple_id: coupleId,
-            }
-          }
+      if (processError) {
+        console.error('Error processing note:', processError);
+        return new Response(
+          '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Sorry, I had trouble processing that. Please try again.</Message></Response>',
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
-
-        if (processError) throw processError;
-
-        console.log('Note processed:', processedNote);
-
-        // Generate confirmation message
-        if (processedNote.notes && Array.isArray(processedNote.notes)) {
-          const taskCount = processedNote.notes.length;
-          const categories = processedNote.notes.map((n: any) => n.category).filter((v: any, i: number, a: any[]) => a.indexOf(v) === i);
-          responseMessage = `✅ Got it! I've organized ${taskCount} item${taskCount > 1 ? 's' : ''} into: ${categories.join(', ')}. Check your Olive app!`;
-        } else {
-          responseMessage = `✅ Task organized and added to "${processedNote.category}"! Check your Olive app.`;
-        }
-      } catch (error) {
-        console.error('Error processing note:', error);
-        responseMessage = "I'm having trouble organizing that right now. Please try again in a moment.";
       }
+
+      const taskSummary = processData.summary || 'Task';
+      return new Response(
+        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Got it! I've added "${taskSummary}" to your tasks.</Message></Response>`,
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      );
 
     } else if (intent.intent === 'CONSULTATION') {
-      // Path B: Query and retrieve user data
-      console.log('Processing consultation request...');
+      const { data: tasks } = await supabase
+        .from('clerk_notes')
+        .select('summary, due_date, completed, priority, category')
+        .eq('author_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(10);
 
-      try {
-        // Fetch relevant user data
-        const { data: notes, error: notesError } = await supabase
-          .from('clerk_notes')
-          .select('*')
-          .or(`and(author_id.eq.${userId},couple_id.is.null),and(couple_id.eq.${coupleId},couple_id.not.is.null)`)
-          .order('created_at', { ascending: false })
-          .limit(50);
+      const tasksContext = tasks?.length 
+        ? `User's recent tasks:\n${tasks.map(t => `- ${t.summary} (${t.category}, ${t.completed ? 'Done' : 'Pending'})`).join('\n')}`
+        : 'User has no tasks yet.';
 
-        if (notesError) throw notesError;
-
-        // Prepare context for AI
-        const notesContext = notes.map((note: any) => ({
-          summary: note.summary,
-          category: note.category,
-          dueDate: note.due_date,
-          completed: note.completed,
-          priority: note.priority,
-          items: note.items,
-        }));
-
-        // Ask AI to answer the query based on the data
-        const consultationPrompt = `You are Olive, a personal organization assistant. The user has asked: "${messageBody}"
-
-Here is their current data:
-${JSON.stringify(notesContext, null, 2)}
-
-Provide a helpful, concise answer to their question based on this data. Keep it conversational and friendly. If they're asking about tasks, prioritize by due date and priority. Format your response for WhatsApp (plain text, use emojis sparingly).`;
-
-        responseMessage = await callGemini(consultationPrompt, '', 0.7);
-        
-        // Clean up any markdown formatting
-        responseMessage = responseMessage.replace(/```[\s\S]*?```/g, '').trim();
-        
-      } catch (error) {
-        console.error('Error in consultation:', error);
-        responseMessage = "I'm having trouble accessing your data right now. Please try again in a moment.";
-      }
+      const consultPrompt = `You are Olive, a helpful task assistant. Based on the user's tasks, answer their question concisely (max 2-3 sentences).\n\n${tasksContext}\n\nUser question: ${messageBody}`;
+      const answer = await callGemini(consultPrompt, '', 0.7);
+      
+      return new Response(
+        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${answer}</Message></Response>`,
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      );
 
     } else {
-      // Path C: General conversation
-      console.log('Processing conversation...');
+      const chatPrompt = `You are Olive, a friendly task assistant. Respond to the user's message warmly and briefly (1-2 sentences). Encourage them to share tasks or ask questions.`;
+      const reply = await callGemini(chatPrompt, messageBody, 0.8);
 
-      const conversationPrompt = `You are Olive, a friendly personal organization assistant. The user said: "${messageBody}"
-
-Respond in a warm, helpful way. Keep it brief (1-2 sentences). If they're thanking you, acknowledge it. If they're chatting, engage briefly and remind them you're here to help organize their tasks and answer questions about their lists.`;
-
-      try {
-        responseMessage = await callGemini(conversationPrompt, '', 0.8);
-        responseMessage = responseMessage.replace(/```[\s\S]*?```/g, '').trim();
-      } catch (error) {
-        console.error('Error in conversation:', error);
-        responseMessage = "You're welcome! Let me know if you have any tasks or questions about your lists! 🫒";
-      }
+      return new Response(
+        `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${reply}</Message></Response>`,
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      );
     }
-
-    console.log('Sending response:', responseMessage);
-
-    return new Response(generateTwiML(responseMessage), {
-      headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
-    });
 
   } catch (error) {
     console.error('WhatsApp webhook error:', error);
     return new Response(
-      generateTwiML("Sorry, I encountered an error. Please try again later."),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
-      }
+      '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Sorry, something went wrong. Please try again later.</Message></Response>',
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
     );
   }
 });
