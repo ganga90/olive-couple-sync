@@ -90,7 +90,16 @@ Due Date Intelligence (CRITICAL - Use actual date calculation):
 - "monthly", "weekly" → set as recurring (note in tags) and set first occurrence
 - CRITICAL: Always return actual ISO date strings (YYYY-MM-DDTHH:mm:ss.sssZ), never relative text
 - CRITICAL: Calculate dates based on current time: ${new Date().toISOString()}
-- CRITICAL: For reminders (e.g., "remind me to X in 2 hours"), extract the time and add priority: high
+
+Reminder vs Due Date (CRITICAL):
+- If user says "remind me" → set ONLY reminder_time (not due_date)
+- If user mentions a deadline/due date → set ONLY due_date (not reminder_time)
+- Only set both if explicitly mentioned
+- Examples:
+  * "remind me to call doctor in 2 minutes" → reminder_time set, due_date null
+  * "project due tomorrow" → due_date set, reminder_time null
+  * "remind me tomorrow about the meeting due on Friday" → both set
+- CRITICAL: For reminders, extract the time and add priority: high
 
 Date Calculation Examples (assuming today is ${new Date().toDateString()}):
 - Input: "next Friday" → Calculate which date is the next Friday and return as "2024-XX-XXTXX:XX:XX.XXXZ"
@@ -111,6 +120,7 @@ Formatting Output:
       "summary": "task 1 summary",
       "category": "category1", 
       "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
+      "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null",
       "priority": "high/medium/low",
       "tags": ["tag1"],
       "items": ["item1", "item2"],
@@ -120,6 +130,7 @@ Formatting Output:
       "summary": "task 2 summary", 
       "category": "category2",
       "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
+      "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null",
       "priority": "high/medium/low", 
       "tags": ["tag2"],
       "items": ["item3", "item4"],
@@ -138,7 +149,8 @@ Formatting Output:
 {
   "summary": "concise summary (max 100 characters)",
   "category": "assigned category (lowercase, use underscores)",
-  "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null", 
+  "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
+  "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null", 
   "priority": "low/medium/high",
   "tags": ["relevant", "tags"],
   "items": ["individual", "items"],
@@ -353,6 +365,7 @@ serve(async (req) => {
             summary: note.summary || text,
             category: note.category || "task",
             due_date: note.due_date || null,
+            reminder_time: note.reminder_time || null,
             priority: note.priority || "medium",
             tags: note.tags || [],
             items: note.items || [],
@@ -383,6 +396,7 @@ serve(async (req) => {
         summary: processedResponse.summary || text,
         category: processedResponse.category || "task",
         due_date: processedResponse.due_date || null,
+        reminder_time: processedResponse.reminder_time || null,
         priority: processedResponse.priority || "medium",
         tags: processedResponse.tags || [],
         items: processedResponse.items || [],

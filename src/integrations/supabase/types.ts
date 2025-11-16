@@ -177,6 +177,7 @@ export type Database = {
           media_urls: string[] | null
           original_text: string
           priority: Database["public"]["Enums"]["note_priority"] | null
+          reminder_time: string | null
           summary: string
           tags: string[] | null
           task_owner: string | null
@@ -196,6 +197,7 @@ export type Database = {
           media_urls?: string[] | null
           original_text: string
           priority?: Database["public"]["Enums"]["note_priority"] | null
+          reminder_time?: string | null
           summary: string
           tags?: string[] | null
           task_owner?: string | null
@@ -215,6 +217,7 @@ export type Database = {
           media_urls?: string[] | null
           original_text?: string
           priority?: Database["public"]["Enums"]["note_priority"] | null
+          reminder_time?: string | null
           summary?: string
           tags?: string[] | null
           task_owner?: string | null

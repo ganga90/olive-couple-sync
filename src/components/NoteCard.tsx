@@ -2,10 +2,11 @@ import React from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, User, Users, MessageCircle, CheckCircle2, Circle, Sparkles } from "lucide-react";
+import { CalendarDays, User, Users, MessageCircle, CheckCircle2, Circle, Sparkles, Bell } from "lucide-react";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { NotePrivacyToggle } from "@/components/NotePrivacyToggle";
+import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
 import type { Note } from "@/types/note";
 import { format } from "date-fns";
 
@@ -27,6 +28,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   const authorName = isYourNote ? "You" : partner || "Partner";
   
   const [isCompleting, setIsCompleting] = React.useState(false);
+  const [showReminderDialog, setShowReminderDialog] = React.useState(false);
 
   const handleToggleComplete = async () => {
     const newCompleted = !note.completed;
@@ -126,34 +128,63 @@ export const NoteCard: React.FC<NoteCardProps> = ({
 
         {/* Footer */}
         <div className="flex items-center justify-between pt-2">
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1">
-                <User className="h-3 w-3" />
-                {authorName}
+          <div className="flex flex-col gap-2 text-xs text-muted-foreground w-full">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <User className="h-3 w-3" />
+                  {authorName}
+                </div>
+                <NotePrivacyToggle note={note} size="sm" variant="ghost" />
               </div>
-              <NotePrivacyToggle note={note} size="sm" variant="ghost" />
+              
+              {note.dueDate && (
+                <div className="flex items-center gap-1">
+                  <CalendarDays className="h-3 w-3" />
+                  {format(new Date(note.dueDate), "MMM d")}
+                </div>
+              )}
             </div>
             
-            {note.dueDate && (
-              <div className="flex items-center gap-1">
-                <CalendarDays className="h-3 w-3" />
-                {format(new Date(note.dueDate), "MMM d")}
+            {note.reminder_time && (
+              <div className="flex items-center gap-1 text-olive">
+                <Bell className="h-3 w-3" />
+                <span className="font-medium">
+                  Reminder: {format(new Date(note.reminder_time), "PPp")}
+                </span>
               </div>
             )}
           </div>
           
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onAskOlive?.(note)}
-            className="text-xs h-auto py-1 px-2 text-olive hover:text-olive-dark hover:bg-olive/10"
-          >
-            <MessageCircle className="h-3 w-3 mr-1" />
-            Ask Olive
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowReminderDialog(true)}
+              className="text-xs h-auto py-1 px-2 hover:bg-accent"
+            >
+              <Bell className="h-3 w-3 mr-1" />
+              {note.reminder_time ? "Edit" : "Set"} Reminder
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onAskOlive?.(note)}
+              className="text-xs h-auto py-1 px-2 text-olive hover:text-olive-dark hover:bg-olive/10"
+            >
+              <MessageCircle className="h-3 w-3 mr-1" />
+              Ask Olive
+            </Button>
+          </div>
         </div>
       </div>
+      
+      <QuickEditReminderDialog 
+        open={showReminderDialog}
+        onOpenChange={setShowReminderDialog}
+        note={note}
+      />
     </Card>
   );
 };

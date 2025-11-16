@@ -28,7 +28,7 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Find notes that are due now (within the next 5 minutes) and haven't been reminded yet
+    // Find notes with reminder_time in the next 5 minutes that haven't been reminded yet
     const now = new Date();
     const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
 
@@ -36,12 +36,11 @@ serve(async (req) => {
 
     const { data: dueNotes, error: notesError } = await supabase
       .from('clerk_notes')
-      .select('id, summary, due_date, author_id, tags, category')
-      .lte('due_date', fiveMinutesFromNow.toISOString())
-      .gte('due_date', now.toISOString())
+      .select('id, summary, reminder_time, author_id, tags, category')
+      .lte('reminder_time', fiveMinutesFromNow.toISOString())
+      .gte('reminder_time', now.toISOString())
       .eq('completed', false)
-      .is('tags', null)
-      .or('tags.not.cs.{reminded}');
+      .or('tags.is.null,tags.not.cs.{reminded}');
 
     if (notesError) {
       console.error('Error fetching due notes:', notesError);

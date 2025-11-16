@@ -13,6 +13,7 @@ export interface Note {
   items?: string[];
   task_owner?: string | null;
   list_id?: string | null;
+  reminder_time?: string | null;
   // New fields to distinguish note types
   isShared?: boolean;
   coupleId?: string;
