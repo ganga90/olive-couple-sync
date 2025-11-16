@@ -28,22 +28,14 @@ const Home = () => {
 
   const userName = isAuthenticated ? (user?.firstName || user?.fullName || you || "there") : "there";
 
-  // Get focus tasks (max 5, overdue or due today)
+  // Get focus tasks (3-5 high priority tasks, ordered by creation date)
   const focusTasks = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const critical = notes
-      .filter(note => !note.completed && note.dueDate)
-      .filter(note => {
-        const dueDate = new Date(note.dueDate!);
-        dueDate.setHours(0, 0, 0, 0);
-        return dueDate <= today;
-      })
-      .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
+    const highPriorityTasks = notes
+      .filter(note => !note.completed && note.priority === 'high')
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
       .slice(0, 5);
     
-    return critical;
+    return highPriorityTasks;
   }, [notes]);
 
   // Get completed tasks this week
@@ -155,14 +147,14 @@ const Home = () => {
                     />
                   ))}
                   
-                  {notes.filter(n => !n.completed && n.dueDate).length > 5 && (
+                  {notes.filter(n => !n.completed && n.priority === 'high').length > 5 && (
                     <Button
                       variant="ghost"
                       size="sm"
                       className="w-full text-xs"
                       onClick={() => navigate('/lists')}
                     >
-                      +{notes.filter(n => !n.completed && n.dueDate).length - 5} More Critical Tasks
+                      +{notes.filter(n => !n.completed && n.priority === 'high').length - 5} More High Priority Tasks
                     </Button>
                   )}
                 </div>
