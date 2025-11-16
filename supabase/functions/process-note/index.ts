@@ -64,7 +64,7 @@ Enhanced Categorization Logic:
 - **groceries**, **food shopping**, **supermarket** → category: "groceries"
 - **general shopping** (clothes, electronics, etc.) → category: "shopping"
 - **personal tasks**, **appointments**, **calls**, **bills**, **rent** → category: "personal"
-- **reminders**, **don't forget** → category: "reminder"
+- **reminders**, **remind me**, **don't forget** → category: "reminder", set priority to HIGH and add "reminder" tag
 
 Task Owner Detection:
 - Scan for mentions of who should be responsible for or assigned to complete the task
@@ -79,6 +79,9 @@ Items Extraction:
 
 Due Date Intelligence (CRITICAL - Use actual date calculation):
 - Calculate the current date and time when processing
+- "in X hours" or "in X hour" → add X hours to current time in ISO format
+- "in X minutes" or "in X minute" → add X minutes to current time in ISO format  
+- "in X days" or "in X day" → add X days to current time at 09:00 in ISO format
 - "tonight" → today's date at 23:59 in ISO format
 - "tomorrow" → tomorrow's date at 09:00 in ISO format  
 - "Friday", "next Friday" → calculate the next occurrence of that weekday at 09:00 in ISO format
@@ -87,6 +90,7 @@ Due Date Intelligence (CRITICAL - Use actual date calculation):
 - "monthly", "weekly" → set as recurring (note in tags) and set first occurrence
 - CRITICAL: Always return actual ISO date strings (YYYY-MM-DDTHH:mm:ss.sssZ), never relative text
 - CRITICAL: Calculate dates based on current time: ${new Date().toISOString()}
+- CRITICAL: For reminders (e.g., "remind me to X in 2 hours"), extract the time and add priority: high
 
 Date Calculation Examples (assuming today is ${new Date().toDateString()}):
 - Input: "next Friday" → Calculate which date is the next Friday and return as "2024-XX-XXTXX:XX:XX.XXXZ"
