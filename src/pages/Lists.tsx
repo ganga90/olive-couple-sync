@@ -188,19 +188,17 @@ const Lists = () => {
 
                       {/* Actions */}
                       <div className="flex items-center gap-1 flex-shrink-0">
-                        {list.is_manual && (
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleDeleteList(list.id, list.name);
-                            }}
-                            className="md:opacity-0 md:group-hover:opacity-100 transition-opacity p-2 hover:bg-destructive/10 rounded-[var(--radius-sm)]"
-                            aria-label="Delete list"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </button>
-                        )}
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleDeleteList(list.id, list.name);
+                          }}
+                          className="md:opacity-0 md:group-hover:opacity-100 transition-opacity p-2 hover:bg-destructive/10 rounded-[var(--radius-sm)]"
+                          aria-label="Delete list"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </button>
                         <ChevronRight className="h-5 w-5 text-muted-foreground" />
                       </div>
                     </Link>

@@ -4,12 +4,12 @@ import { useSEO } from "@/hooks/useSEO";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Bell, Calendar, Clock, Trash2, Edit } from "lucide-react";
-import { format, formatDistanceToNow, addHours, isBefore } from "date-fns";
+import { Bell } from "lucide-react";
+import { addHours, isBefore } from "date-fns";
 import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
 import { FloatingActionButton } from "@/components/FloatingActionButton";
+import { SwipeableReminderCard } from "@/components/SwipeableReminderCard";
 import type { Note } from "@/types/note";
 
 interface ReminderItem {
@@ -155,91 +155,13 @@ const Reminders = () => {
         {/* Reminders List */}
         <div className="space-y-3">
           {allReminders.map((reminder, index) => (
-            <Card 
-              key={`${reminder.note.id}-${reminder.type}-${index}`} 
-              className="shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-card-hover)] transition-shadow cursor-pointer"
+            <SwipeableReminderCard
+              key={`${reminder.note.id}-${reminder.type}-${index}`}
+              reminder={reminder}
+              onDelete={() => handleDeleteReminder(reminder)}
+              onEdit={reminder.type === "explicit" ? () => handleEditReminder(reminder.note) : undefined}
               onClick={() => handleNoteClick(reminder.note.id)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    {/* Badges */}
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <Badge variant={reminder.type === "explicit" ? "default" : "secondary"} className="text-xs">
-                        {reminder.label}
-                      </Badge>
-                      {reminder.note.category && (
-                        <Badge variant="outline" className="text-xs">
-                          {reminder.note.category}
-                        </Badge>
-                      )}
-                    </div>
-                    
-                    {/* Title */}
-                    <h3 className="font-semibold text-base mb-2 line-clamp-2">
-                      {reminder.note.summary}
-                    </h3>
-                    
-                    {/* Time details */}
-                    <div className="space-y-1.5 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-3.5 w-3.5 flex-shrink-0" />
-                        <span className="font-medium text-foreground">
-                          {format(reminder.time, "MMM d 'at' h:mm a")}
-                        </span>
-                        <span className="text-xs">
-                          ({formatDistanceToNow(reminder.time, { addSuffix: true })})
-                        </span>
-                      </div>
-                      
-                      {reminder.note.dueDate && (
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
-                          <span>Due {format(new Date(reminder.note.dueDate), "MMM d 'at' h:mm a")}</span>
-                        </div>
-                      )}
-                      
-                      {reminder.note.recurrence_frequency && reminder.note.recurrence_frequency !== 'none' && (
-                        <div className="flex items-center gap-2">
-                          <Bell className="h-3.5 w-3.5 flex-shrink-0" />
-                          <span>Repeats {reminder.note.recurrence_frequency}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Action buttons */}
-                  <div className="flex gap-1 flex-shrink-0">
-                    {reminder.type === "explicit" && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditReminder(reminder.note);
-                        }}
-                        aria-label="Edit reminder"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteReminder(reminder);
-                      }}
-                      aria-label="Delete reminder"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            />
           ))}
         </div>
       </div>
