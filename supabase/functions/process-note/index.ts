@@ -246,9 +246,16 @@ serve(async (req) => {
       throw new Error('Invalid response from Gemini API');
     }
 
-    // Check if response was truncated - continue processing but log warning
+    // Check if response was truncated or empty
     if (data.candidates[0].finishReason === 'MAX_TOKENS') {
-      console.warn('AI response may have been truncated due to token limit');
+      console.error('AI response was truncated due to token limit');
+      throw new Error('AI response was incomplete. Please try with a shorter message.');
+    }
+
+    // Validate that we have the parts array with content
+    if (!data.candidates[0].content.parts || !data.candidates[0].content.parts[0] || !data.candidates[0].content.parts[0].text) {
+      console.error('AI response missing content parts:', data.candidates[0].content);
+      throw new Error('AI returned an empty response. Please try again.');
     }
 
     const aiResponse = data.candidates[0].content.parts[0].text;
