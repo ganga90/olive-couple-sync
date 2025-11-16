@@ -14,6 +14,9 @@ export interface Note {
   task_owner?: string | null;
   list_id?: string | null;
   reminder_time?: string | null;
+  recurrence_frequency?: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+  recurrence_interval?: number;
+  last_reminded_at?: string | null;
   // New fields to distinguish note types
   isShared?: boolean;
   coupleId?: string;

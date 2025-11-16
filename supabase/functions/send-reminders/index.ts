@@ -36,11 +36,11 @@ serve(async (req) => {
 
     const { data: dueNotes, error: notesError } = await supabase
       .from('clerk_notes')
-      .select('id, summary, reminder_time, author_id, tags, category')
+      .select('id, summary, reminder_time, author_id, tags, category, recurrence_frequency, recurrence_interval, last_reminded_at')
+      .not('reminder_time', 'is', null)
       .lte('reminder_time', fiveMinutesFromNow.toISOString())
       .gte('reminder_time', now.toISOString())
-      .eq('completed', false)
-      .or('tags.is.null,tags.not.cs.{reminded}');
+      .eq('completed', false);
 
     if (notesError) {
       console.error('Error fetching due notes:', notesError);
@@ -118,15 +118,44 @@ serve(async (req) => {
         console.log(`Sent reminder to ${profile.phone_number} (${profile.display_name || 'Unknown'})`);
         sentCount++;
 
-        // Mark notes as reminded by adding 'reminded' tag
+        // Handle recurring reminders and mark as reminded
         for (const note of notes) {
-          const currentTags = note.tags || [];
+          const updateData: any = {
+            last_reminded_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+
+          // Calculate next reminder time for recurring reminders
+          if (note.recurrence_frequency && note.recurrence_frequency !== 'none' && note.reminder_time) {
+            const currentReminder = new Date(note.reminder_time);
+            const interval = note.recurrence_interval || 1;
+            let nextReminder = new Date(currentReminder);
+
+            switch (note.recurrence_frequency) {
+              case 'daily':
+                nextReminder.setDate(nextReminder.getDate() + interval);
+                break;
+              case 'weekly':
+                nextReminder.setDate(nextReminder.getDate() + (7 * interval));
+                break;
+              case 'monthly':
+                nextReminder.setMonth(nextReminder.getMonth() + interval);
+                break;
+              case 'yearly':
+                nextReminder.setFullYear(nextReminder.getFullYear() + interval);
+                break;
+            }
+
+            updateData.reminder_time = nextReminder.toISOString();
+            console.log(`Scheduled next recurring reminder for note ${note.id}: ${nextReminder.toISOString()}`);
+          } else {
+            // For non-recurring reminders, clear the reminder_time after sending
+            updateData.reminder_time = null;
+          }
+
           await supabase
             .from('clerk_notes')
-            .update({ 
-              tags: [...currentTags, 'reminded'],
-              updated_at: new Date().toISOString()
-            })
+            .update(updateData)
             .eq('id', note.id);
         }
 
