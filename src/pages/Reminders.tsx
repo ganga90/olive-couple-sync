@@ -1,15 +1,16 @@
-import React, { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useSEO } from "@/hooks/useSEO";
+import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Bell, Calendar, Clock, Trash2, Edit } from "lucide-react";
 import { format, formatDistanceToNow, addHours, isBefore } from "date-fns";
 import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
-import { useState } from "react";
+import { FloatingActionButton } from "@/components/FloatingActionButton";
 import type { Note } from "@/types/note";
-import { useNavigate } from "react-router-dom";
 
 interface ReminderItem {
   note: Note;
@@ -25,7 +26,8 @@ const Reminders = () => {
   });
 
   const navigate = useNavigate();
-  const { notes, updateNote, deleteNote } = useSupabaseNotesContext();
+  const { isAuthenticated } = useAuth();
+  const { notes, updateNote } = useSupabaseNotesContext();
   const [editingNote, setEditingNote] = useState<Note | null>(null);
 
   // Calculate all reminders
@@ -105,96 +107,141 @@ const Reminders = () => {
     navigate(`/notes/${noteId}`);
   };
 
+  if (!isAuthenticated) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
+        <Bell className="h-16 w-16 text-primary mb-4" />
+        <h1 className="text-2xl font-semibold mb-2">Reminders</h1>
+        <p className="text-muted-foreground mb-6">Sign in to view your reminders</p>
+        <Button onClick={() => navigate("/sign-in")}>Sign In</Button>
+      </div>
+    );
+  }
+
   if (allReminders.length === 0) {
     return (
-      <div className="container max-w-4xl px-4 py-8 mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Reminders</h1>
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Bell className="h-16 w-16 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground text-center">
-              No upcoming reminders. Set a reminder on a task to get notified!
-            </p>
-          </CardContent>
-        </Card>
+      <div className="h-full overflow-y-auto">
+        <FloatingActionButton />
+        <div className="px-4 py-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <Bell className="h-6 w-6 text-primary" />
+            <h1 className="text-2xl font-bold text-foreground">Reminders</h1>
+          </div>
+          
+          <Card className="shadow-[var(--shadow-card)]">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Bell className="h-16 w-16 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground text-center">
+                No upcoming reminders. Set a reminder on a task to get notified!
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="container max-w-4xl px-4 py-8 mx-auto pb-24 md:pb-8">
-      <h1 className="text-3xl font-bold mb-6">Reminders</h1>
+    <div className="h-full overflow-y-auto">
+      <FloatingActionButton />
       
-      <div className="space-y-4">
-        {allReminders.map((reminder, index) => (
-          <Card key={`${reminder.note.id}-${reminder.type}-${index}`} className="hover:shadow-md transition-shadow">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Badge variant={reminder.type === "explicit" ? "default" : "secondary"} className="text-xs">
-                      {reminder.label}
-                    </Badge>
-                    {reminder.note.category && (
-                      <Badge variant="outline" className="text-xs">
-                        {reminder.note.category}
+      <div className="px-4 py-6 space-y-4 pb-24 md:pb-6">
+        {/* Header */}
+        <div className="flex items-center gap-2">
+          <Bell className="h-6 w-6 text-primary" />
+          <h1 className="text-2xl font-bold text-foreground">Reminders</h1>
+        </div>
+        
+        {/* Reminders List */}
+        <div className="space-y-3">
+          {allReminders.map((reminder, index) => (
+            <Card 
+              key={`${reminder.note.id}-${reminder.type}-${index}`} 
+              className="shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-card-hover)] transition-shadow cursor-pointer"
+              onClick={() => handleNoteClick(reminder.note.id)}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    {/* Badges */}
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <Badge variant={reminder.type === "explicit" ? "default" : "secondary"} className="text-xs">
+                        {reminder.label}
                       </Badge>
-                    )}
+                      {reminder.note.category && (
+                        <Badge variant="outline" className="text-xs">
+                          {reminder.note.category}
+                        </Badge>
+                      )}
+                    </div>
+                    
+                    {/* Title */}
+                    <h3 className="font-semibold text-base mb-2 line-clamp-2">
+                      {reminder.note.summary}
+                    </h3>
+                    
+                    {/* Time details */}
+                    <div className="space-y-1.5 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span className="font-medium text-foreground">
+                          {format(reminder.time, "MMM d 'at' h:mm a")}
+                        </span>
+                        <span className="text-xs">
+                          ({formatDistanceToNow(reminder.time, { addSuffix: true })})
+                        </span>
+                      </div>
+                      
+                      {reminder.note.dueDate && (
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span>Due {format(new Date(reminder.note.dueDate), "MMM d 'at' h:mm a")}</span>
+                        </div>
+                      )}
+                      
+                      {reminder.note.recurrence_frequency && reminder.note.recurrence_frequency !== 'none' && (
+                        <div className="flex items-center gap-2">
+                          <Bell className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span>Repeats {reminder.note.recurrence_frequency}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <CardTitle 
-                    className="text-lg cursor-pointer hover:text-primary transition-colors"
-                    onClick={() => handleNoteClick(reminder.note.id)}
-                  >
-                    {reminder.note.summary}
-                  </CardTitle>
-                </div>
-                <div className="flex gap-2">
-                  {reminder.type === "explicit" && (
+                  
+                  {/* Action buttons */}
+                  <div className="flex gap-1 flex-shrink-0">
+                    {reminder.type === "explicit" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditReminder(reminder.note);
+                        }}
+                        aria-label="Edit reminder"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => handleEditReminder(reminder.note)}
-                      aria-label="Edit reminder"
+                      className="h-8 w-8"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteReminder(reminder);
+                      }}
+                      aria-label="Delete reminder"
                     >
-                      <Edit className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4" />
                     </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDeleteReminder(reminder)}
-                    aria-label="Delete reminder"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  <span className="font-medium">
-                    {format(reminder.time, "MMM d, yyyy 'at' h:mm a")}
-                  </span>
-                  <span>({formatDistanceToNow(reminder.time, { addSuffix: true })})</span>
-                </div>
-                {reminder.note.dueDate && (
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    <span>Due: {format(new Date(reminder.note.dueDate), "MMM d, yyyy 'at' h:mm a")}</span>
                   </div>
-                )}
-                {reminder.note.recurrence_frequency && reminder.note.recurrence_frequency !== 'none' && (
-                  <div className="flex items-center gap-2">
-                    <Bell className="h-4 w-4" />
-                    <span>Repeats: {reminder.note.recurrence_frequency}</span>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
 
       {editingNote && (
