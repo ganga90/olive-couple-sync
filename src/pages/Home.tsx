@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, TrendingUp } from "lucide-react";
+import { Plus, TrendingUp, Filter } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,6 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { NoteInput } from "@/components/NoteInput";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { format, addDays, startOfDay, endOfDay, isSameDay } from "date-fns";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { categories } from "@/constants/categories";
 
 const Home = () => {
   useSEO({ 
@@ -27,13 +29,24 @@ const Home = () => {
   const { notes, updateNote } = useSupabaseNotesContext();
   const [isInputOpen, setIsInputOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Note | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [ownerFilter, setOwnerFilter] = useState<string>("all");
 
   const userName = isAuthenticated ? (user?.firstName || user?.fullName || you || "there") : "there";
+
+  // Apply filters to notes
+  const filteredNotes = useMemo(() => {
+    return notes.filter(note => {
+      if (categoryFilter !== "all" && note.category.toLowerCase() !== categoryFilter.toLowerCase()) return false;
+      if (ownerFilter !== "all" && note.task_owner !== ownerFilter) return false;
+      return true;
+    });
+  }, [notes, categoryFilter, ownerFilter]);
 
   // Get priority tasks (top 5 ordered by priority)
   const priorityTasks = useMemo(() => {
     const priorityOrder = { high: 3, medium: 2, low: 1 };
-    return notes
+    return filteredNotes
       .filter(note => !note.completed)
       .sort((a, b) => {
         const aPriority = priorityOrder[a.priority || 'low'];
@@ -42,7 +55,7 @@ const Home = () => {
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       })
       .slice(0, 5);
-  }, [notes]);
+  }, [filteredNotes]);
 
   // Get daily view tasks (next 3 days)
   const dailyViewTasks = useMemo(() => {
@@ -51,7 +64,7 @@ const Home = () => {
     
     return next3Days.map(day => ({
       date: day,
-      tasks: notes
+      tasks: filteredNotes
         .filter(note => {
           if (note.completed) return false;
           if (!note.dueDate) return false;
@@ -65,7 +78,7 @@ const Home = () => {
           return bPriority - aPriority;
         })
     }));
-  }, [notes]);
+  }, [filteredNotes]);
 
   // Get completed tasks this week
   const completedThisWeek = useMemo(() => {
@@ -142,6 +155,93 @@ const Home = () => {
               Try: <span className="italic">"dinner with Luca next Wed 7pm, ask Almu about tickets"</span>
             </p>
           </div>
+
+          {/* Tabs Widget with Filters */}
+          <Card className="overflow-hidden">
+            <Tabs defaultValue="priority" className="w-full">
+              <div className="bg-primary/5 px-4 py-3 border-b">
+                <TabsList className="w-full grid grid-cols-2 bg-background/50 mb-3">
+                  <TabsTrigger value="priority" className="text-xs">Priority Tasks</TabsTrigger>
+                  <TabsTrigger value="daily" className="text-xs">Daily View</TabsTrigger>
+                </TabsList>
+                
+                {/* Filters */}
+                <div className="flex gap-2">
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="h-8 text-xs flex-1">
+                      <SelectValue placeholder="Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      {categories.map(cat => (
+                        <SelectItem key={cat} value={cat.toLowerCase()}>{cat}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  
+                  <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+                    <SelectTrigger className="h-8 text-xs flex-1">
+                      <SelectValue placeholder="Owner" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Everyone</SelectItem>
+                      <SelectItem value="you">{you || 'You'}</SelectItem>
+                      <SelectItem value="partner">{partner || 'Partner'}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              
+              <TabsContent value="priority" className="mt-0">
+                <div className="p-4 space-y-2">
+                  {priorityTasks.length > 0 ? (
+                    priorityTasks.map((task) => (
+                      <TaskItem
+                        key={task.id}
+                        task={task}
+                        onToggleComplete={handleToggleComplete}
+                        onTaskClick={handleTaskClick}
+                        authorName={getAuthorName(task)}
+                      />
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground text-sm">
+                      No tasks match the current filters
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="daily" className="mt-0">
+                <div className="p-4 space-y-4">
+                  {dailyViewTasks.map((dayData) => (
+                    <div key={dayData.date.toISOString()}>
+                      <h3 className="text-sm font-semibold text-foreground mb-2">
+                        {format(dayData.date, 'EEEE, MMM d')}
+                      </h3>
+                      {dayData.tasks.length > 0 ? (
+                        <div className="space-y-2">
+                          {dayData.tasks.map((task) => (
+                            <TaskItem
+                              key={task.id}
+                              task={task}
+                              onToggleComplete={handleToggleComplete}
+                              onTaskClick={handleTaskClick}
+                              authorName={getAuthorName(task)}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4 text-muted-foreground text-xs">
+                          No tasks scheduled
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </Card>
 
           {/* Motivation Link */}
           {completedThisWeek > 0 && (
