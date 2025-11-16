@@ -165,6 +165,7 @@ export type Database = {
       clerk_notes: {
         Row: {
           author_id: string | null
+          auto_reminders_sent: string[] | null
           category: string
           completed: boolean
           couple_id: string | null
@@ -188,6 +189,7 @@ export type Database = {
         }
         Insert: {
           author_id?: string | null
+          auto_reminders_sent?: string[] | null
           category: string
           completed?: boolean
           couple_id?: string | null
@@ -211,6 +213,7 @@ export type Database = {
         }
         Update: {
           author_id?: string | null
+          auto_reminders_sent?: string[] | null
           category?: string
           completed?: boolean
           couple_id?: string | null
