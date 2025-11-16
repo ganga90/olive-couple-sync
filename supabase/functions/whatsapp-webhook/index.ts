@@ -262,16 +262,29 @@ serve(async (req) => {
       );
     }
 
-    // IDLE state: Classify intent
-    const intentResponse = await callAI(INTENT_CLASSIFIER_PROMPT, messageBody, 0.3);
+    // IDLE state: Check if message is a URL, or classify intent
+    // Detect if message is primarily a URL/link
+    const urlRegex = /(https?:\/\/[^\s]+)/gi;
+    const urls = messageBody.match(urlRegex);
+    const isOnlyUrl = urls && urls.length > 0 && messageBody.replace(urlRegex, '').trim().length < 20;
+
     let intent: any;
     
-    try {
-      const jsonMatch = intentResponse.match(/\{[\s\S]*\}/);
-      intent = JSON.parse(jsonMatch ? jsonMatch[0] : intentResponse);
-    } catch (e) {
-      console.error('Failed to parse intent:', e);
-      intent = { intent: 'CONVERSATION', confidence: 0.5 };
+    if (isOnlyUrl) {
+      // Treat plain URLs as organization tasks automatically
+      console.log('Detected URL, treating as organization task:', urls);
+      intent = { intent: 'ORGANIZATION', confidence: 1.0 };
+    } else {
+      // Classify intent using AI
+      const intentResponse = await callAI(INTENT_CLASSIFIER_PROMPT, messageBody, 0.3);
+      
+      try {
+        const jsonMatch = intentResponse.match(/\{[\s\S]*\}/);
+        intent = JSON.parse(jsonMatch ? jsonMatch[0] : intentResponse);
+      } catch (e) {
+        console.error('Failed to parse intent:', e);
+        intent = { intent: 'CONVERSATION', confidence: 0.5 };
+      }
     }
 
     console.log('Classified intent:', intent);
@@ -392,12 +405,18 @@ serve(async (req) => {
           const locationNote = latitude && longitude ? ' 📍' : '';
           const mediaNote = mediaUrls.length > 0 ? ` 📎(${mediaUrls.length})` : '';
           
+          // Check if the original message was primarily a URL
+          const isUrlTask = urls && urls.length > 0;
+          const confirmationMessage = isUrlTask 
+            ? `✅ I saved the link in your tasks as "${taskSummary}"${taskCategory}${locationNote}${mediaNote}`
+            : `✅ Saved! "${taskSummary}"${taskCategory}${locationNote}${mediaNote}`;
+          
           // Quick reply options with website link
           const quickReply = '\n\n📱 Manage on: witholive.app\n\n💡 Try:\n• "Make it urgent"\n• "Show my tasks"\n• Send more tasks!';
           
           return new Response(
             createTwimlResponse(
-              `✅ Saved! "${taskSummary}"${taskCategory}${locationNote}${mediaNote}${quickReply}`
+              `${confirmationMessage}${quickReply}`
             ),
             { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
           );
