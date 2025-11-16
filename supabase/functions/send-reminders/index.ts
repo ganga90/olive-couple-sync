@@ -86,8 +86,8 @@ serve(async (req) => {
 
       // Prepare reminder message
       const reminderText = notes.length === 1
-        ? `⏰ Reminder: ${notes[0].summary}`
-        : `⏰ You have ${notes.length} reminders:\n\n${notes.map((n, i) => `${i + 1}. ${n.summary}`).join('\n')}`;
+        ? `⏰ Here's your reminder: "${notes[0].summary}"\n\nLet me know if you have completed it or if you want me to remind you later! 🙂`
+        : `⏰ Here are your ${notes.length} reminders:\n\n${notes.map((n, i) => `${i + 1}. ${n.summary}`).join('\n')}\n\nLet me know which ones you've completed or if you want me to remind you later! 🙂`;
 
       // Send WhatsApp message via Twilio
       try {
