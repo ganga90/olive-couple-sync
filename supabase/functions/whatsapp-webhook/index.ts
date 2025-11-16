@@ -354,7 +354,7 @@ serve(async (req) => {
           const count = notesToInsert.length;
           return new Response(
             createTwimlResponse(
-              `✅ Saved ${count} tasks! Check your Olive app to see them.\n\n💡 Try: "Show my tasks" or "What's urgent?"`
+              `✅ Saved ${count} tasks!\n\n📱 Check and manage them on witholive.app\n\n💡 Try: "Show my tasks" or "What's urgent?"`
             ),
             { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
           );
@@ -392,8 +392,8 @@ serve(async (req) => {
           const locationNote = latitude && longitude ? ' 📍' : '';
           const mediaNote = mediaUrls.length > 0 ? ` 📎(${mediaUrls.length})` : '';
           
-          // Quick reply options
-          const quickReply = '\n\n💡 Try:\n• "Make it urgent"\n• "Show my tasks"\n• Send more tasks!';
+          // Quick reply options with website link
+          const quickReply = '\n\n📱 Manage on: witholive.app\n\n💡 Try:\n• "Make it urgent"\n• "Show my tasks"\n• Send more tasks!';
           
           return new Response(
             createTwimlResponse(
