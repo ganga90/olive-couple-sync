@@ -28,6 +28,21 @@ function standardizePhoneNumber(rawNumber: string): string {
   return cleaned;
 }
 
+// Validate date fields to prevent Invalid time value errors
+function validateDate(dateValue: any): string | null {
+  if (!dateValue) return null;
+  
+  try {
+    const date = new Date(dateValue);
+    if (isNaN(date.getTime())) {
+      return null;
+    }
+    return date.toISOString();
+  } catch (e) {
+    return null;
+  }
+}
+
 // Chunk long messages into smaller parts
 function chunkMessage(text: string, maxLength: number = 1500): string[] {
   if (text.length <= maxLength) {
@@ -456,8 +471,8 @@ serve(async (req) => {
           original_text: messageBody,
           summary: note.summary,
           category: note.category || 'task',
-          due_date: note.due_date,
-          reminder_time: note.reminder_time,
+          due_date: validateDate(note.due_date),
+          reminder_time: validateDate(note.reminder_time),
           recurrence_frequency: note.recurrence_frequency,
           recurrence_interval: note.recurrence_interval,
           priority: note.priority || 'medium',
