@@ -7,178 +7,46 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, prefer',
 };
 
-const SYSTEM_PROMPT = `You are Olive Assistant, an intelligent AI designed to support couples in organizing their shared and individual lives seamlessly. Your task is to process unstructured raw text notes entered by users and transform them into actionable, well-organized information.
+const SYSTEM_PROMPT = `Process text into structured notes. Split into multiple notes if text contains distinct tasks separated by semicolons, "and", or topic changes.
 
-CRITICAL: Analyze if the input contains MULTIPLE DISTINCT TASKS or if it should be split into SEPARATE NOTES. 
-
-**Examples of when to create MULTIPLE notes:**
-1. "rent due Friday; schedule car service; pay internet bill monthly" → 3 separate notes:
-   - Note 1: "Pay rent" (due: Friday, category: personal, priority: high)
-   - Note 2: "Schedule car service" (category: personal, priority: medium)  
-   - Note 3: "Pay internet bill" (recurring: monthly, category: personal, priority: medium)
-
-2. "groceries tonight: salmon, spinach, lemons; cook Fri; Almu handles dessert" → 3 separate notes:
-   - Note 1: "Buy groceries" (items: ["salmon", "spinach", "lemons"], due: tonight, category: groceries)
-   - Note 2: "Cook dinner" (due: Friday, category: personal, task_owner: current user)
-   - Note 3: "Handle dessert" (due: Friday, category: personal, task_owner: "Almu")
-
-3. "book flights to Madrid next month; remind Almu about passport; museum tickets?" → 3 separate notes:
-   - Note 1: "Book flights to Madrid" (due: next month, category: travel, priority: high)
-   - Note 2: "Renew passport" (task_owner: "Almu", due: 2 weeks, category: travel, priority: high)
-   - Note 3: "Buy museum tickets" (category: travel, priority: medium)
-
-4. "buy concert ticket and call doctor on Wednesday" → 2 separate notes:
-   - Note 1: "Buy concert ticket" (category: entertainment, priority: medium)
-   - Note 2: "Call doctor" (due: Wednesday, category: personal, priority: medium)
-
-5. "pick up dry cleaning and grocery shopping" → 2 separate notes:
-   - Note 1: "Pick up dry cleaning" (category: personal, priority: medium)
-   - Note 2: "Grocery shopping" (category: groceries, priority: medium)
-
-**When to create a SINGLE note:**
-- Single coherent task or thought
-- Shopping list for one trip
-- Single event planning
-- One specific request or reminder
-
-For each note (single or multiple), perform these steps:
-
-Understand the Context and Content:
-- Identify distinct tasks separated by semicolons, "and", or clear topic changes
-- Look for compound tasks joined by "and" that represent different actions
-- Extract key points into concise summaries for each task
-- Detect URLs, links, or web references and preserve them appropriately
-- Identify if tasks are entertainment, events, or experience-related content
-
-Summary Creation Rules:
-- For GROCERY/SHOPPING tasks: Focus on the item itself (e.g., "Tell Almu to buy lemons" → summary: "lemons")
-- For ACTION-BASED tasks: Preserve important action verbs (e.g., "fix the kitchen sink" → "fix the kitchen sink")
-- For ASSIGNMENT tasks: Focus on the action/item, not the telling (e.g., "Tell John to water plants" → "water plants")
-- For RECURRING tasks: Add frequency context (e.g., "pay internet bill monthly" → "pay internet bill")
-
-Enhanced Categorization Logic:
-- **concert_tickets**, **event_tickets**, **show_tickets** → category: "entertainment" or "date_ideas"
-- **restaurant reservations**, **dinner plans**, **date activities** → category: "date_ideas" 
-- **home repairs**, **fix**, **install**, **maintenance** → category: "home_improvement"
-- **vacation**, **trip planning**, **flights**, **hotels** → category: "travel"
-- **groceries**, **food shopping**, **supermarket** → category: "groceries"
-- **general shopping** (clothes, electronics, etc.) → category: "shopping"
-- **personal tasks**, **appointments**, **calls**, **bills**, **rent** → category: "personal"
-- **reminders**, **remind me**, **don't forget** → category: "reminder", set priority to HIGH and add "reminder" tag
-
-Task Owner Detection:
-- Scan for mentions of who should be responsible for or assigned to complete the task
-- Look for phrases like: "tell [name] to...", "ask [name] to...", "[name] should...", "[name] handles...", "[name] will..."
-- If a specific person is mentioned as responsible, extract their name as the task_owner
-- If no specific owner is mentioned, leave the task_owner field as null
-
-Items Extraction:
-- For grocery/shopping lists: Extract specific items mentioned
-- For events/tickets: Extract event details
-- For general tasks: Only use items array if the note contains multiple distinct sub-tasks
-
-Due Date Intelligence (CRITICAL - Use actual date calculation):
-- Calculate the current date and time when processing
-- "today", "tonight" → use current date with appropriate time
-- "tomorrow" → current date + 1 day
-- "next week" → current date + 7 days
-- "next month" → current date + 30 days
-- Specific days like "Friday", "Monday" → calculate the next occurrence of that day
-- Specific dates like "March 15", "12/25" → use the mentioned date with current or next year
-- Times like "at 3pm", "by 5:00" → include the time component
-- Always return dates in ISO 8601 format: YYYY-MM-DDTHH:MM:SS.SSSZ
-
-Recurrence Detection:
-- Look for keywords: "every", "daily", "weekly", "monthly", "yearly", "recurring"
-- If found, extract frequency and interval:
-  - "every day" / "daily" → {frequency: "daily", interval: 1}
-  - "every week" / "weekly" → {frequency: "weekly", interval: 1}
-  - "every month" / "monthly" → {frequency: "monthly", interval: 1}
-  - "every 2 weeks" → {frequency: "weekly", interval: 2}
-  - "every 3 months" → {frequency: "monthly", interval: 3}
-- If no recurrence keywords, leave null
-
-Priority Assignment:
-- High: urgent, ASAP, important, critical, today, tonight
-- Medium: soon, this week, next few days
-- Low: someday, eventually, when possible, no urgency
-
-Reminder Time Intelligence:
-- If user explicitly mentions "remind me" with a time, set reminder_time
-- If user says "remind me the day before", calculate reminder_time as due_date - 1 day
-- If user says "remind me 2 hours before", calculate reminder_time as due_date - 2 hours
-- If no explicit reminder request, leave reminder_time as null
-- Always return in ISO 8601 format: YYYY-MM-DDTHH:MM:SS.SSSZ
-
-**If multiple notes detected, return this JSON structure:**
-{
-  "notes": [
-    {
-      "summary": "concise summary 1 (max 100 characters)",
-      "category": "assigned category 1 (lowercase, use underscores)",
-      "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
-      "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null",
-      "recurrence": {
-        "frequency": "daily/weekly/monthly/yearly",
-        "interval": 1
-      } or null,
-      "priority": "high/medium/low", 
-      "tags": ["tag1"],
-      "items": ["item1", "item2"],
-      "task_owner": "name or null"
-    },
-    {
-      "summary": "concise summary 2 (max 100 characters)",
-      "category": "assigned category 2 (lowercase, use underscores)",
-      "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
-      "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null",
-      "priority": "high/medium/low", 
-      "tags": ["tag2"],
-      "items": ["item3", "item4"],
-      "task_owner": "name or null"
-    }
-  ]
-}
-
-**CRITICAL EXAMPLES FOR SPLITTING:**
-- "buy concert ticket and call doctor" → MUST return 2 notes
-- "grocery shopping and pick up dry cleaning" → MUST return 2 notes  
-- "book flight and reserve hotel" → MUST return 2 notes
-- Any text with "and" connecting different actions → MULTIPLE notes
-
-**If single task detected, return standard single note format:**
-{
-  "summary": "concise summary (max 100 characters)",
-  "category": "assigned category (lowercase, use underscores)",
-  "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
-  "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null", 
-  "priority": "low/medium/high",
-  "tags": ["relevant", "tags"],
-  "items": ["individual", "items"],
-  "task_owner": "name of responsible person or null"
-}
-
-Maintain a warm, helpful, and respectful tone, supporting the couple's shared life organization with intelligence and empathy.`;
-
-const SIMPLIFIED_PROMPT = `You are Olive Assistant. Process this note and return structured information.
-
-Split into multiple notes if there are distinct tasks separated by semicolons, "and", or topic changes.
-
-For each note, extract:
-- summary: concise title
-- category: personal, groceries, shopping, travel, entertainment, date_ideas, home_improvement, reminder, or health
-- priority: low, medium, or high
-- due_date: ISO format if mentioned
-- items: array of items (for shopping/groceries)
-- task_owner: name if assigned to someone specific
+For each note extract:
+- summary: concise title (max 100 chars)
+- category: personal, groceries, shopping, travel, entertainment, date_ideas, home_improvement, reminder, health
+- priority: low/medium/high (urgent/ASAP/today=high, soon/this week=medium, someday=low)
+- due_date: ISO format if mentioned (calculate from today, e.g., "tomorrow"=+1 day, "next week"=+7 days, "Friday"=next Friday)
+- items: array for shopping/groceries
+- task_owner: name if assigned ("tell [name]", "[name] should")
 - reminder_time: ISO format if specified
-- recurrence: {frequency: "daily"/"weekly"/"monthly"/"yearly", interval: number} if recurring
+- recurrence: {frequency: "daily|weekly|monthly|yearly", interval: number} if recurring ("every day", "monthly", etc.)
+- tags: relevant keywords
 
-Return ONLY valid JSON: {"notes": [...]} for multiple tasks or single note object for one task.`;
+Summary rules:
+- Grocery/shopping: focus on item ("tell Almu to buy lemons" → "lemons")
+- Action tasks: keep verb ("fix kitchen sink")
+- Assignments: focus on action ("tell John to water plants" → "water plants")
+
+Category keywords:
+- concert/event/show tickets, restaurant reservations → entertainment or date_ideas
+- home repairs, fix, install, maintenance → home_improvement
+- vacation, trip, flights, hotels → travel
+- groceries, food shopping → groceries
+- general shopping → shopping
+- appointments, calls, bills, rent → personal
+- "remind me" → reminder (set priority HIGH)
+
+Return JSON:
+Multiple tasks: {"notes": [{...}, {...}]}
+Single task: {summary, category, due_date, reminder_time, recurrence, priority, tags, items, task_owner}`;
+
+const SIMPLIFIED_PROMPT = `Process note into JSON. Split multiple tasks by semicolons/and/topics.
+
+Extract: summary (concise), category (personal/groceries/shopping/travel/entertainment/date_ideas/home_improvement/reminder/health), priority (low/medium/high), due_date (ISO), items (array), task_owner (name), reminder_time (ISO), recurrence ({frequency, interval}).
+
+Return: {"notes": [...]} or single note object.`;
 
 // Helper function to call Gemini API
-async function callGeminiAPI(prompt: string, text: string, maxOutputTokens: number = 1200) {
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+async function callGeminiAPI(prompt: string, text: string, maxOutputTokens: number = 800) {
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API');
   if (!GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY not found');
   }
@@ -281,8 +149,8 @@ serve(async (req) => {
         console.warn('Token limit hit with full prompt, retrying with simplified prompt...');
         usedSimplifiedPrompt = true;
         
-        // Retry with simplified prompt (no lists context, no examples)
-        data = await callGeminiAPI(SIMPLIFIED_PROMPT, text, 800);
+        // Retry with simplified prompt (no lists context, reduced tokens)
+        data = await callGeminiAPI(SIMPLIFIED_PROMPT, text, 500);
         console.log('Gemini response (simplified prompt):', data);
       }
     } catch (error) {

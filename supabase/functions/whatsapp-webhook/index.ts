@@ -29,7 +29,7 @@ function standardizePhoneNumber(rawNumber: string): string {
 }
 
 // Chunk long messages into smaller parts
-function chunkMessage(text: string, maxLength: number = 500): string[] {
+function chunkMessage(text: string, maxLength: number = 1500): string[] {
   if (text.length <= maxLength) {
     return [text];
   }
