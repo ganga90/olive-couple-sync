@@ -87,6 +87,51 @@ function chunkMessage(text: string, maxLength: number = 1500): string[] {
   return chunks;
 }
 
+// Verify Twilio request signature
+async function verifyTwilioSignature(
+  authToken: string,
+  signature: string,
+  url: string,
+  params: Record<string, string>
+): Promise<boolean> {
+  try {
+    // Sort parameters alphabetically and concatenate
+    const sortedKeys = Object.keys(params).sort();
+    let data = url;
+    for (const key of sortedKeys) {
+      data += key + params[key];
+    }
+
+    // Create HMAC-SHA256 signature
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(authToken);
+    const messageData = encoder.encode(data);
+    
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    
+    const signatureBuffer = await crypto.subtle.sign(
+      'HMAC',
+      cryptoKey,
+      messageData
+    );
+    
+    // Convert to base64
+    const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+    const base64Signature = btoa(String.fromCharCode(...signatureArray));
+    
+    return base64Signature === signature;
+  } catch (error) {
+    console.error('Signature verification error:', error);
+    return false;
+  }
+}
+
 // Call Lovable AI
 async function callAI(systemPrompt: string, userMessage: string, temperature = 0.7): Promise<string> {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
@@ -137,11 +182,48 @@ serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
+
+    if (!TWILIO_AUTH_TOKEN) {
+      console.error('TWILIO_AUTH_TOKEN not configured');
+      return new Response('Server configuration error', { status: 500 });
+    }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+    // Verify Twilio signature
+    const twilioSignature = req.headers.get('X-Twilio-Signature');
+    if (!twilioSignature) {
+      console.error('Missing X-Twilio-Signature header');
+      return new Response('Unauthorized', { status: 403 });
+    }
+
     // Parse Twilio webhook body
     const formData = await req.formData();
+    
+    // Build params object for signature verification
+    const params: Record<string, string> = {};
+    for (const [key, value] of formData.entries()) {
+      params[key] = value.toString();
+    }
+
+    // Get the full URL for signature verification
+    const url = new URL(req.url).href;
+
+    // Verify the request signature
+    const isValid = await verifyTwilioSignature(
+      TWILIO_AUTH_TOKEN,
+      twilioSignature,
+      url,
+      params
+    );
+
+    if (!isValid) {
+      console.error('Invalid Twilio signature');
+      return new Response('Unauthorized', { status: 403 });
+    }
+
+    console.log('✅ Twilio signature verified');
     const fromNumber = standardizePhoneNumber(formData.get('From') as string);
     const messageBody = (formData.get('Body') as string)?.trim();
     
