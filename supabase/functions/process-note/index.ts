@@ -268,6 +268,7 @@ serve(async (req) => {
     // Try with full prompt first, then retry with simplified prompt if token limit hit
     let data;
     let aiResponse;
+    let usedSimplifiedPrompt = false;
     
     try {
       // First attempt with full prompt and lists context
@@ -278,6 +279,7 @@ serve(async (req) => {
       // Check if response was truncated
       if (data.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
         console.warn('Token limit hit with full prompt, retrying with simplified prompt...');
+        usedSimplifiedPrompt = true;
         
         // Retry with simplified prompt (no lists context, no examples)
         data = await callGeminiAPI(SIMPLIFIED_PROMPT, text, 800);
@@ -292,10 +294,31 @@ serve(async (req) => {
       throw new Error('Invalid response from Gemini API');
     }
 
-    // Check if still hitting token limit after retry
+    // Check if still hitting token limit after retry - use fallback
     if (data.candidates[0].finishReason === 'MAX_TOKENS') {
-      console.error('AI response was truncated even with simplified prompt');
-      throw new Error('Message too complex to process. Please try breaking it into smaller parts.');
+      console.error('AI response was truncated even with simplified prompt, using fallback');
+      
+      // Create a basic fallback note structure
+      const fallbackNote = {
+        summary: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
+        category: 'personal',
+        priority: 'medium',
+        due_date: null,
+        reminder_time: null,
+        tags: [],
+        items: [],
+        task_owner: null
+      };
+      
+      // Return the fallback and let it be processed
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          notes: [fallbackNote],
+          warning: 'Message was too long for full AI processing. Created a basic note.'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Validate that we have the parts array with content

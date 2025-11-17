@@ -28,6 +28,50 @@ function standardizePhoneNumber(rawNumber: string): string {
   return cleaned;
 }
 
+// Chunk long messages into smaller parts
+function chunkMessage(text: string, maxLength: number = 500): string[] {
+  if (text.length <= maxLength) {
+    return [text];
+  }
+
+  const chunks: string[] = [];
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+  let currentChunk = '';
+
+  for (const sentence of sentences) {
+    // If a single sentence is longer than maxLength, split by words
+    if (sentence.length > maxLength) {
+      if (currentChunk) {
+        chunks.push(currentChunk.trim());
+        currentChunk = '';
+      }
+      
+      const words = sentence.split(' ');
+      for (const word of words) {
+        if ((currentChunk + ' ' + word).length > maxLength) {
+          chunks.push(currentChunk.trim());
+          currentChunk = word;
+        } else {
+          currentChunk += (currentChunk ? ' ' : '') + word;
+        }
+      }
+    } else {
+      if ((currentChunk + sentence).length > maxLength) {
+        chunks.push(currentChunk.trim());
+        currentChunk = sentence;
+      } else {
+        currentChunk += sentence;
+      }
+    }
+  }
+
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+
+  return chunks;
+}
+
 // Call Lovable AI
 async function callAI(systemPrompt: string, userMessage: string, temperature = 0.7): Promise<string> {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
@@ -349,108 +393,105 @@ serve(async (req) => {
 
       const coupleId = coupleMember?.couple_id || null;
 
-      // Prepare note data with location and media if available
-      const notePayload: any = { 
-        text: messageBody, 
-        user_id: userId,
-        couple_id: coupleId
-      };
-      
-      // Add location context if provided
-      if (latitude && longitude) {
-        notePayload.location = { latitude, longitude };
-        notePayload.text = `${messageBody} (Location: ${latitude}, ${longitude})`;
-      }
-      
-      // Add media URLs if provided
-      if (mediaUrls.length > 0) {
-        notePayload.media = mediaUrls;
-        notePayload.text = `${messageBody} [Media: ${mediaUrls.length} file(s)]`;
+      // Check if message is too long and needs chunking
+      const messageChunks = chunkMessage(messageBody, 500);
+      const isChunked = messageChunks.length > 1;
+
+      if (isChunked) {
+        console.log(`Message chunked into ${messageChunks.length} parts`);
       }
 
-      const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
-        body: notePayload
-      });
+      // Process all chunks
+      const allNotes: any[] = [];
+      for (let i = 0; i < messageChunks.length; i++) {
+        const chunk = messageChunks[i];
+        
+        // Prepare note data with location and media if available (only for first chunk)
+        const notePayload: any = { 
+          text: chunk, 
+          user_id: userId,
+          couple_id: coupleId
+        };
+        
+        // Add location context if provided (only on first chunk)
+        if (i === 0 && latitude && longitude) {
+          notePayload.location = { latitude, longitude };
+          notePayload.text = `${chunk} (Location: ${latitude}, ${longitude})`;
+        }
+        
+        // Add media URLs if provided (only on first chunk)
+        if (i === 0 && mediaUrls.length > 0) {
+          notePayload.media = mediaUrls;
+          notePayload.text = `${chunk} [Media: ${mediaUrls.length} file(s)]`;
+        }
 
-      if (processError) {
-        console.error('Error processing note:', processError);
+        const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
+          body: notePayload
+        });
+
+        if (processError) {
+          console.error(`Error processing note chunk ${i + 1}:`, processError);
+          continue; // Skip this chunk but continue with others
+        }
+
+        if (processData?.notes) {
+          allNotes.push(...processData.notes);
+        }
+      }
+
+      if (allNotes.length === 0) {
         return new Response(
-          createTwimlResponse('Sorry, I had trouble processing that. Please try again.'),
+          createTwimlResponse('Sorry, I had trouble processing that. Please try again with a shorter message.'),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
 
       // Insert the processed note(s) into the database
       try {
-        if (processData.multiple && Array.isArray(processData.notes)) {
-          // Insert multiple notes
-          const notesToInsert = processData.notes.map((note: any) => ({
-            author_id: userId,
-            couple_id: coupleId,
-            original_text: messageBody,
-            summary: note.summary,
-            category: note.category || 'task',
-            due_date: note.due_date,
-            reminder_time: note.reminder_time,
-            recurrence_frequency: note.recurrence_frequency,
-            recurrence_interval: note.recurrence_interval,
-            priority: note.priority || 'medium',
-            tags: note.tags || [],
-            items: note.items || [],
-            task_owner: note.task_owner,
-            list_id: note.list_id,
-            location: latitude && longitude ? { latitude, longitude } : null,
-            media_urls: mediaUrls.length > 0 ? mediaUrls : null,
-            completed: false
-          }));
+        // allNotes already contains all notes from all chunks
+        const notesToInsert = allNotes.map((note: any) => ({
+          author_id: userId,
+          couple_id: coupleId,
+          original_text: messageBody,
+          summary: note.summary,
+          category: note.category || 'task',
+          due_date: note.due_date,
+          reminder_time: note.reminder_time,
+          recurrence_frequency: note.recurrence_frequency,
+          recurrence_interval: note.recurrence_interval,
+          priority: note.priority || 'medium',
+          tags: note.tags || [],
+          items: note.items || [],
+          task_owner: note.task_owner,
+          list_id: note.list_id,
+          location: latitude && longitude ? { latitude, longitude } : null,
+          media_urls: mediaUrls.length > 0 ? mediaUrls : null,
+          completed: false
+        }));
 
-          const { error: insertError } = await supabase
-            .from('clerk_notes')
-            .insert(notesToInsert);
+        const { error: insertError } = await supabase
+          .from('clerk_notes')
+          .insert(notesToInsert);
 
-          if (insertError) {
-            console.error('Error inserting multiple notes:', insertError);
-            throw insertError;
-          }
+        if (insertError) {
+          console.error('Error inserting notes:', insertError);
+          throw insertError;
+        }
 
-          const count = notesToInsert.length;
+        // Determine response message based on number of notes
+        const count = notesToInsert.length;
+        if (count > 1) {
           return new Response(
             createTwimlResponse(
-              `✅ Saved ${count} tasks!\n\n📱 Check and manage them on witholive.app\n\n💡 Try: "Show my tasks" or "What's urgent?"`
+              isChunked 
+                ? `✅ Processed long message and saved ${count} tasks!\n\n📱 Check and manage them on witholive.app\n\n💡 Try: "Show my tasks" or "What's urgent?"`
+                : `✅ Saved ${count} tasks!\n\n📱 Check and manage them on witholive.app\n\n💡 Try: "Show my tasks" or "What's urgent?"`
             ),
             { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
           );
         } else {
-          // Insert single note
-          const { error: insertError } = await supabase
-            .from('clerk_notes')
-            .insert([{
-              author_id: userId,
-              couple_id: coupleId,
-              original_text: messageBody,
-              summary: processData.summary,
-              category: processData.category || 'task',
-              due_date: processData.due_date,
-              reminder_time: processData.reminder_time,
-              recurrence_frequency: processData.recurrence_frequency,
-              recurrence_interval: processData.recurrence_interval,
-              priority: processData.priority || 'medium',
-              tags: processData.tags || [],
-              items: processData.items || [],
-              task_owner: processData.task_owner,
-              list_id: processData.list_id,
-              location: latitude && longitude ? { latitude, longitude } : null,
-              media_urls: mediaUrls.length > 0 ? mediaUrls : null,
-              completed: false
-            }]);
-
-          if (insertError) {
-            console.error('Error inserting note:', insertError);
-            throw insertError;
-          }
-
-          const taskSummary = processData.summary || 'your task';
-          const taskCategory = processData.category ? ` in ${processData.category}` : '';
+          const taskSummary = allNotes[0].summary || 'your task';
+          const taskCategory = allNotes[0].category ? ` in ${allNotes[0].category}` : '';
           const locationNote = latitude && longitude ? ' 📍' : '';
           const mediaNote = mediaUrls.length > 0 ? ` 📎(${mediaUrls.length})` : '';
           
