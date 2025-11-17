@@ -394,7 +394,7 @@ serve(async (req) => {
       const coupleId = coupleMember?.couple_id || null;
 
       // Check if message is too long and needs chunking
-      const messageChunks = chunkMessage(messageBody, 500);
+      const messageChunks = chunkMessage(messageBody, 1500);
       const isChunked = messageChunks.length > 1;
 
       if (isChunked) {
@@ -448,6 +448,7 @@ serve(async (req) => {
 
       // Insert the processed note(s) into the database
       try {
+        console.log(`Preparing to insert ${allNotes.length} notes into database`);
         // allNotes already contains all notes from all chunks
         const notesToInsert = allNotes.map((note: any) => ({
           author_id: userId,
@@ -469,24 +470,32 @@ serve(async (req) => {
           completed: false
         }));
 
-        const { error: insertError } = await supabase
+        console.log('Notes to insert:', JSON.stringify(notesToInsert, null, 2));
+
+        const { data: insertedNotes, error: insertError } = await supabase
           .from('clerk_notes')
-          .insert(notesToInsert);
+          .insert(notesToInsert)
+          .select();
 
         if (insertError) {
           console.error('Error inserting notes:', insertError);
           throw insertError;
         }
 
+        console.log(`Successfully inserted ${insertedNotes?.length || 0} notes`);
+
         // Determine response message based on number of notes
         const count = notesToInsert.length;
+        console.log(`Creating response for ${count} note(s)`);
+        
         if (count > 1) {
+          const responseMessage = isChunked 
+            ? `✅ Processed long message and saved ${count} tasks!\n\n📱 Check and manage them on witholive.app\n\n💡 Try: "Show my tasks" or "What's urgent?"`
+            : `✅ Saved ${count} tasks!\n\n📱 Check and manage them on witholive.app\n\n💡 Try: "Show my tasks" or "What's urgent?"`;
+          
+          console.log('Sending multi-note response:', responseMessage);
           return new Response(
-            createTwimlResponse(
-              isChunked 
-                ? `✅ Processed long message and saved ${count} tasks!\n\n📱 Check and manage them on witholive.app\n\n💡 Try: "Show my tasks" or "What's urgent?"`
-                : `✅ Saved ${count} tasks!\n\n📱 Check and manage them on witholive.app\n\n💡 Try: "Show my tasks" or "What's urgent?"`
-            ),
+            createTwimlResponse(responseMessage),
             { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
           );
         } else {
@@ -504,17 +513,21 @@ serve(async (req) => {
           // Quick reply options with website link
           const quickReply = '\n\n📱 Manage on: witholive.app\n\n💡 Try:\n• "Make it urgent"\n• "Show my tasks"\n• Send more tasks!';
           
+          const finalMessage = `${confirmationMessage}${quickReply}`;
+          console.log('Sending single-note response:', finalMessage);
+          
           return new Response(
-            createTwimlResponse(
-              `${confirmationMessage}${quickReply}`
-            ),
+            createTwimlResponse(finalMessage),
             { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
           );
         }
-      } catch (insertError) {
+      } catch (insertError: any) {
         console.error('Database insertion error:', insertError);
+        console.error('Error details:', JSON.stringify(insertError, null, 2));
+        const errorResponse = createTwimlResponse('I understood your task but had trouble saving it. Please try again.');
+        console.log('Sending error response:', errorResponse);
         return new Response(
-          createTwimlResponse('I understood your task but had trouble saving it. Please try again.'),
+          errorResponse,
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
