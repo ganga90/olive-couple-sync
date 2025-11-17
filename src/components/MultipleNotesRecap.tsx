@@ -9,17 +9,6 @@ import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { toast } from "sonner";
 import { NoteRecap } from "./NoteRecap";
 
-// Helper to safely format dates
-const safeFormatDate = (dateValue: any): string => {
-  if (!dateValue) return "Invalid Date";
-  try {
-    const date = new Date(dateValue);
-    return isNaN(date.getTime()) ? "Invalid Date" : date.toLocaleDateString();
-  } catch {
-    return "Invalid Date";
-  }
-};
-
 interface MultipleNotesRecapProps {
   notes: Array<{
     summary: string;
@@ -212,7 +201,14 @@ export const MultipleNotesRecap: React.FC<MultipleNotesRecapProps> = ({
                         )}
                         {note.dueDate && (
                           <Badge variant="outline">
-                            Due: {safeFormatDate(note.dueDate)}
+                            Due: {(() => {
+                              try {
+                                const date = new Date(note.dueDate);
+                                return isNaN(date.getTime()) ? "Invalid Date" : date.toLocaleDateString();
+                              } catch {
+                                return "Invalid Date";
+                              }
+                            })()}
                           </Badge>
                         )}
                       </div>

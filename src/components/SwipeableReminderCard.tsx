@@ -7,18 +7,6 @@ import { Bell, Calendar, Clock, Trash2, Edit } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import type { Note } from "@/types/note";
 
-// Helper to safely format dates
-const safeFormatDate = (dateValue: any, formatString: string): string => {
-  if (!dateValue) return "";
-  try {
-    const date = new Date(dateValue);
-    if (isNaN(date.getTime())) return "";
-    return format(date, formatString);
-  } catch {
-    return "";
-  }
-};
-
 interface ReminderItem {
   note: Note;
   type: "explicit" | "auto-24h" | "auto-2h";
@@ -149,10 +137,10 @@ export const SwipeableReminderCard = ({
                     </span>
                   </div>
                   
-                  {reminder.note.dueDate && safeFormatDate(reminder.note.dueDate, "MMM d 'at' h:mm a") && (
+                  {reminder.note.dueDate && (
                     <div className="flex items-center gap-2">
                       <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
-                      <span>Due {safeFormatDate(reminder.note.dueDate, "MMM d 'at' h:mm a")}</span>
+                      <span>Due {format(new Date(reminder.note.dueDate), "MMM d 'at' h:mm a")}</span>
                     </div>
                   )}
                   

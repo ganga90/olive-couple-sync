@@ -14,18 +14,6 @@ import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import ReactMarkdown from 'react-markdown';
 
-// Helper to safely format dates
-const safeFormatDate = (dateValue: any, formatString: string): string => {
-  if (!dateValue) return "";
-  try {
-    const date = new Date(dateValue);
-    if (isNaN(date.getTime())) return "";
-    return format(date, formatString);
-  } catch {
-    return "";
-  }
-};
-
 interface RecentTasksSectionProps {
   title: string;
   tasks: any[];
@@ -157,7 +145,7 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
                     <span>By {task.addedBy}</span>
                     <span className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
-                      {safeFormatDate(task.createdAt, "MMM d, h:mm a")}
+                      {format(new Date(task.createdAt), "MMM d, h:mm a")}
                     </span>
                   </div>
                 </div>

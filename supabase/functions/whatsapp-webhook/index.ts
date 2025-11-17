@@ -28,110 +28,6 @@ function standardizePhoneNumber(rawNumber: string): string {
   return cleaned;
 }
 
-// Validate date fields to prevent Invalid time value errors
-function validateDate(dateValue: any): string | null {
-  if (!dateValue) return null;
-  
-  try {
-    const date = new Date(dateValue);
-    if (isNaN(date.getTime())) {
-      return null;
-    }
-    return date.toISOString();
-  } catch (e) {
-    return null;
-  }
-}
-
-// Chunk long messages into smaller parts
-function chunkMessage(text: string, maxLength: number = 1500): string[] {
-  if (text.length <= maxLength) {
-    return [text];
-  }
-
-  const chunks: string[] = [];
-  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-  let currentChunk = '';
-
-  for (const sentence of sentences) {
-    // If a single sentence is longer than maxLength, split by words
-    if (sentence.length > maxLength) {
-      if (currentChunk) {
-        chunks.push(currentChunk.trim());
-        currentChunk = '';
-      }
-      
-      const words = sentence.split(' ');
-      for (const word of words) {
-        if ((currentChunk + ' ' + word).length > maxLength) {
-          chunks.push(currentChunk.trim());
-          currentChunk = word;
-        } else {
-          currentChunk += (currentChunk ? ' ' : '') + word;
-        }
-      }
-    } else {
-      if ((currentChunk + sentence).length > maxLength) {
-        chunks.push(currentChunk.trim());
-        currentChunk = sentence;
-      } else {
-        currentChunk += sentence;
-      }
-    }
-  }
-
-  if (currentChunk) {
-    chunks.push(currentChunk.trim());
-  }
-
-  return chunks;
-}
-
-// Verify Twilio request signature
-async function verifyTwilioSignature(
-  authToken: string,
-  signature: string,
-  url: string,
-  params: Record<string, string>
-): Promise<boolean> {
-  try {
-    // Sort parameters alphabetically and concatenate
-    const sortedKeys = Object.keys(params).sort();
-    let data = url;
-    for (const key of sortedKeys) {
-      data += key + params[key];
-    }
-
-    // Create HMAC-SHA256 signature
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(authToken);
-    const messageData = encoder.encode(data);
-    
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
-    
-    const signatureBuffer = await crypto.subtle.sign(
-      'HMAC',
-      cryptoKey,
-      messageData
-    );
-    
-    // Convert to base64
-    const signatureArray = Array.from(new Uint8Array(signatureBuffer));
-    const base64Signature = btoa(String.fromCharCode(...signatureArray));
-    
-    return base64Signature === signature;
-  } catch (error) {
-    console.error('Signature verification error:', error);
-    return false;
-  }
-}
-
 // Call Lovable AI
 async function callAI(systemPrompt: string, userMessage: string, temperature = 0.7): Promise<string> {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
@@ -182,48 +78,11 @@ serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
-
-    if (!TWILIO_AUTH_TOKEN) {
-      console.error('TWILIO_AUTH_TOKEN not configured');
-      return new Response('Server configuration error', { status: 500 });
-    }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Verify Twilio signature
-    const twilioSignature = req.headers.get('X-Twilio-Signature');
-    if (!twilioSignature) {
-      console.error('Missing X-Twilio-Signature header');
-      return new Response('Unauthorized', { status: 403 });
-    }
-
     // Parse Twilio webhook body
     const formData = await req.formData();
-    
-    // Build params object for signature verification
-    const params: Record<string, string> = {};
-    for (const [key, value] of formData.entries()) {
-      params[key] = value.toString();
-    }
-
-    // Get the full URL for signature verification
-    const url = new URL(req.url).href;
-
-    // Verify the request signature
-    const isValid = await verifyTwilioSignature(
-      TWILIO_AUTH_TOKEN,
-      twilioSignature,
-      url,
-      params
-    );
-
-    if (!isValid) {
-      console.error('Invalid Twilio signature');
-      return new Response('Unauthorized', { status: 403 });
-    }
-
-    console.log('✅ Twilio signature verified');
     const fromNumber = standardizePhoneNumber(formData.get('From') as string);
     const messageBody = (formData.get('Body') as string)?.trim();
     
@@ -403,55 +262,6 @@ serve(async (req) => {
       );
     }
 
-    // Handle AWAITING_MORE_REMINDERS state
-    if (session.conversation_state === 'AWAITING_MORE_REMINDERS') {
-      const response = messageBody.toLowerCase();
-      const contextData = session.context_data as any;
-
-      if (response === 'yes' || response === 'y') {
-        const remainingReminders = contextData.remaining_reminders || [];
-        
-        if (remainingReminders.length === 0) {
-          await supabase
-            .from('user_sessions')
-            .update({ conversation_state: 'IDLE', context_data: null })
-            .eq('user_id', userId);
-          
-          return new Response(
-            createTwimlResponse('No more reminders to show! 🎉'),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
-        }
-        
-        const remindersList = remainingReminders.map((r: any, i: number) => {
-          const reminderDate = new Date(r.reminder_time);
-          const dateStr = reminderDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-          const timeStr = reminderDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-          return `${i + 1}. ${r.summary}\n   🔔 ${dateStr} at ${timeStr}`;
-        }).join('\n\n');
-        
-        await supabase
-          .from('user_sessions')
-          .update({ conversation_state: 'IDLE', context_data: null })
-          .eq('user_id', userId);
-        
-        return new Response(
-          createTwimlResponse(`🔔 Remaining reminders:\n\n${remindersList}\n\n📱 Manage all on witholive.app`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
-      } else {
-        await supabase
-          .from('user_sessions')
-          .update({ conversation_state: 'IDLE', context_data: null })
-          .eq('user_id', userId);
-        
-        return new Response(
-          createTwimlResponse('No problem! 👍\n\n💡 Ask me anytime: "Show my reminders"'),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
-      }
-    }
-
     // IDLE state: Check if message is a URL, or classify intent
     // Detect if message is primarily a URL/link
     const urlRegex = /(https?:\/\/[^\s]+)/gi;
@@ -490,114 +300,108 @@ serve(async (req) => {
 
       const coupleId = coupleMember?.couple_id || null;
 
-      // Check if message is too long and needs chunking
-      const messageChunks = chunkMessage(messageBody, 1500);
-      const isChunked = messageChunks.length > 1;
-
-      if (isChunked) {
-        console.log(`Message chunked into ${messageChunks.length} parts`);
+      // Prepare note data with location and media if available
+      const notePayload: any = { 
+        text: messageBody, 
+        user_id: userId,
+        couple_id: coupleId
+      };
+      
+      // Add location context if provided
+      if (latitude && longitude) {
+        notePayload.location = { latitude, longitude };
+        notePayload.text = `${messageBody} (Location: ${latitude}, ${longitude})`;
+      }
+      
+      // Add media URLs if provided
+      if (mediaUrls.length > 0) {
+        notePayload.media = mediaUrls;
+        notePayload.text = `${messageBody} [Media: ${mediaUrls.length} file(s)]`;
       }
 
-      // Process all chunks
-      const allNotes: any[] = [];
-      for (let i = 0; i < messageChunks.length; i++) {
-        const chunk = messageChunks[i];
-        
-        // Prepare note data with location and media if available (only for first chunk)
-        const notePayload: any = { 
-          text: chunk, 
-          user_id: userId,
-          couple_id: coupleId
-        };
-        
-        // Add location context if provided (only on first chunk)
-        if (i === 0 && latitude && longitude) {
-          notePayload.location = { latitude, longitude };
-          notePayload.text = `${chunk} (Location: ${latitude}, ${longitude})`;
-        }
-        
-        // Add media URLs if provided (only on first chunk)
-        if (i === 0 && mediaUrls.length > 0) {
-          notePayload.media = mediaUrls;
-          notePayload.text = `${chunk} [Media: ${mediaUrls.length} file(s)]`;
-        }
+      const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
+        body: notePayload
+      });
 
-        const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
-          body: notePayload
-        });
-
-        if (processError) {
-          console.error(`Error processing note chunk ${i + 1}:`, processError);
-          continue; // Skip this chunk but continue with others
-        }
-
-        if (processData?.notes) {
-          allNotes.push(...processData.notes);
-        }
-      }
-
-      if (allNotes.length === 0) {
+      if (processError) {
+        console.error('Error processing note:', processError);
         return new Response(
-          createTwimlResponse('Sorry, I had trouble processing that. Please try again with a shorter message.'),
+          createTwimlResponse('Sorry, I had trouble processing that. Please try again.'),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
 
       // Insert the processed note(s) into the database
       try {
-        console.log(`Preparing to insert ${allNotes.length} notes into database`);
-        // allNotes already contains all notes from all chunks
-        const notesToInsert = allNotes.map((note: any) => ({
-          author_id: userId,
-          couple_id: coupleId,
-          original_text: messageBody,
-          summary: note.summary,
-          category: note.category || 'task',
-          due_date: validateDate(note.due_date),
-          reminder_time: validateDate(note.reminder_time),
-          recurrence_frequency: note.recurrence_frequency,
-          recurrence_interval: note.recurrence_interval,
-          priority: note.priority || 'medium',
-          tags: note.tags || [],
-          items: note.items || [],
-          task_owner: note.task_owner,
-          list_id: note.list_id,
-          location: latitude && longitude ? { latitude, longitude } : null,
-          media_urls: mediaUrls.length > 0 ? mediaUrls : null,
-          completed: false
-        }));
+        if (processData.multiple && Array.isArray(processData.notes)) {
+          // Insert multiple notes
+          const notesToInsert = processData.notes.map((note: any) => ({
+            author_id: userId,
+            couple_id: coupleId,
+            original_text: messageBody,
+            summary: note.summary,
+            category: note.category || 'task',
+            due_date: note.due_date,
+            reminder_time: note.reminder_time,
+            recurrence_frequency: note.recurrence_frequency,
+            recurrence_interval: note.recurrence_interval,
+            priority: note.priority || 'medium',
+            tags: note.tags || [],
+            items: note.items || [],
+            task_owner: note.task_owner,
+            list_id: note.list_id,
+            location: latitude && longitude ? { latitude, longitude } : null,
+            media_urls: mediaUrls.length > 0 ? mediaUrls : null,
+            completed: false
+          }));
 
-        console.log('Notes to insert:', JSON.stringify(notesToInsert, null, 2));
+          const { error: insertError } = await supabase
+            .from('clerk_notes')
+            .insert(notesToInsert);
 
-        const { data: insertedNotes, error: insertError } = await supabase
-          .from('clerk_notes')
-          .insert(notesToInsert)
-          .select();
+          if (insertError) {
+            console.error('Error inserting multiple notes:', insertError);
+            throw insertError;
+          }
 
-        if (insertError) {
-          console.error('Error inserting notes:', insertError);
-          throw insertError;
-        }
-
-        console.log(`Successfully inserted ${insertedNotes?.length || 0} notes`);
-
-        // Determine response message based on number of notes
-        const count = notesToInsert.length;
-        console.log(`Creating response for ${count} note(s)`);
-        
-        if (count > 1) {
-          const responseMessage = isChunked 
-            ? `✅ Processed long message and saved ${count} tasks!\n\n📱 Check and manage them on witholive.app\n\n💡 Try: "Show my tasks" or "What's urgent?"`
-            : `✅ Saved ${count} tasks!\n\n📱 Check and manage them on witholive.app\n\n💡 Try: "Show my tasks" or "What's urgent?"`;
-          
-          console.log('Sending multi-note response:', responseMessage);
+          const count = notesToInsert.length;
           return new Response(
-            createTwimlResponse(responseMessage),
+            createTwimlResponse(
+              `✅ Saved ${count} tasks!\n\n📱 Check and manage them on witholive.app\n\n💡 Try: "Show my tasks" or "What's urgent?"`
+            ),
             { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
           );
         } else {
-          const taskSummary = allNotes[0].summary || 'your task';
-          const taskCategory = allNotes[0].category ? ` in ${allNotes[0].category}` : '';
+          // Insert single note
+          const { error: insertError } = await supabase
+            .from('clerk_notes')
+            .insert([{
+              author_id: userId,
+              couple_id: coupleId,
+              original_text: messageBody,
+              summary: processData.summary,
+              category: processData.category || 'task',
+              due_date: processData.due_date,
+              reminder_time: processData.reminder_time,
+              recurrence_frequency: processData.recurrence_frequency,
+              recurrence_interval: processData.recurrence_interval,
+              priority: processData.priority || 'medium',
+              tags: processData.tags || [],
+              items: processData.items || [],
+              task_owner: processData.task_owner,
+              list_id: processData.list_id,
+              location: latitude && longitude ? { latitude, longitude } : null,
+              media_urls: mediaUrls.length > 0 ? mediaUrls : null,
+              completed: false
+            }]);
+
+          if (insertError) {
+            console.error('Error inserting note:', insertError);
+            throw insertError;
+          }
+
+          const taskSummary = processData.summary || 'your task';
+          const taskCategory = processData.category ? ` in ${processData.category}` : '';
           const locationNote = latitude && longitude ? ' 📍' : '';
           const mediaNote = mediaUrls.length > 0 ? ` 📎(${mediaUrls.length})` : '';
           
@@ -610,21 +414,17 @@ serve(async (req) => {
           // Quick reply options with website link
           const quickReply = '\n\n📱 Manage on: witholive.app\n\n💡 Try:\n• "Make it urgent"\n• "Show my tasks"\n• Send more tasks!';
           
-          const finalMessage = `${confirmationMessage}${quickReply}`;
-          console.log('Sending single-note response:', finalMessage);
-          
           return new Response(
-            createTwimlResponse(finalMessage),
+            createTwimlResponse(
+              `${confirmationMessage}${quickReply}`
+            ),
             { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
           );
         }
-      } catch (insertError: any) {
+      } catch (insertError) {
         console.error('Database insertion error:', insertError);
-        console.error('Error details:', JSON.stringify(insertError, null, 2));
-        const errorResponse = createTwimlResponse('I understood your task but had trouble saving it. Please try again.');
-        console.log('Sending error response:', errorResponse);
         return new Response(
-          errorResponse,
+          createTwimlResponse('I understood your task but had trouble saving it. Please try again.'),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
@@ -728,7 +528,7 @@ Determine what modification they want and respond ONLY with valid JSON:
       // Fetch user's tasks and lists
       const { data: tasks } = await supabase
         .from('clerk_notes')
-        .select('id, summary, due_date, completed, priority, category, list_id, items, task_owner, reminder_time')
+        .select('id, summary, due_date, completed, priority, category, list_id, items, task_owner')
         .eq('author_id', userId)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -740,56 +540,6 @@ Determine what modification they want and respond ONLY with valid JSON:
 
       const listMap = new Map(lists?.map(l => [l.id, l.name.toLowerCase()]) || []);
       const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
-
-      // Check if asking about reminders
-      const reminderQuery = messageBody.toLowerCase().match(/(?:which|what|show|list)\s+(?:my\s+)?reminders?/i);
-      
-      if (reminderQuery) {
-        const reminders = tasks?.filter(t => t.reminder_time && !t.completed) || [];
-        
-        if (reminders.length === 0) {
-          return new Response(
-            createTwimlResponse('You have no reminders set! 🔔\n\n💡 Try: "Remind me to call mom tomorrow at 3pm"'),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
-        }
-        
-        // Sort by reminder_time (earliest first)
-        reminders.sort((a, b) => new Date(a.reminder_time!).getTime() - new Date(b.reminder_time!).getTime());
-        
-        const topReminders = reminders.slice(0, 3);
-        const remainingReminders = reminders.slice(3);
-        
-        const remindersList = topReminders.map((r, i) => {
-          const reminderDate = new Date(r.reminder_time!);
-          const dateStr = reminderDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-          const timeStr = reminderDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-          return `${i + 1}. ${r.summary}\n   🔔 ${dateStr} at ${timeStr}`;
-        }).join('\n\n');
-        
-        let message = `🔔 Your upcoming reminders:\n\n${remindersList}`;
-        
-        if (remainingReminders.length > 0) {
-          // Store remaining reminders in session state
-          await supabase
-            .from('user_sessions')
-            .upsert({
-              user_id: userId,
-              conversation_state: 'AWAITING_MORE_REMINDERS',
-              context_data: { remaining_reminders: remainingReminders.map(r => ({
-                summary: r.summary,
-                reminder_time: r.reminder_time
-              })) }
-            }, { onConflict: 'user_id' });
-          
-          message += `\n\n📋 You have ${remainingReminders.length} more reminder${remainingReminders.length > 1 ? 's' : ''}.\n\n💬 Reply "yes" to see them all`;
-        }
-        
-        return new Response(
-          createTwimlResponse(message),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
-      }
 
       // Check if asking about a specific list
       const listNameMatch = messageBody.toLowerCase().match(/(?:what'?s in|show me|list)\s+(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:list|tasks?)/i);

@@ -8,17 +8,6 @@ import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { toast } from "sonner";
 import { Clock } from "lucide-react";
 
-// Helper to safely create date
-const safeDateFromValue = (value: any): Date | null => {
-  if (!value) return null;
-  try {
-    const date = new Date(value);
-    return isNaN(date.getTime()) ? null : date;
-  } catch {
-    return null;
-  }
-};
-
 interface QuickEditReminderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -51,12 +40,7 @@ export function QuickEditReminderDialog({ open, onOpenChange, note }: QuickEditR
     if (!note.reminder_time) return;
     
     try {
-      const currentReminder = safeDateFromValue(note.reminder_time);
-      if (!currentReminder) {
-        toast.error("Invalid reminder time");
-        return;
-      }
-      
+      const currentReminder = new Date(note.reminder_time);
       const snoozedTime = new Date(currentReminder.getTime() + minutes * 60000);
       
       await updateNote(note.id, { reminder_time: snoozedTime.toISOString() });

@@ -11,17 +11,6 @@ import { format } from 'date-fns';
 import type { Note } from '@/types/note';
 import { cn } from '@/lib/utils';
 
-// Helper to safely create date from value
-const safeDateFromValue = (value: any): Date | undefined => {
-  if (!value) return undefined;
-  try {
-    const date = new Date(value);
-    return isNaN(date.getTime()) ? undefined : date;
-  } catch {
-    return undefined;
-  }
-};
-
 interface QuickEditBottomSheetProps {
   note: Note | null;
   isOpen: boolean;
@@ -41,14 +30,16 @@ export const QuickEditBottomSheet: React.FC<QuickEditBottomSheetProps> = ({
 }) => {
   const navigate = useNavigate();
   const [title, setTitle] = useState(note?.summary || '');
-  const [dueDate, setDueDate] = useState<Date | undefined>(safeDateFromValue(note?.dueDate));
+  const [dueDate, setDueDate] = useState<Date | undefined>(
+    note?.dueDate ? new Date(note.dueDate) : undefined
+  );
   const [owner, setOwner] = useState(note?.task_owner || 'shared');
   const [isSaving, setIsSaving] = useState(false);
 
   React.useEffect(() => {
     if (note) {
       setTitle(note.summary);
-      setDueDate(safeDateFromValue(note.dueDate));
+      setDueDate(note.dueDate ? new Date(note.dueDate) : undefined);
       setOwner(note.task_owner || 'shared');
     }
   }, [note]);

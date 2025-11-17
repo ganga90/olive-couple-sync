@@ -5,29 +5,6 @@ import { format } from 'date-fns';
 import type { Note } from '@/types/note';
 import { useToast } from '@/hooks/use-toast';
 
-// Helper to safely format dates
-const safeFormatDate = (dateValue: any, formatString: string): string => {
-  if (!dateValue) return "";
-  try {
-    const date = new Date(dateValue);
-    if (isNaN(date.getTime())) return "";
-    return format(date, formatString);
-  } catch {
-    return "";
-  }
-};
-
-// Helper to safely check date validity
-const isValidDate = (dateValue: any): boolean => {
-  if (!dateValue) return false;
-  try {
-    const date = new Date(dateValue);
-    return !isNaN(date.getTime());
-  } catch {
-    return false;
-  }
-};
-
 interface TaskItemProps {
   task: Note;
   onToggleComplete: (task: Note) => void;
@@ -69,7 +46,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
     }
   };
 
-  const isOverdue = isValidDate(task.dueDate) && new Date(task.dueDate) < new Date() && !task.completed;
+  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && !task.completed;
 
   return (
     <div
@@ -113,13 +90,13 @@ export const TaskItem: React.FC<TaskItemProps> = ({
         
         {/* Metadata */}
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          {task.dueDate && safeFormatDate(task.dueDate, 'MMM d') && (
+          {task.dueDate && (
             <div className={cn(
               "flex items-center gap-1",
               isOverdue && "text-destructive font-medium"
             )}>
               <Calendar className="h-3 w-3" />
-              <span>{safeFormatDate(task.dueDate, 'MMM d')}</span>
+              <span>{format(new Date(task.dueDate), 'MMM d')}</span>
             </div>
           )}
           

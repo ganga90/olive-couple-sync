@@ -7,93 +7,157 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, prefer',
 };
 
-const SYSTEM_PROMPT = `Process text into structured notes. Split into multiple notes if text contains distinct tasks separated by semicolons, "and", or topic changes.
+const SYSTEM_PROMPT = `You are Olive Assistant, an intelligent AI designed to support couples in organizing their shared and individual lives seamlessly. Your task is to process unstructured raw text notes entered by users and transform them into actionable, well-organized information.
 
-For each note extract:
-- summary: concise title (max 100 chars)
-- category: personal, groceries, shopping, travel, entertainment, date_ideas, home_improvement, reminder, health
-- priority: low/medium/high (urgent/ASAP/today=high, soon/this week=medium, someday=low)
-- due_date: ISO format if mentioned (calculate from today, e.g., "tomorrow"=+1 day, "next week"=+7 days, "Friday"=next Friday)
-- items: array for shopping/groceries
-- task_owner: name if assigned ("tell [name]", "[name] should")
-- reminder_time: ISO format if specified
-- recurrence: {frequency: "daily|weekly|monthly|yearly", interval: number} if recurring ("every day", "monthly", etc.)
-- tags: relevant keywords
+CRITICAL: Analyze if the input contains MULTIPLE DISTINCT TASKS or if it should be split into SEPARATE NOTES. 
 
-Summary rules:
-- Grocery/shopping: focus on item ("tell Almu to buy lemons" → "lemons")
-- Action tasks: keep verb ("fix kitchen sink")
-- Assignments: focus on action ("tell John to water plants" → "water plants")
+**Examples of when to create MULTIPLE notes:**
+1. "rent due Friday; schedule car service; pay internet bill monthly" → 3 separate notes:
+   - Note 1: "Pay rent" (due: Friday, category: personal, priority: high)
+   - Note 2: "Schedule car service" (category: personal, priority: medium)  
+   - Note 3: "Pay internet bill" (recurring: monthly, category: personal, priority: medium)
 
-Category keywords:
-- concert/event/show tickets, restaurant reservations → entertainment or date_ideas
-- home repairs, fix, install, maintenance → home_improvement
-- vacation, trip, flights, hotels → travel
-- groceries, food shopping → groceries
-- general shopping → shopping
-- appointments, calls, bills, rent → personal
-- "remind me" → reminder (set priority HIGH)
+2. "groceries tonight: salmon, spinach, lemons; cook Fri; Almu handles dessert" → 3 separate notes:
+   - Note 1: "Buy groceries" (items: ["salmon", "spinach", "lemons"], due: tonight, category: groceries)
+   - Note 2: "Cook dinner" (due: Friday, category: personal, task_owner: current user)
+   - Note 3: "Handle dessert" (due: Friday, category: personal, task_owner: "Almu")
 
-Return JSON:
-Multiple tasks: {"notes": [{...}, {...}]}
-Single task: {summary, category, due_date, reminder_time, recurrence, priority, tags, items, task_owner}`;
+3. "book flights to Madrid next month; remind Almu about passport; museum tickets?" → 3 separate notes:
+   - Note 1: "Book flights to Madrid" (due: next month, category: travel, priority: high)
+   - Note 2: "Renew passport" (task_owner: "Almu", due: 2 weeks, category: travel, priority: high)
+   - Note 3: "Buy museum tickets" (category: travel, priority: medium)
 
-const SIMPLIFIED_PROMPT = `Process note into JSON. Split multiple tasks by semicolons/and/topics.
+4. "buy concert ticket and call doctor on Wednesday" → 2 separate notes:
+   - Note 1: "Buy concert ticket" (category: entertainment, priority: medium)
+   - Note 2: "Call doctor" (due: Wednesday, category: personal, priority: medium)
 
-Extract: summary (concise), category (personal/groceries/shopping/travel/entertainment/date_ideas/home_improvement/reminder/health), priority (low/medium/high), due_date (ISO), items (array), task_owner (name), reminder_time (ISO), recurrence ({frequency, interval}).
+5. "pick up dry cleaning and grocery shopping" → 2 separate notes:
+   - Note 1: "Pick up dry cleaning" (category: personal, priority: medium)
+   - Note 2: "Grocery shopping" (category: groceries, priority: medium)
 
-Return: {"notes": [...]} or single note object.`;
+**When to create a SINGLE note:**
+- Single coherent task or thought
+- Shopping list for one trip
+- Single event planning
+- One specific request or reminder
 
-// Helper function to validate and normalize dates
-function validateDate(dateValue: any): string | null {
-  if (!dateValue) return null;
-  
-  try {
-    const date = new Date(dateValue);
-    if (isNaN(date.getTime())) {
-      console.log('Invalid date detected:', dateValue, '- returning null');
-      return null;
-    }
-    return date.toISOString();
-  } catch (e) {
-    console.error('Error parsing date:', dateValue, e);
-    return null;
-  }
-}
+For each note (single or multiple), perform these steps:
 
-// Helper function to call Gemini API
-async function callGeminiAPI(prompt: string, text: string, maxOutputTokens: number = 800) {
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API');
-  if (!GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY not found');
-  }
+Understand the Context and Content:
+- Identify distinct tasks separated by semicolons, "and", or clear topic changes
+- Look for compound tasks joined by "and" that represent different actions
+- Extract key points into concise summaries for each task
+- Detect URLs, links, or web references and preserve them appropriately
+- Identify if tasks are entertainment, events, or experience-related content
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+Summary Creation Rules:
+- For GROCERY/SHOPPING tasks: Focus on the item itself (e.g., "Tell Almu to buy lemons" → summary: "lemons")
+- For ACTION-BASED tasks: Preserve important action verbs (e.g., "fix the kitchen sink" → "fix the kitchen sink")
+- For ASSIGNMENT tasks: Focus on the action/item, not the telling (e.g., "Tell John to water plants" → "water plants")
+- For RECURRING tasks: Add frequency context (e.g., "pay internet bill monthly" → "pay internet bill")
+
+Enhanced Categorization Logic:
+- **concert_tickets**, **event_tickets**, **show_tickets** → category: "entertainment" or "date_ideas"
+- **restaurant reservations**, **dinner plans**, **date activities** → category: "date_ideas" 
+- **home repairs**, **fix**, **install**, **maintenance** → category: "home_improvement"
+- **vacation**, **trip planning**, **flights**, **hotels** → category: "travel"
+- **groceries**, **food shopping**, **supermarket** → category: "groceries"
+- **general shopping** (clothes, electronics, etc.) → category: "shopping"
+- **personal tasks**, **appointments**, **calls**, **bills**, **rent** → category: "personal"
+- **reminders**, **remind me**, **don't forget** → category: "reminder", set priority to HIGH and add "reminder" tag
+
+Task Owner Detection:
+- Scan for mentions of who should be responsible for or assigned to complete the task
+- Look for phrases like: "tell [name] to...", "ask [name] to...", "[name] should...", "[name] handles...", "[name] will..."
+- If a specific person is mentioned as responsible, extract their name as the task_owner
+- If no specific owner is mentioned, leave the task_owner field as null
+
+Items Extraction:
+- For grocery/shopping lists: Extract specific items mentioned
+- For events/tickets: Extract event details
+- For general tasks: Only use items array if the note contains multiple distinct sub-tasks
+
+Due Date Intelligence (CRITICAL - Use actual date calculation):
+- Calculate the current date and time when processing
+- "in X hours" or "in X hour" → add X hours to current time in ISO format
+- "in X minutes" or "in X minute" → add X minutes to current time in ISO format  
+- "in X days" or "in X day" → add X days to current time at 09:00 in ISO format
+- "tonight" → today's date at 23:59 in ISO format
+- "tomorrow" → tomorrow's date at 09:00 in ISO format  
+- "Friday", "next Friday" → calculate the next occurrence of that weekday at 09:00 in ISO format
+- "next week" → 7 days from now at 09:00 in ISO format
+- "next month" → same day next month at 09:00 in ISO format
+- "monthly", "weekly" → set as recurring (note in tags) and set first occurrence
+- CRITICAL: Always return actual ISO date strings (YYYY-MM-DDTHH:mm:ss.sssZ), never relative text
+- CRITICAL: Calculate dates based on current time: ${new Date().toISOString()}
+
+Reminder vs Due Date (CRITICAL):
+- If user says "remind me" → set ONLY reminder_time (not due_date)
+- If user mentions a deadline/due date → set ONLY due_date (not reminder_time)
+- Only set both if explicitly mentioned
+- Examples:
+  * "remind me to call doctor in 2 minutes" → reminder_time set, due_date null
+  * "project due tomorrow" → due_date set, reminder_time null
+  * "remind me tomorrow about the meeting due on Friday" → both set
+- CRITICAL: For reminders, extract the time and add priority: high
+
+Date Calculation Examples (assuming today is ${new Date().toDateString()}):
+- Input: "next Friday" → Calculate which date is the next Friday and return as "2024-XX-XXTXX:XX:XX.XXXZ"
+- Input: "tomorrow" → Return "${new Date(Date.now() + 86400000).toISOString().split('T')[0]}T09:00:00.000Z"
+- Input: "tonight" → Return "${new Date().toISOString().split('T')[0]}T23:59:00.000Z"
+
+Priority Detection:
+- Bills, rent, flights, passport renewals → HIGH priority
+- Regular shopping, cooking, general tasks → MEDIUM priority
+- Ideas, suggestions, optional items → LOW priority
+
+Formatting Output:
+**CRITICAL:** If multiple distinct tasks are detected, return a JSON object with "multiple": true and "notes" array:
+{
+  "multiple": true,
+  "notes": [
+    {
+      "summary": "task 1 summary",
+      "category": "category1", 
+      "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
+      "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null",
+      "priority": "high/medium/low",
+      "tags": ["tag1"],
+      "items": ["item1", "item2"],
+      "task_owner": "name or null"
     },
-    body: JSON.stringify({
-      contents: [{
-        parts: [{
-          text: `${prompt}\n\nProcess this note:\n"${text}"\n\nRespond with ONLY a valid JSON object, no other text.`
-        }]
-      }],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens,
-      }
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Gemini API error:', errorText);
-    throw new Error('Failed to process note with AI');
-  }
-
-  return await response.json();
+    {
+      "summary": "task 2 summary", 
+      "category": "category2",
+      "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
+      "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null",
+      "priority": "high/medium/low", 
+      "tags": ["tag2"],
+      "items": ["item3", "item4"],
+      "task_owner": "name or null"
+    }
+  ]
 }
+
+**CRITICAL EXAMPLES FOR SPLITTING:**
+- "buy concert ticket and call doctor" → MUST return 2 notes
+- "grocery shopping and pick up dry cleaning" → MUST return 2 notes  
+- "book flight and reserve hotel" → MUST return 2 notes
+- Any text with "and" connecting different actions → MULTIPLE notes
+
+**If single task detected, return standard single note format:**
+{
+  "summary": "concise summary (max 100 characters)",
+  "category": "assigned category (lowercase, use underscores)",
+  "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
+  "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null", 
+  "priority": "low/medium/high",
+  "tags": ["relevant", "tags"],
+  "items": ["individual", "items"],
+  "task_owner": "name of responsible person or null"
+}
+
+Maintain a warm, helpful, and respectful tone, supporting the couple's shared life organization with intelligence and empathy.`;
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -150,69 +214,44 @@ serve(async (req) => {
       ? `\n\nExisting lists available:\n${existingLists.map(list => `- ${list.name}${list.description ? ` (${list.description})` : ''}`).join('\n')}\n\nWhen categorizing, consider if this note belongs to one of these existing lists. If it matches an existing list's purpose, use a category that would map to that list.`
       : '';
 
-    // Try with full prompt first, then retry with simplified prompt if token limit hit
-    let data;
-    let aiResponse;
-    let usedSimplifiedPrompt = false;
-    
-    try {
-      // First attempt with full prompt and lists context
-      console.log('Attempting AI processing with full prompt...');
-      data = await callGeminiAPI(SYSTEM_PROMPT + listsContext, text);
-      console.log('Gemini response (full prompt):', data);
-      
-      // Check if response was truncated
-      if (data.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
-        console.warn('Token limit hit with full prompt, retrying with simplified prompt...');
-        usedSimplifiedPrompt = true;
-        
-        // Retry with simplified prompt (no lists context, reduced tokens)
-        data = await callGeminiAPI(SIMPLIFIED_PROMPT, text, 500);
-        console.log('Gemini response (simplified prompt):', data);
-      }
-    } catch (error) {
-      console.error('Error calling Gemini API:', error);
-      throw error;
+    // Call Gemini API with enhanced context
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: `${SYSTEM_PROMPT}${listsContext}\n\nProcess this note:\n"${text}"\n\nRespond with ONLY a valid JSON object, no other text.`
+          }]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 1200,
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Gemini API error:', errorText);
+      throw new Error('Failed to process note with AI');
     }
+
+    const data = await response.json();
+    console.log('Gemini response:', data);
     
     if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
       throw new Error('Invalid response from Gemini API');
     }
 
-    // Check if still hitting token limit after retry - use fallback
+    // Check if response was truncated - continue processing but log warning
     if (data.candidates[0].finishReason === 'MAX_TOKENS') {
-      console.error('AI response was truncated even with simplified prompt, using fallback');
-      
-      // Create a basic fallback note structure
-      const fallbackNote = {
-        summary: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
-        category: 'personal',
-        priority: 'medium',
-        due_date: null,
-        reminder_time: null,
-        tags: [],
-        items: [],
-        task_owner: null
-      };
-      
-      // Return the fallback and let it be processed
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          notes: [fallbackNote],
-          warning: 'Message was too long for full AI processing. Created a basic note.'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.warn('AI response may have been truncated due to token limit');
     }
 
-    // Validate that we have the parts array with content
-    if (!data.candidates[0].content.parts || !data.candidates[0].content.parts[0] || !data.candidates[0].content.parts[0].text) {
-      console.error('AI response missing content parts:', data.candidates[0].content);
-      throw new Error('AI returned an empty response. Please try again.');
-    }
-
-    aiResponse = data.candidates[0].content.parts[0].text;
+    const aiResponse = data.candidates[0].content.parts[0].text;
     console.log('AI response text:', aiResponse);
 
     // Parse the JSON response - handle markdown code blocks
@@ -325,8 +364,8 @@ serve(async (req) => {
           return {
             summary: note.summary || text,
             category: note.category || "task",
-            due_date: validateDate(note.due_date),
-            reminder_time: validateDate(note.reminder_time),
+            due_date: note.due_date || null,
+            reminder_time: note.reminder_time || null,
             recurrence_frequency: note.recurrence_frequency || null,
             recurrence_interval: note.recurrence_interval || null,
             priority: note.priority || "medium",
@@ -358,8 +397,8 @@ serve(async (req) => {
       const result = {
         summary: processedResponse.summary || text,
         category: processedResponse.category || "task",
-        due_date: validateDate(processedResponse.due_date),
-        reminder_time: validateDate(processedResponse.reminder_time),
+        due_date: processedResponse.due_date || null,
+        reminder_time: processedResponse.reminder_time || null,
         recurrence_frequency: processedResponse.recurrence_frequency || null,
         recurrence_interval: processedResponse.recurrence_interval || null,
         priority: processedResponse.priority || "medium",
