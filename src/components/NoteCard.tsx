@@ -10,6 +10,18 @@ import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
 import type { Note } from "@/types/note";
 import { format } from "date-fns";
 
+// Helper to safely format dates
+const safeFormatDate = (dateValue: any, formatString: string): string => {
+  if (!dateValue) return "";
+  try {
+    const date = new Date(dateValue);
+    if (isNaN(date.getTime())) return "";
+    return format(date, formatString);
+  } catch {
+    return "";
+  }
+};
+
 interface NoteCardProps {
   note: Note;
   onToggleComplete?: (id: string, completed: boolean) => void;
@@ -138,19 +150,19 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                 <NotePrivacyToggle note={note} size="sm" variant="ghost" />
               </div>
               
-              {note.dueDate && (
+              {note.dueDate && safeFormatDate(note.dueDate, "MMM d") && (
                 <div className="flex items-center gap-1">
                   <CalendarDays className="h-3 w-3" />
-                  {format(new Date(note.dueDate), "MMM d")}
+                  {safeFormatDate(note.dueDate, "MMM d")}
                 </div>
               )}
             </div>
             
-            {note.reminder_time && (
+            {note.reminder_time && safeFormatDate(note.reminder_time, "PPp") && (
               <div className="flex items-center gap-1 text-olive">
                 <Bell className="h-3 w-3" />
                 <span className="font-medium">
-                  Reminder: {format(new Date(note.reminder_time), "PPp")}
+                  Reminder: {safeFormatDate(note.reminder_time, "PPp")}
                 </span>
               </div>
             )}

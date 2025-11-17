@@ -13,6 +13,18 @@ import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { toast } from "sonner";
 
+// Helper to safely format dates
+const safeFormatDate = (dateValue: any, formatString: string): string => {
+  if (!dateValue) return "";
+  try {
+    const date = new Date(dateValue);
+    if (isNaN(date.getTime())) return "";
+    return format(date, formatString);
+  } catch {
+    return "";
+  }
+};
+
 interface NoteRecapProps {
   note: {
     id?: string;
@@ -40,7 +52,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
     priority: note.priority || "medium",
     tags: note.tags ? note.tags.join(", ") : "",
     items: note.items ? note.items.join("\n") : "",
-    dueDate: note.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
+    dueDate: safeFormatDate(note.dueDate, "yyyy-MM-dd"),
     taskOwner: note.task_owner || "",
     listId: note.list_id || ""
   });
@@ -185,7 +197,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
       priority: note.priority || "medium",
       tags: note.tags ? note.tags.join(", ") : "",
       items: note.items ? note.items.join("\n") : "",
-      dueDate: note.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
+      dueDate: safeFormatDate(note.dueDate, "yyyy-MM-dd"),
       taskOwner: note.task_owner || "",
       listId: note.list_id || ""
     });
@@ -446,12 +458,12 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
           )}
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            <span>{format(new Date(note.createdAt), "MMM d, yyyy 'at' h:mm a")}</span>
+            <span>{safeFormatDate(note.createdAt, "MMM d, yyyy 'at' h:mm a")}</span>
           </div>
-          {note.dueDate && (
+          {note.dueDate && safeFormatDate(note.dueDate, "MMM d, yyyy") && (
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4" />
-              <span>Due: {format(new Date(note.dueDate), "MMM d, yyyy")}</span>
+              <span>Due: {safeFormatDate(note.dueDate, "MMM d, yyyy")}</span>
             </div>
           )}
         </div>
