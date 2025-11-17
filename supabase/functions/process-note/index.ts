@@ -44,6 +44,23 @@ Extract: summary (concise), category (personal/groceries/shopping/travel/enterta
 
 Return: {"notes": [...]} or single note object.`;
 
+// Helper function to validate and normalize dates
+function validateDate(dateValue: any): string | null {
+  if (!dateValue) return null;
+  
+  try {
+    const date = new Date(dateValue);
+    if (isNaN(date.getTime())) {
+      console.log('Invalid date detected:', dateValue, '- returning null');
+      return null;
+    }
+    return date.toISOString();
+  } catch (e) {
+    console.error('Error parsing date:', dateValue, e);
+    return null;
+  }
+}
+
 // Helper function to call Gemini API
 async function callGeminiAPI(prompt: string, text: string, maxOutputTokens: number = 800) {
   const GEMINI_API_KEY = Deno.env.get('GEMINI_API');
@@ -308,8 +325,8 @@ serve(async (req) => {
           return {
             summary: note.summary || text,
             category: note.category || "task",
-            due_date: note.due_date || null,
-            reminder_time: note.reminder_time || null,
+            due_date: validateDate(note.due_date),
+            reminder_time: validateDate(note.reminder_time),
             recurrence_frequency: note.recurrence_frequency || null,
             recurrence_interval: note.recurrence_interval || null,
             priority: note.priority || "medium",
@@ -341,8 +358,8 @@ serve(async (req) => {
       const result = {
         summary: processedResponse.summary || text,
         category: processedResponse.category || "task",
-        due_date: processedResponse.due_date || null,
-        reminder_time: processedResponse.reminder_time || null,
+        due_date: validateDate(processedResponse.due_date),
+        reminder_time: validateDate(processedResponse.reminder_time),
         recurrence_frequency: processedResponse.recurrence_frequency || null,
         recurrence_interval: processedResponse.recurrence_interval || null,
         priority: processedResponse.priority || "medium",
