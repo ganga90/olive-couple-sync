@@ -6,6 +6,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Bell, X, Clock } from "lucide-react";
 import { format, addMinutes, addHours, addDays } from "date-fns";
 
+// Helper to safely create date from value
+const safeDateFromValue = (value: any): Date | undefined => {
+  if (!value) return undefined;
+  try {
+    const date = new Date(value);
+    return isNaN(date.getTime()) ? undefined : date;
+  } catch {
+    return undefined;
+  }
+};
+
+// Helper to safely format date
+const safeFormatDate = (value: any, formatString: string): string => {
+  const date = safeDateFromValue(value);
+  if (!date) return "09:00";
+  try {
+    return format(date, formatString);
+  } catch {
+    return "09:00";
+  }
+};
+
 interface ReminderPickerProps {
   value?: string | null;
   onChange: (value: string | null) => void;
@@ -21,12 +43,8 @@ const QUICK_REMINDERS = [
 ];
 
 export function ReminderPicker({ value, onChange }: ReminderPickerProps) {
-  const [date, setDate] = useState<Date | undefined>(
-    value ? new Date(value) : undefined
-  );
-  const [time, setTime] = useState<string>(
-    value ? format(new Date(value), "HH:mm") : "09:00"
-  );
+  const [date, setDate] = useState<Date | undefined>(safeDateFromValue(value));
+  const [time, setTime] = useState<string>(safeFormatDate(value, "HH:mm"));
 
   const handleDateSelect = (selectedDate: Date | undefined) => {
     if (!selectedDate) return;
