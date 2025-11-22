@@ -4,11 +4,11 @@ import App from './App.tsx'
 import './index.css'
 import { ClerkProvider } from '@clerk/clerk-react'
 
-// Use the new publishable key you set up
-const PUBLISHABLE_KEY = 'pk_test_Z3JhdGVmdWwtd3Jlbi04NC5jbGVyay5hY2NvdW50cy5kZXYk'
+// Use environment variable for production
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
 if (!PUBLISHABLE_KEY) {
-  throw new Error('Missing Clerk Publishable Key')
+  throw new Error('Missing Clerk Publishable Key - Please set VITE_CLERK_PUBLISHABLE_KEY')
 }
 
 console.log('[Olive] Initializing Clerk with key:', PUBLISHABLE_KEY.substring(0, 20) + '...')
