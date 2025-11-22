@@ -462,7 +462,7 @@ Determine what modification they want and respond ONLY with valid JSON:
   "response": "A brief confirmation message"
 }`;
 
-      const modResponse = await callAI(modPrompt, '', 0.3);
+      const modResponse = await callAI(modPrompt, messageBody, 0.3);
       let modification: any;
       
       try {
