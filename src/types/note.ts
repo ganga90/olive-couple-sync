@@ -17,6 +17,8 @@ export interface Note {
   recurrence_frequency?: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
   recurrence_interval?: number;
   last_reminded_at?: string | null;
+  media_urls?: string[] | null;
+  location?: { latitude: string; longitude: string } | null;
   // New fields to distinguish note types
   isShared?: boolean;
   coupleId?: string;

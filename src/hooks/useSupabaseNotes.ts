@@ -22,6 +22,8 @@ export type SupabaseNote = {
   priority?: 'low' | 'medium' | 'high';
   task_owner?: string | null;
   list_id?: string | null;
+  media_urls?: string[] | null;
+  location?: any | null;
   created_at: string;
   updated_at: string;
 };

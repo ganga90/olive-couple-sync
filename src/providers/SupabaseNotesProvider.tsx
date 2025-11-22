@@ -96,6 +96,8 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
     items: supabaseNote.items || undefined,
     task_owner: getTaskOwnerName(supabaseNote.task_owner),
     list_id: supabaseNote.list_id || undefined,
+    media_urls: supabaseNote.media_urls || undefined,
+    location: supabaseNote.location as any || undefined,
     // Add metadata to distinguish note types
     isShared: supabaseNote.couple_id !== null,
     coupleId: supabaseNote.couple_id || undefined,
