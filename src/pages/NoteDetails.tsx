@@ -23,6 +23,7 @@ import { OliveLogo } from "@/components/OliveLogo";
 import ReactMarkdown from 'react-markdown';
 import { cn } from "@/lib/utils";
 import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
+import { NoteMediaSection } from "@/components/NoteMediaSection";
 
 const NoteDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -705,6 +706,9 @@ const NoteDetails = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Media & Attachments Section */}
+          <NoteMediaSection mediaUrls={note.media_urls} location={note.location} />
 
           {/* Metadata */}
           <div className="flex items-center justify-between text-sm text-muted-foreground">
