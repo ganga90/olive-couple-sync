@@ -8,12 +8,16 @@ const corsHeaders = {
 
 const INTENT_CLASSIFIER_PROMPT = `You are an intent classifier for a task management app. Analyze the user's message and classify it into ONE of these categories:
 
-ORGANIZATION: User wants to CREATE A NEW task, add a new todo, or organize something new
+ORGANIZATION: User wants to CREATE A NEW task, add a new todo, organize something new, or is sharing information they want saved (especially with media/images)
 MODIFICATION: User wants to EDIT/UPDATE/CHANGE/DELETE an EXISTING task (e.g., "make it urgent", "mark as done", "delete last task", "change priority")
 CONSULTATION: User wants to retrieve information, check their tasks, see what's in a list, or ask about existing data
 CONVERSATION: Casual chat, greetings, or off-topic messages
 
-IMPORTANT: Commands like "make it urgent", "mark as done", "complete it", "delete it", "change to high priority" are MODIFICATION, not ORGANIZATION.
+CRITICAL RULES:
+- If the message includes media (image/audio/video) with descriptive text, it's almost always ORGANIZATION
+- Commands like "check out X", "look at X", "see X" WITH media are ORGANIZATION (user wants to save it)
+- Only use CONSULTATION when asking about existing tasks without adding new content
+- Commands like "make it urgent", "mark as done", "complete it", "delete it" are MODIFICATION, not ORGANIZATION
 
 Respond ONLY with valid JSON in this format:
 {
@@ -274,9 +278,14 @@ serve(async (req) => {
       // Treat plain URLs as organization tasks automatically
       console.log('Detected URL, treating as organization task:', urls);
       intent = { intent: 'ORGANIZATION', confidence: 1.0 };
+    } else if (mediaUrls.length > 0 && messageBody) {
+      // If there's media with text description, treat as organization
+      console.log('Detected media with text, treating as organization task');
+      intent = { intent: 'ORGANIZATION', confidence: 1.0 };
     } else {
-      // Classify intent using AI
-      const intentResponse = await callAI(INTENT_CLASSIFIER_PROMPT, messageBody, 0.3);
+      // Classify intent using AI, with context about media
+      const contextInfo = mediaUrls.length > 0 ? ` [User attached ${mediaUrls.length} media file(s)]` : '';
+      const intentResponse = await callAI(INTENT_CLASSIFIER_PROMPT, messageBody + contextInfo, 0.3);
       
       try {
         const jsonMatch = intentResponse.match(/\{[\s\S]*\}/);
@@ -610,12 +619,15 @@ ${tasksContext}
 
 User question: ${messageBody}
 
-Provide a helpful answer based on the user's tasks.`;
+If you can't find what they're looking for, suggest they might want to CREATE it as a new task instead of searching for it. Be helpful and brief.`;
       
       const answer = await callAI(consultPrompt, '', 0.7);
       
+      // Add helpful tips if the answer seems like the user's query wasn't found
+      const helpfulTips = '\n\n💡 Quick tips:\n• Send tasks: "Buy groceries"\n• With images: Send photo + caption\n• Check tasks: "What\'s urgent?"\n• Update: "Mark as done"\n\n📱 Full app: witholive.app';
+      
       return new Response(
-        createTwimlResponse(answer),
+        createTwimlResponse(`${answer}${helpfulTips}`),
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
       );
 
@@ -629,7 +641,7 @@ Otherwise, respond warmly and briefly (1-2 sentences), and gently remind them yo
       
       const reply = await callAI(chatPrompt, messageBody, 0.8);
       
-      const helpHint = '\n\n💬 You can also:\n• Share 📍 location\n• Send 📸 images\n• Voice note 🎤';
+      const helpHint = '\n\n💬 How to use Olive:\n• Create tasks: "Buy groceries tomorrow"\n• With media: Send 📸 photo + caption\n• Check tasks: "What\'s urgent?"\n• Update: "Mark as done"\n\n📱 Full features: witholive.app';
 
       return new Response(
         createTwimlResponse(`${reply}${helpHint}`),
