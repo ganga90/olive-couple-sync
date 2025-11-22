@@ -7,157 +7,51 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, prefer',
 };
 
-const SYSTEM_PROMPT = `You are Olive Assistant, an intelligent AI designed to support couples in organizing their shared and individual lives seamlessly. Your task is to process unstructured raw text notes entered by users and transform them into actionable, well-organized information.
+const SYSTEM_PROMPT = `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
 
-CRITICAL: Analyze if the input contains MULTIPLE DISTINCT TASKS or if it should be split into SEPARATE NOTES. 
+SPLIT CRITERIA: Create multiple notes if input has distinct tasks separated by "and", ";", or topic changes.
+Examples: "buy milk and call doctor" → 2 notes | "groceries: milk, eggs, bread" → 1 note
 
-**Examples of when to create MULTIPLE notes:**
-1. "rent due Friday; schedule car service; pay internet bill monthly" → 3 separate notes:
-   - Note 1: "Pay rent" (due: Friday, category: personal, priority: high)
-   - Note 2: "Schedule car service" (category: personal, priority: medium)  
-   - Note 3: "Pay internet bill" (recurring: monthly, category: personal, priority: medium)
+SINGLE vs MULTIPLE:
+- Single: One coherent task/thought, shopping list for one trip, single event
+- Multiple: Separate actions joined by "and", semicolon-separated tasks, different topics
 
-2. "groceries tonight: salmon, spinach, lemons; cook Fri; Almu handles dessert" → 3 separate notes:
-   - Note 1: "Buy groceries" (items: ["salmon", "spinach", "lemons"], due: tonight, category: groceries)
-   - Note 2: "Cook dinner" (due: Friday, category: personal, task_owner: current user)
-   - Note 3: "Handle dessert" (due: Friday, category: personal, task_owner: "Almu")
+CORE FIELDS:
+1. summary: Concise title (max 100 chars)
+   - Groceries: item name only ("lemons" not "buy lemons")
+   - Actions: keep verb ("fix sink")
+   - Assignments: action only ("water plants" not "tell John to water plants")
 
-3. "book flights to Madrid next month; remind Almu about passport; museum tickets?" → 3 separate notes:
-   - Note 1: "Book flights to Madrid" (due: next month, category: travel, priority: high)
-   - Note 2: "Renew passport" (task_owner: "Almu", due: 2 weeks, category: travel, priority: high)
-   - Note 3: "Buy museum tickets" (category: travel, priority: medium)
+2. category: Use lowercase with underscores
+   - concerts/events/shows → "entertainment"
+   - restaurants/dinner plans → "date_ideas"
+   - repairs/fix/maintenance → "home_improvement"
+   - vacation/flights/hotels → "travel"
+   - groceries/supermarket → "groceries"
+   - clothes/electronics → "shopping"
+   - appointments/bills/rent → "personal"
 
-4. "buy concert ticket and call doctor on Wednesday" → 2 separate notes:
-   - Note 1: "Buy concert ticket" (category: entertainment, priority: medium)
-   - Note 2: "Call doctor" (due: Wednesday, category: personal, priority: medium)
+3. due_date/reminder_time: ISO format YYYY-MM-DDTHH:mm:ss.sssZ
+   Current time: ${new Date().toISOString()}
+   - "remind me" → set reminder_time only
+   - deadline/due → set due_date only
+   - Calculate: "in X hours/minutes/days", "tomorrow" (09:00), "tonight" (23:59), "Friday" (next occurrence 09:00)
+   - NEVER return relative text, always ISO dates
 
-5. "pick up dry cleaning and grocery shopping" → 2 separate notes:
-   - Note 1: "Pick up dry cleaning" (category: personal, priority: medium)
-   - Note 2: "Grocery shopping" (category: groceries, priority: medium)
+4. priority: high (bills/rent/urgent), medium (regular tasks), low (ideas)
 
-**When to create a SINGLE note:**
-- Single coherent task or thought
-- Shopping list for one trip
-- Single event planning
-- One specific request or reminder
+5. tags: Extract themes/patterns (["urgent", "financial", "health"])
 
-For each note (single or multiple), perform these steps:
+6. items: List sub-items for shopping/multi-part tasks
 
-Understand the Context and Content:
-- Identify distinct tasks separated by semicolons, "and", or clear topic changes
-- Look for compound tasks joined by "and" that represent different actions
-- Extract key points into concise summaries for each task
-- Detect URLs, links, or web references and preserve them appropriately
-- Identify if tasks are entertainment, events, or experience-related content
+7. task_owner: Extract person's name from "tell [name]", "[name] should", "[name] handles" (null if not mentioned)
 
-Summary Creation Rules:
-- For GROCERY/SHOPPING tasks: Focus on the item itself (e.g., "Tell Almu to buy lemons" → summary: "lemons")
-- For ACTION-BASED tasks: Preserve important action verbs (e.g., "fix the kitchen sink" → "fix the kitchen sink")
-- For ASSIGNMENT tasks: Focus on the action/item, not the telling (e.g., "Tell John to water plants" → "water plants")
-- For RECURRING tasks: Add frequency context (e.g., "pay internet bill monthly" → "pay internet bill")
+OUTPUT FORMAT:
+Multiple tasks:
+{"multiple": true, "notes": [{"summary": "...", "category": "...", "due_date": "...", "reminder_time": "...", "priority": "...", "tags": [], "items": [], "task_owner": "..."}]}
 
-Enhanced Categorization Logic:
-- **concert_tickets**, **event_tickets**, **show_tickets** → category: "entertainment" or "date_ideas"
-- **restaurant reservations**, **dinner plans**, **date activities** → category: "date_ideas" 
-- **home repairs**, **fix**, **install**, **maintenance** → category: "home_improvement"
-- **vacation**, **trip planning**, **flights**, **hotels** → category: "travel"
-- **groceries**, **food shopping**, **supermarket** → category: "groceries"
-- **general shopping** (clothes, electronics, etc.) → category: "shopping"
-- **personal tasks**, **appointments**, **calls**, **bills**, **rent** → category: "personal"
-- **reminders**, **remind me**, **don't forget** → category: "reminder", set priority to HIGH and add "reminder" tag
-
-Task Owner Detection:
-- Scan for mentions of who should be responsible for or assigned to complete the task
-- Look for phrases like: "tell [name] to...", "ask [name] to...", "[name] should...", "[name] handles...", "[name] will..."
-- If a specific person is mentioned as responsible, extract their name as the task_owner
-- If no specific owner is mentioned, leave the task_owner field as null
-
-Items Extraction:
-- For grocery/shopping lists: Extract specific items mentioned
-- For events/tickets: Extract event details
-- For general tasks: Only use items array if the note contains multiple distinct sub-tasks
-
-Due Date Intelligence (CRITICAL - Use actual date calculation):
-- Calculate the current date and time when processing
-- "in X hours" or "in X hour" → add X hours to current time in ISO format
-- "in X minutes" or "in X minute" → add X minutes to current time in ISO format  
-- "in X days" or "in X day" → add X days to current time at 09:00 in ISO format
-- "tonight" → today's date at 23:59 in ISO format
-- "tomorrow" → tomorrow's date at 09:00 in ISO format  
-- "Friday", "next Friday" → calculate the next occurrence of that weekday at 09:00 in ISO format
-- "next week" → 7 days from now at 09:00 in ISO format
-- "next month" → same day next month at 09:00 in ISO format
-- "monthly", "weekly" → set as recurring (note in tags) and set first occurrence
-- CRITICAL: Always return actual ISO date strings (YYYY-MM-DDTHH:mm:ss.sssZ), never relative text
-- CRITICAL: Calculate dates based on current time: ${new Date().toISOString()}
-
-Reminder vs Due Date (CRITICAL):
-- If user says "remind me" → set ONLY reminder_time (not due_date)
-- If user mentions a deadline/due date → set ONLY due_date (not reminder_time)
-- Only set both if explicitly mentioned
-- Examples:
-  * "remind me to call doctor in 2 minutes" → reminder_time set, due_date null
-  * "project due tomorrow" → due_date set, reminder_time null
-  * "remind me tomorrow about the meeting due on Friday" → both set
-- CRITICAL: For reminders, extract the time and add priority: high
-
-Date Calculation Examples (assuming today is ${new Date().toDateString()}):
-- Input: "next Friday" → Calculate which date is the next Friday and return as "2024-XX-XXTXX:XX:XX.XXXZ"
-- Input: "tomorrow" → Return "${new Date(Date.now() + 86400000).toISOString().split('T')[0]}T09:00:00.000Z"
-- Input: "tonight" → Return "${new Date().toISOString().split('T')[0]}T23:59:00.000Z"
-
-Priority Detection:
-- Bills, rent, flights, passport renewals → HIGH priority
-- Regular shopping, cooking, general tasks → MEDIUM priority
-- Ideas, suggestions, optional items → LOW priority
-
-Formatting Output:
-**CRITICAL:** If multiple distinct tasks are detected, return a JSON object with "multiple": true and "notes" array:
-{
-  "multiple": true,
-  "notes": [
-    {
-      "summary": "task 1 summary",
-      "category": "category1", 
-      "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
-      "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null",
-      "priority": "high/medium/low",
-      "tags": ["tag1"],
-      "items": ["item1", "item2"],
-      "task_owner": "name or null"
-    },
-    {
-      "summary": "task 2 summary", 
-      "category": "category2",
-      "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
-      "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null",
-      "priority": "high/medium/low", 
-      "tags": ["tag2"],
-      "items": ["item3", "item4"],
-      "task_owner": "name or null"
-    }
-  ]
-}
-
-**CRITICAL EXAMPLES FOR SPLITTING:**
-- "buy concert ticket and call doctor" → MUST return 2 notes
-- "grocery shopping and pick up dry cleaning" → MUST return 2 notes  
-- "book flight and reserve hotel" → MUST return 2 notes
-- Any text with "and" connecting different actions → MULTIPLE notes
-
-**If single task detected, return standard single note format:**
-{
-  "summary": "concise summary (max 100 characters)",
-  "category": "assigned category (lowercase, use underscores)",
-  "due_date": "2024-XX-XXTXX:XX:XX.XXXZ or null",
-  "reminder_time": "2024-XX-XXTXX:XX:XX.XXXZ or null", 
-  "priority": "low/medium/high",
-  "tags": ["relevant", "tags"],
-  "items": ["individual", "items"],
-  "task_owner": "name of responsible person or null"
-}
-
-Maintain a warm, helpful, and respectful tone, supporting the couple's shared life organization with intelligence and empathy.`;
+Single task:
+{"summary": "...", "category": "...", "due_date": "...", "reminder_time": "...", "priority": "...", "tags": [], "items": [], "task_owner": "..."}`;
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -284,22 +178,97 @@ serve(async (req) => {
       };
     }
 
-    // Helper function to find or create list for a category
-    const findOrCreateList = async (category: string) => {
+    // Enhanced pattern detection for smart list categorization
+    const detectListPatterns = (notes: any[], category: string, tags: string[]) => {
+      // Check for recurring patterns across all user notes
+      const categoryFrequency: Record<string, number> = {};
+      const tagFrequency: Record<string, string[]> = {};
+      
+      // Build pattern map from existing lists
+      if (existingLists && existingLists.length > 0) {
+        existingLists.forEach(list => {
+          const normalizedListName = list.name.toLowerCase();
+          categoryFrequency[normalizedListName] = categoryFrequency[normalizedListName] || 0;
+          categoryFrequency[normalizedListName]++;
+        });
+      }
+      
+      // Smart category mapping with synonym detection
+      const categoryMap: Record<string, string[]> = {
+        'groceries': ['grocery', 'food', 'supermarket', 'shopping list'],
+        'travel': ['travel idea', 'trip', 'vacation', 'flight', 'hotel'],
+        'home improvement': ['home', 'repair', 'fix', 'maintenance', 'renovation'],
+        'entertainment': ['date idea', 'movie', 'show', 'concert', 'event'],
+        'personal': ['task', 'personal', 'appointment', 'errand'],
+        'shopping': ['shopping', 'buy', 'purchase', 'store'],
+        'health': ['health', 'fitness', 'exercise', 'doctor', 'medical'],
+        'finance': ['finance', 'bill', 'payment', 'budget', 'money']
+      };
+      
+      // Find best matching existing list based on category and tags
+      let bestMatch = null;
+      let highestScore = 0;
+      
+      if (existingLists && existingLists.length > 0) {
+        existingLists.forEach(list => {
+          let score = 0;
+          const listNameLower = list.name.toLowerCase();
+          const categoryLower = category.toLowerCase().replace(/_/g, ' ');
+          
+          // Direct match
+          if (listNameLower === categoryLower) score += 10;
+          
+          // Synonym matching
+          Object.entries(categoryMap).forEach(([canonical, synonyms]) => {
+            if (synonyms.includes(categoryLower) && synonyms.some(s => listNameLower.includes(s))) {
+              score += 8;
+            }
+          });
+          
+          // Partial match
+          if (listNameLower.includes(categoryLower) || categoryLower.includes(listNameLower)) {
+            score += 5;
+          }
+          
+          // Tag matching
+          if (tags && tags.length > 0 && list.description) {
+            const descLower = list.description.toLowerCase();
+            tags.forEach(tag => {
+              if (descLower.includes(tag.toLowerCase())) score += 2;
+            });
+          }
+          
+          if (score > highestScore) {
+            highestScore = score;
+            bestMatch = list;
+          }
+        });
+      }
+      
+      return { bestMatch, shouldCreateNew: highestScore < 5 };
+    };
+
+    // Helper function to find or create list with smart pattern detection
+    const findOrCreateList = async (category: string, tags: string[] = []) => {
       if (!category) {
         console.log('No category provided, returning null');
         return null;
       }
 
-      // Try to find an existing list that matches the category
+      // Use pattern detection to find best matching list
+      const { bestMatch, shouldCreateNew } = detectListPatterns([], category, tags);
+      
+      if (bestMatch && !shouldCreateNew) {
+        console.log('Smart pattern match found:', bestMatch.name, 'with ID:', bestMatch.id);
+        return bestMatch.id;
+      }
+      
+      // Check for exact or fuzzy matches as fallback
       const matchingList = existingLists && existingLists.length > 0 ? existingLists.find(list => {
         const listName = list.name.toLowerCase();
         const categoryName = category.toLowerCase().replace(/_/g, ' ');
         
-        // Direct name match
         if (listName === categoryName) return true;
-        
-        // Fuzzy matching for common variations
         if (listName.includes(categoryName) || categoryName.includes(listName)) return true;
         
         return false;
@@ -308,45 +277,40 @@ serve(async (req) => {
       if (matchingList) {
         console.log('Found matching existing list:', matchingList.name, 'with ID:', matchingList.id);
         return matchingList.id;
-      } else {
-        // Create a new list for this category
-        const listName = category.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
-        
-        console.log('Creating new list for category:', category, '->', listName);
-        
-        try {
-          const { data: newList, error: createError } = await supabase
-            .from('clerk_lists')
-            .insert([{
-              name: listName,
-              description: `Auto-generated list for ${listName.toLowerCase()} items`,
-              is_manual: false,
-              author_id: user_id,
-              couple_id: couple_id || null,
-            }])
-            .select()
-            .single();
-            
-          if (createError) {
-            console.error('Error creating new list:', createError);
-            console.error('List creation data attempted:', {
-              name: listName,
-              description: `Auto-generated list for ${listName.toLowerCase()} items`,
-              is_manual: false,
-              author_id: user_id,
-              couple_id: couple_id || null,
-            });
-            
-            // Return null but ensure the note is still created without a list
-            return null;
-          } else {
-            console.log('Successfully created new list:', newList.name, 'with ID:', newList.id);
-            return newList.id;
-          }
-        } catch (error) {
-          console.error('Exception during list creation:', error);
+      }
+      
+      // Create new list with smart naming
+      const listName = category
+        .replace(/_/g, ' ')
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+      
+      console.log('Creating smart list for category:', category, '->', listName);
+      
+      try {
+        const { data: newList, error: createError } = await supabase
+          .from('clerk_lists')
+          .insert([{
+            name: listName,
+            description: `Auto-generated for ${listName.toLowerCase()}${tags.length > 0 ? ` (tags: ${tags.join(', ')})` : ''}`,
+            is_manual: false,
+            author_id: user_id,
+            couple_id: couple_id || null,
+          }])
+          .select()
+          .single();
+          
+        if (createError) {
+          console.error('Error creating new list:', createError);
           return null;
         }
+        
+        console.log('Successfully created smart list:', newList.name, 'with ID:', newList.id);
+        return newList.id;
+      } catch (error) {
+        console.error('Exception during list creation:', error);
+        return null;
       }
     };
 
@@ -354,11 +318,11 @@ serve(async (req) => {
     if (processedResponse.multiple && processedResponse.notes && Array.isArray(processedResponse.notes)) {
       console.log('Processing multiple notes:', processedResponse.notes.length);
       
-      // Process each note and assign lists
+      // Process each note and assign lists with smart pattern detection
       const processedNotes = await Promise.all(
         processedResponse.notes.map(async (note: any, index: number) => {
-          console.log(`Processing note ${index + 1}:`, { category: note.category, summary: note.summary });
-          const listId = note.category ? await findOrCreateList(note.category) : null;
+          console.log(`Processing note ${index + 1}:`, { category: note.category, summary: note.summary, tags: note.tags });
+          const listId = note.category ? await findOrCreateList(note.category, note.tags || []) : null;
           console.log(`Note ${index + 1} assigned list_id:`, listId);
           
           return {
@@ -391,8 +355,8 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     } else {
-      // Handle single note
-      const listId = processedResponse.category ? await findOrCreateList(processedResponse.category) : null;
+      // Handle single note with smart list assignment
+      const listId = processedResponse.category ? await findOrCreateList(processedResponse.category, processedResponse.tags || []) : null;
       
       const result = {
         summary: processedResponse.summary || text,
