@@ -264,12 +264,14 @@ serve(async (req) => {
       );
     }
 
-    // Authenticate user by WhatsApp number
-    const { data: profile, error: profileError } = await supabase
+    // Authenticate user by WhatsApp number (handle multiple profiles with same number)
+    const { data: profiles, error: profileError } = await supabase
       .from('clerk_profiles')
       .select('id, display_name')
       .eq('phone_number', fromNumber)
-      .single();
+      .limit(1);
+
+    const profile = profiles?.[0];
 
     if (profileError || !profile) {
       console.error('Profile lookup error:', profileError);
