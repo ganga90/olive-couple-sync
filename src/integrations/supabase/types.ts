@@ -532,7 +532,7 @@ export type Database = {
       debug_jwt_claims: { Args: never; Returns: Json }
       get_clerk_user_id: { Args: never; Returns: string }
       is_couple_member: {
-        Args: { couple_uuid: string; user_id: string }
+        Args: { couple_uuid: string; p_user_id: string }
         Returns: boolean
       }
       is_couple_member_safe: {
