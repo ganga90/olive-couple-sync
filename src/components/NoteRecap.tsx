@@ -34,13 +34,26 @@ interface NoteRecapProps {
 
 export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdated }) => {
   const [isEditing, setIsEditing] = useState(false);
+  
+  // Helper function to safely format dates
+  const formatDateSafely = (dateValue: string | null | undefined): string => {
+    if (!dateValue) return "";
+    try {
+      const date = new Date(dateValue);
+      if (isNaN(date.getTime())) return "";
+      return format(date, "yyyy-MM-dd");
+    } catch {
+      return "";
+    }
+  };
+  
   const [editedNote, setEditedNote] = useState({
     summary: note.summary,
     category: note.category,
     priority: note.priority || "medium",
     tags: note.tags ? note.tags.join(", ") : "",
     items: note.items ? note.items.join("\n") : "",
-    dueDate: note.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
+    dueDate: formatDateSafely(note.dueDate),
     taskOwner: note.task_owner || "",
     listId: note.list_id || ""
   });
@@ -185,7 +198,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
       priority: note.priority || "medium",
       tags: note.tags ? note.tags.join(", ") : "",
       items: note.items ? note.items.join("\n") : "",
-      dueDate: note.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
+      dueDate: formatDateSafely(note.dueDate),
       taskOwner: note.task_owner || "",
       listId: note.list_id || ""
     });
@@ -446,14 +459,31 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
           )}
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            <span>{format(new Date(note.createdAt), "MMM d, yyyy 'at' h:mm a")}</span>
+            <span>{(() => {
+              try {
+                const date = new Date(note.createdAt);
+                return isNaN(date.getTime()) ? "Unknown date" : format(date, "MMM d, yyyy 'at' h:mm a");
+              } catch {
+                return "Unknown date";
+              }
+            })()}</span>
           </div>
-          {note.dueDate && (
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              <span>Due: {format(new Date(note.dueDate), "MMM d, yyyy")}</span>
-            </div>
-          )}
+          {note.dueDate && (() => {
+            try {
+              const date = new Date(note.dueDate);
+              if (!isNaN(date.getTime())) {
+                return (
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    <span>Due: {format(date, "MMM d, yyyy")}</span>
+                  </div>
+                );
+              }
+            } catch {
+              return null;
+            }
+            return null;
+          })()}
         </div>
 
         {/* Original text reference */}
