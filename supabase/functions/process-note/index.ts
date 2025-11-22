@@ -18,7 +18,8 @@ SINGLE vs MULTIPLE:
 
 CORE FIELDS:
 1. summary: Concise title (max 100 chars)
-   - Groceries: item name only ("lemons" not "buy lemons")
+   - Groceries with items array: generic title ("groceries", "shopping list", "supplies")
+   - Single grocery item: item name only ("lemons" not "buy lemons")
    - Actions: keep verb ("fix sink")
    - Assignments: action only ("water plants" not "tell John to water plants")
 
