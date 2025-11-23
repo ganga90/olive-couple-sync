@@ -35,10 +35,14 @@ CORE FIELDS:
 
 3. due_date/reminder_time: ISO format YYYY-MM-DDTHH:mm:ss.sssZ
    Current time: ${new Date().toISOString()}
-   - "remind me" → set reminder_time only
+   - "remind me" or "reminder" → set reminder_time only
    - deadline/due → set due_date only
-   - Calculate: "in X hours/minutes/days", "tomorrow" (09:00), "tonight" (23:59), "Friday" (next occurrence 09:00)
-   - NEVER return relative text, always ISO dates
+   - Calculate times precisely: "in X minutes" (add X mins to current time), "in X hours" (add X hrs), "in X days" (add X days)
+   - Time references: "tomorrow" (next day 09:00), "tonight" (same day 23:59), "tomorrow morning" (next day 09:00)
+   - Weekday references: "Friday", "Monday" etc. (next occurrence of that day at 09:00)
+   - Specific times: "at 3pm" or "at 15:00" (same day if future, otherwise next day)
+   - NEVER return relative text like "in 5 minutes", always calculate exact ISO dates from current time
+   - Support 5-minute intervals for short reminders: "in 5 mins", "in 10 mins", "in 15 mins" etc.
 
 4. priority: high (bills/rent/urgent), medium (regular tasks), low (ideas)
 
@@ -46,14 +50,22 @@ CORE FIELDS:
 
 6. items: ONLY use for multi-part tasks (like "plan vacation: book flights, reserve hotel"). NEVER use for grocery lists - split those into separate notes instead.
 
-7. task_owner: Extract person's name from "tell [name]", "[name] should", "[name] handles" (null if not mentioned)
+7. recurrence_frequency/recurrence_interval: For recurring reminders
+   - "every day" or "daily" → recurrence_frequency: "daily", recurrence_interval: 1
+   - "every week" or "weekly" → recurrence_frequency: "weekly", recurrence_interval: 1
+   - "every 2 weeks" → recurrence_frequency: "weekly", recurrence_interval: 2
+   - "every month" or "monthly" → recurrence_frequency: "monthly", recurrence_interval: 1
+   - "every year" or "yearly" → recurrence_frequency: "yearly", recurrence_interval: 1
+   - If no recurrence mentioned, omit these fields or set to null
+
+8. task_owner: Extract person's name from "tell [name]", "[name] should", "[name] handles" (null if not mentioned)
 
 OUTPUT FORMAT:
 Multiple tasks:
-{"multiple": true, "notes": [{"summary": "...", "category": "...", "due_date": "...", "reminder_time": "...", "priority": "...", "tags": [], "items": [], "task_owner": "..."}]}
+{"multiple": true, "notes": [{"summary": "...", "category": "...", "due_date": "...", "reminder_time": "...", "recurrence_frequency": "...", "recurrence_interval": 1, "priority": "...", "tags": [], "items": [], "task_owner": "..."}]}
 
 Single task:
-{"summary": "...", "category": "...", "due_date": "...", "reminder_time": "...", "priority": "...", "tags": [], "items": [], "task_owner": "..."}`;
+{"summary": "...", "category": "...", "due_date": "...", "reminder_time": "...", "recurrence_frequency": "...", "recurrence_interval": 1, "priority": "...", "tags": [], "items": [], "task_owner": "..."}`;
 
 serve(async (req) => {
   // Handle CORS preflight requests
