@@ -9,13 +9,13 @@ All colors MUST be HSL.
 @layer base {
   /* Olive-inspired color palette - Design System */
   :root {
-    --background: 0 0% 100%;           /* Clean White #FFFFFF */
+    --background: 43 30% 95%;          /* Light Sand/Warm Beige */
     --foreground: 0 0% 10%;            /* Text Black #1A1A1A */
 
-    --card: 0 0% 100%;
+    --card: 43 20% 98%;                /* Slightly lighter sand for cards */
     --card-foreground: 0 0% 10%;
 
-    --popover: 0 0% 100%;
+    --popover: 43 20% 98%;
     --popover-foreground: 0 0% 10%;
 
     --primary: 150 30% 28%;            /* Deep Olive Green #2C5E3D */

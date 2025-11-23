@@ -26,7 +26,9 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({ children }) => {
   
   // Main app routes with mobile header and bottom tabs
   const mainAppRoutes = ['/home', '/lists', '/calendar', '/reminders', '/profile'];
-  const isMainAppRoute = mainAppRoutes.includes(location.pathname);
+  const isMainAppRoute = mainAppRoutes.includes(location.pathname) || 
+    location.pathname.startsWith('/lists/') || 
+    location.pathname.startsWith('/notes/');
 
   if (shouldHideLayout) {
     return <>{children}</>;
