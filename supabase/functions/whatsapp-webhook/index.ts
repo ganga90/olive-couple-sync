@@ -447,7 +447,7 @@ serve(async (req) => {
           const count = notesToInsert.length;
           return new Response(
             createTwimlResponse(
-              `✅ Saved ${count} tasks!\n\n📱 Check and manage them on witholive.app\n\n💡 Try: "Show my tasks" or "What's urgent?"`
+              `✅ Saved ${count} tasks!\n\n📱 Manage on: https://witholive.app\n\n💡 Try: "Show my tasks" or "What's urgent?"`
             ),
             { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
           );
@@ -492,7 +492,7 @@ serve(async (req) => {
             : `✅ Saved! "${taskSummary}"${taskCategory}${locationNote}${mediaNote}`;
           
           // Quick reply options with website link
-          const quickReply = '\n\n📱 Manage on: witholive.app\n\n💡 Try:\n• "Make it urgent"\n• "Show my tasks"\n• Send more tasks!';
+          const quickReply = '\n\n📱 Manage on: https://witholive.app\n\n💡 Try:\n• "Make it urgent"\n• "Show my tasks"\n• Send more tasks!';
           
           return new Response(
             createTwimlResponse(
