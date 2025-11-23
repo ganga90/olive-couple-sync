@@ -98,7 +98,7 @@ export function ReminderPicker({ value, onChange }: ReminderPickerProps) {
             {value ? format(new Date(value), "PPp") : "Set Reminder"}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
+        <PopoverContent className="w-auto p-0 max-h-[80vh] overflow-y-auto" align="start">
           <div className="p-3 space-y-3">
             <div className="space-y-2">
               <label className="text-sm font-medium flex items-center gap-2">
@@ -130,8 +130,10 @@ export function ReminderPicker({ value, onChange }: ReminderPickerProps) {
               mode="single"
               selected={date}
               onSelect={handleDateSelect}
+              defaultMonth={new Date()}
               initialFocus
               disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+              className="pointer-events-auto"
             />
             <div className="border-t pt-3">
               <label className="text-sm font-medium mb-2 block">Time</label>
