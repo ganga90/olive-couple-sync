@@ -24,11 +24,19 @@ export function QuickEditReminderDialog({ open, onOpenChange, note }: QuickEditR
 
   const handleSave = async () => {
     try {
-      await updateNote(note.id, { 
+      // Extract just the date from reminder_time for due_date (if reminder is set)
+      const updates: any = { 
         reminder_time: reminderTime,
         recurrence_frequency: frequency,
         recurrence_interval: interval
-      });
+      };
+      
+      // If setting a reminder, also set due_date to match the reminder date
+      if (reminderTime) {
+        updates.dueDate = reminderTime;
+      }
+      
+      await updateNote(note.id, updates);
       toast.success(reminderTime ? "Reminder set" : "Reminder removed");
       onOpenChange(false);
     } catch (error) {
