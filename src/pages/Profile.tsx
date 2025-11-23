@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PartnerInfo } from "@/components/PartnerInfo";
 import { PhoneNumberField } from "@/components/PhoneNumberField";
+import { TimezoneField } from "@/components/TimezoneField";
 import { WhatsAppLink } from "@/components/WhatsAppLink";
 import { User, LogOut, Bell, Shield, HelpCircle } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
@@ -56,6 +57,16 @@ const Profile = () => {
           </CardHeader>
           <CardContent>
             <PartnerInfo />
+          </CardContent>
+        </Card>
+
+        {/* Timezone */}
+        <Card className="shadow-[var(--shadow-card)]">
+          <CardHeader>
+            <CardTitle className="text-base">Timezone</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TimezoneField />
           </CardContent>
         </Card>
 
