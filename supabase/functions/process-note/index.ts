@@ -47,14 +47,15 @@ CORE FIELDS:
    - appointments/bills/rent → "personal"
 
 3. due_date/reminder_time: ISO format YYYY-MM-DDTHH:mm:ss.sssZ
-   - "remind me" or "reminder" → set reminder_time only
-   - deadline/due → set due_date only
+   - "remind me" or "reminder" → set BOTH reminder_time AND due_date to the same datetime
+   - deadline/due without reminder → set due_date only
    - Calculate times in ${userTimezone}, then convert to UTC ISO format
    - Time references: "tomorrow" (next day 09:00 ${userTimezone}), "tonight" (same day 23:59 ${userTimezone}), "tomorrow morning" (next day 09:00 ${userTimezone})
    - Specific times: "at 10:30am" or "at 22:00" (in ${userTimezone}, convert to UTC)
    - Weekday references: "Friday", "Monday" etc. (next occurrence of that day at 09:00 ${userTimezone})
    - NEVER return relative text like "in 5 minutes", always calculate exact ISO dates
    - Support 5-minute intervals for short reminders: "in 5 mins", "in 10 mins", "in 15 mins" etc.
+   - IMPORTANT: When setting reminder_time, ALWAYS also set due_date to match
 
 4. priority: high (bills/rent/urgent), medium (regular tasks), low (ideas)
 
