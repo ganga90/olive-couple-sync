@@ -267,7 +267,7 @@ serve(async (req) => {
     // Authenticate user by WhatsApp number (handle multiple profiles with same number)
     const { data: profiles, error: profileError } = await supabase
       .from('clerk_profiles')
-      .select('id, display_name')
+      .select('id, display_name, timezone')
       .eq('phone_number', fromNumber)
       .limit(1);
 
@@ -380,11 +380,12 @@ serve(async (req) => {
 
       const coupleId = coupleMember?.couple_id || null;
 
-      // Prepare note data with location and media if available
+      // Prepare note data with location, media, and timezone if available
       const notePayload: any = { 
         text: messageBody, 
         user_id: userId,
-        couple_id: coupleId
+        couple_id: coupleId,
+        timezone: profile.timezone || 'America/New_York' // Default to EST if not set
       };
       
       // Add location context if provided

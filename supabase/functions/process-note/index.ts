@@ -7,7 +7,20 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, prefer',
 };
 
-const SYSTEM_PROMPT = `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
+// Dynamic system prompt that accepts timezone
+const createSystemPrompt = (userTimezone: string = 'UTC') => {
+  // Calculate current time in user's timezone for reference
+  const now = new Date();
+  const utcTime = now.toISOString();
+  
+  return `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
+
+USER TIMEZONE: ${userTimezone}
+Current UTC time: ${utcTime}
+
+IMPORTANT: When calculating times, use the user's timezone (${userTimezone}), not UTC.
+- "tomorrow at 10am" means 10am in ${userTimezone}, not UTC
+- Convert all times to ISO format (UTC) for storage, but base calculations on ${userTimezone}
 
 SPLIT CRITERIA: Create multiple notes when input contains lists of items or distinct tasks.
 Examples: 
@@ -34,14 +47,13 @@ CORE FIELDS:
    - appointments/bills/rent → "personal"
 
 3. due_date/reminder_time: ISO format YYYY-MM-DDTHH:mm:ss.sssZ
-   Current time: ${new Date().toISOString()}
    - "remind me" or "reminder" → set reminder_time only
    - deadline/due → set due_date only
-   - Calculate times precisely: "in X minutes" (add X mins to current time), "in X hours" (add X hrs), "in X days" (add X days)
-   - Time references: "tomorrow" (next day 09:00), "tonight" (same day 23:59), "tomorrow morning" (next day 09:00)
-   - Weekday references: "Friday", "Monday" etc. (next occurrence of that day at 09:00)
-   - Specific times: "at 3pm" or "at 15:00" (same day if future, otherwise next day)
-   - NEVER return relative text like "in 5 minutes", always calculate exact ISO dates from current time
+   - Calculate times in ${userTimezone}, then convert to UTC ISO format
+   - Time references: "tomorrow" (next day 09:00 ${userTimezone}), "tonight" (same day 23:59 ${userTimezone}), "tomorrow morning" (next day 09:00 ${userTimezone})
+   - Specific times: "at 10:30am" or "at 22:00" (in ${userTimezone}, convert to UTC)
+   - Weekday references: "Friday", "Monday" etc. (next occurrence of that day at 09:00 ${userTimezone})
+   - NEVER return relative text like "in 5 minutes", always calculate exact ISO dates
    - Support 5-minute intervals for short reminders: "in 5 mins", "in 10 mins", "in 15 mins" etc.
 
 4. priority: high (bills/rent/urgent), medium (regular tasks), low (ideas)
@@ -65,7 +77,8 @@ Multiple tasks:
 {"multiple": true, "notes": [{"summary": "...", "category": "...", "due_date": "...", "reminder_time": "...", "recurrence_frequency": "...", "recurrence_interval": 1, "priority": "...", "tags": [], "items": [], "task_owner": "..."}]}
 
 Single task:
-{"summary": "...", "category": "...", "due_date": "...", "reminder_time": "...", "recurrence_frequency": "...", "recurrence_interval": 1, "priority": "...", "tags": [], "items": [], "task_owner": "..."}`;
+{"summary": "...", "category": "...", "due_date": "...", "reminder_time": "...", "recurrence_frequency": "...", "recurrence_interval": 1, "priority": "...", "tags": [], "items": [], "task_owner": "..."}`
+};
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -86,7 +99,7 @@ serve(async (req) => {
       throw new Error('Supabase configuration is missing');
     }
 
-    const { text, user_id, couple_id } = await req.json();
+    const { text, user_id, couple_id, timezone } = await req.json();
     
     if (!text || !user_id) {
       throw new Error('Missing required fields: text and user_id');
@@ -122,6 +135,10 @@ serve(async (req) => {
       ? `\n\nExisting lists available:\n${existingLists.map(list => `- ${list.name}${list.description ? ` (${list.description})` : ''}`).join('\n')}\n\nWhen categorizing, consider if this note belongs to one of these existing lists. If it matches an existing list's purpose, use a category that would map to that list.`
       : '';
 
+    // Use user's timezone or default to UTC
+    const userTimezone = timezone || 'UTC';
+    const systemPrompt = createSystemPrompt(userTimezone);
+
     // Call Gemini API with enhanced context
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
@@ -131,7 +148,7 @@ serve(async (req) => {
       body: JSON.stringify({
         contents: [{
           parts: [{
-            text: `${SYSTEM_PROMPT}${listsContext}\n\nProcess this note:\n"${text}"\n\nRespond with ONLY a valid JSON object, no other text.`
+            text: `${systemPrompt}${listsContext}\n\nProcess this note:\n"${text}"\n\nRespond with ONLY a valid JSON object, no other text.`
           }]
         }],
         generationConfig: {
