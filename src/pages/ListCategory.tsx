@@ -140,9 +140,9 @@ const ListCategory = () => {
   }
 
   return (
-    <div className="h-full overflow-y-auto pb-6">
+    <div className="h-full overflow-y-auto">
       <FloatingActionButton />
-      <div className="px-4 pt-6 max-w-2xl mx-auto space-y-6">
+      <div className="px-4 pt-6 pb-24 max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-start gap-3">
           <Button 
