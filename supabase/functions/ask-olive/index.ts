@@ -1,5 +1,5 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { GoogleGenAI } from "https://esm.sh/@google/genai@1.0.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,14 +36,11 @@ Maintain Tone and Style:
 
 Output Format:
 - Provide the answer or suggestions as a natural conversational response.
-- Include any relevant actionable items or next steps the user can take.
-
-This prompt empowers Olive's AI to be a practical, personalized helper that enriches each note with valuable support while enhancing the shared experience for couples.`;
+- Include any relevant actionable items or next steps the user can take.`;
 
 serve(async (req) => {
   console.log('[Ask Olive] Request received:', req.method);
 
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -57,6 +54,9 @@ serve(async (req) => {
       throw new Error('GEMINI_API environment variable not found');
     }
 
+    // Initialize Google GenAI SDK
+    const genai = new GoogleGenAI({ apiKey: geminiApiKey });
+
     const contextualPrompt = `${SYSTEM_PROMPT}
 
 Current Note Details:
@@ -67,42 +67,21 @@ User's Question: ${userMessage}
 
 Please provide helpful, contextual assistance based on this specific note and the user's question.`;
 
-    console.log('[Ask Olive] Calling Gemini API...');
+    console.log('[Ask Olive] Calling Gemini via SDK...');
     
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: contextualPrompt
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.8,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 1024,
-        }
-      }),
+    const response = await genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: contextualPrompt,
+      config: {
+        temperature: 0.8,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 1024
+      }
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[Ask Olive] Gemini API error:', response.status, errorText);
-      throw new Error(`Gemini API error: ${response.status} ${errorText}`);
-    }
-
-    const data = await response.json();
-    console.log('[Ask Olive] Gemini response received');
-
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      throw new Error('Invalid response format from Gemini API');
-    }
-
-    const assistantReply = data.candidates[0].content.parts[0].text;
+    const assistantReply = response.text;
+    console.log('[Ask Olive] Response received');
 
     return new Response(JSON.stringify({ 
       reply: assistantReply,

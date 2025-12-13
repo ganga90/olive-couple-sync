@@ -1,15 +1,84 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@1.0.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, prefer',
 };
 
-// Dynamic system prompt that accepts timezone
+// Define the JSON schema for structured output
+const singleNoteSchema = {
+  type: Type.OBJECT,
+  properties: {
+    summary: { 
+      type: Type.STRING, 
+      description: "Concise title (max 100 chars). Groceries: item name only. Actions: keep verb." 
+    },
+    category: { 
+      type: Type.STRING, 
+      description: "Category using lowercase with underscores: entertainment, date_ideas, home_improvement, travel, groceries, shopping, personal, task" 
+    },
+    due_date: { 
+      type: Type.STRING, 
+      nullable: true,
+      description: "ISO 8601 format YYYY-MM-DDTHH:mm:ss.sssZ. Set when deadline mentioned." 
+    },
+    reminder_time: { 
+      type: Type.STRING, 
+      nullable: true,
+      description: "ISO 8601 format. Set SAME as due_date when 'remind me' mentioned." 
+    },
+    priority: { 
+      type: Type.STRING, 
+      enum: ["high", "medium", "low"],
+      description: "high for urgent/bills, medium for regular, low for ideas" 
+    },
+    tags: { 
+      type: Type.ARRAY, 
+      items: { type: Type.STRING },
+      description: "Extract themes like urgent, financial, health" 
+    },
+    items: { 
+      type: Type.ARRAY, 
+      items: { type: Type.STRING },
+      nullable: true,
+      description: "Only for multi-part tasks like 'plan vacation: book flights, reserve hotel'. Never for grocery lists." 
+    },
+    task_owner: { 
+      type: Type.STRING, 
+      nullable: true,
+      description: "Person's name from 'tell [name]' or '[name] should'" 
+    },
+    recurrence_frequency: { 
+      type: Type.STRING, 
+      nullable: true,
+      enum: ["daily", "weekly", "monthly", "yearly"],
+      description: "For recurring reminders" 
+    },
+    recurrence_interval: { 
+      type: Type.NUMBER, 
+      nullable: true,
+      description: "Interval for recurrence, e.g., 2 for 'every 2 weeks'" 
+    }
+  },
+  required: ["summary", "category", "priority", "tags"]
+};
+
+const multiNoteSchema = {
+  type: Type.OBJECT,
+  properties: {
+    multiple: { type: Type.BOOLEAN },
+    notes: {
+      type: Type.ARRAY,
+      items: singleNoteSchema
+    }
+  },
+  required: ["multiple", "notes"]
+};
+
+// Dynamic system prompt
 const createSystemPrompt = (userTimezone: string = 'UTC') => {
-  // Calculate current time in user's timezone for reference
   const now = new Date();
   const utcTime = now.toISOString();
   
@@ -19,8 +88,7 @@ USER TIMEZONE: ${userTimezone}
 Current UTC time: ${utcTime}
 
 IMPORTANT: When calculating times, use the user's timezone (${userTimezone}), not UTC.
-- "tomorrow at 10am" means 10am in ${userTimezone}, not UTC
-- Convert all times to ISO format (UTC) for storage, but base calculations on ${userTimezone}
+- "tomorrow at 10am" means 10am in ${userTimezone}, convert to UTC ISO format for storage
 
 SPLIT CRITERIA: Create multiple notes when input contains lists of items or distinct tasks.
 Examples: 
@@ -29,13 +97,12 @@ Examples:
 - "groceries: milk, eggs, bread" → 3 notes (separate items)
 - "fix the sink" → 1 note (single task)
 
-CRITICAL: For grocery lists or item lists, ALWAYS create separate notes for EACH item, even if mentioned together.
+CRITICAL: For grocery lists or item lists, ALWAYS create separate notes for EACH item.
 
-CORE FIELDS:
+CORE FIELD RULES:
 1. summary: Concise title (max 100 chars)
    - Groceries: item name only ("milk" not "buy milk")
    - Actions: keep verb ("fix sink")
-   - Assignments: action only ("water plants" not "tell John to water plants")
 
 2. category: Use lowercase with underscores
    - concerts/events/shows → "entertainment"
@@ -46,43 +113,25 @@ CORE FIELDS:
    - clothes/electronics → "shopping"
    - appointments/bills/rent → "personal"
 
-3. due_date/reminder_time: ISO format YYYY-MM-DDTHH:mm:ss.sssZ
-   - "remind me" or "reminder" → set BOTH reminder_time AND due_date to the same datetime
-   - deadline/due without reminder → set due_date only
-   - Calculate times in ${userTimezone}, then convert to UTC ISO format
-   - Time references: "tomorrow" (next day 09:00 ${userTimezone}), "tonight" (same day 23:59 ${userTimezone}), "tomorrow morning" (next day 09:00 ${userTimezone})
-   - Specific times: "at 10:30am" or "at 22:00" (in ${userTimezone}, convert to UTC)
-   - Weekday references: "Friday", "Monday" etc. (next occurrence of that day at 09:00 ${userTimezone})
-   - NEVER return relative text like "in 5 minutes", always calculate exact ISO dates
-   - Support 5-minute intervals for short reminders: "in 5 mins", "in 10 mins", "in 15 mins" etc.
+3. due_date/reminder_time: ISO format
+   - "remind me" → set BOTH reminder_time AND due_date to same datetime
+   - Time references: "tomorrow" (next day 09:00), "tonight" (same day 23:59)
+   - Weekday references: next occurrence at 09:00
    - IMPORTANT: When setting reminder_time, ALWAYS also set due_date to match
 
-4. priority: high (bills/rent/urgent), medium (regular tasks), low (ideas)
+4. priority: high (urgent/bills), medium (regular), low (ideas)
 
-5. tags: Extract themes/patterns (["urgent", "financial", "health"])
+5. items: ONLY for multi-part tasks. NEVER for grocery lists.
 
-6. items: ONLY use for multi-part tasks (like "plan vacation: book flights, reserve hotel"). NEVER use for grocery lists - split those into separate notes instead.
+6. recurrence_frequency/recurrence_interval: For recurring reminders
+   - "every day" → frequency: "daily", interval: 1
+   - "every 2 weeks" → frequency: "weekly", interval: 2
 
-7. recurrence_frequency/recurrence_interval: For recurring reminders
-   - "every day" or "daily" → recurrence_frequency: "daily", recurrence_interval: 1
-   - "every week" or "weekly" → recurrence_frequency: "weekly", recurrence_interval: 1
-   - "every 2 weeks" → recurrence_frequency: "weekly", recurrence_interval: 2
-   - "every month" or "monthly" → recurrence_frequency: "monthly", recurrence_interval: 1
-   - "every year" or "yearly" → recurrence_frequency: "yearly", recurrence_interval: 1
-   - If no recurrence mentioned, omit these fields or set to null
-
-8. task_owner: Extract person's name from "tell [name]", "[name] should", "[name] handles" (null if not mentioned)
-
-OUTPUT FORMAT:
-Multiple tasks:
-{"multiple": true, "notes": [{"summary": "...", "category": "...", "due_date": "...", "reminder_time": "...", "recurrence_frequency": "...", "recurrence_interval": 1, "priority": "...", "tags": [], "items": [], "task_owner": "..."}]}
-
-Single task:
-{"summary": "...", "category": "...", "due_date": "...", "reminder_time": "...", "recurrence_frequency": "...", "recurrence_interval": 1, "priority": "...", "tags": [], "items": [], "task_owner": "..."}`
+Return multiple:true with notes array if multiple items detected.
+Return multiple:false with single note fields if just one task.`;
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -106,10 +155,11 @@ serve(async (req) => {
       throw new Error('Missing required fields: text and user_id');
     }
 
-    // Initialize Supabase client
+    // Initialize clients
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
-    // Fetch existing lists for the user/couple to provide context
+    // Fetch existing lists for context
     let existingListsQuery = supabase
       .from('clerk_lists')
       .select('id, name, description, is_manual')
@@ -128,204 +178,117 @@ serve(async (req) => {
     
     if (listsError) {
       console.error('Error fetching existing lists:', listsError);
-      // Continue without lists context if there's an error
     }
 
-    // Prepare context for AI about existing lists
+    // Prepare context
     const listsContext = existingLists && existingLists.length > 0 
-      ? `\n\nExisting lists available:\n${existingLists.map(list => `- ${list.name}${list.description ? ` (${list.description})` : ''}`).join('\n')}\n\nWhen categorizing, consider if this note belongs to one of these existing lists. If it matches an existing list's purpose, use a category that would map to that list.`
+      ? `\n\nExisting lists: ${existingLists.map(list => list.name).join(', ')}`
       : '';
 
-    // Use user's timezone or default to UTC
     const userTimezone = timezone || 'UTC';
     const systemPrompt = createSystemPrompt(userTimezone);
+    const userPrompt = `${systemPrompt}${listsContext}\n\nProcess this note:\n"${text}"`;
 
-    // Call Gemini API with enhanced context
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: `${systemPrompt}${listsContext}\n\nProcess this note:\n"${text}"\n\nRespond with ONLY a valid JSON object, no other text.`
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 1200,
-        }
-      }),
+    console.log('[GenAI SDK] Processing note with structured output...');
+
+    // Use Google GenAI SDK with structured output
+    const response = await genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: userPrompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: multiNoteSchema,
+        temperature: 0.1,
+        maxOutputTokens: 1200
+      }
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Gemini API error:', errorText);
-      throw new Error('Failed to process note with AI');
-    }
+    const responseText = response.text;
+    console.log('[GenAI SDK] Raw response:', responseText);
 
-    const data = await response.json();
-    console.log('Gemini response:', data);
-    
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      throw new Error('Invalid response from Gemini API');
-    }
-
-    // Check if response was truncated - continue processing but log warning
-    if (data.candidates[0].finishReason === 'MAX_TOKENS') {
-      console.warn('AI response may have been truncated due to token limit');
-    }
-
-    const aiResponse = data.candidates[0].content.parts[0].text;
-    console.log('AI response text:', aiResponse);
-
-    // Parse the JSON response - handle markdown code blocks
     let processedResponse;
-    let cleanResponse = '';
     try {
-      cleanResponse = aiResponse.trim();
-      
-      // Remove markdown code blocks if present
-      if (cleanResponse.startsWith('```json')) {
-        cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleanResponse.startsWith('```')) {
-        cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      
-      console.log('Cleaned AI response for parsing:', cleanResponse);
-      processedResponse = JSON.parse(cleanResponse);
-      console.log('Successfully parsed AI response:', processedResponse);
+      processedResponse = JSON.parse(responseText);
+      console.log('[GenAI SDK] Parsed response:', processedResponse);
     } catch (parseError) {
-      console.error('Failed to parse AI response as JSON:', cleanResponse);
-      console.error('Parse error:', parseError);
-      // Fallback to basic processing
+      console.error('[GenAI SDK] Parse error, using fallback:', parseError);
       processedResponse = {
-        summary: text.length > 100 ? text.substring(0, 97) + "..." : text,
-        category: "task",
-        due_date: null,
-        priority: "medium",
-        tags: [],
-        items: text.includes(',') ? text.split(',').map((item: string) => item.trim()) : []
+        multiple: false,
+        notes: [{
+          summary: text.length > 100 ? text.substring(0, 97) + "..." : text,
+          category: "task",
+          due_date: null,
+          priority: "medium",
+          tags: [],
+          items: []
+        }]
       };
     }
 
-    // Enhanced pattern detection for smart list categorization
-    const detectListPatterns = (notes: any[], category: string, tags: string[]) => {
-      // Check for recurring patterns across all user notes
-      const categoryFrequency: Record<string, number> = {};
-      const tagFrequency: Record<string, string[]> = {};
-      
-      // Build pattern map from existing lists
-      if (existingLists && existingLists.length > 0) {
-        existingLists.forEach(list => {
-          const normalizedListName = list.name.toLowerCase();
-          categoryFrequency[normalizedListName] = categoryFrequency[normalizedListName] || 0;
-          categoryFrequency[normalizedListName]++;
-        });
-      }
-      
-      // Smart category mapping with synonym detection
-      const categoryMap: Record<string, string[]> = {
-        'groceries': ['grocery', 'food', 'supermarket', 'shopping list'],
-        'travel': ['travel idea', 'trip', 'vacation', 'flight', 'hotel'],
-        'home improvement': ['home', 'repair', 'fix', 'maintenance', 'renovation'],
-        'entertainment': ['date idea', 'movie', 'show', 'concert', 'event'],
-        'personal': ['task', 'personal', 'appointment', 'errand'],
-        'shopping': ['shopping', 'buy', 'purchase', 'store'],
-        'health': ['health', 'fitness', 'exercise', 'doctor', 'medical'],
-        'finance': ['finance', 'bill', 'payment', 'budget', 'money']
-      };
-      
-      // Find best matching existing list based on category and tags
+    // Smart list pattern detection
+    const categoryMap: Record<string, string[]> = {
+      'groceries': ['grocery', 'food', 'supermarket', 'shopping list'],
+      'travel': ['travel idea', 'trip', 'vacation', 'flight', 'hotel'],
+      'home improvement': ['home', 'repair', 'fix', 'maintenance', 'renovation'],
+      'entertainment': ['date idea', 'movie', 'show', 'concert', 'event'],
+      'personal': ['task', 'personal', 'appointment', 'errand'],
+      'shopping': ['shopping', 'buy', 'purchase', 'store'],
+      'health': ['health', 'fitness', 'exercise', 'doctor', 'medical'],
+      'finance': ['finance', 'bill', 'payment', 'budget', 'money']
+    };
+
+    const findOrCreateList = async (category: string, tags: string[] = []) => {
+      if (!category) return null;
+
+      // Find best matching existing list
       let bestMatch = null;
       let highestScore = 0;
       
       if (existingLists && existingLists.length > 0) {
-        existingLists.forEach(list => {
+        for (const list of existingLists) {
           let score = 0;
           const listNameLower = list.name.toLowerCase();
           const categoryLower = category.toLowerCase().replace(/_/g, ' ');
           
-          // Direct match
           if (listNameLower === categoryLower) score += 10;
           
-          // Synonym matching
           Object.entries(categoryMap).forEach(([canonical, synonyms]) => {
             if (synonyms.includes(categoryLower) && synonyms.some(s => listNameLower.includes(s))) {
               score += 8;
             }
           });
           
-          // Partial match
           if (listNameLower.includes(categoryLower) || categoryLower.includes(listNameLower)) {
             score += 5;
-          }
-          
-          // Tag matching
-          if (tags && tags.length > 0 && list.description) {
-            const descLower = list.description.toLowerCase();
-            tags.forEach(tag => {
-              if (descLower.includes(tag.toLowerCase())) score += 2;
-            });
           }
           
           if (score > highestScore) {
             highestScore = score;
             bestMatch = list;
           }
-        });
+        }
       }
       
-      return { bestMatch, shouldCreateNew: highestScore < 5 };
-    };
-
-    // Helper function to find or create list with smart pattern detection
-    const findOrCreateList = async (category: string, tags: string[] = []) => {
-      if (!category) {
-        console.log('No category provided, returning null');
-        return null;
-      }
-
-      // Use pattern detection to find best matching list
-      const { bestMatch, shouldCreateNew } = detectListPatterns([], category, tags);
-      
-      if (bestMatch && !shouldCreateNew) {
-        console.log('Smart pattern match found:', bestMatch.name, 'with ID:', bestMatch.id);
+      if (bestMatch && highestScore >= 5) {
+        console.log('Found matching list:', bestMatch.name);
         return bestMatch.id;
       }
       
-      // Check for exact or fuzzy matches as fallback
-      const matchingList = existingLists && existingLists.length > 0 ? existingLists.find(list => {
-        const listName = list.name.toLowerCase();
-        const categoryName = category.toLowerCase().replace(/_/g, ' ');
-        
-        if (listName === categoryName) return true;
-        if (listName.includes(categoryName) || categoryName.includes(listName)) return true;
-        
-        return false;
-      }) : null;
-      
-      if (matchingList) {
-        console.log('Found matching existing list:', matchingList.name, 'with ID:', matchingList.id);
-        return matchingList.id;
-      }
-      
-      // Create new list with smart naming
+      // Create new list
       const listName = category
         .replace(/_/g, ' ')
         .split(' ')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
       
-      console.log('Creating smart list for category:', category, '->', listName);
+      console.log('Creating new list:', listName);
       
       try {
         const { data: newList, error: createError } = await supabase
           .from('clerk_lists')
           .insert([{
             name: listName,
-            description: `Auto-generated for ${listName.toLowerCase()}${tags.length > 0 ? ` (tags: ${tags.join(', ')})` : ''}`,
+            description: `Auto-generated for ${listName.toLowerCase()}`,
             is_manual: false,
             author_id: user_id,
             couple_id: couple_id || null,
@@ -334,11 +297,10 @@ serve(async (req) => {
           .single();
           
         if (createError) {
-          console.error('Error creating new list:', createError);
+          console.error('Error creating list:', createError);
           return null;
         }
         
-        console.log('Successfully created smart list:', newList.name, 'with ID:', newList.id);
         return newList.id;
       } catch (error) {
         console.error('Exception during list creation:', error);
@@ -346,75 +308,48 @@ serve(async (req) => {
       }
     };
 
-    // Handle multiple notes or single note response
-    if (processedResponse.multiple && processedResponse.notes && Array.isArray(processedResponse.notes)) {
-      console.log('Processing multiple notes:', processedResponse.notes.length);
-      
-      // Process each note and assign lists with smart pattern detection
-      const processedNotes = await Promise.all(
-        processedResponse.notes.map(async (note: any, index: number) => {
-          console.log(`Processing note ${index + 1}:`, { category: note.category, summary: note.summary, tags: note.tags });
-          const listId = note.category ? await findOrCreateList(note.category, note.tags || []) : null;
-          console.log(`Note ${index + 1} assigned list_id:`, listId);
-          
-          return {
-            summary: note.summary || text,
-            category: note.category || "task",
-            due_date: note.due_date || null,
-            reminder_time: note.reminder_time || null,
-            recurrence_frequency: note.recurrence_frequency || null,
-            recurrence_interval: note.recurrence_interval || null,
-            priority: note.priority || "medium",
-            tags: note.tags || [],
-            items: note.items || [],
-            task_owner: note.task_owner || null,
-            list_id: listId,
-            original_text: text
-          };
-        })
-      );
+    // Process notes (handle both single and multiple)
+    const notes = processedResponse.multiple && processedResponse.notes 
+      ? processedResponse.notes 
+      : [processedResponse.notes?.[0] || processedResponse];
 
-      console.log('All processed notes with list assignments:', processedNotes.map(n => ({ summary: n.summary, category: n.category, list_id: n.list_id })));
+    const processedNotes = await Promise.all(
+      notes.map(async (note: any) => {
+        const listId = note.category ? await findOrCreateList(note.category, note.tags || []) : null;
+        
+        return {
+          summary: note.summary || text,
+          category: note.category || "task",
+          due_date: note.due_date || null,
+          reminder_time: note.reminder_time || null,
+          recurrence_frequency: note.recurrence_frequency || null,
+          recurrence_interval: note.recurrence_interval || null,
+          priority: note.priority || "medium",
+          tags: note.tags || [],
+          items: note.items || [],
+          task_owner: note.task_owner || null,
+          list_id: listId,
+          original_text: text
+        };
+      })
+    );
 
-      const result = {
-        multiple: true,
-        notes: processedNotes,
-        original_text: text
-      };
+    const isMultiple = processedResponse.multiple === true || notes.length > 1;
 
-      console.log('Processed multiple notes result:', result);
-      return new Response(JSON.stringify(result), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    } else {
-      // Handle single note with smart list assignment
-      const listId = processedResponse.category ? await findOrCreateList(processedResponse.category, processedResponse.tags || []) : null;
-      
-      const result = {
-        summary: processedResponse.summary || text,
-        category: processedResponse.category || "task",
-        due_date: processedResponse.due_date || null,
-        reminder_time: processedResponse.reminder_time || null,
-        recurrence_frequency: processedResponse.recurrence_frequency || null,
-        recurrence_interval: processedResponse.recurrence_interval || null,
-        priority: processedResponse.priority || "medium",
-        tags: processedResponse.tags || [],
-        items: processedResponse.items || [],
-        task_owner: processedResponse.task_owner || null,
-        list_id: listId,
-        original_text: text
-      };
+    const result = isMultiple
+      ? { multiple: true, notes: processedNotes, original_text: text }
+      : { ...processedNotes[0], original_text: text };
 
-      console.log('Processed single note result:', result);
-      return new Response(JSON.stringify(result), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    console.log('[GenAI SDK] Final result:', result);
+    
+    return new Response(JSON.stringify(result), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
   } catch (error: any) {
-    console.error('Error in process-note function:', error);
+    console.error('[GenAI SDK] Error:', error);
     return new Response(JSON.stringify({ 
       error: error?.message || 'Unknown error occurred',
-      // Fallback processing for single note
       summary: 'Note processing failed',
       category: 'task',
       due_date: null,
@@ -422,7 +357,7 @@ serve(async (req) => {
       tags: [],
       items: [],
       list_id: null,
-      original_text: 'Failed to process'
+      original_text: ''
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
