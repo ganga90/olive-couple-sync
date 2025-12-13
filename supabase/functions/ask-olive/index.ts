@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.0.0";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -46,7 +47,7 @@ serve(async (req) => {
   }
 
   try {
-    const { noteContent, userMessage, noteCategory } = await req.json();
+    const { noteContent, userMessage, noteCategory, user_id } = await req.json();
     console.log('[Ask Olive] Processing request with note:', noteContent);
 
     const geminiApiKey = Deno.env.get('GEMINI_API');
@@ -54,18 +55,42 @@ serve(async (req) => {
       throw new Error('GEMINI_API environment variable not found');
     }
 
-    // Initialize Google GenAI SDK
+    // Initialize clients
     const genai = new GoogleGenAI({ apiKey: geminiApiKey });
+    
+    // Fetch user memories for context personalization
+    let memoryContext = '';
+    if (user_id) {
+      try {
+        const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+        const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        
+        if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+          const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+          
+          const { data: memoryData } = await supabase.functions.invoke('manage-memories', {
+            body: { action: 'get_context', user_id }
+          });
+          
+          if (memoryData?.success && memoryData.context) {
+            memoryContext = memoryData.context;
+            console.log('[Ask Olive] Retrieved', memoryData.count, 'user memories for context');
+          }
+        }
+      } catch (memErr) {
+        console.warn('[Ask Olive] Could not fetch user memories:', memErr);
+      }
+    }
 
     const contextualPrompt = `${SYSTEM_PROMPT}
 
-Current Note Details:
+${memoryContext ? memoryContext + '\n\n' : ''}Current Note Details:
 - Category: ${noteCategory || 'General'}
 - Content: ${noteContent}
 
 User's Question: ${userMessage}
 
-Please provide helpful, contextual assistance based on this specific note and the user's question.`;
+Please provide helpful, contextual assistance based on this specific note, the user's memories/preferences, and their question.`;
 
     console.log('[Ask Olive] Calling Gemini via SDK...');
     

@@ -112,12 +112,13 @@ function extractKeyInfoFromConversational(text: string): string {
   return cleaned || text;
 }
 
-// Dynamic system prompt with media context and style awareness
+// Dynamic system prompt with media context, style awareness, and user memory
 const createSystemPrompt = (
   userTimezone: string = 'UTC', 
   hasMedia: boolean = false, 
   mediaDescriptions: string[] = [],
-  inputStyle: 'succinct' | 'conversational' = 'succinct'
+  inputStyle: 'succinct' | 'conversational' = 'succinct',
+  memoryContext: string = ''
 ) => {
   const now = new Date();
   const utcTime = now.toISOString();
@@ -175,11 +176,20 @@ The user writes quick, efficient notes with minimal words. They use:
 YOUR JOB: Parse each item directly as a task.
 Example: "buy milk, call doctor tomorrow, book restaurant Friday" → 3 separate tasks`;
   
+  // Build memory context section if available
+  const memorySection = memoryContext 
+    ? `\n\n${memoryContext}\n\nUSE THIS CONTEXT to personalize the task. For example:
+- If user says "bring Milka to the vet" and you know Milka is their dog, categorize appropriately
+- If user says "book dinner" and you know they're a couple with 2 kids, assume party of 4
+- Reference known names, preferences, and facts when processing tasks`
+    : '';
+
   return `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
 
 USER TIMEZONE: ${userTimezone}
 Current UTC time: ${utcTime}
 ${styleGuidance}
+${memorySection}
 
 IMPORTANT: When calculating times, use the user's timezone (${userTimezone}), not UTC.
 - "tomorrow at 10am" means 10am in ${userTimezone}, convert to UTC ISO format for storage
@@ -459,6 +469,21 @@ serve(async (req) => {
       console.log('[process-note] Media descriptions:', mediaDescriptions);
     }
 
+    // Fetch user memories for context personalization
+    let memoryContext = '';
+    try {
+      const { data: memoryData } = await supabase.functions.invoke('manage-memories', {
+        body: { action: 'get_context', user_id }
+      });
+      
+      if (memoryData?.success && memoryData.context) {
+        memoryContext = memoryData.context;
+        console.log('[process-note] Retrieved', memoryData.count, 'user memories for context');
+      }
+    } catch (memErr) {
+      console.warn('[process-note] Could not fetch user memories:', memErr);
+    }
+
     // Fetch existing lists for context
     let existingListsQuery = supabase
       .from('clerk_lists')
@@ -520,7 +545,7 @@ serve(async (req) => {
       }
     }
     
-    const systemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions, detectedStyle);
+    const systemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions, detectedStyle, memoryContext);
     const userPrompt = `${systemPrompt}${listsContext}\n\nProcess this note:\n"${enhancedText}"`;
 
     console.log('[GenAI SDK] Processing note with structured output...');

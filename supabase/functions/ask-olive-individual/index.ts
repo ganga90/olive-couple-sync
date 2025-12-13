@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { GoogleGenAI } from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,6 +14,7 @@ Core Objectives:
 - Deliver the most useful, actionable, and accurate response based on the current note and conversation context
 - Be concise, friendly, and clear—your tone should be encouraging, approachable, and smart
 - Track the conversation flow to ensure continuity and avoid repetition
+- Use the user's stored memories and preferences to personalize your responses
 
 Guidelines:
 1. Personality: Warm, optimistic, respectful—like a friendly concierge or knowledgeable local
@@ -21,6 +22,7 @@ Guidelines:
 3. Use Real-Time Search: When the user asks about restaurants, events, prices, reviews, or anything that benefits from current data, use Google Search to find accurate, up-to-date information
 4. Cite Sources: When providing factual information from search, mention where it comes from
 5. Conversation Memory: Build upon earlier messages in this session, don't repeat questions already answered
+6. User Memory: Leverage the user's stored memories and preferences for personalized assistance (e.g., family members, dietary restrictions, pets)
 
 Example:
 User: What are the top restaurants in Miami?
@@ -41,7 +43,7 @@ serve(async (req) => {
   }
 
   try {
-    const { noteContent, userMessage, noteCategory, noteTitle, previousInteractionId } = await req.json();
+    const { noteContent, userMessage, noteCategory, noteTitle, previousInteractionId, user_id } = await req.json();
     console.log('[Ask Olive] Processing request for note:', noteTitle);
     console.log('[Ask Olive] Previous interaction ID:', previousInteractionId || 'none (new conversation)');
 
@@ -50,9 +52,33 @@ serve(async (req) => {
       throw new Error('GEMINI_API environment variable not found');
     }
 
+    // Fetch user memories for context personalization
+    let memoryContext = '';
+    if (user_id) {
+      try {
+        const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+        const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        
+        if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+          const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+          
+          const { data: memoryData } = await supabase.functions.invoke('manage-memories', {
+            body: { action: 'get_context', user_id }
+          });
+          
+          if (memoryData?.success && memoryData.context) {
+            memoryContext = memoryData.context;
+            console.log('[Ask Olive] Retrieved', memoryData.count, 'user memories for context');
+          }
+        }
+      } catch (memErr) {
+        console.warn('[Ask Olive] Could not fetch user memories:', memErr);
+      }
+    }
+
     // Build context about the current note
     const noteContext = `
-Current Note Details:
+${memoryContext ? memoryContext + '\n\n' : ''}Current Note Details:
 - Title: ${noteTitle || 'Untitled'}
 - Category: ${noteCategory || 'General'}
 - Content: ${noteContent}

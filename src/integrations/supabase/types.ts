@@ -524,6 +524,48 @@ export type Database = {
         }
         Relationships: []
       }
+      user_memories: {
+        Row: {
+          category: string | null
+          content: string
+          created_at: string | null
+          embedding: string | null
+          id: string
+          importance: number | null
+          is_active: boolean | null
+          metadata: Json | null
+          title: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          content: string
+          created_at?: string | null
+          embedding?: string | null
+          id?: string
+          importance?: number | null
+          is_active?: boolean | null
+          metadata?: Json | null
+          title: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          content?: string
+          created_at?: string | null
+          embedding?: string | null
+          id?: string
+          importance?: number | null
+          is_active?: boolean | null
+          metadata?: Json | null
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_sessions: {
         Row: {
           context_data: Json | null
@@ -590,6 +632,22 @@ export type Database = {
       }
       jwt: { Args: never; Returns: Json }
       jwt_sub: { Args: never; Returns: string }
+      search_user_memories: {
+        Args: {
+          p_match_count?: number
+          p_match_threshold?: number
+          p_query_embedding: string
+          p_user_id: string
+        }
+        Returns: {
+          category: string
+          content: string
+          id: string
+          importance: number
+          similarity: number
+          title: string
+        }[]
+      }
       validate_invite: {
         Args: { p_token: string }
         Returns: {

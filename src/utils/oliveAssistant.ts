@@ -90,7 +90,8 @@ async function saveInteractionId(
 export async function assistWithNote(
   note: Note,
   userMessage: string,
-  supabaseClient: SupabaseClient<any>
+  supabaseClient: SupabaseClient<any>,
+  userId?: string
 ): Promise<OliveAssistantResponse> {
   try {
     // Get previous interaction ID (from cache or database)
@@ -103,7 +104,8 @@ export async function assistWithNote(
         userMessage: userMessage,
         noteCategory: note.category,
         noteTitle: note.summary,
-        previousInteractionId: previousInteractionId || null
+        previousInteractionId: previousInteractionId || null,
+        user_id: userId || null
       }
     });
 
