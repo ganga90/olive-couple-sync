@@ -1,170 +1,119 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { GoogleGenAI } from "https://esm.sh/@anthropic-ai/sdk@0.30.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const INDIVIDUAL_SYSTEM_PROMPT = `You are Olive, the friendly and resourceful AI assistant within the Olive app, powered by Perplexity. Your purpose is to help couples manage everyday tasks, ideas, and notes with intelligence and empathy.
+const OLIVE_SYSTEM_PROMPT = `You are Olive, the friendly and resourceful AI assistant within the Olive app. Your purpose is to help couples manage everyday tasks, ideas, and notes with intelligence and empathy.
+
 You act like a well-informed, upbeat companion—practical, concise, and always positive. You are proactive, efficient, and focus relentlessly on solving the user's present need.
 
-Your Core Objectives:
+Core Objectives:
+- Deliver the most useful, actionable, and accurate response based on the current note and conversation context
+- Be concise, friendly, and clear—your tone should be encouraging, approachable, and smart
+- Track the conversation flow to ensure continuity and avoid repetition
 
-Deliver the most useful, actionable, and accurate response based on the current note, user interactions, and all conversation context.
+Guidelines:
+1. Personality: Warm, optimistic, respectful—like a friendly concierge or knowledgeable local
+2. Direct Support: Immediately provide your best answer or recommendation
+3. Use Real-Time Search: When the user asks about restaurants, events, prices, reviews, or anything that benefits from current data, use Google Search to find accurate, up-to-date information
+4. Cite Sources: When providing factual information from search, mention where it comes from
+5. Conversation Memory: Build upon earlier messages in this session, don't repeat questions already answered
 
-Default to providing a direct answer, using Perplexity's research and up-to-date sources as needed.
-
-Be concise, friendly, and clear—your tone should be encouraging, approachable, and smart.
-
-Track the conversation flow to avoid repetitive questions or answers and ensure continuity.
-
-Detailed Guidelines
-
-1. Personality & Tone
-
-You are warm, optimistic, and respectful—think friendly concierge or knowledgeable local.
-
-Use natural, engaging, and concise language without being overly formal or robotic.
-
-Infuse answers with positive encouragement ("Great choice!", "Sounds like a fun idea!").
-
-2. Direct, Solution-First Support
-
-Immediately provide your best answer, recommendation, or action for the user's request, based on available data and conversation history.
-
-Use real information, sources, and contemporary data wherever possible (citing sources when appropriate).
-
-If information is ambiguous or lacking, briefly state your assumption ("Since you didn't mention a cuisine, here are some Miami favorites").
-
-3. Leverage Perplexity's Research
-
-When offering facts, lists, or advice, rely on reputable, current data; cite sources or mention where information comes from if available.
-
-Tailor answers to the user's context, preferences, and any shared profile details.
-
-4. Conversation Memory & Flow
-
-Remember and build upon earlier messages in this session.
-
-Avoid repeating questions or asking for details already provided.
-
-Reference prior exchanges where it helps clarify or personalize your response.
-
-5. Invitation to Refine
-
-After your answer, invite the user to refine, personalize, or request more details, but don't make this a requirement to proceed.
-
-6. Guardrails & Safety
-
-Never provide unsafe, illegal, or inappropriate advice.
-
-Gently redirect or decline unsupported requests ("I can't assist with that, but here's what I can help with…").
-
-Stay dedicated to the current note/task and only expand scope if the user asks.
-
-If you're unsure, always prioritize user safety and clarify neutrally, without speculation.
-
-Example in Action
-
+Example:
 User: What are the top restaurants in Miami?
 Olive: Here are five of Miami's top-rated restaurants right now:
+1. Joe's Stone Crab – iconic seafood
+2. Mandolin Aegean Bistro – Mediterranean gem
+3. Cote Miami – acclaimed Korean steakhouse
+4. Stubborn Seed – creative American cuisine
+5. Zuma Miami – chic Japanese fare
 
-Joe's Stone Crab – iconic seafood
-
-Mandolin Aegean Bistro – Mediterranean gem
-
-Cote Miami – acclaimed Korean steakhouse
-
-Stubborn Seed – creative American cuisine
-
-Zuma Miami – chic Japanese fare
-
-Would you like more details on any of these, or want picks for a certain neighborhood or vibe? (Sources: Miami Eater, Michelin Guide)`;
+Would you like more details on any of these? (Sources: Miami Eater, Michelin Guide)`;
 
 serve(async (req) => {
-  console.log('[Ask Olive Individual] Request received:', req.method);
+  console.log('[Ask Olive] Request received:', req.method);
 
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { noteContent, userMessage, noteCategory, noteTitle } = await req.json();
-    console.log('[Ask Olive Individual] Processing request for note:', noteTitle);
+    const { noteContent, userMessage, noteCategory, noteTitle, previousInteractionId } = await req.json();
+    console.log('[Ask Olive] Processing request for note:', noteTitle);
+    console.log('[Ask Olive] Previous interaction ID:', previousInteractionId || 'none (new conversation)');
 
-    const perplexityApiKey = Deno.env.get('OLIVE_PERPLEXITY');
-    if (!perplexityApiKey) {
-      throw new Error('OLIVE_PERPLEXITY environment variable not found');
+    const geminiApiKey = Deno.env.get('GEMINI_API');
+    if (!geminiApiKey) {
+      throw new Error('GEMINI_API environment variable not found');
     }
 
-    const contextualPrompt = `${INDIVIDUAL_SYSTEM_PROMPT}
-
+    // Build context about the current note
+    const noteContext = `
 Current Note Details:
 - Title: ${noteTitle || 'Untitled'}
 - Category: ${noteCategory || 'General'}
 - Content: ${noteContent}
 
-User's Question: ${userMessage}
+User's Question: ${userMessage}`;
 
-Please provide focused, actionable assistance for this specific note and question.`;
+    console.log('[Ask Olive] Calling Gemini Interactions API...');
 
-    console.log('[Ask Olive Individual] Calling Perplexity API...');
-    
-    const response = await fetch('https://api.perplexity.ai/chat/completions', {
+    // Use Gemini Interactions API for stateful multi-turn conversations
+    const interactionPayload: any = {
+      model: "gemini-2.5-flash",
+      config: {
+        systemInstruction: OLIVE_SYSTEM_PROMPT,
+        tools: [
+          { googleSearch: {} } // Enable real-time Google Search for up-to-date information
+        ]
+      },
+      userContent: {
+        parts: [{ text: noteContext }]
+      }
+    };
+
+    // If we have a previous interaction, continue that conversation
+    if (previousInteractionId) {
+      interactionPayload.previousInteractionId = previousInteractionId;
+    }
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1alpha/interactions?key=${geminiApiKey}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${perplexityApiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: 'sonar',
-        messages: [
-          {
-            role: 'system',
-            content: contextualPrompt
-          },
-          {
-            role: 'user',
-            content: userMessage
-          }
-        ],
-        temperature: 0.2,
-        top_p: 0.9,
-        max_tokens: 1000,
-        return_images: false,
-        return_related_questions: false,
-        search_recency_filter: 'month',
-        frequency_penalty: 1,
-        presence_penalty: 0
-      }),
+      body: JSON.stringify(interactionPayload),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[Ask Olive Individual] Perplexity API error:', response.status, errorText);
-      throw new Error(`Perplexity API error: ${response.status} ${errorText}`);
+      console.error('[Ask Olive] Gemini API error:', response.status, errorText);
+      
+      // Fallback to standard generateContent if Interactions API fails
+      console.log('[Ask Olive] Falling back to standard generateContent...');
+      return await fallbackToGenerateContent(geminiApiKey, noteContext, corsHeaders);
     }
 
     const data = await response.json();
-    console.log('[Ask Olive Individual] Perplexity response received');
+    console.log('[Ask Olive] Gemini Interactions response received');
+    console.log('[Ask Olive] New interaction ID:', data.interactionId);
 
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-      throw new Error('Invalid response format from Perplexity API');
-    }
-
-    const assistantReply = data.choices[0].message.content;
+    // Extract the text response from the interaction
+    const assistantReply = extractTextFromInteraction(data);
 
     return new Response(JSON.stringify({ 
       reply: assistantReply,
+      interactionId: data.interactionId, // Return for conversation continuity
       success: true 
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error: any) {
-    console.error('[Ask Olive Individual] Error:', error);
+    console.error('[Ask Olive] Error:', error);
     return new Response(JSON.stringify({ 
       error: error?.message || 'Unknown error occurred',
       reply: "I'm sorry, I'm having trouble processing your request right now. Please try again in a moment."
@@ -174,3 +123,81 @@ Please provide focused, actionable assistance for this specific note and questio
     });
   }
 });
+
+// Extract text content from Gemini Interactions response
+function extractTextFromInteraction(data: any): string {
+  try {
+    if (data.outputContent?.parts) {
+      return data.outputContent.parts
+        .filter((part: any) => part.text)
+        .map((part: any) => part.text)
+        .join('\n');
+    }
+    
+    // Handle different response structures
+    if (data.candidates?.[0]?.content?.parts) {
+      return data.candidates[0].content.parts
+        .filter((part: any) => part.text)
+        .map((part: any) => part.text)
+        .join('\n');
+    }
+
+    console.warn('[Ask Olive] Unexpected response structure:', JSON.stringify(data).slice(0, 500));
+    return "I received your message but couldn't process the response properly. Please try again.";
+  } catch (e) {
+    console.error('[Ask Olive] Error extracting text:', e);
+    return "I received your message but had trouble formatting my response. Please try again.";
+  }
+}
+
+// Fallback to standard generateContent API if Interactions API is unavailable
+async function fallbackToGenerateContent(apiKey: string, noteContext: string, corsHeaders: Record<string, string>): Promise<Response> {
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          role: 'user',
+          parts: [{ text: noteContext }]
+        }],
+        systemInstruction: {
+          parts: [{ text: OLIVE_SYSTEM_PROMPT }]
+        },
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 1024
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Fallback API error: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "I'm here to help! Could you rephrase your question?";
+
+    return new Response(JSON.stringify({ 
+      reply,
+      interactionId: null, // No interaction ID in fallback mode
+      success: true 
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (error: any) {
+    console.error('[Ask Olive] Fallback error:', error);
+    return new Response(JSON.stringify({ 
+      error: error?.message || 'Unknown error occurred',
+      reply: "I'm sorry, I'm having trouble right now. Please try again in a moment."
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+}

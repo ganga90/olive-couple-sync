@@ -1,20 +1,33 @@
 import { Note } from "@/types/note";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Enhanced assistant using Gemini AI for better responses
+// Store interaction IDs for conversation continuity per note
+const interactionCache = new Map<string, string>();
+
+export interface OliveAssistantResponse {
+  reply: string;
+  interactionId?: string | null;
+  updates?: Partial<Note>;
+}
+
+// Enhanced assistant using Gemini AI Interactions API for stateful multi-turn conversations
 export async function assistWithNote(
   note: Note,
   userMessage: string,
   supabaseClient: SupabaseClient<any>
-): Promise<{ reply: string; updates?: Partial<Note> }> {
+): Promise<OliveAssistantResponse> {
   try {
-    // Call the ask-olive-individual edge function for focused assistance
+    // Get previous interaction ID for this note (enables conversation continuity)
+    const previousInteractionId = interactionCache.get(note.id);
+
+    // Call the ask-olive-individual edge function with Interactions API support
     const { data, error } = await supabaseClient.functions.invoke('ask-olive-individual', {
       body: { 
         noteContent: `Summary: ${note.summary}\nOriginal: ${note.originalText}\nItems: ${note.items?.join(', ') || 'None'}`,
         userMessage: userMessage,
         noteCategory: note.category,
-        noteTitle: note.summary
+        noteTitle: note.summary,
+        previousInteractionId: previousInteractionId || null
       }
     });
 
@@ -23,9 +36,16 @@ export async function assistWithNote(
       throw new Error('Failed to get response from Olive assistant');
     }
 
+    // Store the new interaction ID for future turns in this conversation
+    if (data.interactionId) {
+      interactionCache.set(note.id, data.interactionId);
+      console.log('[Olive Assistant] Stored interaction ID for note:', note.id);
+    }
+
     return { 
       reply: data.reply || "I'm here to help! Could you please rephrase your question?",
-      updates: undefined // For now, we'll focus on providing helpful responses rather than automatic updates
+      interactionId: data.interactionId,
+      updates: undefined
     };
   } catch (error) {
     console.error("Error in assistWithNote:", error);
@@ -50,8 +70,24 @@ export async function assistWithNote(
   }
 }
 
+// Clear the interaction cache for a specific note (e.g., when starting a new conversation)
+export function clearNoteConversation(noteId: string): void {
+  interactionCache.delete(noteId);
+  console.log('[Olive Assistant] Cleared conversation for note:', noteId);
+}
+
+// Clear all interaction caches (e.g., on logout)
+export function clearAllConversations(): void {
+  interactionCache.clear();
+  console.log('[Olive Assistant] Cleared all conversations');
+}
+
 // Backward-compatible wrapper used elsewhere
-export async function generateOliveReply(note: Note, userMessage: string, supabaseClient: SupabaseClient<any>): Promise<string> {
+export async function generateOliveReply(
+  note: Note, 
+  userMessage: string, 
+  supabaseClient: SupabaseClient<any>
+): Promise<string> {
   const { reply } = await assistWithNote(note, userMessage, supabaseClient);
   return reply;
 }
