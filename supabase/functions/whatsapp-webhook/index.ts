@@ -192,15 +192,14 @@ serve(async (req) => {
       );
     }
 
-    // Handle media messages
+    // Handle media-only messages - now process them with AI instead of asking for caption
+    // This allows users to send images of products, receipts, etc. and have them automatically processed
     if (mediaUrls.length > 0 && !messageBody) {
-      const mediaTypeDesc = mediaTypes.includes('image') ? '🖼️ image' : 
-                           mediaTypes.includes('audio') ? '🎵 audio' : 
-                           mediaTypes.includes('video') ? '🎥 video' : '📄 file';
-      return new Response(
-        createTwimlResponse(`Received your ${mediaTypeDesc}! You can add a caption to create a task, or just send text to organize it.`),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
+      const mediaTypeDesc = mediaTypes.some(t => t.startsWith('image')) ? '🖼️ image' : 
+                           mediaTypes.some(t => t.startsWith('audio')) ? '🎵 audio' : 
+                           mediaTypes.some(t => t.startsWith('video')) ? '🎥 video' : '📄 file';
+      console.log('[WhatsApp] Processing media-only message:', mediaTypeDesc);
+      // Don't return early - let it fall through to ORGANIZATION intent for AI processing
     }
 
     if (!messageBody && mediaUrls.length === 0) {
@@ -381,23 +380,25 @@ serve(async (req) => {
       const coupleId = coupleMember?.couple_id || null;
 
       // Prepare note data with location, media, and timezone if available
+      // process-note now handles multimodal processing (images via Gemini Vision, audio via ElevenLabs)
       const notePayload: any = { 
-        text: messageBody, 
+        text: messageBody || 'Process attached media', 
         user_id: userId,
         couple_id: coupleId,
         timezone: profile.timezone || 'America/New_York' // Default to EST if not set
       };
       
-      // Add location context if provided
+      // Add location context if provided (append to text for context)
       if (latitude && longitude) {
         notePayload.location = { latitude, longitude };
-        notePayload.text = `${messageBody} (Location: ${latitude}, ${longitude})`;
+        notePayload.text = `${notePayload.text} (Location: ${latitude}, ${longitude})`;
       }
       
-      // Add media URLs if provided
+      // Add media URLs for multimodal AI processing
+      // process-note will analyze images with Gemini Vision and transcribe audio with ElevenLabs
       if (mediaUrls.length > 0) {
         notePayload.media = mediaUrls;
-        notePayload.text = `${messageBody} [Media: ${mediaUrls.length} file(s)]`;
+        console.log('[WhatsApp] Sending', mediaUrls.length, 'media file(s) for AI processing');
       }
 
       const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
@@ -482,15 +483,37 @@ serve(async (req) => {
           }
 
           const taskSummary = processData.summary || 'your task';
-          const taskCategory = processData.category ? ` in ${processData.category}` : '';
+          const taskCategory = processData.category ? ` in ${processData.category.replace(/_/g, ' ')}` : '';
           const locationNote = latitude && longitude ? ' 📍' : '';
-          const mediaNote = mediaUrls.length > 0 ? ` 📎(${mediaUrls.length})` : '';
+          
+          // Build media note with processing indication
+          let mediaNote = '';
+          if (mediaUrls.length > 0) {
+            const hasImage = mediaTypes.some(t => t.startsWith('image'));
+            const hasAudio = mediaTypes.some(t => t.startsWith('audio'));
+            if (hasImage && hasAudio) {
+              mediaNote = ' 🖼️🎤';
+            } else if (hasImage) {
+              mediaNote = ' 🖼️';
+            } else if (hasAudio) {
+              mediaNote = ' 🎤';
+            } else {
+              mediaNote = ' 📎';
+            }
+          }
           
           // Check if the original message was primarily a URL
           const isUrlTask = urls && urls.length > 0;
-          const confirmationMessage = isUrlTask 
-            ? `✅ I saved the link in your tasks as "${taskSummary}"${taskCategory}${locationNote}${mediaNote}`
-            : `✅ Saved! "${taskSummary}"${taskCategory}${locationNote}${mediaNote}`;
+          const hasMediaOnly = mediaUrls.length > 0 && (!messageBody || messageBody.trim() === '');
+          
+          let confirmationMessage: string;
+          if (hasMediaOnly) {
+            confirmationMessage = `✅ Processed your media${mediaNote} and saved as "${taskSummary}"${taskCategory}`;
+          } else if (isUrlTask) {
+            confirmationMessage = `✅ I saved the link as "${taskSummary}"${taskCategory}${locationNote}${mediaNote}`;
+          } else {
+            confirmationMessage = `✅ Saved! "${taskSummary}"${taskCategory}${locationNote}${mediaNote}`;
+          }
           
           // Quick reply options with website link
           const quickReply = '\n\n📱 Manage on: https://witholive.app\n\n💡 Try:\n• "Make it urgent"\n• "Show my tasks"\n• Send more tasks!';
