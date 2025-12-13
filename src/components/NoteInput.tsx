@@ -12,6 +12,7 @@ import { NoteRecap } from "./NoteRecap";
 import { MultipleNotesRecap } from "./MultipleNotesRecap";
 import VoiceInput from "./voice/VoiceInput";
 import { LoginPromptDialog } from "./LoginPromptDialog";
+import { useNoteStyle } from "./NoteStyleField";
 
 interface NoteInputProps {
   onNoteAdded?: () => void;
@@ -33,7 +34,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const { user, loading, isAuthenticated } = useAuth();
   const { currentCouple, createCouple } = useSupabaseCouple();
   const { addNote, refetch: refetchNotes } = useSupabaseNotesContext();
-  
+  const { style: noteStyle } = useNoteStyle();
 
   // Debug authentication state in NoteInput
   console.log('[NoteInput] Auth State:', { 
@@ -181,14 +182,15 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
 
       console.log('[NoteInput] Processing note with AI for user:', user.id);
       
-      // Process the note with Gemini AI (including media)
+      // Process the note with Gemini AI (including media and style)
       const { data: aiProcessedNote, error } = await supabase.functions.invoke('process-note', {
         body: { 
           text: text.trim() || 'Process attached media',
           user_id: user.id,
           couple_id: currentCouple?.id || null,
           list_id: listId || null,
-          media: mediaUrls.length > 0 ? mediaUrls : undefined
+          media: mediaUrls.length > 0 ? mediaUrls : undefined,
+          style: noteStyle
         }
       });
 

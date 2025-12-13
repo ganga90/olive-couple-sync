@@ -77,8 +77,48 @@ const multiNoteSchema = {
   required: ["multiple", "notes"]
 };
 
-// Dynamic system prompt with media context
-const createSystemPrompt = (userTimezone: string = 'UTC', hasMedia: boolean = false, mediaDescriptions: string[] = []) => {
+// Detect input style from text characteristics
+function detectInputStyle(text: string): 'succinct' | 'conversational' {
+  const wordCount = text.split(/\s+/).length;
+  const hasGreetings = /^(hey|hi|hello|yo|so|ok|okay|well)/i.test(text.trim());
+  const hasFillerWords = /(i think|maybe|probably|might|was thinking|need to|have to|gotta|gonna)/i.test(text);
+  const hasConversationalMarkers = /(and also|by the way|oh and|btw|also|actually)/i.test(text);
+  const sentenceCount = (text.match(/[.!?]+/g) || []).length;
+  const hasComplexSentences = sentenceCount > 1 || wordCount > 20;
+  
+  // Score conversational indicators
+  let conversationalScore = 0;
+  if (hasGreetings) conversationalScore += 2;
+  if (hasFillerWords) conversationalScore += 2;
+  if (hasConversationalMarkers) conversationalScore += 1;
+  if (hasComplexSentences) conversationalScore += 1;
+  if (wordCount > 30) conversationalScore += 1;
+  
+  return conversationalScore >= 2 ? 'conversational' : 'succinct';
+}
+
+// Preprocess conversational text to extract key information (keeps token usage low)
+function extractKeyInfoFromConversational(text: string): string {
+  // Remove common filler phrases while preserving key information
+  let cleaned = text
+    .replace(/^(hey|hi|hello|yo|so|ok|okay|well)[,\s]*/i, '')
+    .replace(/i (think|guess|suppose|believe)\s+/gi, '')
+    .replace(/(maybe|probably|might)\s+/gi, '')
+    .replace(/was (thinking|wondering)\s+(about\s+)?/gi, '')
+    .replace(/need to|have to|gotta|gonna/gi, 'should')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  return cleaned || text;
+}
+
+// Dynamic system prompt with media context and style awareness
+const createSystemPrompt = (
+  userTimezone: string = 'UTC', 
+  hasMedia: boolean = false, 
+  mediaDescriptions: string[] = [],
+  inputStyle: 'succinct' | 'conversational' = 'succinct'
+) => {
   const now = new Date();
   const utcTime = now.toISOString();
   
@@ -113,10 +153,33 @@ MEDIA EXTRACTION RULES:
 6. **Generic context**: If user text is vague (like "save this" or "remember"), use the media content to create a meaningful summary`;
   }
   
+  // Style-specific guidance
+  const styleGuidance = inputStyle === 'conversational' 
+    ? `
+INPUT STYLE: CONVERSATIONAL
+The user writes in a casual, chatty style. They may include:
+- Greetings and filler words ("Hey, I was thinking...")
+- Uncertainty language ("maybe", "might", "probably")
+- Multiple ideas in one message
+- Context and reasoning for tasks
+
+YOUR JOB: Extract the ACTIONABLE items from the conversational text. Ignore pleasantries and focus on what needs to be done.
+Example: "Hey, so I think we need to pick up kids on Tuesday and maybe book a table for Friday" → Extract: pickup kids Tuesday + book table Friday`
+    : `
+INPUT STYLE: SUCCINCT/BRAIN-DUMP
+The user writes quick, efficient notes with minimal words. They use:
+- Comma-separated lists
+- Action keywords
+- Minimal context
+
+YOUR JOB: Parse each item directly as a task.
+Example: "buy milk, call doctor tomorrow, book restaurant Friday" → 3 separate tasks`;
+  
   return `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
 
 USER TIMEZONE: ${userTimezone}
 Current UTC time: ${utcTime}
+${styleGuidance}
 
 IMPORTANT: When calculating times, use the user's timezone (${userTimezone}), not UTC.
 - "tomorrow at 10am" means 10am in ${userTimezone}, convert to UTC ISO format for storage
@@ -351,11 +414,13 @@ serve(async (req) => {
       throw new Error('Supabase configuration is missing');
     }
 
-    const { text, user_id, couple_id, timezone, media } = await req.json();
+    const { text, user_id, couple_id, timezone, media, style } = await req.json();
     
     if (!text || !user_id) {
       throw new Error('Missing required fields: text and user_id');
     }
+
+    console.log('[process-note] Received style preference:', style || 'not specified');
 
     // Initialize clients
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -423,8 +488,27 @@ serve(async (req) => {
     const userTimezone = timezone || 'UTC';
     const hasMedia = mediaDescriptions.length > 0;
     
+    // Determine input style
+    const userStyle: 'auto' | 'succinct' | 'conversational' = style || 'auto';
+    let detectedStyle: 'succinct' | 'conversational';
+    
+    if (userStyle === 'auto') {
+      detectedStyle = detectInputStyle(text);
+      console.log('[process-note] Auto-detected style:', detectedStyle);
+    } else {
+      detectedStyle = userStyle;
+      console.log('[process-note] Using user-specified style:', detectedStyle);
+    }
+    
     // Combine text with media transcriptions for enhanced processing
     let enhancedText = text;
+    
+    // For conversational input, preprocess to extract key info (reduces tokens)
+    if (detectedStyle === 'conversational') {
+      enhancedText = extractKeyInfoFromConversational(text);
+      console.log('[process-note] Preprocessed conversational text:', enhancedText.substring(0, 100) + '...');
+    }
+    
     if (hasMedia) {
       const audioTranscriptions = mediaDescriptions
         .filter(d => d.startsWith('[Audio') || d.startsWith('[Video'))
@@ -432,15 +516,15 @@ serve(async (req) => {
         .join(' ');
       
       if (audioTranscriptions) {
-        enhancedText = `${text}\n\nAudio content: ${audioTranscriptions}`;
+        enhancedText = `${enhancedText}\n\nAudio content: ${audioTranscriptions}`;
       }
     }
     
-    const systemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions);
+    const systemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions, detectedStyle);
     const userPrompt = `${systemPrompt}${listsContext}\n\nProcess this note:\n"${enhancedText}"`;
 
     console.log('[GenAI SDK] Processing note with structured output...');
-    console.log('[GenAI SDK] Has media:', hasMedia, 'Media descriptions count:', mediaDescriptions.length);
+    console.log('[GenAI SDK] Style:', detectedStyle, 'Has media:', hasMedia, 'Media descriptions count:', mediaDescriptions.length);
 
     // Use Google GenAI SDK with structured output
     const response = await genai.models.generateContent({

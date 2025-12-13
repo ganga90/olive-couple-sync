@@ -257,6 +257,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          note_style: string | null
           phone_number: string | null
           timezone: string | null
           updated_at: string
@@ -265,6 +266,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id: string
+          note_style?: string | null
           phone_number?: string | null
           timezone?: string | null
           updated_at?: string
@@ -273,6 +275,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          note_style?: string | null
           phone_number?: string | null
           timezone?: string | null
           updated_at?: string
