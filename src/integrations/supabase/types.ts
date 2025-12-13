@@ -14,6 +14,196 @@ export type Database = {
   }
   public: {
     Tables: {
+      calendar_connections: {
+        Row: {
+          access_token: string
+          auto_create_events: boolean | null
+          calendar_name: string | null
+          calendar_type: string | null
+          couple_id: string | null
+          created_at: string | null
+          error_message: string | null
+          google_email: string
+          google_user_id: string
+          id: string
+          is_active: boolean | null
+          last_sync_time: string | null
+          primary_calendar_id: string
+          refresh_token: string
+          sync_direction: string | null
+          sync_enabled: boolean | null
+          token_expiry: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          auto_create_events?: boolean | null
+          calendar_name?: string | null
+          calendar_type?: string | null
+          couple_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          google_email: string
+          google_user_id: string
+          id?: string
+          is_active?: boolean | null
+          last_sync_time?: string | null
+          primary_calendar_id: string
+          refresh_token: string
+          sync_direction?: string | null
+          sync_enabled?: boolean | null
+          token_expiry?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          auto_create_events?: boolean | null
+          calendar_name?: string | null
+          calendar_type?: string | null
+          couple_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          google_email?: string
+          google_user_id?: string
+          id?: string
+          is_active?: boolean | null
+          last_sync_time?: string | null
+          primary_calendar_id?: string
+          refresh_token?: string
+          sync_direction?: string | null
+          sync_enabled?: boolean | null
+          token_expiry?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_connections_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_couples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calendar_events: {
+        Row: {
+          all_day: boolean | null
+          connection_id: string
+          created_at: string | null
+          description: string | null
+          end_time: string
+          etag: string | null
+          event_type: string | null
+          google_event_id: string
+          id: string
+          is_synced: boolean | null
+          last_synced_at: string | null
+          location: string | null
+          note_id: string | null
+          start_time: string
+          timezone: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          all_day?: boolean | null
+          connection_id: string
+          created_at?: string | null
+          description?: string | null
+          end_time: string
+          etag?: string | null
+          event_type?: string | null
+          google_event_id: string
+          id?: string
+          is_synced?: boolean | null
+          last_synced_at?: string | null
+          location?: string | null
+          note_id?: string | null
+          start_time: string
+          timezone?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          all_day?: boolean | null
+          connection_id?: string
+          created_at?: string | null
+          description?: string | null
+          end_time?: string
+          etag?: string | null
+          event_type?: string | null
+          google_event_id?: string
+          id?: string
+          is_synced?: boolean | null
+          last_synced_at?: string | null
+          location?: string | null
+          note_id?: string | null
+          start_time?: string
+          timezone?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_events_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "calendar_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_events_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calendar_sync_state: {
+        Row: {
+          connection_id: string
+          created_at: string | null
+          error_message: string | null
+          id: string
+          last_sync_time: string | null
+          sync_status: string | null
+          sync_token: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          connection_id: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          last_sync_time?: string | null
+          sync_status?: string | null
+          sync_token?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          connection_id?: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          last_sync_time?: string | null
+          sync_status?: string | null
+          sync_token?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_sync_state_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: true
+            referencedRelation: "calendar_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clerk_couple_members: {
         Row: {
           couple_id: string | null
