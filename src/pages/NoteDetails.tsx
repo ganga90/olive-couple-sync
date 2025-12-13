@@ -16,9 +16,9 @@ import { Calendar } from "@/components/ui/calendar";
 import { Separator } from "@/components/ui/separator";
 import { NotePrivacyToggle } from "@/components/NotePrivacyToggle";
 import { toast } from "sonner";
-import { ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle, Tag, UserCheck, Calendar as CalendarIcon, Bell } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle, Tag, UserCheck, Calendar as CalendarIcon, Bell, RotateCcw, Loader2 } from "lucide-react";
 import { format } from "date-fns";
-import { assistWithNote } from "@/utils/oliveAssistant";
+import { assistWithNote, clearNoteConversation } from "@/utils/oliveAssistant";
 import { OliveLogo } from "@/components/OliveLogo";
 import ReactMarkdown from 'react-markdown';
 import { cn } from "@/lib/utils";
@@ -45,6 +45,7 @@ const NoteDetails = () => {
       : []
   );
   const [input, setInput] = useState("");
+  const [isAssistantLoading, setIsAssistantLoading] = useState(false);
   
   // Master edit mode state
   const [isEditing, setIsEditing] = useState(false);
@@ -146,14 +147,34 @@ const NoteDetails = () => {
 
   const onSend = async () => {
     const text = input.trim();
-    if (!text || !note) return;
+    if (!text || !note || isAssistantLoading) return;
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: text }]);
-    const { reply, updates } = await assistWithNote(note, text, supabase);
-    if (updates && Object.keys(updates).length) {
-      await updateNote(note.id, updates);
+    setIsAssistantLoading(true);
+    
+    try {
+      const { reply, updates } = await assistWithNote(note, text, supabase);
+      if (updates && Object.keys(updates).length) {
+        await updateNote(note.id, updates);
+      }
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+    } catch (error) {
+      console.error("Error getting assistance:", error);
+      setMessages((prev) => [...prev, { 
+        role: "assistant", 
+        content: "Sorry, I'm having trouble connecting right now. Please try again." 
+      }]);
+    } finally {
+      setIsAssistantLoading(false);
     }
-    setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+  };
+
+  const handleNewConversation = () => {
+    if (!note) return;
+    clearNoteConversation(note.id);
+    setMessages([
+      { role: "assistant", content: `Hi! How can I help with "${note.summary}"?` }
+    ]);
   };
 
   const updateTaskOwner = async (newOwner: string) => {
@@ -740,9 +761,20 @@ const NoteDetails = () => {
       <Dialog open={chatOpen} onOpenChange={setChatOpen}>
         <DialogContent className="bg-white border-olive/20 shadow-soft">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-olive-dark">
-              <OliveLogo size={20} />
-              Olive Assistant
+            <DialogTitle className="flex items-center justify-between text-olive-dark">
+              <div className="flex items-center gap-2">
+                <OliveLogo size={20} />
+                Olive Assistant
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleNewConversation}
+                className="text-muted-foreground hover:text-olive"
+                title="Start new conversation"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
             </DialogTitle>
           </DialogHeader>
           <div className="max-h-80 space-y-3 overflow-y-auto rounded-md bg-olive/5 border border-olive/10 p-3 text-sm">
@@ -770,6 +802,16 @@ const NoteDetails = () => {
                 </div>
               </div>
             ))}
+            {isAssistantLoading && (
+              <div className="text-left">
+                <div className="inline-block rounded-lg bg-white border border-olive/20 px-3 py-2 text-olive-dark shadow-soft">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-olive" />
+                    <span className="text-sm text-muted-foreground">Thinking...</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           <div className="space-y-2">
             <Textarea
@@ -778,13 +820,27 @@ const NoteDetails = () => {
               placeholder="Type your question..."
               rows={3}
               className="border-olive/30 focus:border-olive focus:ring-olive/20"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  onSend();
+                }
+              }}
             />
             <DialogFooter>
               <Button 
                 onClick={onSend}
+                disabled={isAssistantLoading || !input.trim()}
                 className="bg-olive hover:bg-olive/90 text-white"
               >
-                Send
+                {isAssistantLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  'Send'
+                )}
               </Button>
             </DialogFooter>
           </div>

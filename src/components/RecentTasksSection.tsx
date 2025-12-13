@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Clock, MessageSquare, ExternalLink, CheckCircle } from "lucide-react";
+import { Clock, MessageSquare, ExternalLink, CheckCircle, RotateCcw, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { OliveLogo } from "@/components/OliveLogo";
-import { assistWithNote } from "@/utils/oliveAssistant";
+import { assistWithNote, clearNoteConversation } from "@/utils/oliveAssistant";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import ReactMarkdown from 'react-markdown';
@@ -33,6 +33,7 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
   const [currentTask, setCurrentTask] = useState<any>(null);
   const [messages, setMessages] = useState<{ role: "assistant" | "user"; content: string }[]>([]);
   const [input, setInput] = useState("");
+  const [isAssistantLoading, setIsAssistantLoading] = useState(false);
 
   const handleTaskClick = (taskId: string) => {
     navigate(`/notes/${taskId}`);
@@ -61,11 +62,12 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
   };
 
   const onSend = async () => {
-    if (!input.trim() || !currentTask) return;
+    if (!input.trim() || !currentTask || isAssistantLoading) return;
 
     const newMessages = [...messages, { role: "user" as const, content: input }];
     setMessages(newMessages);
     setInput("");
+    setIsAssistantLoading(true);
 
     try {
       const { reply, updates } = await assistWithNote(currentTask, input, supabase);
@@ -81,7 +83,17 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
         role: "assistant" as const, 
         content: "Sorry, I'm having trouble connecting right now. Please try again later." 
       }]);
+    } finally {
+      setIsAssistantLoading(false);
     }
+  };
+
+  const handleNewConversation = () => {
+    if (!currentTask) return;
+    clearNoteConversation(currentTask.id);
+    setMessages([
+      { role: "assistant", content: `Hi! How can I help with "${currentTask.summary}"?` }
+    ]);
   };
 
   return (
@@ -184,9 +196,20 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
       <Dialog open={chatOpen} onOpenChange={setChatOpen}>
         <DialogContent className="bg-white border-olive/20 shadow-soft">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-olive-dark">
-              <OliveLogo size={20} />
-              Olive Assistant
+            <DialogTitle className="flex items-center justify-between text-olive-dark">
+              <div className="flex items-center gap-2">
+                <OliveLogo size={20} />
+                Olive Assistant
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleNewConversation}
+                className="text-muted-foreground hover:text-olive"
+                title="Start new conversation"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
             </DialogTitle>
           </DialogHeader>
           <div className="max-h-80 space-y-3 overflow-y-auto rounded-md bg-olive/5 border border-olive/10 p-3 text-sm">
@@ -214,6 +237,16 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
                 </div>
               </div>
             ))}
+            {isAssistantLoading && (
+              <div className="text-left">
+                <div className="inline-block rounded-lg bg-white border border-olive/20 px-3 py-2 text-olive-dark shadow-soft">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-olive" />
+                    <span className="text-sm text-muted-foreground">Thinking...</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           <div className="space-y-2">
             <Textarea
@@ -222,13 +255,27 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
               placeholder="Type your question..."
               rows={3}
               className="border-olive/30 focus:border-olive focus:ring-olive/20"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  onSend();
+                }
+              }}
             />
             <DialogFooter>
               <Button 
                 onClick={onSend}
+                disabled={isAssistantLoading || !input.trim()}
                 className="bg-olive hover:bg-olive/90 text-white"
               >
-                Send
+                {isAssistantLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  'Send'
+                )}
               </Button>
             </DialogFooter>
           </div>
