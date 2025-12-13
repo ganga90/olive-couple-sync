@@ -88,9 +88,9 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
     }
   };
 
-  const handleNewConversation = () => {
+  const handleNewConversation = async () => {
     if (!currentTask) return;
-    clearNoteConversation(currentTask.id);
+    await clearNoteConversation(currentTask.id, supabase);
     setMessages([
       { role: "assistant", content: `Hi! How can I help with "${currentTask.summary}"?` }
     ]);
