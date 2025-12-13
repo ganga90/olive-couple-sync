@@ -703,38 +703,66 @@ serve(async (req) => {
     console.log('[GenAI SDK] Processing note with structured output...');
     console.log('[GenAI SDK] Style:', detectedStyle, 'Has media:', hasMedia, 'Media descriptions count:', mediaDescriptions.length);
 
-    // Use Google GenAI SDK with structured output
-    const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: userPrompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: multiNoteSchema,
-        temperature: 0.1,
-        maxOutputTokens: 1200
-      }
-    });
+    let processedResponse: any;
 
-    const responseText = response.text;
-    console.log('[GenAI SDK] Raw response:', responseText);
-
-    let processedResponse;
     try {
-      processedResponse = JSON.parse(responseText);
-      console.log('[GenAI SDK] Parsed response:', processedResponse);
-    } catch (parseError) {
-      console.error('[GenAI SDK] Parse error, using fallback:', parseError);
-      processedResponse = {
-        multiple: false,
-        notes: [{
-          summary: text.length > 100 ? text.substring(0, 97) + "..." : text,
-          category: "task",
-          due_date: null,
-          priority: "medium",
-          tags: [],
-          items: []
-        }]
-      };
+      // Use Google GenAI SDK with structured output
+      const response = await genai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: userPrompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: multiNoteSchema,
+          temperature: 0.1,
+          maxOutputTokens: 1200
+        }
+      });
+
+      const responseText = response.text;
+      console.log('[GenAI SDK] Raw response:', responseText);
+
+      try {
+        processedResponse = JSON.parse(responseText);
+        console.log('[GenAI SDK] Parsed response:', processedResponse);
+      } catch (parseError) {
+        console.error('[GenAI SDK] Parse error, using fallback:', parseError);
+        processedResponse = {
+          multiple: false,
+          notes: [{
+            summary: text.length > 100 ? text.substring(0, 97) + "..." : text,
+            category: "task",
+            due_date: null,
+            priority: "medium",
+            tags: [],
+            items: []
+          }]
+        };
+      }
+    } catch (genAiError: any) {
+      console.error('[GenAI SDK] Error during structured generation:', genAiError);
+      const message = genAiError?.message || String(genAiError);
+
+      if (
+        message.includes('RESOURCE_EXHAUSTED') ||
+        message.includes('quota') ||
+        message.includes('Too Many Requests') ||
+        (genAiError as any)?.status === 429
+      ) {
+        console.warn('[GenAI SDK] Quota exceeded, falling back to simple note creation');
+        processedResponse = {
+          multiple: false,
+          notes: [{
+            summary: text.length > 100 ? text.substring(0, 97) + "..." : text,
+            category: "task",
+            due_date: null,
+            priority: "medium",
+            tags: [],
+            items: []
+          }]
+        };
+      } else {
+        throw genAiError;
+      }
     }
 
     // Smart list pattern detection
