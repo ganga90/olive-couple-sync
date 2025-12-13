@@ -23,3 +23,15 @@ verify_jwt = false
 
 [functions.manage-memories]
 verify_jwt = false
+
+[functions.calendar-auth-url]
+verify_jwt = false
+
+[functions.calendar-callback]
+verify_jwt = false
+
+[functions.calendar-sync]
+verify_jwt = false
+
+[functions.calendar-create-event]
+verify_jwt = false

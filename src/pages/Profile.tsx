@@ -9,7 +9,8 @@ import { TimezoneField } from "@/components/TimezoneField";
 import { WhatsAppLink } from "@/components/WhatsAppLink";
 import { NoteStyleField } from "@/components/NoteStyleField";
 import { MemoryPersonalization } from "@/components/MemoryPersonalization";
-import { User, LogOut, Bell, Shield, HelpCircle, Brain, Sparkles } from "lucide-react";
+import { GoogleCalendarConnect } from "@/components/GoogleCalendarConnect";
+import { User, LogOut, Bell, Shield, HelpCircle, Brain, Sparkles, Calendar } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
 
@@ -89,6 +90,22 @@ const Profile = () => {
           </CardHeader>
           <CardContent>
             <WhatsAppLink />
+          </CardContent>
+        </Card>
+
+        {/* Google Calendar */}
+        <Card className="shadow-[var(--shadow-card)]">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Google Calendar
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Sync your calendar and create events from notes
+            </p>
+          </CardHeader>
+          <CardContent>
+            <GoogleCalendarConnect />
           </CardContent>
         </Card>
 

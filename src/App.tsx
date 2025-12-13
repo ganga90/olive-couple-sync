@@ -17,6 +17,7 @@ import CalendarPage from "./pages/CalendarPage";
 import Reminders from "./pages/Reminders";
 import AcceptInvite from "./pages/AcceptInvite";
 import JoinInvite from "./pages/JoinInvite";
+import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
 import NavBar from "./components/NavBar";
 import { MobileLayout } from "./components/MobileLayout";
 import { AuthProvider } from "./providers/AuthProvider";
@@ -52,6 +53,7 @@ const App = () => (
                 <Route path="/sign-up" element={<SignUpPage />} />
                 <Route path="/accept-invite" element={<AcceptInvite />} />
                 <Route path="/join/:token" element={<JoinInvite />} />
+                <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
