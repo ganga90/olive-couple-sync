@@ -8,7 +8,8 @@ import { PhoneNumberField } from "@/components/PhoneNumberField";
 import { TimezoneField } from "@/components/TimezoneField";
 import { WhatsAppLink } from "@/components/WhatsAppLink";
 import { NoteStyleField } from "@/components/NoteStyleField";
-import { User, LogOut, Bell, Shield, HelpCircle, Brain } from "lucide-react";
+import { MemoryPersonalization } from "@/components/MemoryPersonalization";
+import { User, LogOut, Bell, Shield, HelpCircle, Brain, Sparkles } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
 
@@ -101,6 +102,22 @@ const Profile = () => {
           </CardHeader>
           <CardContent>
             <NoteStyleField />
+          </CardContent>
+        </Card>
+
+        {/* Memory & Personalization */}
+        <Card className="shadow-[var(--shadow-card)]">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              Memory & Personalization
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              What Olive knows about you to personalize your experience
+            </p>
+          </CardHeader>
+          <CardContent>
+            <MemoryPersonalization />
           </CardContent>
         </Card>
 

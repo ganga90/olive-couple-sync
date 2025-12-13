@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.ask-olive-individual]
 verify_jwt = false
+
+[functions.manage-memories]
+verify_jwt = false
