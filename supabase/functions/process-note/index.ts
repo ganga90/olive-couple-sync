@@ -82,9 +82,36 @@ const createSystemPrompt = (userTimezone: string = 'UTC', hasMedia: boolean = fa
   const now = new Date();
   const utcTime = now.toISOString();
   
-  const mediaContext = hasMedia && mediaDescriptions.length > 0
-    ? `\n\nMEDIA CONTEXT: The user has attached media. Here's what was extracted from it:\n${mediaDescriptions.map((d, i) => `- Media ${i + 1}: ${d}`).join('\n')}\n\nIMPORTANT: Use the media content to enhance the task. If the media contains a product, add it as a grocery/shopping item. If it shows a location or event, include that context in the task.`
-    : '';
+  let mediaContext = '';
+  if (hasMedia && mediaDescriptions.length > 0) {
+    mediaContext = `
+
+MEDIA CONTEXT - CRITICAL: The user has attached media with extracted content:
+${mediaDescriptions.map((d, i) => `Media ${i + 1}: ${d}`).join('\n')}
+
+MEDIA EXTRACTION RULES:
+1. **Use media data as the PRIMARY source** - If the image contains specific data (codes, dates, names), use them in the summary and items.
+2. **Promo codes/Coupons**: 
+   - Summary: "[Brand] promo code: [CODE] - [DISCOUNT]"
+   - Items: ["Code: [CODE]", "Discount: [DISCOUNT]", "Expires: [DATE]", "Conditions: [if any]"]
+   - Set due_date to expiration date (if found) at 09:00
+   - Category: "shopping"
+   - Tags: ["promo", "discount", brand name if known]
+3. **Appointments**: 
+   - Summary: "[Type] appointment at [Place]"
+   - Set due_date to appointment date and time
+   - Set reminder_time to 24 hours before
+   - Items: ["Location: [ADDRESS]", "Time: [TIME]", "Provider: [NAME]"]
+   - Category: "personal"
+   - Tags: ["appointment", type like "doctor", "dentist"]
+4. **Events/Tickets**: 
+   - Summary: "[Event name] at [Venue]"
+   - Set due_date to event date and time
+   - Items: ["Venue: [VENUE]", "Date: [DATE]", "Time: [TIME]", "Tickets: [info]"]
+   - Category: "entertainment"
+5. **Receipts**: Extract key items, store name, and date
+6. **Generic context**: If user text is vague (like "save this" or "remember"), use the media content to create a meaningful summary`;
+  }
   
   return `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
 
@@ -108,7 +135,8 @@ CORE FIELD RULES:
 1. summary: Concise title (max 100 chars)
    - Groceries: item name only ("milk" not "buy milk")
    - Actions: keep verb ("fix sink")
-   - If media shows something specific, include it in summary
+   - For media with promo codes: "[Brand] promo code: [CODE] - [DISCOUNT]"
+   - For appointments: "[Type] at [Place] - [Date/Time]"
 
 2. category: Use lowercase with underscores
    - concerts/events/shows → "entertainment"
@@ -116,18 +144,24 @@ CORE FIELD RULES:
    - repairs/fix/maintenance → "home_improvement"
    - vacation/flights/hotels → "travel"
    - groceries/supermarket → "groceries"
-   - clothes/electronics → "shopping"
+   - clothes/electronics/promo codes → "shopping"
    - appointments/bills/rent → "personal"
 
 3. due_date/reminder_time: ISO format
    - "remind me" → set BOTH reminder_time AND due_date to same datetime
    - Time references: "tomorrow" (next day 09:00), "tonight" (same day 23:59)
    - Weekday references: next occurrence at 09:00
+   - Promo expiration dates → set as due_date
+   - Appointment dates → set as due_date AND reminder_time (24h before)
    - IMPORTANT: When setting reminder_time, ALWAYS also set due_date to match
 
-4. priority: high (urgent/bills), medium (regular), low (ideas)
+4. priority: high (urgent/bills/expiring soon), medium (regular), low (ideas)
 
-5. items: ONLY for multi-part tasks. NEVER for grocery lists.
+5. items: Use for structured data from media (promo details, appointment info). Include:
+   - For promo codes: ["Code: XXX", "Discount: X%", "Expires: Date", "Store: Brand"]
+   - For appointments: ["Location: Address", "Time: HH:MM", "Provider: Name"]
+   - For events: ["Venue: Place", "Date: Date", "Time: Time"]
+   - NEVER for grocery lists.
 
 6. recurrence_frequency/recurrence_interval: For recurring reminders
    - "every day" → frequency: "daily", interval: 1
@@ -192,7 +226,19 @@ async function transcribeAudioWithElevenLabs(audioUrl: string): Promise<string> 
   }
 }
 
-// Analyze image using Gemini Vision
+// Convert ArrayBuffer to base64 without stack overflow
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  return btoa(binary);
+}
+
+// Analyze image using Gemini Vision with enhanced extraction
 async function analyzeImageWithGemini(genai: GoogleGenAI, imageUrl: string): Promise<string> {
   try {
     console.log('[Gemini Vision] Analyzing image:', imageUrl);
@@ -206,11 +252,34 @@ async function analyzeImageWithGemini(genai: GoogleGenAI, imageUrl: string): Pro
     
     const imageBlob = await imageResponse.blob();
     const arrayBuffer = await imageBlob.arrayBuffer();
-    const base64Image = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    const base64Image = arrayBufferToBase64(arrayBuffer);
     const mimeType = imageBlob.type || 'image/jpeg';
     
     console.log('[Gemini Vision] Image downloaded, type:', mimeType, 'size:', imageBlob.size);
     
+    // Enhanced prompt for structured data extraction
+    const extractionPrompt = `Analyze this image and extract ALL useful information for task management. Be thorough and specific.
+
+EXTRACT THE FOLLOWING (if present):
+1. **Brand/Company/Service name**: Look for logos, headers, or business names
+2. **Promo codes/Coupon codes**: Any alphanumeric codes for discounts
+3. **Discounts/Offers**: Percentage off, dollar amounts, special deals (e.g., "15% OFF", "$20 off")
+4. **Expiration dates**: When offers expire, appointment dates, due dates (format: Month Day, Year)
+5. **Appointment details**: Doctor/dentist/service names, date, time, location, address
+6. **Event information**: Event name, venue, date, time, ticket info
+7. **Receipt details**: Store name, items purchased, amounts, date
+8. **Contact information**: Phone numbers, emails, websites
+9. **Key action items**: What the user should remember or do
+
+FORMAT YOUR RESPONSE as a structured summary:
+- If it's a PROMO/COUPON: "Promo code [CODE] for [BRAND]: [DISCOUNT]% off, expires [DATE]. [Any conditions]"
+- If it's an APPOINTMENT: "Appointment at [PLACE] on [DATE] at [TIME]. Address: [ADDRESS]. [Other details]"
+- If it's a RECEIPT: "Receipt from [STORE] on [DATE]: [KEY ITEMS]. Total: [AMOUNT]"
+- If it's an EVENT: "Event: [NAME] at [VENUE] on [DATE] at [TIME]. [Ticket/pricing info]"
+- Otherwise: Provide a clear, actionable summary with all extracted details.
+
+Be concise but include ALL extracted data. Max 150 words.`;
+
     // Use Gemini with vision capability
     const response = await genai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -219,7 +288,7 @@ async function analyzeImageWithGemini(genai: GoogleGenAI, imageUrl: string): Pro
           role: "user",
           parts: [
             {
-              text: "Describe this image concisely for task management. Focus on: 1) What objects/products are shown (for shopping/grocery lists), 2) Any text visible (receipts, notes, event flyers), 3) Location or event context. Keep it under 100 words."
+              text: extractionPrompt
             },
             {
               inlineData: {
@@ -231,8 +300,8 @@ async function analyzeImageWithGemini(genai: GoogleGenAI, imageUrl: string): Pro
         }
       ],
       config: {
-        temperature: 0.2,
-        maxOutputTokens: 200
+        temperature: 0.1,
+        maxOutputTokens: 300
       }
     });
     
