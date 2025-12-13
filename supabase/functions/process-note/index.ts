@@ -77,6 +77,38 @@ const multiNoteSchema = {
   required: ["multiple", "notes"]
 };
 
+// Schema for auto-extracting user memories from brain-dumps
+const memoryExtractionSchema = {
+  type: Type.OBJECT,
+  properties: {
+    memories: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING, description: "Short title for the memory (max 50 chars)" },
+          content: { type: Type.STRING, description: "The factual content to remember" },
+          category: { 
+            type: Type.STRING, 
+            enum: ["personal", "preference", "goal", "health", "other"],
+            description: "Category of the memory"
+          },
+          importance: { 
+            type: Type.NUMBER, 
+            description: "Importance 1-5, where 5 is very important" 
+          },
+          confidence: { 
+            type: Type.NUMBER, 
+            description: "Confidence level 0-1 that this is a real fact about the user" 
+          }
+        },
+        required: ["title", "content", "category", "importance", "confidence"]
+      }
+    }
+  },
+  required: ["memories"]
+};
+
 // Detect input style from text characteristics
 function detectInputStyle(text: string): 'succinct' | 'conversational' {
   const wordCount = text.split(/\s+/).length;
@@ -411,6 +443,121 @@ function getMediaType(url: string, contentType?: string): 'image' | 'audio' | 'v
   return 'unknown';
 }
 
+// Auto-extract potential memories from brain-dump text
+async function extractMemoriesFromDump(
+  genai: GoogleGenAI, 
+  supabase: any, 
+  text: string, 
+  userId: string
+): Promise<void> {
+  try {
+    console.log('[Memory Extraction] Analyzing brain-dump for potential memories...');
+    
+    // Skip very short texts
+    if (text.length < 20) {
+      console.log('[Memory Extraction] Text too short, skipping');
+      return;
+    }
+    
+    const extractionPrompt = `Analyze this brain-dump text and extract ONLY personal facts about the user that should be remembered for future context.
+
+Brain-dump text: "${text}"
+
+EXTRACT ONLY:
+- Personal information (names of pets, family members, partner)
+- Preferences (food brands, restaurants, stores they like)
+- Habits and routines
+- Health information (allergies, medications, conditions)
+- Goals and aspirations
+- Important facts about their life (where they live, work, hobbies)
+
+DO NOT EXTRACT:
+- Tasks or to-dos
+- One-time events
+- Generic information
+- Things that aren't facts about the user
+
+For each memory, rate confidence 0-1 (only extract if >0.7 confident it's a real fact).
+Return empty array if no personal facts found.`;
+
+    const response = await genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: extractionPrompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: memoryExtractionSchema,
+        temperature: 0.1,
+        maxOutputTokens: 500
+      }
+    });
+
+    const responseText = response.text;
+    const parsed = JSON.parse(responseText);
+    
+    if (!parsed.memories || parsed.memories.length === 0) {
+      console.log('[Memory Extraction] No memories extracted');
+      return;
+    }
+    
+    // Filter only high-confidence memories
+    const highConfidenceMemories = parsed.memories.filter(
+      (m: any) => m.confidence >= 0.75
+    );
+    
+    if (highConfidenceMemories.length === 0) {
+      console.log('[Memory Extraction] No high-confidence memories found');
+      return;
+    }
+    
+    console.log('[Memory Extraction] Found', highConfidenceMemories.length, 'high-confidence memories');
+    
+    // Fetch existing memories to avoid duplicates
+    const { data: existingMemories } = await supabase
+      .from('user_memories')
+      .select('title, content')
+      .eq('user_id', userId)
+      .eq('is_active', true);
+    
+    const existingContents = new Set(
+      (existingMemories || []).map((m: any) => m.content.toLowerCase())
+    );
+    
+    // Filter out duplicates
+    const newMemories = highConfidenceMemories.filter(
+      (m: any) => !existingContents.has(m.content.toLowerCase())
+    );
+    
+    if (newMemories.length === 0) {
+      console.log('[Memory Extraction] All memories already exist');
+      return;
+    }
+    
+    // Store new memories via manage-memories function
+    for (const memory of newMemories) {
+      try {
+        await supabase.functions.invoke('manage-memories', {
+          body: {
+            action: 'add',
+            user_id: userId,
+            title: memory.title,
+            content: memory.content,
+            category: memory.category,
+            importance: memory.importance,
+            metadata: { auto_extracted: true, confidence: memory.confidence }
+          }
+        });
+        console.log('[Memory Extraction] Stored memory:', memory.title);
+      } catch (err) {
+        console.warn('[Memory Extraction] Failed to store memory:', memory.title, err);
+      }
+    }
+    
+    console.log('[Memory Extraction] Successfully stored', newMemories.length, 'new memories');
+  } catch (error) {
+    console.error('[Memory Extraction] Error:', error);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -707,6 +854,11 @@ serve(async (req) => {
       : { ...processedNotes[0], original_text: text };
 
     console.log('[GenAI SDK] Final result:', result);
+    
+    // Auto-extract memories from brain-dump (async, non-blocking)
+    extractMemoriesFromDump(genai, supabase, text, user_id).catch(err => {
+      console.warn('[Memory Extraction] Non-blocking error:', err);
+    });
     
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
