@@ -12,7 +12,7 @@ import { NoteRecap } from "./NoteRecap";
 import { MultipleNotesRecap } from "./MultipleNotesRecap";
 import VoiceInput from "./voice/VoiceInput";
 import { LoginPromptDialog } from "./LoginPromptDialog";
-import { useNoteStyle } from "./NoteStyleField";
+import { useNoteStyle } from "@/hooks/useNoteStyle";
 
 interface NoteInputProps {
   onNoteAdded?: () => void;
