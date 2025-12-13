@@ -178,10 +178,15 @@ Example: "buy milk, call doctor tomorrow, book restaurant Friday" → 3 separate
   
   // Build memory context section if available
   const memorySection = memoryContext 
-    ? `\n\n${memoryContext}\n\nUSE THIS CONTEXT to personalize the task. For example:
-- If user says "bring Milka to the vet" and you know Milka is their dog, categorize appropriately
-- If user says "book dinner" and you know they're a couple with 2 kids, assume party of 4
-- Reference known names, preferences, and facts when processing tasks`
+    ? `\n\n${memoryContext}\n\n**CRITICAL: PERSONALIZE THE SUMMARY USING THIS CONTEXT**
+You MUST use the user's memories to enrich and personalize the task summary. Examples:
+- User says "buy dog food" + memory says "I have a dog named Milka who eats Royal Canine" → Summary: "Buy Royal Canine food for Milka"
+- User says "bring Milka to the vet" + memory says "Milka is my dog" → Summary: "Bring Milka (dog) to the vet"
+- User says "book dinner" + memory says "we have 2 kids" → Summary: "Book dinner for 4"
+- User says "buy medicine" + memory says "My dog Milka takes Denamarin" → Summary: "Buy Denamarin for Milka"
+
+The summary should include SPECIFIC details from memories (brand names, pet names, quantities, preferences).
+Do NOT just use the raw input - ENHANCE it with known context.`
     : '';
 
   return `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
