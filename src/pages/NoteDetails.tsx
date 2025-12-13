@@ -169,9 +169,9 @@ const NoteDetails = () => {
     }
   };
 
-  const handleNewConversation = () => {
+  const handleNewConversation = async () => {
     if (!note) return;
-    clearNoteConversation(note.id);
+    await clearNoteConversation(note.id, supabase);
     setMessages([
       { role: "assistant", content: `Hi! How can I help with "${note.summary}"?` }
     ]);
