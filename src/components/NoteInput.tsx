@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Send, Sparkles } from "lucide-react";
+import { Send, Sparkles, Image, X, Mic } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
@@ -25,6 +25,11 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const [processedNote, setProcessedNote] = useState<any>(null);
   const [multipleNotes, setMultipleNotes] = useState<any>(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [mediaPreviews, setMediaPreviews] = useState<string[]>([]);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const { user, loading, isAuthenticated } = useAuth();
   const { currentCouple, createCouple } = useSupabaseCouple();
   const { addNote, refetch: refetchNotes } = useSupabaseNotesContext();
@@ -52,12 +57,91 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     );
   }
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    
+    const newFiles: File[] = [];
+    const newPreviews: string[] = [];
+    
+    for (let i = 0; i < files.length && mediaFiles.length + newFiles.length < 5; i++) {
+      const file = files[i];
+      // Accept images and audio
+      if (file.type.startsWith('image/') || file.type.startsWith('audio/')) {
+        newFiles.push(file);
+        if (file.type.startsWith('image/')) {
+          newPreviews.push(URL.createObjectURL(file));
+        } else {
+          newPreviews.push('audio');
+        }
+      }
+    }
+    
+    setMediaFiles(prev => [...prev, ...newFiles]);
+    setMediaPreviews(prev => [...prev, ...newPreviews]);
+    
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const removeMedia = (index: number) => {
+    setMediaFiles(prev => prev.filter((_, i) => i !== index));
+    setMediaPreviews(prev => {
+      const preview = prev[index];
+      if (preview && preview !== 'audio') {
+        URL.revokeObjectURL(preview);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const uploadMediaFiles = async (): Promise<string[]> => {
+    if (mediaFiles.length === 0) return [];
+    
+    setIsUploadingMedia(true);
+    const uploadedUrls: string[] = [];
+    
+    try {
+      for (const file of mediaFiles) {
+        const ext = file.name.split('.').pop() || 'bin';
+        const timestamp = Date.now();
+        const randomStr = Math.random().toString(36).substring(7);
+        const filename = `${user?.id}/${timestamp}_${randomStr}.${ext}`;
+        
+        const { data, error } = await supabase.storage
+          .from('note-media')
+          .upload(filename, file, {
+            contentType: file.type,
+            upsert: false
+          });
+        
+        if (error) {
+          console.error('[NoteInput] Failed to upload media:', error);
+          continue;
+        }
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('note-media')
+          .getPublicUrl(filename);
+        
+        uploadedUrls.push(publicUrl);
+      }
+      
+      return uploadedUrls;
+    } finally {
+      setIsUploadingMedia(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Comprehensive auth debugging
     console.log('[NoteInput] === SUBMISSION DEBUG ===');
     console.log('[NoteInput] Text:', text.trim());
+    console.log('[NoteInput] Media files:', mediaFiles.length);
     console.log('[NoteInput] Auth state:', { 
       user: !!user, 
       userId: user?.id,
@@ -66,8 +150,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       userObject: user
     });
     
-    if (!text.trim()) {
-      toast.error("Please enter a note");
+    if (!text.trim() && mediaFiles.length === 0) {
+      toast.error("Please enter a note or attach media");
       return;
     }
 
@@ -87,15 +171,24 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         throw new Error('User authentication lost during processing');
       }
 
+      // Upload media files first if any
+      let mediaUrls: string[] = [];
+      if (mediaFiles.length > 0) {
+        console.log('[NoteInput] Uploading', mediaFiles.length, 'media files...');
+        mediaUrls = await uploadMediaFiles();
+        console.log('[NoteInput] Uploaded media URLs:', mediaUrls);
+      }
+
       console.log('[NoteInput] Processing note with AI for user:', user.id);
       
-      // Process the note with Gemini AI
+      // Process the note with Gemini AI (including media)
       const { data: aiProcessedNote, error } = await supabase.functions.invoke('process-note', {
         body: { 
-          text: text.trim(),
+          text: text.trim() || 'Process attached media',
           user_id: user.id,
           couple_id: currentCouple?.id || null,
-          list_id: listId || null
+          list_id: listId || null,
+          media: mediaUrls.length > 0 ? mediaUrls : undefined
         }
       });
 
@@ -126,12 +219,14 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             items: note.items,
             originalText: text.trim(),
             task_owner: note.task_owner,
-            list_id: note.list_id
+            list_id: note.list_id,
+            media_urls: note.media_urls || mediaUrls
           })),
           originalText: text.trim()
         });
 
         setText("");
+        clearMediaFiles();
         toast.success(`AI identified ${aiProcessedNote.notes.length} separate tasks!`);
         return;
       }
@@ -150,7 +245,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         items: aiProcessedNote.items || [],
         taskOwner: aiProcessedNote.task_owner || null,
         listId: aiProcessedNote.list_id || listId || null,
-        completed: false
+        completed: false,
+        mediaUrls: aiProcessedNote.media_urls || mediaUrls
       });
 
       // Success feedback
@@ -159,6 +255,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       // Clear the input
       setText("");
       setInterim("");
+      clearMediaFiles();
       
       // Don't call onNoteAdded yet - wait for user to accept
     } catch (error) {
@@ -167,6 +264,16 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const clearMediaFiles = () => {
+    mediaPreviews.forEach(preview => {
+      if (preview && preview !== 'audio') {
+        URL.revokeObjectURL(preview);
+      }
+    });
+    setMediaFiles([]);
+    setMediaPreviews([]);
   };
 
   const handleCloseRecap = () => {
@@ -196,7 +303,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         tags: processedNote.tags || [],
         items: processedNote.items || [],
         listId: processedNote.listId,
-        taskOwner: processedNote.taskOwner
+        taskOwner: processedNote.taskOwner,
+        mediaUrls: processedNote.mediaUrls || []
       };
       
       const newNote = await addNote(noteData);
@@ -299,13 +407,41 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           </p>
         </div>
         
+        {/* Media previews */}
+        {mediaPreviews.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {mediaPreviews.map((preview, index) => (
+              <div key={index} className="relative group">
+                {preview === 'audio' ? (
+                  <div className="w-16 h-16 rounded-lg bg-olive/10 flex items-center justify-center border border-olive/20">
+                    <Mic className="w-6 h-6 text-olive" />
+                  </div>
+                ) : (
+                  <img 
+                    src={preview} 
+                    alt={`Attached ${index + 1}`}
+                    className="w-16 h-16 object-cover rounded-lg border border-olive/20"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeMedia(index)}
+                  className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        
         <div className="relative">
           <Textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={getDynamicPlaceholder()}
             className="min-h-[120px] border-olive/30 focus:border-olive resize-none text-base pr-20 bg-background/50 shadow-[var(--shadow-inset)]"
-            disabled={isProcessing}
+            disabled={isProcessing || isUploadingMedia}
           />
           
           {/* Show interim transcript */}
@@ -315,27 +451,49 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             </div>
           )}
           
-          {/* Voice input controls */}
+          {/* Voice and media input controls */}
           <div className="absolute top-3 right-3 flex items-center gap-2">
+            {/* Hidden file input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              accept="image/*,audio/*"
+              multiple
+              className="hidden"
+            />
+            
+            {/* Media upload button */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isProcessing || isUploadingMedia || mediaFiles.length >= 5}
+              className="h-8 w-8 text-muted-foreground hover:text-olive"
+            >
+              <Image className="h-4 w-4" />
+            </Button>
+            
             <VoiceInput 
               text={text} 
               setText={setText}
               interim={interim}
               setInterim={setInterim}
-              disabled={isProcessing}
+              disabled={isProcessing || isUploadingMedia}
             />
           </div>
           
           {/* Send button */}
-          {text.trim() && (
+          {(text.trim() || mediaFiles.length > 0) && (
             <div className="absolute bottom-3 right-3">
               <Button
                 type="submit"
                 size="sm"
-                disabled={isProcessing || !text.trim()}
+                disabled={isProcessing || isUploadingMedia || (!text.trim() && mediaFiles.length === 0)}
                 className="bg-gradient-olive hover:bg-olive text-white shadow-olive"
               >
-                {isProcessing ? (
+                {isProcessing || isUploadingMedia ? (
                   <Sparkles className="h-4 w-4 animate-spin" />
                 ) : (
                   <Send className="h-4 w-4" />
@@ -346,7 +504,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         </div>
         
         <p className="text-xs text-center text-muted-foreground">
-          {isProcessing ? "AI is organizing your note..." : 
+          {isUploadingMedia ? "Uploading media..." :
+           isProcessing ? "AI is organizing your note..." : 
            "I'll automatically categorize, summarize, and organize your note"}
         </p>
       </form>
