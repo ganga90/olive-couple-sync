@@ -77,10 +77,14 @@ const multiNoteSchema = {
   required: ["multiple", "notes"]
 };
 
-// Dynamic system prompt
-const createSystemPrompt = (userTimezone: string = 'UTC') => {
+// Dynamic system prompt with media context
+const createSystemPrompt = (userTimezone: string = 'UTC', hasMedia: boolean = false, mediaDescriptions: string[] = []) => {
   const now = new Date();
   const utcTime = now.toISOString();
+  
+  const mediaContext = hasMedia && mediaDescriptions.length > 0
+    ? `\n\nMEDIA CONTEXT: The user has attached media. Here's what was extracted from it:\n${mediaDescriptions.map((d, i) => `- Media ${i + 1}: ${d}`).join('\n')}\n\nIMPORTANT: Use the media content to enhance the task. If the media contains a product, add it as a grocery/shopping item. If it shows a location or event, include that context in the task.`
+    : '';
   
   return `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
 
@@ -89,6 +93,7 @@ Current UTC time: ${utcTime}
 
 IMPORTANT: When calculating times, use the user's timezone (${userTimezone}), not UTC.
 - "tomorrow at 10am" means 10am in ${userTimezone}, convert to UTC ISO format for storage
+${mediaContext}
 
 SPLIT CRITERIA: Create multiple notes when input contains lists of items or distinct tasks.
 Examples: 
@@ -103,6 +108,7 @@ CORE FIELD RULES:
 1. summary: Concise title (max 100 chars)
    - Groceries: item name only ("milk" not "buy milk")
    - Actions: keep verb ("fix sink")
+   - If media shows something specific, include it in summary
 
 2. category: Use lowercase with underscores
    - concerts/events/shows → "entertainment"
@@ -131,6 +137,133 @@ Return multiple:true with notes array if multiple items detected.
 Return multiple:false with single note fields if just one task.`;
 };
 
+// Transcribe audio using ElevenLabs Speech-to-Text
+async function transcribeAudioWithElevenLabs(audioUrl: string): Promise<string> {
+  const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
+  
+  if (!ELEVENLABS_API_KEY) {
+    console.warn('[ElevenLabs] API key not configured, skipping transcription');
+    return '';
+  }
+
+  try {
+    console.log('[ElevenLabs] Downloading audio from:', audioUrl);
+    
+    // Download the audio file
+    const audioResponse = await fetch(audioUrl);
+    if (!audioResponse.ok) {
+      console.error('[ElevenLabs] Failed to download audio:', audioResponse.status);
+      return '';
+    }
+    
+    const audioBlob = await audioResponse.blob();
+    console.log('[ElevenLabs] Audio downloaded, size:', audioBlob.size, 'type:', audioBlob.type);
+    
+    // Prepare form data for ElevenLabs
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'audio.webm');
+    formData.append('model_id', 'scribe_v1');
+    formData.append('language_code', 'eng');
+    
+    console.log('[ElevenLabs] Sending to transcription API...');
+    
+    const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+      method: 'POST',
+      headers: {
+        'xi-api-key': ELEVENLABS_API_KEY,
+      },
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[ElevenLabs] Transcription failed:', response.status, errorText);
+      return '';
+    }
+    
+    const result = await response.json();
+    const transcription = result.text || '';
+    console.log('[ElevenLabs] Transcription result:', transcription);
+    
+    return transcription;
+  } catch (error) {
+    console.error('[ElevenLabs] Error transcribing audio:', error);
+    return '';
+  }
+}
+
+// Analyze image using Gemini Vision
+async function analyzeImageWithGemini(genai: GoogleGenAI, imageUrl: string): Promise<string> {
+  try {
+    console.log('[Gemini Vision] Analyzing image:', imageUrl);
+    
+    // Download the image
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      console.error('[Gemini Vision] Failed to download image:', imageResponse.status);
+      return '';
+    }
+    
+    const imageBlob = await imageResponse.blob();
+    const arrayBuffer = await imageBlob.arrayBuffer();
+    const base64Image = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    const mimeType = imageBlob.type || 'image/jpeg';
+    
+    console.log('[Gemini Vision] Image downloaded, type:', mimeType, 'size:', imageBlob.size);
+    
+    // Use Gemini with vision capability
+    const response = await genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Describe this image concisely for task management. Focus on: 1) What objects/products are shown (for shopping/grocery lists), 2) Any text visible (receipts, notes, event flyers), 3) Location or event context. Keep it under 100 words."
+            },
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: base64Image
+              }
+            }
+          ]
+        }
+      ],
+      config: {
+        temperature: 0.2,
+        maxOutputTokens: 200
+      }
+    });
+    
+    const description = response.text || '';
+    console.log('[Gemini Vision] Image analysis result:', description);
+    
+    return description;
+  } catch (error) {
+    console.error('[Gemini Vision] Error analyzing image:', error);
+    return '';
+  }
+}
+
+// Determine media type from URL or content type
+function getMediaType(url: string, contentType?: string): 'image' | 'audio' | 'video' | 'unknown' {
+  const urlLower = url.toLowerCase();
+  
+  if (contentType) {
+    if (contentType.startsWith('image/')) return 'image';
+    if (contentType.startsWith('audio/')) return 'audio';
+    if (contentType.startsWith('video/')) return 'video';
+  }
+  
+  // Check URL extension
+  if (/\.(jpg|jpeg|png|gif|webp|heic|heif)(\?|$)/i.test(urlLower)) return 'image';
+  if (/\.(mp3|wav|ogg|webm|m4a|aac|opus)(\?|$)/i.test(urlLower)) return 'audio';
+  if (/\.(mp4|mov|avi|mkv)(\?|$)/i.test(urlLower)) return 'video';
+  
+  return 'unknown';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -149,7 +282,7 @@ serve(async (req) => {
       throw new Error('Supabase configuration is missing');
     }
 
-    const { text, user_id, couple_id, timezone } = await req.json();
+    const { text, user_id, couple_id, timezone, media } = await req.json();
     
     if (!text || !user_id) {
       throw new Error('Missing required fields: text and user_id');
@@ -158,6 +291,39 @@ serve(async (req) => {
     // Initialize clients
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+    // Process media if provided
+    const mediaDescriptions: string[] = [];
+    const mediaUrls: string[] = media || [];
+    
+    if (mediaUrls.length > 0) {
+      console.log('[process-note] Processing', mediaUrls.length, 'media files');
+      
+      for (const mediaUrl of mediaUrls) {
+        const mediaType = getMediaType(mediaUrl);
+        console.log('[process-note] Media type:', mediaType, 'URL:', mediaUrl);
+        
+        if (mediaType === 'image') {
+          const description = await analyzeImageWithGemini(genai, mediaUrl);
+          if (description) {
+            mediaDescriptions.push(`[Image] ${description}`);
+          }
+        } else if (mediaType === 'audio') {
+          const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
+          if (transcription) {
+            mediaDescriptions.push(`[Audio transcription] ${transcription}`);
+          }
+        } else if (mediaType === 'video') {
+          // For videos, try to transcribe audio track
+          const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
+          if (transcription) {
+            mediaDescriptions.push(`[Video audio transcription] ${transcription}`);
+          }
+        }
+      }
+      
+      console.log('[process-note] Media descriptions:', mediaDescriptions);
+    }
 
     // Fetch existing lists for context
     let existingListsQuery = supabase
@@ -186,10 +352,26 @@ serve(async (req) => {
       : '';
 
     const userTimezone = timezone || 'UTC';
-    const systemPrompt = createSystemPrompt(userTimezone);
-    const userPrompt = `${systemPrompt}${listsContext}\n\nProcess this note:\n"${text}"`;
+    const hasMedia = mediaDescriptions.length > 0;
+    
+    // Combine text with media transcriptions for enhanced processing
+    let enhancedText = text;
+    if (hasMedia) {
+      const audioTranscriptions = mediaDescriptions
+        .filter(d => d.startsWith('[Audio') || d.startsWith('[Video'))
+        .map(d => d.replace(/^\[.*?\]\s*/, ''))
+        .join(' ');
+      
+      if (audioTranscriptions) {
+        enhancedText = `${text}\n\nAudio content: ${audioTranscriptions}`;
+      }
+    }
+    
+    const systemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions);
+    const userPrompt = `${systemPrompt}${listsContext}\n\nProcess this note:\n"${enhancedText}"`;
 
     console.log('[GenAI SDK] Processing note with structured output...');
+    console.log('[GenAI SDK] Has media:', hasMedia, 'Media descriptions count:', mediaDescriptions.length);
 
     // Use Google GenAI SDK with structured output
     const response = await genai.models.generateContent({
@@ -329,7 +511,8 @@ serve(async (req) => {
           items: note.items || [],
           task_owner: note.task_owner || null,
           list_id: listId,
-          original_text: text
+          original_text: text,
+          media_urls: mediaUrls.length > 0 ? mediaUrls : null
         };
       })
     );
@@ -337,7 +520,7 @@ serve(async (req) => {
     const isMultiple = processedResponse.multiple === true || notes.length > 1;
 
     const result = isMultiple
-      ? { multiple: true, notes: processedNotes, original_text: text }
+      ? { multiple: true, notes: processedNotes, original_text: text, media_urls: mediaUrls.length > 0 ? mediaUrls : null }
       : { ...processedNotes[0], original_text: text };
 
     console.log('[GenAI SDK] Final result:', result);
