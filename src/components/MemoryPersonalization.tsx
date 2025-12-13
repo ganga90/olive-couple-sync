@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, Plus, Edit2, Check, X, Star, Loader2 } from 'lucide-react';
+import { Trash2, Plus, Edit2, Check, X, Star, Loader2, Sparkles } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
@@ -18,6 +18,10 @@ interface Memory {
   importance: number;
   created_at: string;
   updated_at?: string;
+  metadata?: {
+    auto_extracted?: boolean;
+    confidence?: number;
+  };
 }
 
 const CATEGORIES = [
@@ -247,10 +251,16 @@ export function MemoryPersonalization() {
                   ) : (
                     <>
                       <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <Badge variant="secondary" className="text-xs">
                             {getCategoryLabel(memory.category)}
                           </Badge>
+                          {memory.metadata?.auto_extracted && (
+                            <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
+                              <Sparkles className="h-3 w-3 mr-1" />
+                              Auto-learned
+                            </Badge>
+                          )}
                           <span className="text-xs text-muted-foreground flex items-center">
                             {Array.from({ length: memory.importance }).map((_, i) => (
                               <Star key={i} className="h-3 w-3 fill-primary text-primary" />
