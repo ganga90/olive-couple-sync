@@ -17,7 +17,12 @@ const singleNoteSchema = {
     },
     category: { 
       type: Type.STRING, 
-      description: "Category using lowercase with underscores: entertainment, date_ideas, home_improvement, travel, groceries, shopping, personal, task" 
+      description: "Category using lowercase with underscores: entertainment, date_ideas, home_improvement, travel, groceries, shopping, personal, task, books, movies_tv" 
+    },
+    target_list: {
+      type: Type.STRING,
+      nullable: true,
+      description: "CRITICAL: The exact name of an existing user list where this note should be saved. Use when user has preferences or when content clearly matches a list name."
     },
     due_date: { 
       type: Type.STRING, 
@@ -37,7 +42,7 @@ const singleNoteSchema = {
     tags: { 
       type: Type.ARRAY, 
       items: { type: Type.STRING },
-      description: "Extract themes like urgent, financial, health" 
+      description: "Extract themes like urgent, financial, health, book, movie, tv_show" 
     },
     items: { 
       type: Type.ARRAY, 
@@ -192,13 +197,14 @@ function deriveSummaryFromMedia(mediaDescriptions: string[]): string {
   return cleaned.length > 97 ? cleaned.substring(0, 97) + '...' : cleaned;
 }
 
-// Dynamic system prompt with media context, style awareness, and user memory
+// Dynamic system prompt with media context, style awareness, user memory, and existing lists
 const createSystemPrompt = (
   userTimezone: string = 'UTC', 
   hasMedia: boolean = false, 
   mediaDescriptions: string[] = [],
   inputStyle: 'succinct' | 'conversational' = 'succinct',
-  memoryContext: string = ''
+  memoryContext: string = '',
+  existingListNames: string[] = []
 ) => {
   const now = new Date();
   const utcTime = now.toISOString();
@@ -256,18 +262,33 @@ The user writes quick, efficient notes with minimal words. They use:
 YOUR JOB: Parse each item directly as a task.
 Example: "buy milk, call doctor tomorrow, book restaurant Friday" → 3 separate tasks`;
   
-  // Build memory context section if available
-  const memorySection = memoryContext 
-    ? `\n\n${memoryContext}\n\n**CRITICAL: PERSONALIZE THE SUMMARY USING THIS CONTEXT**
-You MUST use the user's memories to enrich and personalize the task summary. Examples:
-- User says "buy dog food" + memory says "I have a dog named Milka who eats Royal Canine" → Summary: "Buy Royal Canine food for Milka"
-- User says "bring Milka to the vet" + memory says "Milka is my dog" → Summary: "Bring Milka (dog) to the vet"
-- User says "book dinner" + memory says "we have 2 kids" → Summary: "Book dinner for 4"
-- User says "buy medicine" + memory says "My dog Milka takes Denamarin" → Summary: "Buy Denamarin for Milka"
+  // Build memory context section with list routing instructions
+  let memorySection = '';
+  if (memoryContext) {
+    memorySection = `\n\n${memoryContext}\n\n**CRITICAL: USE MEMORIES FOR PERSONALIZATION AND LIST ROUTING**
+You MUST use the user's memories to:
+1. **Personalize summaries** with specific details (pet names, brands, quantities)
+2. **Route to correct lists** - If memories mention saving specific content types to specific lists, output that exact list name in target_list
 
-The summary should include SPECIFIC details from memories (brand names, pet names, quantities, preferences).
-Do NOT just use the raw input - ENHANCE it with known context.`
-    : '';
+Examples:
+- Memory: "I save books to Books list" + Image of a book → target_list: "Books"
+- Memory: "Movies go to Tv shows and Movies list" + Movie screenshot → target_list: "Tv shows and Movies"
+- User says "buy dog food" + memory "dog named Milka eats Royal Canine" → Summary: "Buy Royal Canine for Milka"`;
+  }
+
+  // Build existing lists section for intelligent routing
+  let listsSection = '';
+  if (existingListNames.length > 0) {
+    listsSection = `\n\n**USER'S EXISTING LISTS**: ${existingListNames.join(', ')}
+
+**LIST ROUTING RULES (CRITICAL)**:
+- When content clearly matches a list name, output that exact list name in target_list
+- Image of books/reading material → look for "Books" list
+- Movies, TV shows, series → look for "Movies", "Tv shows", or similar list
+- Recipes/cooking → look for "Recipes" list
+- If user memories specify routing preferences, ALWAYS follow them
+- Only leave target_list null if content doesn't match any list`;
+  }
 
   return `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
 
@@ -304,6 +325,13 @@ CORE FIELD RULES:
    - groceries/supermarket → "groceries"
    - clothes/electronics/promo codes → "shopping"
    - appointments/bills/rent → "personal"
+   - books/reading → "books"
+   - movies/tv shows/series → "movies_tv"
+
+3. target_list: If user has existing lists and content matches one, output the EXACT list name
+   - Books/reading material → match "Books" list if exists
+   - Movies/TV → match "Movies" or "Tv shows" list if exists
+   - ALWAYS check user memories for routing preferences
 
 3. due_date/reminder_time: ISO format
    - "remind me" → set BOTH reminder_time AND due_date to same datetime
@@ -324,6 +352,7 @@ CORE FIELD RULES:
 6. recurrence_frequency/recurrence_interval: For recurring reminders
    - "every day" → frequency: "daily", interval: 1
    - "every 2 weeks" → frequency: "weekly", interval: 2
+${listsSection}
 
 Return multiple:true with notes array if multiple items detected.
 Return multiple:false with single note fields if just one task.`;
@@ -798,7 +827,10 @@ serve(async (req) => {
       console.log('[process-note] Enhanced text with media:', enhancedText.substring(0, 200) + '...');
     }
     
-    const systemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions, detectedStyle, memoryContext);
+    // Extract list names for AI context
+    const existingListNames = (existingLists || []).map((l: any) => l.name);
+    
+    const systemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions, detectedStyle, memoryContext, existingListNames);
     
     // Build user prompt with explicit media-first instruction when text is vague
     let userPrompt: string;
@@ -887,22 +919,72 @@ Process this note:
       }
     }
 
-    // Smart list pattern detection
+    // Smart list pattern detection - expanded with media types
     const categoryMap: Record<string, string[]> = {
-      'groceries': ['grocery', 'food', 'supermarket', 'shopping list'],
-      'travel': ['travel idea', 'trip', 'vacation', 'flight', 'hotel'],
-      'home improvement': ['home', 'repair', 'fix', 'maintenance', 'renovation'],
-      'entertainment': ['date idea', 'movie', 'show', 'concert', 'event'],
+      'groceries': ['grocery', 'groceries', 'food', 'supermarket', 'shopping list'],
+      'travel': ['travel idea', 'travel', 'trip', 'vacation', 'flight', 'hotel'],
+      'home improvement': ['home', 'repair', 'fix', 'maintenance', 'renovation', 'home_improvement'],
+      'entertainment': ['date idea', 'date_ideas', 'concert', 'event', 'entertainment'],
       'personal': ['task', 'personal', 'appointment', 'errand'],
       'shopping': ['shopping', 'buy', 'purchase', 'store'],
       'health': ['health', 'fitness', 'exercise', 'doctor', 'medical'],
-      'finance': ['finance', 'bill', 'payment', 'budget', 'money']
+      'finance': ['finance', 'bill', 'payment', 'budget', 'money'],
+      'books': ['books', 'book', 'reading', 'novel', 'author', 'literature'],
+      'movies_tv': ['movies_tv', 'movie', 'movies', 'tv', 'tv show', 'tv shows', 'series', 'film', 'watch', 'streaming']
     };
 
-    const findOrCreateList = async (category: string, tags: string[] = []) => {
+    // Content-based keywords for smart matching
+    const contentKeywords: Record<string, string[]> = {
+      'books': ['book', 'author', 'novel', 'reading', 'chapter', 'isbn', 'publisher', 'paperback', 'hardcover', 'ebook', 'kindle'],
+      'movies': ['movie', 'film', 'tv show', 'series', 'watch', 'streaming', 'netflix', 'hulu', 'disney', 'hbo', 'prime video', 'actor', 'director'],
+      'recipes': ['recipe', 'cook', 'bake', 'ingredients', 'cuisine', 'dish', 'meal'],
+      'music': ['song', 'album', 'artist', 'band', 'playlist', 'spotify', 'music']
+    };
+
+    const findOrCreateList = async (category: string, tags: string[] = [], targetList?: string, summary?: string) => {
+      console.log('[findOrCreateList] Input - category:', category, 'targetList:', targetList, 'summary:', summary?.substring(0, 50));
+      
+      // PRIORITY 1: Use AI-suggested target_list if it matches an existing list
+      if (targetList && existingLists && existingLists.length > 0) {
+        const targetLower = targetList.toLowerCase().trim();
+        const exactMatch = existingLists.find((l: any) => 
+          l.name.toLowerCase() === targetLower ||
+          l.name.toLowerCase().includes(targetLower) ||
+          targetLower.includes(l.name.toLowerCase())
+        );
+        if (exactMatch) {
+          console.log('[findOrCreateList] Using AI target_list match:', exactMatch.name);
+          return exactMatch.id;
+        }
+      }
+
+      // PRIORITY 2: Content-based matching - check if summary contains keywords that match a list
+      if (summary && existingLists && existingLists.length > 0) {
+        const summaryLower = summary.toLowerCase();
+        
+        for (const list of existingLists) {
+          const listNameLower = list.name.toLowerCase();
+          
+          // Check if list name is a content keyword category
+          for (const [keywordCategory, keywords] of Object.entries(contentKeywords)) {
+            // If the list name relates to this category
+            const listMatchesCategory = keywords.some(k => listNameLower.includes(k)) || 
+                                        listNameLower.includes(keywordCategory);
+            
+            // And the summary contains keywords from this category
+            const summaryMatchesCategory = keywords.some(k => summaryLower.includes(k));
+            
+            if (listMatchesCategory && summaryMatchesCategory) {
+              console.log('[findOrCreateList] Content-based match! Summary contains', keywordCategory, 'keywords, matched to list:', list.name);
+              return list.id;
+            }
+          }
+        }
+      }
+
       if (!category) return null;
 
-      // Find best matching existing list
+      // PRIORITY 3: Category-based matching
       let bestMatch = null;
       let highestScore = 0;
       
@@ -912,16 +994,31 @@ Process this note:
           const listNameLower = list.name.toLowerCase();
           const categoryLower = category.toLowerCase().replace(/_/g, ' ');
           
+          // Exact match gets highest score
           if (listNameLower === categoryLower) score += 10;
           
+          // Check categoryMap synonyms
           Object.entries(categoryMap).forEach(([canonical, synonyms]) => {
-            if (synonyms.includes(categoryLower) && synonyms.some(s => listNameLower.includes(s))) {
+            const categoryMatchesSynonyms = synonyms.includes(categoryLower) || synonyms.includes(category.toLowerCase());
+            const listMatchesSynonyms = synonyms.some(s => listNameLower.includes(s) || s.includes(listNameLower));
+            
+            if (categoryMatchesSynonyms && listMatchesSynonyms) {
               score += 8;
             }
           });
           
+          // Partial match
           if (listNameLower.includes(categoryLower) || categoryLower.includes(listNameLower)) {
             score += 5;
+          }
+
+          // Tag-based bonus
+          if (tags && tags.length > 0) {
+            for (const tag of tags) {
+              if (listNameLower.includes(tag.toLowerCase())) {
+                score += 3;
+              }
+            }
           }
           
           if (score > highestScore) {
@@ -932,18 +1029,18 @@ Process this note:
       }
       
       if (bestMatch && highestScore >= 5) {
-        console.log('Found matching list:', bestMatch.name);
+        console.log('[findOrCreateList] Category match found:', bestMatch.name, 'score:', highestScore);
         return bestMatch.id;
       }
       
-      // Create new list
+      // Create new list only if no match found
       const listName = category
         .replace(/_/g, ' ')
         .split(' ')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
       
-      console.log('Creating new list:', listName);
+      console.log('[findOrCreateList] No match, creating new list:', listName);
       
       try {
         const { data: newList, error: createError } = await supabase
@@ -977,9 +1074,7 @@ Process this note:
 
     const processedNotes = await Promise.all(
       notes.map(async (note: any) => {
-        const listId = note.category ? await findOrCreateList(note.category, note.tags || []) : null;
-        
-        // Get the summary, with fallback to text or media
+        // Get the summary first, with fallback to text or media
         let summary = note.summary || safeText;
         
         // Normalize generic summaries - replace with media content if available
@@ -987,11 +1082,15 @@ Process this note:
           console.log('[process-note] Replacing generic summary:', summary, '-> deriving from media');
           summary = deriveSummaryFromMedia(mediaDescriptions);
         } else if (!summary || summary.trim() === '') {
-          // Empty summary fallback
           summary = mediaDescriptions.length > 0 
             ? deriveSummaryFromMedia(mediaDescriptions) 
             : 'Saved note';
         }
+
+        // Now find/create list with all context: category, tags, AI's target_list, and the summary for content matching
+        const listId = note.category 
+          ? await findOrCreateList(note.category, note.tags || [], note.target_list, summary) 
+          : null;
         
         return {
           summary,
