@@ -416,27 +416,32 @@ async function analyzeImageWithGemini(genai: GoogleGenAI, imageUrl: string): Pro
     console.log('[Gemini Vision] Image downloaded, type:', mimeType, 'size:', imageBlob.size);
     
     // Enhanced prompt for structured data extraction
-    const extractionPrompt = `Analyze this image and extract ALL useful information for task management. Be thorough and specific.
+    const extractionPrompt = `Analyze this image and extract ALL useful information. Be thorough and specific.
 
 EXTRACT THE FOLLOWING (if present):
-1. **Brand/Company/Service name**: Look for logos, headers, or business names
-2. **Promo codes/Coupon codes**: Any alphanumeric codes for discounts
-3. **Discounts/Offers**: Percentage off, dollar amounts, special deals (e.g., "15% OFF", "$20 off")
-4. **Expiration dates**: When offers expire, appointment dates, due dates (format: Month Day, Year)
-5. **Appointment details**: Doctor/dentist/service names, date, time, location, address
-6. **Event information**: Event name, venue, date, time, ticket info
-7. **Receipt details**: Store name, items purchased, amounts, date
-8. **Contact information**: Phone numbers, emails, websites
-9. **Key action items**: What the user should remember or do
+1. **Books/Media**: Title, author, ISBN, publisher - format as "Book: [TITLE] by [AUTHOR]"
+2. **Products**: Product name, brand, model, price - format as "[BRAND] [PRODUCT NAME]"
+3. **Brand/Company/Service name**: Look for logos, headers, or business names
+4. **Promo codes/Coupon codes**: Any alphanumeric codes for discounts
+5. **Discounts/Offers**: Percentage off, dollar amounts, special deals
+6. **Expiration dates**: When offers expire, appointment dates, due dates
+7. **Appointment details**: Doctor/dentist/service names, date, time, location
+8. **Event information**: Event name, venue, date, time, ticket info
+9. **Receipt details**: Store name, items purchased, amounts, date
+10. **Documents/Forms**: Key information, deadlines, important details
+11. **Contact information**: Phone numbers, emails, websites
+12. **Any text visible**: Extract and summarize the main text content
 
-FORMAT YOUR RESPONSE as a structured summary:
-- If it's a PROMO/COUPON: "Promo code [CODE] for [BRAND]: [DISCOUNT]% off, expires [DATE]. [Any conditions]"
-- If it's an APPOINTMENT: "Appointment at [PLACE] on [DATE] at [TIME]. Address: [ADDRESS]. [Other details]"
+FORMAT YOUR RESPONSE:
+- Start with the MAIN SUBJECT clearly identified (e.g., "Book: The Great Gatsby by F. Scott Fitzgerald")
+- If it's a PROMO/COUPON: "Promo code [CODE] for [BRAND]: [DISCOUNT]% off, expires [DATE]"
+- If it's an APPOINTMENT: "Appointment at [PLACE] on [DATE] at [TIME]"
 - If it's a RECEIPT: "Receipt from [STORE] on [DATE]: [KEY ITEMS]. Total: [AMOUNT]"
-- If it's an EVENT: "Event: [NAME] at [VENUE] on [DATE] at [TIME]. [Ticket/pricing info]"
-- Otherwise: Provide a clear, actionable summary with all extracted details.
+- If it's an EVENT: "Event: [NAME] at [VENUE] on [DATE] at [TIME]"
+- For ANYTHING ELSE: Provide a clear, descriptive summary starting with what the image shows
 
-Be concise but include ALL extracted data. Max 150 words.`;
+CRITICAL: Always provide a specific, descriptive summary. Never return generic text like "an image" or "a photo".
+Be concise but include ALL key extracted data. Max 150 words.`;
 
     // Use Gemini with vision capability
     const response = await genai.models.generateContent({
