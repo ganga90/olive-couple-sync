@@ -381,8 +381,9 @@ serve(async (req) => {
 
       // Prepare note data with location, media, and timezone if available
       // process-note now handles multimodal processing (images via Gemini Vision, audio via ElevenLabs)
+      // Use empty string for media-only messages so process-note knows to derive content from media
       const notePayload: any = { 
-        text: messageBody || 'Process attached media', 
+        text: messageBody || '', 
         user_id: userId,
         couple_id: coupleId,
         timezone: profile.timezone || 'America/New_York' // Default to EST if not set
@@ -391,14 +392,16 @@ serve(async (req) => {
       // Add location context if provided (append to text for context)
       if (latitude && longitude) {
         notePayload.location = { latitude, longitude };
-        notePayload.text = `${notePayload.text} (Location: ${latitude}, ${longitude})`;
+        if (notePayload.text) {
+          notePayload.text = `${notePayload.text} (Location: ${latitude}, ${longitude})`;
+        }
       }
       
       // Add media URLs for multimodal AI processing
       // process-note will analyze images with Gemini Vision and transcribe audio with ElevenLabs
       if (mediaUrls.length > 0) {
         notePayload.media = mediaUrls;
-        console.log('[WhatsApp] Sending', mediaUrls.length, 'media file(s) for AI processing');
+        console.log('[WhatsApp] Sending', mediaUrls.length, 'media file(s) for AI processing (text:', messageBody ? 'present' : 'empty', ')');
       }
 
       const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
