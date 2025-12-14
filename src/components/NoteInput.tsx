@@ -2,7 +2,8 @@ import React, { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Send, Sparkles, Image, X, Mic } from "lucide-react";
+import { Send, Sparkles, Image, X, Mic, Brain } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
@@ -49,9 +50,14 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   // Don't allow note submission while loading or if not authenticated
   if (loading) {
     return (
-      <Card className="bg-gradient-soft border-olive/20 shadow-soft">
-        <div className="p-6 text-center">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-olive mx-auto mb-2"></div>
+      <Card className="overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm shadow-soft">
+        <div className="p-8 text-center">
+          <div className="relative mx-auto mb-4 w-12 h-12">
+            <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
+            <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-primary/10">
+              <Brain className="w-6 h-6 text-primary animate-pulse" />
+            </div>
+          </div>
           <p className="text-sm text-muted-foreground">Loading your notes space...</p>
         </div>
       </Card>
@@ -372,25 +378,27 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   // If we have a single processed note, show the single recap
   if (processedNote) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 animate-fade-in">
         <NoteRecap 
           note={processedNote} 
           onClose={handleCloseRecap} 
           onNoteUpdated={handleNoteUpdated}
         />
-        <div className="space-y-3">
-          <Button 
-            onClick={handleSaveNote}
-            className="w-full bg-olive hover:bg-olive/90 text-white"
-          >
-            Accept & Save Note
-          </Button>
+        <div className="flex gap-3">
           <Button 
             onClick={handleCloseRecap}
             variant="outline" 
-            className="w-full border-olive/30 text-olive hover:bg-olive/10"
+            className="flex-1 border-border hover:bg-muted transition-all duration-200"
           >
-            Cancel & Start Over
+            Start Over
+          </Button>
+          <Button 
+            onClick={handleSaveNote}
+            variant="accent"
+            className="flex-1 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02]"
+          >
+            <Sparkles className="w-4 h-4 mr-2" />
+            Save Note
           </Button>
         </div>
       </div>
@@ -398,65 +406,100 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   }
 
 
+  const hasContent = text.trim() || mediaFiles.length > 0;
+
   return (
-    <Card className="bg-gradient-soft border-olive/20 shadow-soft">
+    <Card className={cn(
+      "overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm transition-all duration-300",
+      hasContent ? "shadow-lg ring-1 ring-primary/20" : "shadow-soft",
+      isProcessing && "ring-2 ring-primary/30 animate-pulse"
+    )}>
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
-        <div className="text-center mb-4">
-          <h2 className="text-lg font-semibold text-foreground mb-1">
-            Drop a note here
-          </h2>
+        {/* Header with animated brain icon */}
+        <div className="text-center mb-2">
+          <div className="inline-flex items-center gap-2 mb-2">
+            <div className={cn(
+              "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300",
+              isProcessing 
+                ? "bg-primary/20 animate-pulse" 
+                : hasContent 
+                  ? "bg-primary/15" 
+                  : "bg-muted"
+            )}>
+              <Brain className={cn(
+                "w-4 h-4 transition-colors duration-300",
+                isProcessing || hasContent ? "text-primary" : "text-muted-foreground"
+              )} />
+            </div>
+            <h2 className="text-lg font-semibold text-foreground">
+              Brain dump
+            </h2>
+          </div>
           <p className="text-sm text-muted-foreground">
-            I'll organize it for you with AI
+            Drop your thoughts, I'll organize them with AI ✨
           </p>
         </div>
         
-        {/* Media previews */}
+        {/* Media previews with improved styling */}
         {mediaPreviews.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2">
+          <div className="flex flex-wrap gap-3 p-3 bg-muted/50 rounded-xl animate-fade-in">
             {mediaPreviews.map((preview, index) => (
-              <div key={index} className="relative group">
+              <div 
+                key={index} 
+                className="relative group animate-scale-in"
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
                 {preview === 'audio' ? (
-                  <div className="w-16 h-16 rounded-lg bg-olive/10 flex items-center justify-center border border-olive/20">
-                    <Mic className="w-6 h-6 text-olive" />
+                  <div className="w-16 h-16 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-sm">
+                    <Mic className="w-6 h-6 text-primary" />
                   </div>
                 ) : (
                   <img 
                     src={preview} 
                     alt={`Attached ${index + 1}`}
-                    className="w-16 h-16 object-cover rounded-lg border border-olive/20"
+                    className="w-16 h-16 object-cover rounded-xl border border-border shadow-sm"
                   />
                 )}
                 <button
                   type="button"
                   onClick={() => removeMedia(index)}
-                  className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110 shadow-md"
                 >
                   <X className="w-3 h-3" />
                 </button>
               </div>
             ))}
+            <span className="text-xs text-muted-foreground self-end pb-1">
+              {5 - mediaFiles.length} more allowed
+            </span>
           </div>
         )}
         
-        <div className="relative">
+        {/* Textarea with enhanced styling */}
+        <div className="relative group">
           <Textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={getDynamicPlaceholder()}
-            className="min-h-[120px] border-olive/30 focus:border-olive resize-none text-base pr-20 bg-background/50 shadow-[var(--shadow-inset)]"
+            className={cn(
+              "min-h-[140px] resize-none text-base pr-24 transition-all duration-300",
+              "bg-background/60 border-border/60",
+              "focus:border-primary/50 focus:ring-2 focus:ring-primary/10",
+              "placeholder:text-muted-foreground/60",
+              hasContent && "border-primary/30"
+            )}
             disabled={isProcessing || isUploadingMedia}
           />
           
-          {/* Show interim transcript */}
+          {/* Interim transcript with better visibility */}
           {interim && (
-            <div className="absolute top-2 left-3 text-sm text-muted-foreground italic pointer-events-none">
+            <div className="absolute top-3 left-4 right-24 text-sm text-primary/70 italic pointer-events-none animate-pulse">
               {interim}...
             </div>
           )}
           
           {/* Voice and media input controls */}
-          <div className="absolute top-3 right-3 flex items-center gap-2">
-            {/* Hidden file input */}
+          <div className="absolute top-3 right-3 flex items-center gap-1">
             <input
               type="file"
               ref={fileInputRef}
@@ -466,14 +509,17 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
               className="hidden"
             />
             
-            {/* Media upload button */}
             <Button
               type="button"
               variant="ghost"
               size="icon"
               onClick={() => fileInputRef.current?.click()}
               disabled={isProcessing || isUploadingMedia || mediaFiles.length >= 5}
-              className="h-8 w-8 text-muted-foreground hover:text-olive"
+              className={cn(
+                "h-9 w-9 rounded-full transition-all duration-200",
+                "text-muted-foreground hover:text-primary hover:bg-primary/10",
+                mediaFiles.length > 0 && "text-primary bg-primary/10"
+              )}
             >
               <Image className="h-4 w-4" />
             </Button>
@@ -487,30 +533,54 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             />
           </div>
           
-          {/* Send button */}
-          {(text.trim() || mediaFiles.length > 0) && (
-            <div className="absolute bottom-3 right-3">
-              <Button
-                type="submit"
-                size="sm"
-                disabled={isProcessing || isUploadingMedia || (!text.trim() && mediaFiles.length === 0)}
-                className="bg-gradient-olive hover:bg-olive text-white shadow-olive"
-              >
-                {isProcessing || isUploadingMedia ? (
-                  <Sparkles className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          )}
+          {/* Send button with animation */}
+          <div className={cn(
+            "absolute bottom-3 right-3 transition-all duration-300",
+            hasContent ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+          )}>
+            <Button
+              type="submit"
+              size="sm"
+              variant="accent"
+              disabled={isProcessing || isUploadingMedia || !hasContent}
+              className={cn(
+                "shadow-lg transition-all duration-200",
+                "hover:shadow-xl hover:scale-105",
+                isProcessing && "animate-pulse"
+              )}
+            >
+              {isProcessing || isUploadingMedia ? (
+                <Sparkles className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
         
-        <p className="text-xs text-center text-muted-foreground">
-          {isUploadingMedia ? "Uploading media..." :
-           isProcessing ? "AI is organizing your note..." : 
-           "I'll automatically categorize, summarize, and organize your note"}
-        </p>
+        {/* Status text with transitions */}
+        <div className="h-5 flex items-center justify-center">
+          <p className={cn(
+            "text-xs text-center transition-all duration-300",
+            isProcessing || isUploadingMedia 
+              ? "text-primary font-medium" 
+              : "text-muted-foreground"
+          )}>
+            {isUploadingMedia ? (
+              <span className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" />
+                Uploading media...
+              </span>
+            ) : isProcessing ? (
+              <span className="flex items-center gap-2">
+                <Sparkles className="w-3 h-3 animate-spin" />
+                AI is organizing your note...
+              </span>
+            ) : (
+              "AI will categorize, summarize, and organize your note"
+            )}
+          </p>
+        </div>
       </form>
       
       <LoginPromptDialog 
