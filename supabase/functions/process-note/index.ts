@@ -144,6 +144,54 @@ function extractKeyInfoFromConversational(text: string): string {
   return cleaned || text;
 }
 
+// Helper: Patterns that indicate a generic/vague summary that should be replaced
+const GENERIC_SUMMARY_PATTERNS = [
+  /^save\s*(this|it)?$/i,
+  /^remember\s*(this|it)?$/i,
+  /^process\s*(attached\s*)?(media|image|photo|file)?$/i,
+  /^keep\s*(this|it)?$/i,
+  /^store\s*(this|it)?$/i,
+  /^note\s*(this|it)?$/i,
+  /^add\s*(this|it)?$/i,
+  /^this$/i,
+  /^it$/i,
+  /^here$/i,
+  /^$/
+];
+
+// Check if a summary is too generic and should be replaced with media content
+function isGenericSummary(summary: string): boolean {
+  const s = (summary || '').trim();
+  return GENERIC_SUMMARY_PATTERNS.some(p => p.test(s));
+}
+
+// Derive a meaningful summary from media descriptions
+function deriveSummaryFromMedia(mediaDescriptions: string[]): string {
+  if (!mediaDescriptions || mediaDescriptions.length === 0) {
+    return 'Saved media';
+  }
+  
+  // Get the first media description and clean it up
+  const raw = mediaDescriptions[0] || '';
+  // Strip leading "[Image]", "[Audio transcription]" etc.
+  const cleaned = raw.replace(/^\[.*?\]\s*/, '').trim();
+  
+  if (!cleaned) {
+    return 'Saved media';
+  }
+  
+  // Extract key info: look for promo codes, appointments, event names, etc.
+  // Try to get a concise first sentence or phrase
+  const firstSentence = cleaned.split(/[.!?\n]/)[0]?.trim();
+  
+  if (firstSentence && firstSentence.length <= 100) {
+    return firstSentence;
+  }
+  
+  // Truncate if too long
+  return cleaned.length > 97 ? cleaned.substring(0, 97) + '...' : cleaned;
+}
+
 // Dynamic system prompt with media context, style awareness, and user memory
 const createSystemPrompt = (
   userTimezone: string = 'UTC', 
@@ -578,9 +626,20 @@ serve(async (req) => {
 
     const { text, user_id, couple_id, timezone, media, style } = await req.json();
     
-    if (!text || !user_id) {
-      throw new Error('Missing required fields: text and user_id');
+    // Validate required fields - allow empty text if media is present
+    if (!user_id) {
+      throw new Error('Missing required field: user_id');
     }
+    
+    const hasText = typeof text === 'string' && text.trim().length > 0;
+    const hasMediaInput = Array.isArray(media) && media.length > 0;
+    
+    if (!hasText && !hasMediaInput) {
+      throw new Error('Missing required content: provide text or media');
+    }
+    
+    // Use empty string if text is null/undefined but media exists
+    const safeText = text || '';
 
     console.log('[process-note] Received style preference:', style || 'not specified');
 
@@ -670,7 +729,7 @@ serve(async (req) => {
     let detectedStyle: 'succinct' | 'conversational';
     
     if (userStyle === 'auto') {
-      detectedStyle = detectInputStyle(text);
+      detectedStyle = detectInputStyle(safeText);
       console.log('[process-note] Auto-detected style:', detectedStyle);
     } else {
       detectedStyle = userStyle;
@@ -678,11 +737,11 @@ serve(async (req) => {
     }
     
     // Combine text with media transcriptions for enhanced processing
-    let enhancedText = text;
+    let enhancedText = safeText;
     
     // For conversational input, preprocess to extract key info (reduces tokens)
-    if (detectedStyle === 'conversational') {
-      enhancedText = extractKeyInfoFromConversational(text);
+    if (detectedStyle === 'conversational' && safeText) {
+      enhancedText = extractKeyInfoFromConversational(safeText);
       console.log('[process-note] Preprocessed conversational text:', enhancedText.substring(0, 100) + '...');
     }
     
@@ -694,7 +753,7 @@ serve(async (req) => {
       /^(this|it|here)$/i,
       /^$/
     ];
-    const isVagueText = vagueTextPatterns.some(pattern => pattern.test(text.trim()));
+    const isVagueText = vagueTextPatterns.some(pattern => pattern.test(safeText.trim()));
     
     if (hasMedia) {
       // Extract all media content
@@ -716,7 +775,7 @@ serve(async (req) => {
           enhancedText = `[User wants to save/remember the following from an image]\n\n${imageDescriptions}`;
         }
         if (audioTranscriptions) {
-          enhancedText = enhancedText === text 
+          enhancedText = enhancedText === safeText 
             ? `[User wants to save/remember the following from audio]\n\n${audioTranscriptions}`
             : `${enhancedText}\n\n[Audio content]: ${audioTranscriptions}`;
         }
@@ -741,7 +800,7 @@ serve(async (req) => {
     if (isVagueText && hasMedia) {
       userPrompt = `${systemPrompt}${listsContext}
 
-CRITICAL: The user's text ("${text}") is vague/generic. You MUST derive the task summary and details ENTIRELY from the media content provided above. 
+CRITICAL: The user's text ("${safeText}") is vague/generic. You MUST derive the task summary and details ENTIRELY from the media content provided above. 
 Do NOT use the user's text as the summary. Create a meaningful, specific summary based on what was extracted from the media.
 
 Process this note:
@@ -776,10 +835,14 @@ Process this note:
         console.log('[GenAI SDK] Parsed response:', processedResponse);
       } catch (parseError) {
         console.error('[GenAI SDK] Parse error, using fallback:', parseError);
+        // Use media description as fallback summary if available
+        const fallbackSummary = mediaDescriptions.length > 0 
+          ? deriveSummaryFromMedia(mediaDescriptions)
+          : (safeText.length > 100 ? safeText.substring(0, 97) + "..." : safeText || 'Saved note');
         processedResponse = {
           multiple: false,
           notes: [{
-            summary: text.length > 100 ? text.substring(0, 97) + "..." : text,
+            summary: fallbackSummary,
             category: "task",
             due_date: null,
             priority: "medium",
@@ -799,10 +862,14 @@ Process this note:
         (genAiError as any)?.status === 429
       ) {
         console.warn('[GenAI SDK] Quota exceeded, falling back to simple note creation');
+        // Use media description as fallback summary if available
+        const fallbackSummary = mediaDescriptions.length > 0 
+          ? deriveSummaryFromMedia(mediaDescriptions)
+          : (safeText.length > 100 ? safeText.substring(0, 97) + "..." : safeText || 'Saved note');
         processedResponse = {
           multiple: false,
           notes: [{
-            summary: text.length > 100 ? text.substring(0, 97) + "..." : text,
+            summary: fallbackSummary,
             category: "task",
             due_date: null,
             priority: "medium",
@@ -907,8 +974,22 @@ Process this note:
       notes.map(async (note: any) => {
         const listId = note.category ? await findOrCreateList(note.category, note.tags || []) : null;
         
+        // Get the summary, with fallback to text or media
+        let summary = note.summary || safeText;
+        
+        // Normalize generic summaries - replace with media content if available
+        if (isGenericSummary(summary) && mediaDescriptions.length > 0) {
+          console.log('[process-note] Replacing generic summary:', summary, '-> deriving from media');
+          summary = deriveSummaryFromMedia(mediaDescriptions);
+        } else if (!summary || summary.trim() === '') {
+          // Empty summary fallback
+          summary = mediaDescriptions.length > 0 
+            ? deriveSummaryFromMedia(mediaDescriptions) 
+            : 'Saved note';
+        }
+        
         return {
-          summary: note.summary || text,
+          summary,
           category: note.category || "task",
           due_date: note.due_date || null,
           reminder_time: note.reminder_time || null,
@@ -919,7 +1000,7 @@ Process this note:
           items: note.items || [],
           task_owner: note.task_owner || null,
           list_id: listId,
-          original_text: text,
+          original_text: safeText,
           media_urls: mediaUrls.length > 0 ? mediaUrls : null
         };
       })
@@ -928,15 +1009,17 @@ Process this note:
     const isMultiple = processedResponse.multiple === true || notes.length > 1;
 
     const result = isMultiple
-      ? { multiple: true, notes: processedNotes, original_text: text, media_urls: mediaUrls.length > 0 ? mediaUrls : null }
-      : { ...processedNotes[0], original_text: text };
+      ? { multiple: true, notes: processedNotes, original_text: safeText, media_urls: mediaUrls.length > 0 ? mediaUrls : null }
+      : { ...processedNotes[0], original_text: safeText };
 
     console.log('[GenAI SDK] Final result:', result);
     
-    // Auto-extract memories from brain-dump (async, non-blocking)
-    extractMemoriesFromDump(genai, supabase, text, user_id).catch(err => {
-      console.warn('[Memory Extraction] Non-blocking error:', err);
-    });
+    // Auto-extract memories from brain-dump (async, non-blocking) - only if there's actual text
+    if (safeText.trim()) {
+      extractMemoriesFromDump(genai, supabase, safeText, user_id).catch(err => {
+        console.warn('[Memory Extraction] Non-blocking error:', err);
+      });
+    }
     
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
