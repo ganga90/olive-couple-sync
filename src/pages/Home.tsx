@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, TrendingUp, Filter } from "lucide-react";
+import { Plus, TrendingUp, Sparkles, CalendarPlus, Brain } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import type { Note } from "@/types/note";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NoteInput } from "@/components/NoteInput";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { format, addDays, startOfDay, endOfDay, isSameDay } from "date-fns";
+import { format, addDays, startOfDay, isSameDay } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { categories } from "@/constants/categories";
 
@@ -111,10 +111,13 @@ const Home = () => {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-        <h2 className="text-2xl font-semibold mb-2">Welcome to Olive</h2>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center animate-fade-up">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+          <Brain className="w-8 h-8 text-primary" />
+        </div>
+        <h2 className="text-2xl font-bold text-foreground mb-2">Welcome to Olive</h2>
         <p className="text-muted-foreground mb-6">Please sign in to continue</p>
-        <Button onClick={() => navigate('/sign-in')}>Sign In</Button>
+        <Button size="lg" onClick={() => navigate('/sign-in')}>Sign In</Button>
       </div>
     );
   }
@@ -122,53 +125,98 @@ const Home = () => {
   return (
     <div className="flex flex-col h-full">
       {/* Main Content - Scrollable */}
-      <div className="flex-1 overflow-y-auto pb-6">
-        <div className="px-4 pt-6 space-y-6">
-          {/* Greeting */}
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-foreground mb-1">
+      <div className="flex-1 overflow-y-auto pb-6 scrollbar-thin">
+        <div className="px-4 pt-6 space-y-5">
+          {/* Greeting Section */}
+          <div className="text-center animate-fade-up">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-1">
               Hi, {userName} 👋
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm md:text-base text-muted-foreground">
               What's on your mind today?
             </p>
           </div>
 
-          {/* Input Box - Prominent with Green Border */}
+          {/* Brain-dump Input - Hero Style */}
           <div 
             onClick={() => setIsInputOpen(true)}
-            className="bg-card border-2 border-primary rounded-[var(--radius-lg)] p-5 shadow-[var(--shadow-raised)] cursor-pointer hover:border-primary/80 hover:shadow-lg transition-all active:scale-[0.99]"
+            className="group relative bg-card border-2 border-primary/30 rounded-2xl p-5 shadow-card cursor-pointer 
+                       hover:border-primary hover:shadow-raised transition-all duration-300 
+                       active:scale-[0.99] animate-fade-up stagger-1"
           >
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <p className="text-foreground font-medium text-base">
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 
+                              group-hover:bg-primary/20 transition-colors">
+                <Brain className="w-5 h-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-foreground font-medium text-base mb-0.5">
                   Drop a brain-dump here...
                 </p>
+                <p className="text-xs text-muted-foreground truncate">
+                  Tasks, reminders, ideas—type naturally
+                </p>
               </div>
-              <Plus className="h-6 w-6 text-primary" />
+              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center flex-shrink-0 
+                              shadow-sm group-hover:shadow-glow transition-shadow">
+                <Plus className="h-5 w-5 text-primary-foreground" />
+              </div>
             </div>
           </div>
 
           {/* Guidance Hint */}
-          <div className="text-center px-2">
-            <p className="text-xs text-muted-foreground">
-              Try: <span className="italic">"dinner with Luca next Wed 7pm, ask Almu about tickets"</span>
+          <div className="text-center px-2 animate-fade-up stagger-2">
+            <p className="text-xs text-muted-foreground flex items-center justify-center gap-1.5">
+              <Sparkles className="w-3 h-3 text-accent" />
+              <span>Try: </span>
+              <span className="italic text-foreground/70">"dinner with Luca next Wed 7pm, ask Almu about tickets"</span>
             </p>
           </div>
 
+          {/* Quick Action Cards (contextual) */}
+          {notes.length === 0 && (
+            <div className="space-y-2 animate-fade-up stagger-3">
+              <Card className="p-4 border-l-4 border-l-primary bg-primary/5 cursor-pointer hover:bg-primary/10 transition-colors"
+                    onClick={() => setIsInputOpen(true)}>
+                <div className="flex items-center gap-3">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  <div>
+                    <p className="font-medium text-sm text-foreground">Quick start</p>
+                    <p className="text-xs text-muted-foreground">Create your first task now</p>
+                  </div>
+                </div>
+              </Card>
+              
+              <Card className="p-4 border-l-4 border-l-info bg-info/5 cursor-pointer hover:bg-info/10 transition-colors"
+                    onClick={() => navigate('/calendar')}>
+                <div className="flex items-center gap-3">
+                  <CalendarPlus className="w-5 h-5 text-info" />
+                  <div>
+                    <p className="font-medium text-sm text-foreground">Connect Calendar</p>
+                    <p className="text-xs text-muted-foreground">Sync with Google Calendar</p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
+
           {/* Tabs Widget with Filters */}
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden shadow-card animate-fade-up stagger-3">
             <Tabs defaultValue="priority" className="w-full">
-              <div className="bg-primary/5 px-4 py-3 border-b">
-                <TabsList className="w-full grid grid-cols-2 bg-background/50 mb-3">
-                  <TabsTrigger value="priority" className="text-xs">Priority Tasks</TabsTrigger>
-                  <TabsTrigger value="daily" className="text-xs">Daily View</TabsTrigger>
+              <div className="bg-muted/50 px-4 py-3 border-b border-border/50">
+                <TabsList className="w-full grid grid-cols-2 bg-background/80 mb-3 h-10">
+                  <TabsTrigger value="priority" className="text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                    🔥 Priority
+                  </TabsTrigger>
+                  <TabsTrigger value="daily" className="text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                    📅 Daily View
+                  </TabsTrigger>
                 </TabsList>
                 
                 {/* Filters */}
                 <div className="flex gap-2">
                   <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                    <SelectTrigger className="h-8 text-xs flex-1">
+                    <SelectTrigger className="h-9 text-xs flex-1 bg-background">
                       <SelectValue placeholder="Category" />
                     </SelectTrigger>
                     <SelectContent>
@@ -180,7 +228,7 @@ const Home = () => {
                   </Select>
                   
                   <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-                    <SelectTrigger className="h-8 text-xs flex-1">
+                    <SelectTrigger className="h-9 text-xs flex-1 bg-background">
                       <SelectValue placeholder="Owner" />
                     </SelectTrigger>
                     <SelectContent>
@@ -195,29 +243,39 @@ const Home = () => {
               <TabsContent value="priority" className="mt-0">
                 <div className="p-4 space-y-2">
                   {priorityTasks.length > 0 ? (
-                    priorityTasks.map((task) => (
-                      <TaskItem
-                        key={task.id}
-                        task={task}
-                        onToggleComplete={handleToggleComplete}
-                        onTaskClick={handleTaskClick}
-                        authorName={getAuthorName(task)}
-                      />
+                    priorityTasks.map((task, index) => (
+                      <div key={task.id} className={`animate-fade-up stagger-${Math.min(index + 1, 5)}`}>
+                        <TaskItem
+                          task={task}
+                          onToggleComplete={handleToggleComplete}
+                          onTaskClick={handleTaskClick}
+                          authorName={getAuthorName(task)}
+                        />
+                      </div>
                     ))
                   ) : (
-                    <div className="text-center py-8 text-muted-foreground text-sm">
-                      No tasks match the current filters
+                    <div className="text-center py-10 text-muted-foreground">
+                      <div className="w-12 h-12 rounded-full bg-muted mx-auto mb-3 flex items-center justify-center">
+                        <Sparkles className="w-6 h-6" />
+                      </div>
+                      <p className="text-sm font-medium">No tasks match the filters</p>
+                      <p className="text-xs mt-1">Try adjusting your filters above</p>
                     </div>
                   )}
                 </div>
               </TabsContent>
 
               <TabsContent value="daily" className="mt-0">
-                <div className="p-4 space-y-4">
-                  {dailyViewTasks.map((dayData) => (
-                    <div key={dayData.date.toISOString()}>
-                      <h3 className="text-sm font-semibold text-foreground mb-2">
-                        {format(dayData.date, 'EEEE, MMM d')}
+                <div className="p-4 space-y-5">
+                  {dailyViewTasks.map((dayData, dayIndex) => (
+                    <div key={dayData.date.toISOString()} className={`animate-fade-up stagger-${Math.min(dayIndex + 1, 3)}`}>
+                      <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                        <span className={dayIndex === 0 ? "text-primary" : ""}>
+                          {dayIndex === 0 ? "Today" : dayIndex === 1 ? "Tomorrow" : format(dayData.date, 'EEEE')}
+                        </span>
+                        <span className="text-muted-foreground font-normal">
+                          {format(dayData.date, 'MMM d')}
+                        </span>
                       </h3>
                       {dayData.tasks.length > 0 ? (
                         <div className="space-y-2">
@@ -232,7 +290,7 @@ const Home = () => {
                           ))}
                         </div>
                       ) : (
-                        <div className="text-center py-4 text-muted-foreground text-xs">
+                        <div className="text-center py-4 text-muted-foreground text-xs bg-muted/30 rounded-lg">
                           No tasks scheduled
                         </div>
                       )}
@@ -247,11 +305,11 @@ const Home = () => {
           {completedThisWeek > 0 && (
             <button
               onClick={() => navigate('/lists?filter=completed')}
-              className="w-full flex items-center justify-center gap-2 py-3 text-sm text-accent hover:text-accent/80 transition-colors"
+              className="w-full flex items-center justify-center gap-2 py-3 text-sm text-success hover:text-success/80 transition-colors animate-fade-up"
             >
               <TrendingUp className="h-4 w-4" />
-              <span>
-                View {completedThisWeek} {completedThisWeek === 1 ? 'task' : 'tasks'} completed this week - Motivate Me!
+              <span className="font-medium">
+                {completedThisWeek} {completedThisWeek === 1 ? 'task' : 'tasks'} completed this week 🎉
               </span>
             </button>
           )}
@@ -260,9 +318,12 @@ const Home = () => {
 
       {/* Input Dialog */}
       <Dialog open={isInputOpen} onOpenChange={setIsInputOpen}>
-        <DialogContent className="max-w-2xl p-0 gap-0">
+        <DialogContent className="max-w-2xl p-0 gap-0 rounded-2xl">
           <DialogHeader className="px-6 pt-6 pb-4">
-            <DialogTitle>Drop a brain-dump here...</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Brain className="w-5 h-5 text-primary" />
+              Drop a brain-dump
+            </DialogTitle>
           </DialogHeader>
           <div className="px-6 pb-6">
             <NoteInput 
