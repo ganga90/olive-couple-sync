@@ -1,6 +1,5 @@
-import { SignedIn, SignedOut, SignIn, UserProfile } from "@clerk/clerk-react";
 import { useSEO } from "@/hooks/useSEO";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PartnerInfo } from "@/components/PartnerInfo";
@@ -10,7 +9,7 @@ import { WhatsAppLink } from "@/components/WhatsAppLink";
 import { NoteStyleField } from "@/components/NoteStyleField";
 import { MemoryPersonalization } from "@/components/MemoryPersonalization";
 import { GoogleCalendarConnect } from "@/components/GoogleCalendarConnect";
-import { User, LogOut, Bell, Shield, HelpCircle, Brain, Sparkles, Calendar } from "lucide-react";
+import { User, LogOut, Bell, Shield, HelpCircle, Brain, Sparkles, Calendar, ChevronRight } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
 
@@ -28,22 +27,24 @@ const Profile = () => {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-        <User className="h-16 w-16 text-primary mb-4" />
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center animate-fade-up">
+        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+          <User className="h-10 w-10 text-primary" />
+        </div>
         <h2 className="text-2xl font-semibold mb-2">Profile</h2>
         <p className="text-muted-foreground mb-6">Sign in to manage your account</p>
-        <Button onClick={() => navigate('/sign-in')}>Sign In</Button>
+        <Button onClick={() => navigate('/sign-in')} size="lg">Sign In</Button>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="px-4 py-6 space-y-6">
+    <div className="h-full overflow-y-auto bg-background">
+      <div className="px-4 py-6 space-y-4 max-w-2xl mx-auto">
         {/* Header */}
-        <div className="text-center">
-          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-            <User className="h-10 w-10 text-primary" />
+        <div className="text-center animate-fade-up">
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center mx-auto mb-4 shadow-soft">
+            <User className="h-12 w-12 text-primary" />
           </div>
           <h1 className="text-2xl font-bold text-foreground mb-1">
             {user?.firstName || user?.fullName || 'Profile'}
@@ -54,9 +55,14 @@ const Profile = () => {
         </div>
 
         {/* Partner Information */}
-        <Card className="shadow-[var(--shadow-card)]">
-          <CardHeader>
-            <CardTitle className="text-base">Partner Connection</CardTitle>
+        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '50ms' }}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <User className="h-4 w-4 text-primary" />
+              </div>
+              Partner Connection
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <PartnerInfo />
@@ -64,9 +70,14 @@ const Profile = () => {
         </Card>
 
         {/* Timezone */}
-        <Card className="shadow-[var(--shadow-card)]">
-          <CardHeader>
-            <CardTitle className="text-base">Timezone</CardTitle>
+        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '100ms' }}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-secondary/50 flex items-center justify-center">
+                🌍
+              </div>
+              Timezone
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <TimezoneField />
@@ -74,9 +85,14 @@ const Profile = () => {
         </Card>
 
         {/* Phone Number */}
-        <Card className="shadow-[var(--shadow-card)]">
-          <CardHeader>
-            <CardTitle className="text-base">WhatsApp Notifications</CardTitle>
+        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '150ms' }}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center">
+                📱
+              </div>
+              WhatsApp Notifications
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <PhoneNumberField />
@@ -84,9 +100,14 @@ const Profile = () => {
         </Card>
 
         {/* WhatsApp AI Link */}
-        <Card className="shadow-[var(--shadow-card)]">
-          <CardHeader>
-            <CardTitle className="text-base">WhatsApp AI Assistant</CardTitle>
+        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '200ms' }}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center">
+                💬
+              </div>
+              WhatsApp AI Assistant
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <WhatsAppLink />
@@ -94,13 +115,15 @@ const Profile = () => {
         </Card>
 
         {/* Google Calendar */}
-        <Card className="shadow-[var(--shadow-card)]">
-          <CardHeader>
+        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '250ms' }}>
+          <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
+              <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
+                <Calendar className="h-4 w-4 text-accent" />
+              </div>
               Google Calendar
             </CardTitle>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground mt-1">
               Sync your calendar and create events from notes
             </p>
           </CardHeader>
@@ -110,10 +133,12 @@ const Profile = () => {
         </Card>
 
         {/* Note Processing Style */}
-        <Card className="shadow-[var(--shadow-card)]">
-          <CardHeader>
+        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '300ms' }}>
+          <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <Brain className="h-4 w-4" />
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Brain className="h-4 w-4 text-primary" />
+              </div>
               Note Processing Style
             </CardTitle>
           </CardHeader>
@@ -123,13 +148,15 @@ const Profile = () => {
         </Card>
 
         {/* Memory & Personalization */}
-        <Card className="shadow-[var(--shadow-card)]">
-          <CardHeader>
+        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '350ms' }}>
+          <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <Sparkles className="h-4 w-4" />
+              <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
+                <Sparkles className="h-4 w-4 text-accent" />
+              </div>
               Memory & Personalization
             </CardTitle>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground mt-1">
               What Olive knows about you to personalize your experience
             </p>
           </CardHeader>
@@ -139,53 +166,61 @@ const Profile = () => {
         </Card>
 
         {/* Settings Menu */}
-        <Card className="shadow-[var(--shadow-card)]">
-          <CardHeader>
+        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '400ms' }}>
+          <CardHeader className="pb-2">
             <CardTitle className="text-base">Settings</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            <button className="flex items-center gap-3 w-full p-3 rounded-[var(--radius-md)] hover:bg-muted transition-colors text-left">
-              <Bell className="h-5 w-5 text-muted-foreground" />
+          <CardContent className="space-y-1 p-2">
+            <button className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-muted/50 transition-colors text-left group">
+              <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
+                <Bell className="h-5 w-5 text-muted-foreground" />
+              </div>
               <div className="flex-1">
                 <p className="font-medium text-foreground">Notifications</p>
                 <p className="text-xs text-muted-foreground">Manage notification preferences</p>
               </div>
+              <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
             </button>
 
-            <button className="flex items-center gap-3 w-full p-3 rounded-[var(--radius-md)] hover:bg-muted transition-colors text-left">
-              <Shield className="h-5 w-5 text-muted-foreground" />
+            <button className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-muted/50 transition-colors text-left group">
+              <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
+                <Shield className="h-5 w-5 text-muted-foreground" />
+              </div>
               <div className="flex-1">
                 <p className="font-medium text-foreground">Privacy & Security</p>
                 <p className="text-xs text-muted-foreground">Manage your privacy settings</p>
               </div>
+              <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
             </button>
 
-            <button className="flex items-center gap-3 w-full p-3 rounded-[var(--radius-md)] hover:bg-muted transition-colors text-left">
-              <HelpCircle className="h-5 w-5 text-muted-foreground" />
+            <button className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-muted/50 transition-colors text-left group">
+              <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
+                <HelpCircle className="h-5 w-5 text-muted-foreground" />
+              </div>
               <div className="flex-1">
                 <p className="font-medium text-foreground">Help & Support</p>
                 <p className="text-xs text-muted-foreground">Get help with Olive</p>
               </div>
+              <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
             </button>
           </CardContent>
         </Card>
 
         {/* Account Actions */}
-        <Card className="shadow-[var(--shadow-card)]">
-          <CardContent className="p-4">
-            <Button
-              variant="destructive"
-              className="w-full"
-              onClick={handleSignOut}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign Out
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="animate-fade-up" style={{ animationDelay: '450ms' }}>
+          <Button
+            variant="destructive"
+            className="w-full"
+            size="lg"
+            onClick={handleSignOut}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Sign Out
+          </Button>
+        </div>
 
         {/* Version Info */}
-        <div className="text-center pb-4">
+        <div className="text-center pb-8">
           <p className="text-xs text-muted-foreground">Olive v1.0.0</p>
         </div>
       </div>
