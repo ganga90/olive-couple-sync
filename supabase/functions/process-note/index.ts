@@ -686,22 +686,72 @@ serve(async (req) => {
       console.log('[process-note] Preprocessed conversational text:', enhancedText.substring(0, 100) + '...');
     }
     
+    // Detect if user text is vague/generic (needs media content to be primary)
+    const vagueTextPatterns = [
+      /^(save|remember|keep|store|note|add)\s*(this|it)?$/i,
+      /^process\s*(attached\s*)?(media|image|photo|file)?$/i,
+      /^(look|check|see)\s*(at\s*)?(this)?$/i,
+      /^(this|it|here)$/i,
+      /^$/
+    ];
+    const isVagueText = vagueTextPatterns.some(pattern => pattern.test(text.trim()));
+    
     if (hasMedia) {
+      // Extract all media content
+      const imageDescriptions = mediaDescriptions
+        .filter(d => d.startsWith('[Image]'))
+        .map(d => d.replace(/^\[Image\]\s*/, ''))
+        .join('\n');
+      
       const audioTranscriptions = mediaDescriptions
         .filter(d => d.startsWith('[Audio') || d.startsWith('[Video'))
         .map(d => d.replace(/^\[.*?\]\s*/, ''))
         .join(' ');
       
-      if (audioTranscriptions) {
-        enhancedText = `${enhancedText}\n\nAudio content: ${audioTranscriptions}`;
+      if (isVagueText && (imageDescriptions || audioTranscriptions)) {
+        // When text is vague, media content becomes the PRIMARY source
+        console.log('[process-note] Vague text detected with media - using media content as primary source');
+        
+        if (imageDescriptions) {
+          enhancedText = `[User wants to save/remember the following from an image]\n\n${imageDescriptions}`;
+        }
+        if (audioTranscriptions) {
+          enhancedText = enhancedText === text 
+            ? `[User wants to save/remember the following from audio]\n\n${audioTranscriptions}`
+            : `${enhancedText}\n\n[Audio content]: ${audioTranscriptions}`;
+        }
+      } else {
+        // Normal case: append audio transcriptions to user text
+        if (audioTranscriptions) {
+          enhancedText = `${enhancedText}\n\nAudio content: ${audioTranscriptions}`;
+        }
+        // Also add image descriptions to the text if not vague
+        if (imageDescriptions) {
+          enhancedText = `${enhancedText}\n\n[Attached image context]: ${imageDescriptions}`;
+        }
       }
+      
+      console.log('[process-note] Enhanced text with media:', enhancedText.substring(0, 200) + '...');
     }
     
     const systemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions, detectedStyle, memoryContext);
-    const userPrompt = `${systemPrompt}${listsContext}\n\nProcess this note:\n"${enhancedText}"`;
+    
+    // Build user prompt with explicit media-first instruction when text is vague
+    let userPrompt: string;
+    if (isVagueText && hasMedia) {
+      userPrompt = `${systemPrompt}${listsContext}
+
+CRITICAL: The user's text ("${text}") is vague/generic. You MUST derive the task summary and details ENTIRELY from the media content provided above. 
+Do NOT use the user's text as the summary. Create a meaningful, specific summary based on what was extracted from the media.
+
+Process this note:
+"${enhancedText}"`;
+    } else {
+      userPrompt = `${systemPrompt}${listsContext}\n\nProcess this note:\n"${enhancedText}"`;
+    }
 
     console.log('[GenAI SDK] Processing note with structured output...');
-    console.log('[GenAI SDK] Style:', detectedStyle, 'Has media:', hasMedia, 'Media descriptions count:', mediaDescriptions.length);
+    console.log('[GenAI SDK] Style:', detectedStyle, 'Has media:', hasMedia, 'Media descriptions count:', mediaDescriptions.length, 'Is vague text:', isVagueText);
 
     let processedResponse: any;
 
