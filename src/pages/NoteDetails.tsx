@@ -11,13 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { Separator } from "@/components/ui/separator";
 import { NotePrivacyToggle } from "@/components/NotePrivacyToggle";
 import { toast } from "sonner";
-import { ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle, Tag, UserCheck, Calendar as CalendarIcon, Bell, RotateCcw, Loader2 } from "lucide-react";
-import { format } from "date-fns";
+import { 
+  ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle2, Tag, 
+  UserCheck, Calendar as CalendarIcon, Bell, RotateCcw, Loader2,
+  Clock, AlertTriangle, ChevronRight, Sparkles, MessageSquare
+} from "lucide-react";
+import { format, isPast, parseISO } from "date-fns";
 import { assistWithNote, clearNoteConversation } from "@/utils/oliveAssistant";
 import { OliveLogo } from "@/components/OliveLogo";
 import ReactMarkdown from 'react-markdown';
@@ -38,36 +39,13 @@ const NoteDetails = () => {
 
   const [chatOpen, setChatOpen] = useState(false);
   const [messages, setMessages] = useState<{ role: "assistant" | "user"; content: string }[]>(
-    note
-      ? [
-          { role: "assistant", content: `Hi! How can I help with "${note.summary}"?` },
-        ]
-      : []
+    note ? [{ role: "assistant", content: `Hi! How can I help with "${note.summary}"?` }] : []
   );
   const [input, setInput] = useState("");
   const [isAssistantLoading, setIsAssistantLoading] = useState(false);
-  
-  // Master edit mode state
   const [isEditing, setIsEditing] = useState(false);
-  
-  // Local editing state for individual fields (existing)
-  const [isEditingOwner, setIsEditingOwner] = useState(false);
-  const [localTaskOwner, setLocalTaskOwner] = useState<string | null>(note?.task_owner || null);
-  const [isEditingDueDate, setIsEditingDueDate] = useState(false);
-  const [localDueDate, setLocalDueDate] = useState<Date | undefined>(
-    note?.dueDate ? new Date(note.dueDate) : undefined
-  );
-  const [isEditingItems, setIsEditingItems] = useState(false);
-  const [localItems, setLocalItems] = useState<string[]>(note?.items || []);
-  const [isEditingTags, setIsEditingTags] = useState(false);
-  const [localTags, setLocalTags] = useState<string[]>(note?.tags || []);
-  const [isEditingCategory, setIsEditingCategory] = useState(false);
-  const [localCategory, setLocalCategory] = useState<string>(note?.category || "task");
-  const [newItem, setNewItem] = useState("");
-  const [newTag, setNewTag] = useState("");
   const [showReminderDialog, setShowReminderDialog] = useState(false);
   
-  // Combined edit state for all fields
   const [editedNote, setEditedNote] = useState({
     summary: note?.summary || "",
     category: note?.category || "task",
@@ -78,16 +56,8 @@ const NoteDetails = () => {
     taskOwner: note?.task_owner || ""
   });
 
-  // Sync local state with note when note changes
   useEffect(() => {
     if (note) {
-      setLocalTaskOwner(note.task_owner || null);
-      setLocalDueDate(note.dueDate ? new Date(note.dueDate) : undefined);
-      setLocalItems(note.items || []);
-      setLocalTags(note.tags || []);
-      setLocalCategory(note.category || "task");
-      
-      // Also sync the combined edit state
       setEditedNote({
         summary: note.summary || "",
         category: note.category || "task",
@@ -100,38 +70,27 @@ const NoteDetails = () => {
     }
   }, [note?.task_owner, note?.dueDate, note?.items, note?.tags, note?.category, note?.summary, note?.priority]);
 
-  // Get available owners (current user and partner)
   const availableOwners = useMemo(() => {
     const owners = [];
     if (user?.fullName) {
-      owners.push({
-        id: user.id,
-        name: currentCouple?.you_name || user.fullName,
-        isCurrentUser: true
-      });
+      owners.push({ id: user.id, name: currentCouple?.you_name || user.fullName, isCurrentUser: true });
     }
     if (currentCouple?.partner_name) {
-      owners.push({
-        id: 'partner',
-        name: currentCouple.partner_name,
-        isCurrentUser: false
-      });
+      owners.push({ id: 'partner', name: currentCouple.partner_name, isCurrentUser: false });
     }
     return owners;
   }, [user, currentCouple]);
 
+  const isOverdue = note?.dueDate && !note.completed && isPast(parseISO(note.dueDate));
+
   if (!note) {
     return (
-      <main className="min-h-screen bg-gradient-soft">
+      <main className="min-h-screen bg-background">
         <section className="mx-auto max-w-2xl px-4 py-8">
-          <Button 
-            variant="ghost" 
-            onClick={() => navigate(-1)} 
-            className="mb-4 hover:bg-olive/10 hover:text-olive"
-          >
+          <Button variant="ghost" onClick={() => navigate(-1)} className="mb-4">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back
           </Button>
-          <Card className="p-6 bg-white/50 border-olive/20 shadow-soft text-center">
+          <Card className="p-6 text-center border-border/50 shadow-card">
             <p className="text-sm text-muted-foreground">Note not found.</p>
           </Card>
         </section>
@@ -172,165 +131,7 @@ const NoteDetails = () => {
   const handleNewConversation = async () => {
     if (!note) return;
     await clearNoteConversation(note.id, supabase);
-    setMessages([
-      { role: "assistant", content: `Hi! How can I help with "${note.summary}"?` }
-    ]);
-  };
-
-  const updateTaskOwner = async (newOwner: string) => {
-    if (!note) return;
-    
-    console.log("[NoteDetails] Updating task owner from:", note.task_owner, "to:", newOwner);
-    console.log("[NoteDetails] Current user:", user?.id);
-    console.log("[NoteDetails] Note author_id:", note.addedBy);
-    console.log("[NoteDetails] Current couple_id from note:", (note as any).couple_id);
-    
-    try {
-      const ownerValue = newOwner === "none" ? null : newOwner;
-      setLocalTaskOwner(ownerValue);
-      
-      console.log("[NoteDetails] Calling updateNote with task_owner:", ownerValue);
-      console.log("[NoteDetails] Update payload will be:", JSON.stringify({ task_owner: ownerValue }, null, 2));
-      
-      const result = await updateNote(note.id, { task_owner: ownerValue });
-      
-      if (result) {
-        console.log("[NoteDetails] Task owner update successful:", result);
-        setIsEditingOwner(false);
-        toast.success("Task owner updated");
-      } else {
-        console.error("[NoteDetails] Task owner update failed - no result returned");
-        // Revert local state on failure
-        setLocalTaskOwner(note.task_owner || null);
-        toast.error("Failed to update task owner");
-      }
-    } catch (error) {
-      console.error("[NoteDetails] Error updating task owner:", error);
-      toast.error("Failed to update task owner");
-      setLocalTaskOwner(note.task_owner || null);
-    }
-  };
-
-  const updateDueDate = async (newDate: Date | undefined) => {
-    if (!note) return;
-    
-    console.log("[NoteDetails] Updating due date from:", note.dueDate, "to:", newDate?.toISOString());
-    
-    try {
-      const dueDateValue = newDate ? newDate.toISOString() : null;
-      setLocalDueDate(newDate);
-      
-      console.log("[NoteDetails] Calling updateNote with due_date:", dueDateValue);
-      
-      const result = await updateNote(note.id, { dueDate: dueDateValue });
-      
-      if (result) {
-        console.log("[NoteDetails] Due date update successful:", result);
-        setIsEditingDueDate(false);
-        toast.success("Due date updated");
-      } else {
-        console.error("[NoteDetails] Due date update failed - no result returned");
-        // Revert local state on failure
-        setLocalDueDate(note.dueDate ? new Date(note.dueDate) : undefined);
-        toast.error("Failed to update due date");
-      }
-    } catch (error) {
-      console.error("[NoteDetails] Error updating due date:", error);
-      toast.error("Failed to update due date");
-      setLocalDueDate(note.dueDate ? new Date(note.dueDate) : undefined);
-    }
-  };
-
-  const updateItems = async (newItems: string[]) => {
-    if (!note) return;
-    
-    try {
-      setLocalItems(newItems);
-      
-      const result = await updateNote(note.id, { items: newItems });
-      
-      if (result) {
-        setIsEditingItems(false);
-        toast.success("Items updated");
-      } else {
-        setLocalItems(note.items || []);
-        toast.error("Failed to update items");
-      }
-    } catch (error) {
-      console.error("Error updating items:", error);
-      toast.error("Failed to update items");
-      setLocalItems(note.items || []);
-    }
-  };
-
-  const updateTags = async (newTags: string[]) => {
-    if (!note) return;
-    
-    try {
-      setLocalTags(newTags);
-      
-      const result = await updateNote(note.id, { tags: newTags });
-      
-      if (result) {
-        setIsEditingTags(false);
-        toast.success("Tags updated");
-      } else {
-        setLocalTags(note.tags || []);
-        toast.error("Failed to update tags");
-      }
-    } catch (error) {
-      console.error("Error updating tags:", error);
-      toast.error("Failed to update tags");
-      setLocalTags(note.tags || []);
-    }
-  };
-
-  const updateCategory = async (newCategory: string) => {
-    if (!note) return;
-    
-    try {
-      setLocalCategory(newCategory);
-      
-      const result = await updateNote(note.id, { category: newCategory });
-      
-      if (result) {
-        setIsEditingCategory(false);
-        toast.success("Category updated");
-      } else {
-        setLocalCategory(note.category || "task");
-        toast.error("Failed to update category");
-      }
-    } catch (error) {
-      console.error("Error updating category:", error);
-      toast.error("Failed to update category");
-      setLocalCategory(note.category || "task");
-    }
-  };
-
-  const addItem = () => {
-    if (newItem.trim()) {
-      const updatedItems = [...localItems, newItem.trim()];
-      updateItems(updatedItems);
-      setNewItem("");
-    }
-  };
-
-  const removeItem = (index: number) => {
-    const updatedItems = localItems.filter((_, i) => i !== index);
-    updateItems(updatedItems);
-  };
-
-  const addTag = () => {
-    if (newTag.trim() && !localTags.includes(newTag.trim())) {
-      const updatedTags = [...localTags, newTag.trim()];
-      updateTags(updatedTags);
-      setNewTag("");
-    }
-  };
-
-  const removeTag = (index: number) => {
-    const updatedTags = localTags.filter((_, i) => i !== index);
-    updateTags(updatedTags);
+    setMessages([{ role: "assistant", content: `Hi! How can I help with "${note.summary}"?` }]);
   };
 
   const handleSaveEdit = async () => {
@@ -350,13 +151,7 @@ const NoteDetails = () => {
       const result = await updateNote(note.id, updates);
       if (result) {
         setIsEditing(false);
-        // Reset all individual edit modes
-        setIsEditingOwner(false);
-        setIsEditingDueDate(false);
-        setIsEditingItems(false);
-        setIsEditingTags(false);
-        setIsEditingCategory(false);
-        toast.success("Note updated successfully!");
+        toast.success("Note updated!");
       }
     } catch (error) {
       console.error("Error updating note:", error);
@@ -375,12 +170,6 @@ const NoteDetails = () => {
       taskOwner: note?.task_owner || ""
     });
     setIsEditing(false);
-    // Reset all individual edit modes
-    setIsEditingOwner(false);
-    setIsEditingDueDate(false);
-    setIsEditingItems(false);
-    setIsEditingTags(false);
-    setIsEditingCategory(false);
   };
 
   const renderTextWithLinks = (text: string) => {
@@ -390,13 +179,7 @@ const NoteDetails = () => {
     return parts.map((part, index) => {
       if (urlRegex.test(part)) {
         return (
-          <a
-            key={index}
-            href={part}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-olive hover:text-olive/80 underline"
-          >
+          <a key={index} href={part} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
             {part}
           </a>
         );
@@ -405,132 +188,89 @@ const NoteDetails = () => {
     });
   };
 
+  const getPriorityConfig = (priority: string | undefined) => {
+    switch (priority) {
+      case 'high':
+        return { color: 'bg-priority-high', text: 'text-priority-high', bg: 'bg-priority-high/10', label: 'High Priority' };
+      case 'medium':
+        return { color: 'bg-priority-medium', text: 'text-priority-medium', bg: 'bg-priority-medium/10', label: 'Medium Priority' };
+      case 'low':
+        return { color: 'bg-priority-low', text: 'text-priority-low', bg: 'bg-priority-low/10', label: 'Low Priority' };
+      default:
+        return { color: 'bg-muted', text: 'text-muted-foreground', bg: 'bg-muted/50', label: 'No Priority' };
+    }
+  };
+
+  const priorityConfig = getPriorityConfig(note.priority);
+
   return (
-    <main className="h-full overflow-y-auto bg-gradient-soft">
-      <section className="mx-auto max-w-2xl px-4 py-6 pb-24">
-        <header className="mb-6 flex items-center justify-between">
-          <Button 
-            variant="ghost" 
-            onClick={() => navigate(-1)} 
-            aria-label="Go back"
-            className="hover:bg-olive/10 hover:text-olive"
-          >
+    <main className="h-full overflow-y-auto bg-background">
+      <section className="mx-auto max-w-2xl px-4 pt-4 pb-24 md:pb-8">
+        {/* Header */}
+        <header className="flex items-center justify-between mb-6 animate-fade-up">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="touch-target">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-lg font-semibold text-olive-dark">Note Details</h1>
+          
           <div className="flex items-center gap-2">
             {!isEditing ? (
-              <Button 
-                variant="outline" 
-                size="icon" 
-                aria-label="Edit note" 
-                onClick={() => setIsEditing(true)}
-                className="border-olive/30 hover:bg-olive/10 hover:text-olive"
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
+              <>
+                <Button variant="ghost" size="icon" onClick={() => setIsEditing(true)} className="touch-target">
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={onDelete}
+                  className="touch-target text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
             ) : (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSaveEdit}
-                  className="border-green-500/30 text-green-600 hover:bg-green-50"
-                >
-                  Save
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCancelEdit}
-                  className="border-red-500/30 text-red-600 hover:bg-red-50"
-                >
-                  Cancel
-                </Button>
-              </div>
+              <>
+                <Button variant="default" size="sm" onClick={handleSaveEdit}>Save</Button>
+                <Button variant="ghost" size="sm" onClick={handleCancelEdit}>Cancel</Button>
+              </>
             )}
-            <Button 
-              variant="outline" 
-              size="icon" 
-              aria-label="Delete note" 
-              onClick={onDelete}
-              className="border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
           </div>
         </header>
 
-        <div className="space-y-6">
-          {/* Header with success indicator */}
-          <div className="flex items-center gap-3 text-olive-dark">
-            <CheckCircle className="h-6 w-6 text-olive" />
-            <h1 className="text-xl font-semibold">Note Organized!</h1>
-          </div>
-
-          {/* AI Summary Section */}
-          <div className="space-y-3">
-            <div className="text-sm font-medium text-muted-foreground uppercase tracking-wide">AI Summary</div>
+        <div className="space-y-5">
+          {/* Priority Bar + Title */}
+          <div className="animate-fade-up" style={{ animationDelay: '50ms' }}>
+            <div className={cn("h-1.5 w-full rounded-full mb-4", priorityConfig.color)} />
+            
             {isEditing ? (
               <Textarea
                 value={editedNote.summary}
                 onChange={(e) => setEditedNote(prev => ({ ...prev, summary: e.target.value }))}
-                className="text-lg font-semibold border-olive/30 focus:border-olive resize-none"
+                className="text-xl font-bold border-border/50 focus:border-primary resize-none"
                 rows={2}
               />
             ) : (
-              <h2 className="text-2xl font-semibold leading-tight text-olive-dark">{note.summary}</h2>
+              <h1 className="text-2xl font-bold text-foreground leading-tight">{note.summary}</h1>
             )}
           </div>
 
-          {/* Assistant and Complete Actions */}
-          <div className="flex gap-3">
-            <Button 
-              size="lg" 
-              className="flex-1 bg-olive hover:bg-olive/90 text-white shadow-soft"
-              onClick={() => setChatOpen(true)}
-            >
-              <OliveLogo size={20} className="mr-2" />
-              Ask Olive Assistant
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="border-green-500/30 text-green-600 hover:bg-green-50 shadow-soft"
-              onClick={async () => {
-                await updateNote(note.id, { completed: true });
-                toast.success("Note marked as complete!");
-                if (note.list_id) {
-                  navigate(`/lists/${note.list_id}`);
-                } else {
-                  navigate("/");
-                }
-              }}
-            >
-              <CheckCircle className="h-5 w-5 mr-2" />
-              Complete
-            </Button>
-          </div>
-
-          {/* Category and Priority */}
-          <div className="flex items-center gap-3 flex-wrap">
+          {/* Quick Info Badges */}
+          <div className="flex flex-wrap items-center gap-2 animate-fade-up" style={{ animationDelay: '100ms' }}>
             {isEditing ? (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 w-full">
                 <Select
                   value={editedNote.category}
                   onValueChange={(value) => setEditedNote(prev => ({ ...prev, category: value }))}
                 >
-                  <SelectTrigger className="w-40 border-olive/30 focus:border-olive focus:ring-olive/20 bg-white">
-                    <SelectValue placeholder="Select category..." />
+                  <SelectTrigger className="w-36 h-9 text-sm">
+                    <SelectValue placeholder="Category" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white border-olive/20 shadow-lg z-50">
+                  <SelectContent>
                     <SelectItem value="task">Task</SelectItem>
                     <SelectItem value="groceries">Groceries</SelectItem>
                     <SelectItem value="shopping">Shopping</SelectItem>
-                    <SelectItem value="home_improvement">Home Improvement</SelectItem>
+                    <SelectItem value="home_improvement">Home</SelectItem>
                     <SelectItem value="travel">Travel</SelectItem>
                     <SelectItem value="date_ideas">Date Ideas</SelectItem>
-                    <SelectItem value="entertainment">Entertainment</SelectItem>
                     <SelectItem value="personal">Personal</SelectItem>
                     <SelectItem value="reminder">Reminder</SelectItem>
                     <SelectItem value="work">Work</SelectItem>
@@ -542,10 +282,10 @@ const NoteDetails = () => {
                   value={editedNote.priority}
                   onValueChange={(value) => setEditedNote(prev => ({ ...prev, priority: value as "low" | "medium" | "high" }))}
                 >
-                  <SelectTrigger className="w-32 border-olive/30 focus:border-olive focus:ring-olive/20 bg-white">
-                    <SelectValue placeholder="Priority..." />
+                  <SelectTrigger className="w-32 h-9 text-sm">
+                    <SelectValue placeholder="Priority" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white border-olive/20 shadow-lg z-50">
+                  <SelectContent>
                     <SelectItem value="low">Low</SelectItem>
                     <SelectItem value="medium">Medium</SelectItem>
                     <SelectItem value="high">High</SelectItem>
@@ -553,103 +293,115 @@ const NoteDetails = () => {
                 </Select>
               </div>
             ) : (
-              <div className="flex items-center gap-3">
-                <Badge variant="secondary" className="bg-olive/10 text-olive border-olive/20 px-3 py-1">
-                  {note.category}
+              <>
+                <Badge variant="secondary" className="capitalize">{note.category}</Badge>
+                <Badge className={cn("border-0", priorityConfig.bg, priorityConfig.text)}>
+                  {priorityConfig.label}
                 </Badge>
-                {note.priority && (
-                  <Badge 
-                    variant="outline" 
-                    className={`px-3 py-1 ${
-                      note.priority === 'high' ? 'border-destructive/30 text-destructive bg-destructive/5' :
-                      note.priority === 'medium' ? 'border-yellow-500/30 text-yellow-600 bg-yellow-50' :
-                      'border-green-500/30 text-green-600 bg-green-50'
-                    }`}
-                  >
-                    {note.priority} priority
+                {isOverdue && (
+                  <Badge className="bg-priority-high/10 text-priority-high border-0">
+                    <AlertTriangle className="h-3 w-3 mr-1" />
+                    Overdue
                   </Badge>
                 )}
-              </div>
+                {note.completed && (
+                  <Badge className="bg-success/10 text-success border-0">
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Completed
+                  </Badge>
+                )}
+              </>
             )}
           </div>
 
-          {/* Tags Section */}
-          <Card className="bg-white/50 border-olive/20 shadow-soft">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-olive-dark mb-2">
-                <Tag className="h-4 w-4 text-olive" />
-                <span>Tags</span>
-              </div>
-              <div>
+          {/* Action Buttons */}
+          {!note.completed && (
+            <div className="flex gap-2 animate-fade-up" style={{ animationDelay: '150ms' }}>
+              <Button 
+                variant="accent"
+                size="lg" 
+                className="flex-1"
+                onClick={() => setChatOpen(true)}
+              >
+                <MessageSquare className="h-4 w-4 mr-2" />
+                Ask Olive
+              </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                className="flex-1 border-success/30 text-success hover:bg-success/10"
+                onClick={async () => {
+                  await updateNote(note.id, { completed: true });
+                  toast.success("Marked as complete!");
+                  navigate(note.list_id ? `/lists/${note.list_id}` : "/");
+                }}
+              >
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                Complete
+              </Button>
+            </div>
+          )}
+
+          {/* Info Cards Grid */}
+          <div className="grid grid-cols-2 gap-3 animate-fade-up" style={{ animationDelay: '200ms' }}>
+            {/* Due Date Card */}
+            <Card className="border-border/50 shadow-card">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <CalendarIcon className={cn("h-4 w-4", isOverdue ? "text-priority-high" : "text-primary")} />
+                  <span className="text-xs font-medium text-muted-foreground">Due Date</span>
+                </div>
                 {isEditing ? (
-                  <Textarea
-                    value={editedNote.tags}
-                    onChange={(e) => setEditedNote(prev => ({ ...prev, tags: e.target.value }))}
-                    placeholder="Enter tags separated by commas..."
-                    className="border-olive/30 focus:border-olive resize-none"
-                    rows={2}
+                  <input
+                    type="date"
+                    value={editedNote.dueDate}
+                    onChange={(e) => setEditedNote(prev => ({ ...prev, dueDate: e.target.value }))}
+                    className="w-full px-2 py-1 text-sm border rounded-lg border-border/50"
                   />
                 ) : (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {note.tags && note.tags.length > 0 ? (
-                      note.tags.map((tag, idx) => (
-                        <Badge key={idx} variant="outline" className="bg-olive/5 border-olive/20 text-olive-dark">
-                          {tag}
-                        </Badge>
-                      ))
-                    ) : (
-                      <span className="text-sm text-muted-foreground">No tags yet</span>
-                    )}
-                  </div>
+                  <p className={cn("text-sm font-medium", isOverdue ? "text-priority-high" : "text-foreground")}>
+                    {note.dueDate ? format(new Date(note.dueDate), "MMM d, yyyy") : "Not set"}
+                  </p>
                 )}
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          {/* Items List */}
-          <Card className="bg-white/50 border-olive/20 shadow-soft">
-            <CardContent className="p-4">
-              <div className="text-xs font-medium text-olive-dark uppercase tracking-wide mb-3">Items</div>
-              {isEditing ? (
-                <Textarea
-                  value={editedNote.items}
-                  onChange={(e) => setEditedNote(prev => ({ ...prev, items: e.target.value }))}
-                  placeholder="Enter items, one per line..."
-                  className="border-olive/30 focus:border-olive resize-none"
-                  rows={4}
-                />
-              ) : (
-                <ul className="list-disc space-y-1 pl-5 text-sm text-olive-dark">
-                  {note.items && note.items.length > 0 ? (
-                    note.items.map((item, idx) => (
-                      <li key={idx}>{renderTextWithLinks(item)}</li>
-                    ))
-                  ) : (
-                    <p className="text-muted-foreground">No items yet</p>
-                  )}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+            {/* Reminder Card */}
+            <Card 
+              className="border-border/50 shadow-card cursor-pointer hover:shadow-raised transition-shadow"
+              onClick={() => !isEditing && setShowReminderDialog(true)}
+            >
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <Bell className="h-4 w-4 text-accent" />
+                    <span className="text-xs font-medium text-muted-foreground">Reminder</span>
+                  </div>
+                  {!isEditing && <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                </div>
+                <p className="text-sm font-medium text-foreground">
+                  {note.reminder_time ? format(new Date(note.reminder_time), "MMM d, h:mm a") : "Not set"}
+                </p>
+              </CardContent>
+            </Card>
 
-          {/* Task Owner Section */}
-          <Card className="bg-white/50 border-olive/20 shadow-soft">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-olive-dark mb-2">
-                <UserCheck className="h-4 w-4 text-olive" />
-                <span>Task Owner</span>
-              </div>
-              <div>
+            {/* Task Owner Card */}
+            <Card className="border-border/50 shadow-card">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <UserCheck className="h-4 w-4 text-primary" />
+                  <span className="text-xs font-medium text-muted-foreground">Owner</span>
+                </div>
                 {isEditing ? (
                   <Select
                     value={editedNote.taskOwner || "none"}
                     onValueChange={(value) => setEditedNote(prev => ({ ...prev, taskOwner: value === "none" ? "" : value }))}
                   >
-                    <SelectTrigger className="border-olive/30 focus:border-olive focus:ring-olive/20 bg-white">
-                      <SelectValue placeholder="Select task owner..." />
+                    <SelectTrigger className="h-7 text-xs">
+                      <SelectValue placeholder="Select..." />
                     </SelectTrigger>
-                    <SelectContent className="bg-white border-olive/20 shadow-lg z-50">
-                      <SelectItem value="none">No owner assigned</SelectItem>
+                    <SelectContent>
+                      <SelectItem value="none">No owner</SelectItem>
                       {availableOwners.map((owner) => (
                         <SelectItem key={owner.id} value={owner.name}>
                           {owner.name} {owner.isCurrentUser ? "(You)" : ""}
@@ -658,142 +410,152 @@ const NoteDetails = () => {
                     </SelectContent>
                   </Select>
                 ) : (
-                  <p className="text-sm text-muted-foreground">
-                    {note.task_owner || "No owner assigned"}
-                  </p>
+                  <p className="text-sm font-medium text-foreground">{note.task_owner || "Unassigned"}</p>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Privacy Card */}
+            <Card className="border-border/50 shadow-card">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <User className="h-4 w-4 text-primary" />
+                  <span className="text-xs font-medium text-muted-foreground">Privacy</span>
+                </div>
+                <NotePrivacyToggle note={note} size="sm" variant="ghost" />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Tags Section */}
+          <Card className="border-border/50 shadow-card animate-fade-up" style={{ animationDelay: '250ms' }}>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Tag className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold text-foreground">Tags</span>
               </div>
+              {isEditing ? (
+                <Textarea
+                  value={editedNote.tags}
+                  onChange={(e) => setEditedNote(prev => ({ ...prev, tags: e.target.value }))}
+                  placeholder="Enter tags separated by commas..."
+                  className="border-border/50 resize-none text-sm"
+                  rows={2}
+                />
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {note.tags?.length ? (
+                    note.tags.map((tag, idx) => (
+                      <Badge key={idx} variant="outline" className="bg-muted/50">
+                        {tag}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground">No tags</span>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* Due Date Section */}
-          <Card className="bg-white/50 border-olive/20 shadow-soft">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-olive-dark mb-2">
-                <CalendarIcon className="h-4 w-4 text-olive" />
-                <span>Due Date</span>
-              </div>
-              <div>
+          {/* Items Section */}
+          {(note.items?.length || isEditing) && (
+            <Card className="border-border/50 shadow-card animate-fade-up" style={{ animationDelay: '300ms' }}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="h-4 w-4 text-accent" />
+                  <span className="text-sm font-semibold text-foreground">Items</span>
+                  {note.items?.length && (
+                    <Badge variant="secondary" className="text-[10px] h-5">{note.items.length}</Badge>
+                  )}
+                </div>
                 {isEditing ? (
-                  <input
-                    type="date"
-                    value={editedNote.dueDate}
-                    onChange={(e) => setEditedNote(prev => ({ ...prev, dueDate: e.target.value }))}
-                    className="w-full px-3 py-2 border border-olive/30 rounded-md focus:border-olive focus:ring-olive/20 text-sm"
+                  <Textarea
+                    value={editedNote.items}
+                    onChange={(e) => setEditedNote(prev => ({ ...prev, items: e.target.value }))}
+                    placeholder="Enter items, one per line..."
+                    className="border-border/50 resize-none text-sm"
+                    rows={4}
                   />
                 ) : (
-                  <p className="text-sm text-muted-foreground">
-                    {note.dueDate ? format(new Date(note.dueDate), "PPP") : "No due date set"}
-                  </p>
+                  <ul className="space-y-2">
+                    {note.items?.map((item, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm text-foreground">
+                        <div className="h-1.5 w-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+                        <span>{renderTextWithLinks(item)}</span>
+                      </li>
+                    ))}
+                  </ul>
                 )}
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
-          {/* Reminder Section */}
-          <Card className="bg-white/50 border-olive/20 shadow-soft">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2 text-sm font-medium text-olive-dark">
-                  <Bell className="h-4 w-4 text-olive" />
-                  <span>Reminder</span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowReminderDialog(true)}
-                  className="text-olive hover:text-olive-dark hover:bg-olive/10"
-                >
-                  {note.reminder_time ? "Edit" : "Set"} Reminder
-                </Button>
-              </div>
-              <div className="space-y-2">
-                {note.reminder_time ? (
-                  <>
-                    <p className="text-sm text-muted-foreground">
-                      {format(new Date(note.reminder_time), "PPP 'at' p")}
-                    </p>
-                    {note.recurrence_frequency && note.recurrence_frequency !== 'none' && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <span className="font-medium">Repeats:</span>
-                        Every {note.recurrence_interval && note.recurrence_interval > 1 ? note.recurrence_interval : ''} {note.recurrence_frequency}
-                        {note.recurrence_interval && note.recurrence_interval > 1 ? 's' : ''}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No reminder set</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Media & Attachments Section */}
-          <NoteMediaSection mediaUrls={note.media_urls} location={note.location} />
-
-          {/* Metadata */}
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-olive" /> 
-                <span>Added by {note.addedBy || 'You'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CalendarDays className="h-4 w-4 text-olive" /> 
-                <span>{format(new Date(note.createdAt), "MMM d, yyyy 'at' h:mm a")}</span>
-              </div>
-            </div>
-            
-            <NotePrivacyToggle note={note} size="sm" variant="outline" />
+          {/* Media Section */}
+          <div className="animate-fade-up" style={{ animationDelay: '350ms' }}>
+            <NoteMediaSection mediaUrls={note.media_urls} location={note.location} />
           </div>
 
           {/* Original Text */}
-          <Card className="bg-white/50 border-olive/20 shadow-soft">
+          <Card className="border-border/50 shadow-card bg-muted/30 animate-fade-up" style={{ animationDelay: '400ms' }}>
             <CardContent className="p-4">
-              <div className="mb-3 text-xs font-medium text-olive-dark uppercase tracking-wide">Original</div>
-              <p className="text-sm text-muted-foreground italic">"{renderTextWithLinks(note.originalText)}"</p>
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Original</span>
+              </div>
+              <p className="text-sm text-muted-foreground italic leading-relaxed">
+                "{renderTextWithLinks(note.originalText)}"
+              </p>
             </CardContent>
           </Card>
 
+          {/* Metadata Footer */}
+          <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 animate-fade-up" style={{ animationDelay: '450ms' }}>
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1">
+                <User className="h-3 w-3" />
+                {note.addedBy || 'You'}
+              </span>
+              <span className="flex items-center gap-1">
+                <CalendarDays className="h-3 w-3" />
+                {format(new Date(note.createdAt), "MMM d, yyyy")}
+              </span>
+            </div>
+          </div>
         </div>
       </section>
 
+      {/* Olive Assistant Dialog */}
       <Dialog open={chatOpen} onOpenChange={setChatOpen}>
-        <DialogContent className="bg-white border-olive/20 shadow-soft">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between text-olive-dark">
+            <DialogTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <OliveLogo size={20} />
-                Olive Assistant
+                <span>Olive Assistant</span>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleNewConversation}
-                className="text-muted-foreground hover:text-olive"
-                title="Start new conversation"
-              >
+              <Button variant="ghost" size="icon" onClick={handleNewConversation} className="h-8 w-8">
                 <RotateCcw className="h-4 w-4" />
               </Button>
             </DialogTitle>
           </DialogHeader>
-          <div className="max-h-80 space-y-3 overflow-y-auto rounded-md bg-olive/5 border border-olive/10 p-3 text-sm">
+          
+          <div className="max-h-80 space-y-3 overflow-y-auto rounded-xl bg-muted/50 border border-border/50 p-3">
             {messages.map((m, i) => (
               <div key={i} className={m.role === "user" ? "text-right" : "text-left"}>
-                <div className={
-                  m.role === "user"
-                    ? "inline-block rounded-lg bg-olive text-white px-3 py-2 shadow-soft"
-                    : "inline-block rounded-lg bg-white border border-olive/20 px-3 py-2 text-olive-dark shadow-soft"
-                }>
-                  {m.role === "user" ? (
-                    m.content
-                  ) : (
+                <div className={cn(
+                  "inline-block rounded-xl px-3 py-2 max-w-[85%] text-sm",
+                  m.role === "user" 
+                    ? "bg-primary text-primary-foreground" 
+                    : "bg-card border border-border/50 text-foreground"
+                )}>
+                  {m.role === "user" ? m.content : (
                     <ReactMarkdown 
                       components={{
-                        ul: ({children}) => <ul className="list-disc pl-4 space-y-1 text-sm">{children}</ul>,
-                        li: ({children}) => <li className="text-sm">{children}</li>,
-                        strong: ({children}) => <strong className="font-semibold text-olive-dark">{children}</strong>,
-                        p: ({children}) => <p className="text-sm leading-relaxed mb-2 last:mb-0">{children}</p>
+                        ul: ({children}) => <ul className="list-disc pl-4 space-y-1">{children}</ul>,
+                        li: ({children}) => <li>{children}</li>,
+                        strong: ({children}) => <strong className="font-semibold">{children}</strong>,
+                        p: ({children}) => <p className="leading-relaxed mb-2 last:mb-0">{children}</p>
                       }}
                     >
                       {m.content}
@@ -804,22 +566,21 @@ const NoteDetails = () => {
             ))}
             {isAssistantLoading && (
               <div className="text-left">
-                <div className="inline-block rounded-lg bg-white border border-olive/20 px-3 py-2 text-olive-dark shadow-soft">
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin text-olive" />
-                    <span className="text-sm text-muted-foreground">Thinking...</span>
-                  </div>
+                <div className="inline-flex items-center gap-2 rounded-xl bg-card border border-border/50 px-3 py-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground">Thinking...</span>
                 </div>
               </div>
             )}
           </div>
+
           <div className="space-y-2">
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your question..."
-              rows={3}
-              className="border-olive/30 focus:border-olive focus:ring-olive/20"
+              placeholder="Ask anything about this note..."
+              rows={2}
+              className="resize-none"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -828,19 +589,9 @@ const NoteDetails = () => {
               }}
             />
             <DialogFooter>
-              <Button 
-                onClick={onSend}
-                disabled={isAssistantLoading || !input.trim()}
-                className="bg-olive hover:bg-olive/90 text-white"
-              >
-                {isAssistantLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  'Send'
-                )}
+              <Button onClick={onSend} disabled={isAssistantLoading || !input.trim()}>
+                {isAssistantLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Send
               </Button>
             </DialogFooter>
           </div>
