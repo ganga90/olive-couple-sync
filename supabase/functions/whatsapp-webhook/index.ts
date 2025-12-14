@@ -137,6 +137,31 @@ async function downloadAndUploadMedia(
   }
 }
 
+// Constants for input validation
+const MAX_MESSAGE_LENGTH = 10000;
+const MAX_MEDIA_COUNT = 10;
+const TWILIO_MEDIA_DOMAIN = 'api.twilio.com';
+
+// Validate Twilio media URL
+function isValidTwilioMediaUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.endsWith(TWILIO_MEDIA_DOMAIN) || parsed.hostname.includes('twilio');
+  } catch {
+    return false;
+  }
+}
+
+// Validate coordinates
+function isValidCoordinates(lat: string | null, lon: string | null): boolean {
+  if (!lat || !lon) return true; // null is valid (no location)
+  const latitude = parseFloat(lat);
+  const longitude = parseFloat(lon);
+  return !isNaN(latitude) && !isNaN(longitude) && 
+         latitude >= -90 && latitude <= 90 && 
+         longitude >= -180 && longitude <= 180;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -151,14 +176,44 @@ serve(async (req) => {
     // Parse Twilio webhook body
     const formData = await req.formData();
     const fromNumber = standardizePhoneNumber(formData.get('From') as string);
-    const messageBody = (formData.get('Body') as string)?.trim();
+    const rawMessageBody = formData.get('Body') as string;
+    
+    // INPUT VALIDATION: Message length
+    if (rawMessageBody && rawMessageBody.length > MAX_MESSAGE_LENGTH) {
+      console.warn('[Validation] Message too long:', rawMessageBody.length, 'chars');
+      return new Response(
+        createTwimlResponse('Your message is too long. Please keep messages under 10,000 characters.'),
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      );
+    }
+    
+    const messageBody = rawMessageBody?.trim();
     
     // Extract location data if shared
     const latitude = formData.get('Latitude') as string | null;
     const longitude = formData.get('Longitude') as string | null;
     
+    // INPUT VALIDATION: Coordinates
+    if (!isValidCoordinates(latitude, longitude)) {
+      console.warn('[Validation] Invalid coordinates:', { latitude, longitude });
+      return new Response(
+        createTwimlResponse('Invalid location data received. Please try sharing your location again.'),
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      );
+    }
+    
     // Extract media information and download/upload to Supabase Storage
     const numMedia = parseInt(formData.get('NumMedia') as string || '0');
+    
+    // INPUT VALIDATION: Media count
+    if (numMedia > MAX_MEDIA_COUNT) {
+      console.warn('[Validation] Too many media attachments:', numMedia);
+      return new Response(
+        createTwimlResponse(`Too many attachments (${numMedia}). Please send up to ${MAX_MEDIA_COUNT} files at a time.`),
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      );
+    }
+    
     const hadIncomingMedia = numMedia > 0; // Track if Twilio reported media
     const mediaUrls: string[] = [];
     const mediaTypes: string[] = [];
@@ -167,6 +222,13 @@ serve(async (req) => {
     for (let i = 0; i < numMedia; i++) {
       const twilioMediaUrl = formData.get(`MediaUrl${i}`) as string;
       const mediaType = formData.get(`MediaContentType${i}`) as string;
+      
+      // INPUT VALIDATION: Verify Twilio domain
+      if (twilioMediaUrl && !isValidTwilioMediaUrl(twilioMediaUrl)) {
+        console.warn('[Validation] Invalid media URL domain:', twilioMediaUrl);
+        continue; // Skip non-Twilio URLs
+      }
+      
       if (twilioMediaUrl) {
         // Download from Twilio and upload to Supabase Storage
         const supabaseUrl = await downloadAndUploadMedia(twilioMediaUrl, mediaType, supabase);
@@ -182,7 +244,7 @@ serve(async (req) => {
     
     console.log('Incoming WhatsApp message:', { 
       fromNumber, 
-      messageBody, 
+      messageBody: messageBody?.substring(0, 100), // Log truncated for privacy
       location: latitude && longitude ? { latitude, longitude } : null,
       media: mediaUrls.length > 0 ? { count: mediaUrls.length, types: mediaTypes } : null
     });
