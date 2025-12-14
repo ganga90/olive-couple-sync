@@ -1,62 +1,132 @@
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Heart, Sparkles, Bot, ArrowRight } from "lucide-react";
+import { Brain, Calendar, Users, Bell, ArrowRight, Sparkles, Play } from "lucide-react";
 import { Link } from "react-router-dom";
 import { OliveLogo } from "@/components/OliveLogo";
 
 const Welcome = () => {
   useSEO({
-    title: "Drop a brain-dump. Olive turns it into next steps.",
+    title: "Olive — Drop a brain-dump, get organized",
     description: "Type or speak whatever's on your mind—Olive auto-categorizes into lists, assigns owners & dates, and keeps you both in sync.",
   });
 
+  const benefits = [
+    {
+      icon: Brain,
+      title: "Brain-dump anything",
+      description: "Tasks, notes, ideas—just speak or type"
+    },
+    {
+      icon: Calendar,
+      title: "Auto calendar sync",
+      description: "Google Calendar integration built-in"
+    },
+    {
+      icon: Users,
+      title: "Share with partner",
+      description: "Coordinate tasks together seamlessly"
+    },
+    {
+      icon: Bell,
+      title: "Smart reminders",
+      description: "Never forget what matters most"
+    }
+  ];
+
   return (
-    <main className="min-h-screen bg-gradient-soft">
-      <section className="mx-auto max-w-md px-4 py-12">
-        <div className="mb-8 flex justify-center">
-          <div className="inline-flex h-24 w-24 items-center justify-center rounded-full bg-olive/10 shadow-soft border border-olive/20">
-            <OliveLogo size={48} />
+    <main className="min-h-screen bg-gradient-hero overflow-hidden">
+      {/* Hero Section */}
+      <section className="relative mx-auto max-w-lg px-6 pt-16 pb-8">
+        {/* Decorative elements */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 bg-primary/5 rounded-full blur-3xl -z-10" />
+        
+        {/* Logo */}
+        <div className="mb-8 flex justify-center animate-fade-up">
+          <div className="relative">
+            <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse-soft" />
+            <div className="relative inline-flex h-20 w-20 items-center justify-center rounded-full bg-card shadow-raised border border-border/50">
+              <OliveLogo size={40} />
+            </div>
           </div>
         </div>
 
-        <h1 className="mb-2 text-center text-3xl font-bold tracking-tight text-olive-dark md:text-4xl">Drop a brain-dump. Olive turns it into next steps.</h1>
-        <p className="text-center text-base text-sage">Type or speak whatever's on your mind—we'll organize it</p>
+        {/* Headline */}
+        <div className="text-center space-y-3 animate-fade-up" style={{ animationDelay: '100ms' }}>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground leading-tight">
+            Drop a brain-dump.
+            <br />
+            <span className="text-primary">Olive turns it into next steps.</span>
+          </h1>
+          <p className="text-base text-muted-foreground max-w-sm mx-auto">
+            Type or speak whatever's on your mind—we'll organize it into actionable tasks.
+          </p>
+        </div>
 
-        <p className="mx-auto mt-4 max-w-prose text-center text-sm text-muted-foreground">
-          Auto-categorizes into lists, assigns owners & dates, and keeps you both in sync. Ask Olive to help with any task.
-        </p>
+        {/* Benefits Grid */}
+        <div className="mt-10 grid grid-cols-2 gap-3 animate-fade-up" style={{ animationDelay: '200ms' }}>
+          {benefits.map((benefit, index) => (
+            <Card 
+              key={benefit.title}
+              className="p-4 bg-card/80 backdrop-blur-sm border-border/50 shadow-card hover:shadow-raised transition-all duration-200 hover:-translate-y-0.5"
+              style={{ animationDelay: `${300 + index * 50}ms` }}
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                  <benefit.icon className="h-4 w-4 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-foreground leading-tight">
+                    {benefit.title}
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                    {benefit.description}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
 
-        <Card className="mx-auto mt-6 max-w-sm p-4 bg-white/50 border-olive/20 shadow-soft">
-          <ul className="space-y-3">
-            <li className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-olive/10">
-                <Heart className="h-4 w-4 text-olive" aria-hidden />
-              </div>
-              <span className="text-sm text-olive-dark">AI brain-dump organizing</span>
-            </li>
-            <li className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-olive/10">
-                <Sparkles className="h-4 w-4 text-olive" aria-hidden />
-              </div>
-              <span className="text-sm text-olive-dark">Owner & date detection</span>
-            </li>
-            <li className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-olive/10">
-                <Bot className="h-4 w-4 text-olive" aria-hidden />
-              </div>
-              <span className="text-sm text-olive-dark">Ask Olive anything</span>
-            </li>
-          </ul>
-        </Card>
-
-        <div className="mt-8">
-          <Link to="/onboarding" aria-label="Continue to onboarding">
-            <Button size="lg" className="w-full bg-olive hover:bg-olive/90 text-white shadow-soft">
-              Continue
-              <ArrowRight className="ml-2 h-4 w-4" aria-hidden />
+        {/* CTA Buttons */}
+        <div className="mt-10 space-y-3 animate-fade-up" style={{ animationDelay: '400ms' }}>
+          <Link to="/onboarding" className="block">
+            <Button variant="accent" size="xl" className="w-full group">
+              Get Started
+              <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
             </Button>
           </Link>
+          
+          <Link to="/landing" className="block">
+            <Button variant="ghost" size="lg" className="w-full text-muted-foreground hover:text-foreground">
+              <Play className="mr-2 h-4 w-4" />
+              See How It Works
+            </Button>
+          </Link>
+        </div>
+
+        {/* Demo Preview Card */}
+        <Card className="mt-8 p-4 bg-card/60 backdrop-blur-sm border-border/50 shadow-soft animate-fade-up" style={{ animationDelay: '500ms' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="h-4 w-4 text-accent" />
+            <span className="text-xs font-medium text-muted-foreground">Try it</span>
+          </div>
+          <div className="bg-muted/50 rounded-lg p-3 border border-border/30">
+            <p className="text-sm text-foreground/80 italic">
+              "dinner with Maria next Friday, call doctor Monday, buy groceries"
+            </p>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <div className="h-1 w-1 rounded-full bg-success animate-pulse" />
+            <span className="text-xs text-muted-foreground">→ 3 tasks auto-created</span>
+          </div>
+        </Card>
+
+        {/* Social Proof */}
+        <div className="mt-8 text-center animate-fade-up" style={{ animationDelay: '600ms' }}>
+          <p className="text-xs text-muted-foreground">
+            Trusted by couples who want to stay organized together
+          </p>
         </div>
       </section>
     </main>
