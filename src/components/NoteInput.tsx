@@ -183,9 +183,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       console.log('[NoteInput] Processing note with AI for user:', user.id);
       
       // Process the note with Gemini AI (including media and style)
+      // Send empty string for media-only notes - process-note will derive content from media
       const { data: aiProcessedNote, error } = await supabase.functions.invoke('process-note', {
         body: { 
-          text: text.trim() || 'Process attached media',
+          text: text.trim(),
           user_id: user.id,
           couple_id: currentCouple?.id || null,
           list_id: listId || null,

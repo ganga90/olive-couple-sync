@@ -159,8 +159,10 @@ serve(async (req) => {
     
     // Extract media information and download/upload to Supabase Storage
     const numMedia = parseInt(formData.get('NumMedia') as string || '0');
+    const hadIncomingMedia = numMedia > 0; // Track if Twilio reported media
     const mediaUrls: string[] = [];
     const mediaTypes: string[] = [];
+    let mediaDownloadFailed = false;
     
     for (let i = 0; i < numMedia; i++) {
       const twilioMediaUrl = formData.get(`MediaUrl${i}`) as string;
@@ -173,6 +175,7 @@ serve(async (req) => {
           mediaTypes.push(mediaType || 'unknown');
         } else {
           console.warn('Failed to process media, skipping:', twilioMediaUrl);
+          mediaDownloadFailed = true;
         }
       }
     }
@@ -203,6 +206,18 @@ serve(async (req) => {
     }
 
     if (!messageBody && mediaUrls.length === 0) {
+      // Check if Twilio reported media but we failed to download it
+      if (hadIncomingMedia && mediaDownloadFailed) {
+        console.warn('[WhatsApp] User attached media but download failed');
+        return new Response(
+          createTwimlResponse(
+            "I see you attached a photo or file, but I couldn't download it from WhatsApp. " +
+            "Please try sending it again, or add a short caption describing what you want to save."
+          ),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+      
       return new Response(
         createTwimlResponse('Please send a message, share your location 📍, or attach media 📎'),
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
