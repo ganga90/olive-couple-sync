@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Link, useNavigate } from "react-router-dom";
 import { CreateListDialog } from "@/components/CreateListDialog";
 import { useAuth } from "@/providers/AuthProvider";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { 
   ShoppingCart, 
   CheckSquare, 
@@ -27,9 +29,13 @@ import {
   UtensilsCrossed,
   List as ListIcon,
   ChevronRight,
-  Trash2
+  Trash2,
+  Search,
+  AlertCircle,
+  Clock
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { isAfter, parseISO, addDays } from "date-fns";
 
 const getCategoryIcon = (category: string) => {
   const iconMap: Record<string, any> = {
@@ -76,29 +82,32 @@ const Lists = () => {
 
   const filteredLists = useMemo(() => {
     const q = query.trim().toLowerCase();
-    
-    if (!q) {
-      return lists;
-    }
-
-    // Filter lists based on search criteria
-    return lists.filter(list => {
-      // Search in list name
-      if (list.name.toLowerCase().includes(q)) return true;
-      
-      // Search in list description
-      if (list.description && list.description.toLowerCase().includes(q)) return true;
-      
-      return false;
-    });
+    if (!q) return lists;
+    return lists.filter(list => 
+      list.name.toLowerCase().includes(q) || 
+      (list.description && list.description.toLowerCase().includes(q))
+    );
   }, [query, lists]);
 
-  const getListNoteCount = (listId: string) => {
-    return notes.filter(note => note.list_id === listId && !note.completed).length;
+  const getListStats = (listId: string) => {
+    const listNotes = notes.filter(note => note.list_id === listId);
+    const total = listNotes.length;
+    const completed = listNotes.filter(n => n.completed).length;
+    const active = total - completed;
+    const now = new Date();
+    const overdue = listNotes.filter(n => !n.completed && n.dueDate && isAfter(now, parseISO(n.dueDate))).length;
+    const dueThisWeek = listNotes.filter(n => {
+      if (n.completed || !n.dueDate) return false;
+      const due = parseISO(n.dueDate);
+      return isAfter(due, now) && isAfter(addDays(now, 7), due);
+    }).length;
+    const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+    
+    return { total, completed, active, overdue, dueThisWeek, progress };
   };
 
   const handleDeleteList = async (listId: string, listName: string) => {
-    if (window.confirm(`Are you sure you want to delete the "${listName}" list? This action cannot be undone.`)) {
+    if (window.confirm(`Delete "${listName}"? This action cannot be undone.`)) {
       await deleteList(listId);
       refetch();
     }
@@ -107,83 +116,156 @@ const Lists = () => {
   if (!isAuthenticated) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-        <ListIcon className="h-16 w-16 text-primary mb-4" />
-        <h1 className="text-2xl font-semibold mb-2">Lists</h1>
+        <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+          <ListIcon className="h-8 w-8 text-primary" />
+        </div>
+        <h1 className="text-2xl font-bold mb-2">Lists</h1>
         <p className="text-muted-foreground mb-6">Sign in to manage your lists</p>
-        <Button onClick={() => navigate("/sign-in")}>Sign In</Button>
+        <Button variant="accent" onClick={() => navigate("/sign-in")}>Sign In</Button>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto pb-6">
-      <div className="px-4 pt-6 space-y-4 max-w-2xl mx-auto">
+    <div className="h-full overflow-y-auto bg-background">
+      <div className="px-4 pt-6 pb-24 md:pb-6 space-y-4 max-w-2xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-2">
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Lists</h1>
+        <div className="flex items-center justify-between animate-fade-up">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <ListIcon className="h-5 w-5 text-primary" />
+            </div>
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">Lists</h1>
+          </div>
           <CreateListDialog onListCreated={refetch} />
         </div>
 
         {/* Search */}
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search lists..."
-          className="rounded-[var(--radius-lg)] border-border/50 focus:border-primary"
-        />
+        <div className="relative animate-fade-up" style={{ animationDelay: '50ms' }}>
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search lists..."
+            className="pl-10 bg-card border-border/50 focus:border-primary rounded-xl h-11"
+          />
+        </div>
 
         {/* Lists */}
         {loading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3"></div>
-            <p className="text-sm text-muted-foreground">Loading lists...</p>
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <Card key={i} className="animate-pulse">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-xl bg-muted" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-32 bg-muted rounded" />
+                      <div className="h-3 w-24 bg-muted rounded" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         ) : filteredLists.length === 0 ? (
-          <Card className="shadow-[var(--shadow-card)] border-border/50">
+          <Card className="shadow-card border-border/50 animate-fade-up">
             <CardContent className="p-8 text-center">
-              <ListIcon className="h-14 w-14 text-muted-foreground/50 mx-auto mb-4" />
-              <p className="text-muted-foreground mb-4">
-                {query ? "No lists match your search." : "No lists yet. Create your first list!"}
+              <div className="h-16 w-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
+                <ListIcon className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="font-semibold text-foreground mb-1">
+                {query ? "No lists found" : "No lists yet"}
+              </h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                {query ? "Try a different search term" : "Create your first list to get organized"}
               </p>
               {!query && <CreateListDialog onListCreated={refetch} />}
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-2">
-            {filteredLists.map((list) => {
-              const count = getListNoteCount(list.id);
+            {filteredLists.map((list, index) => {
+              const stats = getListStats(list.id);
               const ListIconComponent = getCategoryIcon(list.name);
+              
               return (
                 <Card 
                   key={list.id} 
-                  className="shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-raised)] transition-all duration-200 group border-border/50"
+                  className="shadow-card hover:shadow-raised transition-all duration-200 group border-border/50 animate-fade-up overflow-hidden"
+                  style={{ animationDelay: `${100 + index * 50}ms` }}
                 >
                   <CardContent className="p-0">
                     <Link 
                       to={`/lists/${encodeURIComponent(list.id)}`}
-                      className="flex items-center gap-3 p-3 md:p-4 w-full active:scale-[0.98] transition-transform"
+                      className="flex items-center gap-3 p-4 w-full active:scale-[0.99] transition-transform"
                     >
-                      {/* Icon */}
-                      <div className="flex h-10 w-10 md:h-12 md:w-12 flex-shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-primary/10">
-                        <ListIconComponent className="h-5 w-5 md:h-6 md:w-6 text-primary" />
+                      {/* Icon with priority indicator */}
+                      <div className="relative">
+                        <div className={cn(
+                          "flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl transition-colors",
+                          stats.overdue > 0 ? "bg-priority-high/10" : "bg-primary/10"
+                        )}>
+                          <ListIconComponent className={cn(
+                            "h-6 w-6",
+                            stats.overdue > 0 ? "text-priority-high" : "text-primary"
+                          )} />
+                        </div>
+                        {stats.overdue > 0 && (
+                          <div className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-priority-high flex items-center justify-center">
+                            <span className="text-[10px] font-bold text-white">{stats.overdue}</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <h3 className="font-semibold text-sm md:text-base text-foreground truncate">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-foreground truncate">
                             {list.name}
                           </h3>
                           {!list.is_manual && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-accent/80 text-accent-foreground">
+                            <Badge className="text-[10px] px-1.5 py-0 h-4 bg-accent/20 text-accent border-0">
                               AI
                             </Badge>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {count} {count === 1 ? "item" : "items"}
-                          {list.description && ` • ${list.description}`}
-                        </p>
+                        
+                        {/* Stats row */}
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>{stats.active} active</span>
+                          {stats.overdue > 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="text-priority-high flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                {stats.overdue} overdue
+                              </span>
+                            </>
+                          )}
+                          {stats.dueThisWeek > 0 && stats.overdue === 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="text-priority-medium flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {stats.dueThisWeek} this week
+                              </span>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Progress bar */}
+                        {stats.total > 0 && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <Progress 
+                              value={stats.progress} 
+                              className="h-1.5 flex-1 bg-muted/50"
+                            />
+                            <span className="text-[10px] text-muted-foreground font-medium min-w-[32px] text-right">
+                              {stats.completed}/{stats.total}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Actions */}
@@ -194,7 +276,7 @@ const Lists = () => {
                             e.stopPropagation();
                             handleDeleteList(list.id, list.name);
                           }}
-                          className="md:opacity-0 md:group-hover:opacity-100 transition-opacity p-2 hover:bg-destructive/10 rounded-[var(--radius-sm)]"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-destructive/10 rounded-lg touch-target"
                           aria-label="Delete list"
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
