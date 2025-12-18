@@ -48,7 +48,7 @@ const singleNoteSchema = {
       type: Type.ARRAY, 
       items: { type: Type.STRING },
       nullable: true,
-      description: "CRITICAL: Sub-details, additional info, or action items. Use for: URLs/links, phone numbers, addresses, dietary info (vegan, gluten-free), provider names, specific instructions, prices. Format: 'Label: Value' for clarity." 
+      description: "CRITICAL: Extract ALL sub-details as 'Label: Value' pairs. For BUSINESSES: 'Phone: [number]', 'Website: [URL]', 'Address: [location]', 'Hours: [times]', 'Rating: [stars]', 'Price: [level]', 'Cuisine: [type]'. For APPOINTMENTS: 'Provider: [name]', 'Phone: [number]', 'Time: [time]'. For PROMOS: 'Code: [code]', 'Discount: [%]', 'Expires: [date]'. Include ALL available details." 
     },
     task_owner: { 
       type: Type.STRING, 
@@ -216,28 +216,47 @@ const createSystemPrompt = (
 MEDIA CONTEXT - CRITICAL: The user has attached media with extracted content:
 ${mediaDescriptions.map((d, i) => `Media ${i + 1}: ${d}`).join('\n')}
 
-MEDIA EXTRACTION RULES:
-1. **Use media data as the PRIMARY source** - If the image contains specific data (codes, dates, names), use them in the summary and items.
+MEDIA EXTRACTION RULES - ALWAYS extract ALL details into items array:
+
+1. **BUSINESS/RESTAURANT/LOCATION (Google Maps, Yelp, etc.)**:
+   - Summary: "[Business Name]" (just the name, clean and simple)
+   - Category: "date_ideas" for restaurants, "personal" for services, "health" for medical
+   - Items: Extract EVERY detail as "Label: Value":
+     * "Phone: [number]"
+     * "Website: [URL]"
+     * "Address: [full address]"
+     * "Hours: [business hours]"
+     * "Rating: [X.X stars]"
+     * "Reviews: [number]"
+     * "Price: [$ level]"
+     * "Cuisine: [type]" (for restaurants)
+     * "Features: [amenities]"
+   - Tags: [type, cuisine, "restaurant"/"business", location]
+
 2. **Promo codes/Coupons**: 
    - Summary: "[Brand] promo code: [CODE] - [DISCOUNT]"
    - Items: ["Code: [CODE]", "Discount: [DISCOUNT]", "Expires: [DATE]", "Conditions: [if any]"]
    - Set due_date to expiration date (if found) at 09:00
    - Category: "shopping"
-   - Tags: ["promo", "discount", brand name if known]
+
 3. **Appointments**: 
    - Summary: "[Type] appointment at [Place]"
-   - Set due_date to appointment date and time
-   - Set reminder_time to 24 hours before
-   - Items: ["Location: [ADDRESS]", "Time: [TIME]", "Provider: [NAME]"]
-   - Category: "personal"
-   - Tags: ["appointment", type like "doctor", "dentist"]
+   - Items: ["Provider: [NAME]", "Phone: [NUMBER]", "Address: [LOCATION]", "Time: [TIME]", "Purpose: [REASON]"]
+   - Set due_date and reminder_time (24h before)
+   - Category: "health" or "personal"
+
 4. **Events/Tickets**: 
    - Summary: "[Event name] at [Venue]"
-   - Set due_date to event date and time
-   - Items: ["Venue: [VENUE]", "Date: [DATE]", "Time: [TIME]", "Tickets: [info]"]
+   - Items: ["Venue: [VENUE]", "Date: [DATE]", "Time: [TIME]", "Tickets: [info]", "Price: [COST]"]
    - Category: "entertainment"
-5. **Receipts**: Extract key items, store name, and date
-6. **Generic context**: If user text is vague (like "save this" or "remember"), use the media content to create a meaningful summary`;
+
+5. **Books**:
+   - Summary: "[Book Title]" or "[Book Title] by [Author]"
+   - Items: ["Author: [NAME]", "ISBN: [NUMBER]", "Publisher: [NAME]"]
+   - Category: "books"
+   - target_list: match to Books list if exists
+
+CRITICAL: If user text is vague ("save this", "remember"), use ALL media content to create summary AND populate items with extracted details.`;
   }
   
   // Style-specific guidance
@@ -480,33 +499,63 @@ async function analyzeImageWithGemini(genai: GoogleGenAI, imageUrl: string): Pro
     
     console.log('[Gemini Vision] Image downloaded, type:', mimeType, 'size:', imageBlob.size);
     
-    // Enhanced prompt for structured data extraction
-    const extractionPrompt = `Analyze this image and extract ALL useful information. Be thorough and specific.
+    // Enhanced prompt for structured data extraction - especially for business/location pages
+    const extractionPrompt = `Analyze this image and extract ALL useful information with MAXIMUM detail. Be thorough and specific.
 
-EXTRACT THE FOLLOWING (if present):
-1. **Books/Media**: Title, author, ISBN, publisher - format as "Book: [TITLE] by [AUTHOR]"
-2. **Products**: Product name, brand, model, price - format as "[BRAND] [PRODUCT NAME]"
-3. **Brand/Company/Service name**: Look for logos, headers, or business names
-4. **Promo codes/Coupon codes**: Any alphanumeric codes for discounts
-5. **Discounts/Offers**: Percentage off, dollar amounts, special deals
-6. **Expiration dates**: When offers expire, appointment dates, due dates
-7. **Appointment details**: Doctor/dentist/service names, date, time, location
-8. **Event information**: Event name, venue, date, time, ticket info
-9. **Receipt details**: Store name, items purchased, amounts, date
-10. **Documents/Forms**: Key information, deadlines, important details
-11. **Contact information**: Phone numbers, emails, websites
-12. **Any text visible**: Extract and summarize the main text content
+**BUSINESS/LOCATION PAGES (Google Maps, Yelp, etc.) - EXTRACT ALL:**
+- Business Name (exact name as shown)
+- Phone Number (with area code)
+- Website URL (full URL if visible)
+- Full Address (street, city, state, zip)
+- Hours of Operation (e.g., "Mon-Fri: 9am-5pm")
+- Rating (e.g., "4.5 stars")
+- Number of Reviews (e.g., "1,234 reviews")
+- Price Level (e.g., "$$" or "Moderate")
+- Category/Type (e.g., "Italian Restaurant", "Dentist Office")
+- Cuisine Type (for restaurants)
+- Amenities (e.g., "Outdoor seating", "Wheelchair accessible", "Delivery available")
+- Popular Dishes/Services (if shown)
+- Any special notes (e.g., "Temporarily closed", "By appointment only")
 
-FORMAT YOUR RESPONSE:
-- Start with the MAIN SUBJECT clearly identified (e.g., "Book: The Great Gatsby by F. Scott Fitzgerald")
-- If it's a PROMO/COUPON: "Promo code [CODE] for [BRAND]: [DISCOUNT]% off, expires [DATE]"
-- If it's an APPOINTMENT: "Appointment at [PLACE] on [DATE] at [TIME]"
-- If it's a RECEIPT: "Receipt from [STORE] on [DATE]: [KEY ITEMS]. Total: [AMOUNT]"
-- If it's an EVENT: "Event: [NAME] at [VENUE] on [DATE] at [TIME]"
-- For ANYTHING ELSE: Provide a clear, descriptive summary starting with what the image shows
+**BOOKS/MEDIA:**
+- Title, Author, ISBN, Publisher - format as "Book: [TITLE] by [AUTHOR]"
 
-CRITICAL: Always provide a specific, descriptive summary. Never return generic text like "an image" or "a photo".
-Be concise but include ALL key extracted data. Max 150 words.`;
+**PRODUCTS:**
+- Product name, brand, model, price - format as "[BRAND] [PRODUCT NAME]"
+
+**PROMO CODES/COUPONS:**
+- Code, discount amount, expiration date, conditions
+
+**APPOINTMENTS:**
+- Provider name, specialty, date, time, location, phone
+
+**EVENTS:**
+- Event name, venue, date, time, ticket info, price
+
+**RECEIPTS:**
+- Store name, items, amounts, date
+
+**CONTACT INFO:**
+- Phone numbers, emails, websites, social media handles
+
+FORMAT YOUR RESPONSE AS STRUCTURED DATA:
+For a BUSINESS/RESTAURANT, respond like:
+"[Business Name] - [Type/Category]
+Phone: [number]
+Website: [URL]
+Address: [full address]
+Hours: [hours]
+Rating: [rating] ([reviews] reviews)
+Price: [level]
+Cuisine: [type]
+Features: [amenities]
+Notes: [any special info]"
+
+For other content types, start with the MAIN SUBJECT clearly identified.
+
+CRITICAL: Extract EVERY piece of visible information. Be specific and complete. Never return generic text.
+Max 300 words.`;
+
 
     // Use Gemini with vision capability
     const response = await genai.models.generateContent({
@@ -529,7 +578,7 @@ Be concise but include ALL key extracted data. Max 150 words.`;
       ],
       config: {
         temperature: 0.1,
-        maxOutputTokens: 300
+        maxOutputTokens: 500
       }
     });
     
