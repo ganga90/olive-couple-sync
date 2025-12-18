@@ -8,7 +8,6 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { TaskItem } from "@/components/TaskItem";
-import { QuickEditBottomSheet } from "@/components/QuickEditBottomSheet";
 import type { Note } from "@/types/note";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NoteInput } from "@/components/NoteInput";
@@ -28,7 +27,6 @@ const Home = () => {
   const { you, partner } = useSupabaseCouple();
   const { notes, updateNote } = useSupabaseNotesContext();
   const [isInputOpen, setIsInputOpen] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<Note | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
 
@@ -104,11 +102,7 @@ const Home = () => {
   };
 
   const handleTaskClick = (task: Note) => {
-    setSelectedTask(task);
-  };
-
-  const handleQuickSave = async (noteId: string, updates: Partial<Note>) => {
-    await updateNote(noteId, updates);
+    navigate(`/notes/${task.id}`);
   };
 
   const getAuthorName = (note: Note) => {
@@ -374,16 +368,6 @@ const Home = () => {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Quick Edit Bottom Sheet */}
-      <QuickEditBottomSheet
-        note={selectedTask}
-        isOpen={!!selectedTask}
-        onClose={() => setSelectedTask(null)}
-        onSave={handleQuickSave}
-        partnerName={partner}
-        yourName={you}
-      />
     </div>
   );
 };
