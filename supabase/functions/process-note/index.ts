@@ -13,11 +13,11 @@ const singleNoteSchema = {
   properties: {
     summary: { 
       type: Type.STRING, 
-      description: "Concise title (max 100 chars). Groceries: item name only. Actions: keep verb." 
+      description: "Concise title (max 100 chars). Extract the MAIN entity name. Examples: 'Restaurant Name', 'Doctor Appointment', 'Book Title'. For links, extract the business/entity name from URL or context." 
     },
     category: { 
       type: Type.STRING, 
-      description: "Category using lowercase with underscores: entertainment, date_ideas, home_improvement, travel, groceries, shopping, personal, task, books, movies_tv" 
+      description: "Category using lowercase with underscores: entertainment, date_ideas, home_improvement, travel, groceries, shopping, personal, task, books, movies_tv, health" 
     },
     target_list: {
       type: Type.STRING,
@@ -42,13 +42,13 @@ const singleNoteSchema = {
     tags: { 
       type: Type.ARRAY, 
       items: { type: Type.STRING },
-      description: "Extract themes like urgent, financial, health, book, movie, tv_show" 
+      description: "Extract themes like urgent, financial, health, book, movie, tv_show, restaurant, vegan, appointment" 
     },
     items: { 
       type: Type.ARRAY, 
       items: { type: Type.STRING },
       nullable: true,
-      description: "Only for multi-part tasks like 'plan vacation: book flights, reserve hotel'. Never for grocery lists." 
+      description: "CRITICAL: Sub-details, additional info, or action items. Use for: URLs/links, phone numbers, addresses, dietary info (vegan, gluten-free), provider names, specific instructions, prices. Format: 'Label: Value' for clarity." 
     },
     task_owner: { 
       type: Type.STRING, 
@@ -311,11 +311,12 @@ Examples:
 CRITICAL: For grocery lists or item lists, ALWAYS create separate notes for EACH item.
 
 CORE FIELD RULES:
-1. summary: Concise title (max 100 chars)
+1. summary: Concise title (max 100 chars) - EXTRACT THE MAIN ENTITY NAME
    - Groceries: item name only ("milk" not "buy milk")
    - Actions: keep verb ("fix sink")
+   - **Links/URLs**: Extract the business/entity name from the URL or context (e.g., "Nobu Restaurant" not "restaurant link")
+   - **Appointments**: Type + provider if known ("Doctor Appointment" or "Dr. Smith Appointment")
    - For media with promo codes: "[Brand] promo code: [CODE] - [DISCOUNT]"
-   - For appointments: "[Type] at [Place] - [Date/Time]"
 
 2. category: Use lowercase with underscores
    - concerts/events/shows → "entertainment"
@@ -327,13 +328,14 @@ CORE FIELD RULES:
    - appointments/bills/rent → "personal"
    - books/reading → "books"
    - movies/tv shows/series → "movies_tv"
+   - medical/doctor/dentist → "health"
 
 3. target_list: If user has existing lists and content matches one, output the EXACT list name
    - Books/reading material → match "Books" list if exists
    - Movies/TV → match "Movies" or "Tv shows" list if exists
    - ALWAYS check user memories for routing preferences
 
-3. due_date/reminder_time: ISO format
+4. due_date/reminder_time: ISO format
    - "remind me" → set BOTH reminder_time AND due_date to same datetime
    - Time references: "tomorrow" (next day 09:00), "tonight" (same day 23:59)
    - Weekday references: next occurrence at 09:00
@@ -341,15 +343,49 @@ CORE FIELD RULES:
    - Appointment dates → set as due_date AND reminder_time (24h before)
    - IMPORTANT: When setting reminder_time, ALWAYS also set due_date to match
 
-4. priority: high (urgent/bills/expiring soon), medium (regular), low (ideas)
+5. priority: high (urgent/bills/expiring soon), medium (regular), low (ideas)
 
-5. items: Use for structured data from media (promo details, appointment info). Include:
-   - For promo codes: ["Code: XXX", "Discount: X%", "Expires: Date", "Store: Brand"]
-   - For appointments: ["Location: Address", "Time: HH:MM", "Provider: Name"]
-   - For events: ["Venue: Place", "Date: Date", "Time: Time"]
-   - NEVER for grocery lists.
+6. **items: CRITICAL - Extract ALL relevant sub-details and additional information**
+   Format each item as "Label: Value" for clarity.
+   
+   **For LINKS/URLs:**
+   - "Website: [full URL]"
+   - "Cuisine: [type]" for restaurants
+   - "Dietary: vegan, gluten-free" if mentioned
+   - "Price: $$$" if known
+   - "Hours: [opening hours]" if known
+   - "Address: [location]" if known
+   
+   **For APPOINTMENTS:**
+   - "Provider: Dr. [Name]" or "[Clinic Name]"
+   - "Phone: [number]"
+   - "Address: [location]"
+   - "Time: [appointment time]"
+   - "Purpose: [reason for visit]"
+   - "Notes: [any prep instructions]"
+   
+   **For EVENTS/ENTERTAINMENT:**
+   - "Venue: [place]"
+   - "Date: [date]"
+   - "Time: [time]"
+   - "Tickets: [link or info]"
+   - "Price: [cost]"
+   
+   **For PROMO CODES:**
+   - "Code: [CODE]"
+   - "Discount: [amount]"
+   - "Expires: [date]"
+   - "Store: [brand]"
+   - "Conditions: [restrictions]"
+   
+   **For TASKS with multiple steps:**
+   - Each sub-task or action item
+   
+   **NEVER use items for:**
+   - Grocery lists (create separate notes instead)
+   - Simple single-action tasks with no additional details
 
-6. recurrence_frequency/recurrence_interval: For recurring reminders
+7. recurrence_frequency/recurrence_interval: For recurring reminders
    - "every day" → frequency: "daily", interval: 1
    - "every 2 weeks" → frequency: "weekly", interval: 2
 ${listsSection}

@@ -16,7 +16,8 @@ import { toast } from "sonner";
 import { 
   ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle2, Tag, 
   UserCheck, Calendar as CalendarIcon, Bell, RotateCcw, Loader2,
-  Clock, AlertTriangle, ChevronRight, Sparkles, MessageSquare
+  Clock, AlertTriangle, ChevronRight, Sparkles, MessageSquare, ExternalLink,
+  Phone, MapPin, FileText, DollarSign, Info, Link2
 } from "lucide-react";
 import { format, isPast, parseISO } from "date-fns";
 import { assistWithNote, clearNoteConversation } from "@/utils/oliveAssistant";
@@ -179,13 +180,56 @@ const NoteDetails = () => {
     return parts.map((part, index) => {
       if (urlRegex.test(part)) {
         return (
-          <a key={index} href={part} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+          <a key={index} href={part} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-all">
             {part}
           </a>
         );
       }
       return part;
     });
+  };
+
+  // Parse item to detect label and value, and get appropriate icon
+  const parseItem = (item: string) => {
+    const colonIndex = item.indexOf(':');
+    if (colonIndex > 0 && colonIndex < 30) {
+      const label = item.substring(0, colonIndex).trim().toLowerCase();
+      const value = item.substring(colonIndex + 1).trim();
+      
+      // Determine icon based on label
+      let icon = <Info className="h-3.5 w-3.5 text-muted-foreground" />;
+      let isLink = false;
+      
+      if (label.includes('website') || label.includes('url') || label.includes('link')) {
+        icon = <ExternalLink className="h-3.5 w-3.5 text-primary" />;
+        isLink = /^https?:\/\//i.test(value);
+      } else if (label.includes('phone') || label.includes('tel')) {
+        icon = <Phone className="h-3.5 w-3.5 text-success" />;
+      } else if (label.includes('address') || label.includes('location') || label.includes('venue')) {
+        icon = <MapPin className="h-3.5 w-3.5 text-accent" />;
+      } else if (label.includes('price') || label.includes('cost') || label.includes('discount')) {
+        icon = <DollarSign className="h-3.5 w-3.5 text-priority-medium" />;
+      } else if (label.includes('time') || label.includes('hour') || label.includes('date') || label.includes('expires')) {
+        icon = <Clock className="h-3.5 w-3.5 text-muted-foreground" />;
+      } else if (label.includes('code') || label.includes('promo')) {
+        icon = <Tag className="h-3.5 w-3.5 text-primary" />;
+      } else if (label.includes('note') || label.includes('purpose') || label.includes('condition')) {
+        icon = <FileText className="h-3.5 w-3.5 text-muted-foreground" />;
+      } else if (label.includes('provider') || label.includes('doctor') || label.includes('dr.')) {
+        icon = <User className="h-3.5 w-3.5 text-primary" />;
+      }
+      
+      return { label: item.substring(0, colonIndex).trim(), value, icon, isLink };
+    }
+    
+    // No label found, check if it's a URL
+    const isUrl = /^https?:\/\//i.test(item);
+    return { 
+      label: null, 
+      value: item, 
+      icon: isUrl ? <Link2 className="h-3.5 w-3.5 text-primary" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />,
+      isLink: isUrl 
+    };
   };
 
   const getPriorityConfig = (priority: string | undefined) => {
@@ -458,38 +502,92 @@ const NoteDetails = () => {
             </CardContent>
           </Card>
 
-          {/* Items Section */}
-          {(note.items?.length || isEditing) && (
-            <Card className="border-border/50 shadow-card animate-fade-up" style={{ animationDelay: '300ms' }}>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Sparkles className="h-4 w-4 text-accent" />
-                  <span className="text-sm font-semibold text-foreground">Items</span>
-                  {note.items?.length && (
-                    <Badge variant="secondary" className="text-[10px] h-5">{note.items.length}</Badge>
-                  )}
-                </div>
-                {isEditing ? (
+          {/* Details/Sub-tasks Section */}
+          <Card className="border-border/50 shadow-card animate-fade-up" style={{ animationDelay: '300ms' }}>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="h-4 w-4 text-accent" />
+                <span className="text-sm font-semibold text-foreground">Details & Sub-tasks</span>
+                {note.items?.length && !isEditing && (
+                  <Badge variant="secondary" className="text-[10px] h-5">{note.items.length}</Badge>
+                )}
+              </div>
+              {isEditing ? (
+                <div className="space-y-2">
                   <Textarea
                     value={editedNote.items}
                     onChange={(e) => setEditedNote(prev => ({ ...prev, items: e.target.value }))}
-                    placeholder="Enter items, one per line..."
+                    placeholder="Add details, one per line... (e.g., Website: https://..., Phone: 555-1234)"
                     className="border-border/50 resize-none text-sm"
                     rows={4}
                   />
-                ) : (
-                  <ul className="space-y-2">
-                    {note.items?.map((item, idx) => (
-                      <li key={idx} className="flex items-start gap-2 text-sm text-foreground">
-                        <div className="h-1.5 w-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
-                        <span>{renderTextWithLinks(item)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                  <p className="text-xs text-muted-foreground">
+                    Tip: Use "Label: Value" format for better organization
+                  </p>
+                </div>
+              ) : note.items?.length ? (
+                <div className="space-y-2">
+                  {note.items.map((item, idx) => {
+                    const parsed = parseItem(item);
+                    return (
+                      <div 
+                        key={idx} 
+                        className="flex items-start gap-3 p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors group"
+                      >
+                        <div className="mt-0.5 flex-shrink-0">
+                          {parsed.icon}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          {parsed.label ? (
+                            <div className="space-y-0.5">
+                              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                {parsed.label}
+                              </span>
+                              <p className="text-sm text-foreground break-words">
+                                {parsed.isLink ? (
+                                  <a 
+                                    href={parsed.value} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-primary hover:underline inline-flex items-center gap-1"
+                                  >
+                                    {parsed.value.length > 50 ? parsed.value.substring(0, 50) + '...' : parsed.value}
+                                    <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </a>
+                                ) : (
+                                  renderTextWithLinks(parsed.value)
+                                )}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-foreground break-words">
+                              {parsed.isLink ? (
+                                <a 
+                                  href={parsed.value} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  className="text-primary hover:underline inline-flex items-center gap-1"
+                                >
+                                  {parsed.value.length > 50 ? parsed.value.substring(0, 50) + '...' : parsed.value}
+                                  <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </a>
+                              ) : (
+                                renderTextWithLinks(parsed.value)
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground italic">
+                  No additional details. Click edit to add sub-tasks, links, or notes.
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Media Section */}
           <div className="animate-fade-up" style={{ animationDelay: '350ms' }}>
