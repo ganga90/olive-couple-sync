@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, TrendingUp, Sparkles, CalendarPlus, Brain } from "lucide-react";
+import { Plus, TrendingUp, Sparkles, CalendarPlus, Brain, Clock } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -54,6 +54,14 @@ const Home = () => {
         if (aPriority !== bPriority) return bPriority - aPriority;
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       })
+      .slice(0, 5);
+  }, [filteredNotes]);
+
+  // Get recent tasks (last 5 added)
+  const recentTasks = useMemo(() => {
+    return filteredNotes
+      .filter(note => !note.completed)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 5);
   }, [filteredNotes]);
 
@@ -204,12 +212,15 @@ const Home = () => {
           <Card className="overflow-hidden shadow-card animate-fade-up stagger-3">
             <Tabs defaultValue="priority" className="w-full">
               <div className="bg-muted/50 px-4 py-3 border-b border-border/50">
-                <TabsList className="w-full grid grid-cols-2 bg-background/80 mb-3 h-10">
+                <TabsList className="w-full grid grid-cols-3 bg-background/80 mb-3 h-10">
                   <TabsTrigger value="priority" className="text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                     🔥 Priority
                   </TabsTrigger>
                   <TabsTrigger value="daily" className="text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                    📅 Daily View
+                    📅 Daily
+                  </TabsTrigger>
+                  <TabsTrigger value="recent" className="text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                    🕐 Recent
                   </TabsTrigger>
                 </TabsList>
                 
@@ -296,6 +307,31 @@ const Home = () => {
                       )}
                     </div>
                   ))}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="recent" className="mt-0">
+                <div className="p-4 space-y-2">
+                  {recentTasks.length > 0 ? (
+                    recentTasks.map((task, index) => (
+                      <div key={task.id} className={`animate-fade-up stagger-${Math.min(index + 1, 5)}`}>
+                        <TaskItem
+                          task={task}
+                          onToggleComplete={handleToggleComplete}
+                          onTaskClick={handleTaskClick}
+                          authorName={getAuthorName(task)}
+                        />
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-10 text-muted-foreground">
+                      <div className="w-12 h-12 rounded-full bg-muted mx-auto mb-3 flex items-center justify-center">
+                        <Clock className="w-6 h-6" />
+                      </div>
+                      <p className="text-sm font-medium">No recent tasks</p>
+                      <p className="text-xs mt-1">Add your first task above</p>
+                    </div>
+                  )}
                 </div>
               </TabsContent>
             </Tabs>
