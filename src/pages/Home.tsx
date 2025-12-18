@@ -13,7 +13,7 @@ import type { Note } from "@/types/note";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NoteInput } from "@/components/NoteInput";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { format, addDays, startOfDay, isSameDay } from "date-fns";
+import { format, addDays, startOfDay, isSameDay, formatDistanceToNow } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { categories } from "@/constants/categories";
 
@@ -315,6 +315,12 @@ const Home = () => {
                   {recentTasks.length > 0 ? (
                     recentTasks.map((task, index) => (
                       <div key={task.id} className={`animate-fade-up stagger-${Math.min(index + 1, 5)}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Clock className="w-3 h-3 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(task.createdAt), { addSuffix: true })}
+                          </span>
+                        </div>
                         <TaskItem
                           task={task}
                           onToggleComplete={handleToggleComplete}
