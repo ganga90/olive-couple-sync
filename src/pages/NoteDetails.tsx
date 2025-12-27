@@ -407,6 +407,11 @@ const NoteDetails = () => {
             </div>
           )}
 
+          {/* Olive Tips Section - Prominent placement */}
+          <div className="animate-fade-up" style={{ animationDelay: '175ms' }}>
+            <OliveTipsSection note={note} />
+          </div>
+
           {/* Info Cards Grid */}
           <div className="grid grid-cols-2 gap-3 animate-fade-up" style={{ animationDelay: '200ms' }}>
             {/* Due Date Card */}
@@ -613,11 +618,6 @@ const NoteDetails = () => {
           {/* Media Section */}
           <div className="animate-fade-up" style={{ animationDelay: '350ms' }}>
             <NoteMediaSection mediaUrls={note.media_urls} location={note.location} />
-          </div>
-
-          {/* Olive Tips Section */}
-          <div className="animate-fade-up" style={{ animationDelay: '375ms' }}>
-            <OliveTipsSection note={note} />
           </div>
 
           {/* Original Text */}
