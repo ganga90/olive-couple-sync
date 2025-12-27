@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
 import { NoteMediaSection } from "@/components/NoteMediaSection";
 import { AddToCalendarButton } from "@/components/AddToCalendarButton";
+import { OliveTipsSection } from "@/components/OliveTipsSection";
 
 const NoteDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -612,6 +613,11 @@ const NoteDetails = () => {
           {/* Media Section */}
           <div className="animate-fade-up" style={{ animationDelay: '350ms' }}>
             <NoteMediaSection mediaUrls={note.media_urls} location={note.location} />
+          </div>
+
+          {/* Olive Tips Section */}
+          <div className="animate-fade-up" style={{ animationDelay: '375ms' }}>
+            <OliveTipsSection note={note} />
           </div>
 
           {/* Original Text */}

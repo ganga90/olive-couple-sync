@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.calendar-create-event]
 verify_jwt = false
+
+[functions.generate-olive-tip]
+verify_jwt = false

@@ -50,5 +50,14 @@
     "priorityUpdated": "Priority updated!",
     "markedComplete": "Marked as complete!"
   },
-  "back": "Back"
+  "back": "Back",
+  "oliveTips": {
+    "title": "Tips from Olive",
+    "generate": "Ask Olive for Help",
+    "refresh": "Refresh",
+    "thinking": "Olive is thinking...",
+    "success": "Olive found some helpful suggestions!",
+    "error": "Failed to generate tip. Please try again.",
+    "callNow": "Call Now"
+  }
 }
