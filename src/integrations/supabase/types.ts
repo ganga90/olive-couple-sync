@@ -373,6 +373,7 @@ export type Database = {
           list_id: string | null
           location: Json | null
           media_urls: string[] | null
+          olive_tips: Json | null
           original_text: string
           priority: Database["public"]["Enums"]["note_priority"] | null
           recurrence_frequency: string | null
@@ -397,6 +398,7 @@ export type Database = {
           list_id?: string | null
           location?: Json | null
           media_urls?: string[] | null
+          olive_tips?: Json | null
           original_text: string
           priority?: Database["public"]["Enums"]["note_priority"] | null
           recurrence_frequency?: string | null
@@ -421,6 +423,7 @@ export type Database = {
           list_id?: string | null
           location?: Json | null
           media_urls?: string[] | null
+          olive_tips?: Json | null
           original_text?: string
           priority?: Database["public"]["Enums"]["note_priority"] | null
           recurrence_frequency?: string | null

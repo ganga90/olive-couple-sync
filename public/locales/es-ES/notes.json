@@ -50,5 +50,14 @@
     "priorityUpdated": "¡Prioridad actualizada!",
     "markedComplete": "¡Marcada como completada!"
   },
-  "back": "Volver"
+  "back": "Volver",
+  "oliveTips": {
+    "title": "Consejos de Olive",
+    "generate": "Pide ayuda a Olive",
+    "refresh": "Actualizar",
+    "thinking": "Olive está pensando...",
+    "success": "¡Olive encontró algunas sugerencias útiles!",
+    "error": "Error al generar consejo. Por favor, inténtalo de nuevo.",
+    "callNow": "Llamar Ahora"
+  }
 }

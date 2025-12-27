@@ -1,3 +1,26 @@
+export interface OliveTip {
+  status: 'generated' | 'error';
+  type: 'book' | 'place' | 'action' | 'general';
+  generated_at: string;
+  title: string;
+  summary: string;
+  actions: Array<{
+    label: string;
+    url: string;
+    type: 'primary' | 'secondary';
+    icon?: string;
+  }>;
+  metadata?: {
+    image?: string;
+    rating?: number;
+    phone?: string;
+    address?: string;
+    price?: string;
+    author?: string;
+    source?: string;
+  };
+}
+
 export interface Note {
   id: string;
   originalText: string;
@@ -19,6 +42,7 @@ export interface Note {
   last_reminded_at?: string | null;
   media_urls?: string[] | null;
   location?: { latitude: string; longitude: string } | null;
+  olive_tips?: OliveTip | null;
   // New fields to distinguish note types
   isShared?: boolean;
   coupleId?: string;
