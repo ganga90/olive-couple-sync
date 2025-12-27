@@ -35,5 +35,5 @@ export const LANGUAGES: Record<string, Language> = {
 };
 
 export const DEFAULT_LANGUAGE = 'en';
-export const SUPPORTED_LANGUAGES = Object.keys(LANGUAGES);
+export const SUPPORTED_LANGUAGES = LANGUAGES; // Export the full object for i18n config
 export const LOCALE_PATHS = ['es-es', 'it-it']; // Lowercase for URL paths
