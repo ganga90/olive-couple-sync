@@ -107,7 +107,7 @@ const Home = () => {
   };
 
   const handleTaskClick = (task: Note) => {
-    navigate(`/notes/${task.id}`);
+    navigate(getLocalizedPath(`/notes/${task.id}`));
   };
 
   const getAuthorName = (note: Note) => {
@@ -137,10 +137,10 @@ const Home = () => {
           {/* Greeting Section */}
           <div className="text-center animate-fade-up">
             <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-1">
-              Hi, {userName} 👋
+              {t('home:greeting', { name: userName })}
             </h1>
             <p className="text-sm md:text-base text-muted-foreground">
-              What's on your mind today?
+              {t('home:whatsOnMind')}
             </p>
           </div>
 
@@ -158,13 +158,13 @@ const Home = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-foreground font-medium text-base mb-0.5">
-                  Drop a brain-dump here...
+                  {t('home:brainDump.title')}
                 </p>
                 <p className="text-xs text-muted-foreground truncate">
-                  Tasks, reminders, ideas—type naturally
+                  {t('home:brainDump.subtitle')}
                 </p>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center flex-shrink-0 
+              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center flex-shrink-0
                               shadow-sm group-hover:shadow-glow transition-shadow">
                 <Plus className="h-5 w-5 text-primary-foreground" />
               </div>
@@ -175,8 +175,8 @@ const Home = () => {
           <div className="text-center px-2 animate-fade-up stagger-2">
             <p className="text-xs text-muted-foreground flex items-center justify-center gap-1.5">
               <Sparkles className="w-3 h-3 text-accent" />
-              <span>Try: </span>
-              <span className="italic text-foreground/70">"dinner with Luca next Wed 7pm, ask Almu about tickets"</span>
+              <span>{t('home:hint.try')} </span>
+              <span className="italic text-foreground/70">{t('home:hint.example')}</span>
             </p>
           </div>
 
@@ -188,19 +188,19 @@ const Home = () => {
                 <div className="flex items-center gap-3">
                   <Sparkles className="w-5 h-5 text-primary" />
                   <div>
-                    <p className="font-medium text-sm text-foreground">Quick start</p>
-                    <p className="text-xs text-muted-foreground">Create your first task now</p>
+                    <p className="font-medium text-sm text-foreground">{t('home:quickStart.title')}</p>
+                    <p className="text-xs text-muted-foreground">{t('home:quickStart.subtitle')}</p>
                   </div>
                 </div>
               </Card>
               
               <Card className="p-4 border-l-4 border-l-info bg-info/5 cursor-pointer hover:bg-info/10 transition-colors"
-                    onClick={() => navigate('/calendar')}>
+                    onClick={() => navigate(getLocalizedPath('/calendar'))}>
                 <div className="flex items-center gap-3">
                   <CalendarPlus className="w-5 h-5 text-info" />
                   <div>
-                    <p className="font-medium text-sm text-foreground">Connect Calendar</p>
-                    <p className="text-xs text-muted-foreground">Sync with Google Calendar</p>
+                    <p className="font-medium text-sm text-foreground">{t('home:connectCalendar.title')}</p>
+                    <p className="text-xs text-muted-foreground">{t('home:connectCalendar.subtitle')}</p>
                   </div>
                 </div>
               </Card>
@@ -213,13 +213,13 @@ const Home = () => {
               <div className="bg-muted/50 px-4 py-3 border-b border-border/50">
                 <TabsList className="w-full grid grid-cols-3 bg-background/80 mb-3 h-10">
                   <TabsTrigger value="priority" className="text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                    🔥 Priority
+                    {t('home:tabs.priority')}
                   </TabsTrigger>
                   <TabsTrigger value="daily" className="text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                    📅 Daily
+                    {t('home:tabs.daily')}
                   </TabsTrigger>
                   <TabsTrigger value="recent" className="text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                    🕐 Recent
+                    {t('home:tabs.recent')}
                   </TabsTrigger>
                 </TabsList>
                 
@@ -227,24 +227,24 @@ const Home = () => {
                 <div className="flex gap-2">
                   <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                     <SelectTrigger className="h-9 text-xs flex-1 bg-background">
-                      <SelectValue placeholder="Category" />
+                      <SelectValue placeholder={t('common:common.allCategories')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Categories</SelectItem>
+                      <SelectItem value="all">{t('common:common.allCategories')}</SelectItem>
                       {categories.map(cat => (
-                        <SelectItem key={cat} value={cat.toLowerCase()}>{cat}</SelectItem>
+                        <SelectItem key={cat} value={cat.toLowerCase()}>{t(`common:categories.${cat.toLowerCase().replace(/\s+/g, '_')}`, cat)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   
                   <Select value={ownerFilter} onValueChange={setOwnerFilter}>
                     <SelectTrigger className="h-9 text-xs flex-1 bg-background">
-                      <SelectValue placeholder="Owner" />
+                      <SelectValue placeholder={t('common:common.everyone')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Everyone</SelectItem>
-                      <SelectItem value="you">{you || 'You'}</SelectItem>
-                      <SelectItem value="partner">{partner || 'Partner'}</SelectItem>
+                      <SelectItem value="all">{t('common:common.everyone')}</SelectItem>
+                      <SelectItem value="you">{you || t('common:common.you')}</SelectItem>
+                      <SelectItem value="partner">{partner || t('common:common.partner')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -268,8 +268,8 @@ const Home = () => {
                       <div className="w-12 h-12 rounded-full bg-muted mx-auto mb-3 flex items-center justify-center">
                         <Sparkles className="w-6 h-6" />
                       </div>
-                      <p className="text-sm font-medium">No tasks match the filters</p>
-                      <p className="text-xs mt-1">Try adjusting your filters above</p>
+                      <p className="text-sm font-medium">{t('home:emptyState.noTasksMatch')}</p>
+                      <p className="text-xs mt-1">{t('home:emptyState.adjustFilters')}</p>
                     </div>
                   )}
                 </div>
@@ -281,7 +281,7 @@ const Home = () => {
                     <div key={dayData.date.toISOString()} className={`animate-fade-up stagger-${Math.min(dayIndex + 1, 3)}`}>
                       <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
                         <span className={dayIndex === 0 ? "text-primary" : ""}>
-                          {dayIndex === 0 ? "Today" : dayIndex === 1 ? "Tomorrow" : format(dayData.date, 'EEEE')}
+                          {dayIndex === 0 ? t('common:common.today') : dayIndex === 1 ? t('common:common.tomorrow') : format(dayData.date, 'EEEE')}
                         </span>
                         <span className="text-muted-foreground font-normal">
                           {format(dayData.date, 'MMM d')}
@@ -301,7 +301,7 @@ const Home = () => {
                         </div>
                       ) : (
                         <div className="text-center py-4 text-muted-foreground text-xs bg-muted/30 rounded-lg">
-                          No tasks scheduled
+                          {t('home:emptyState.noTasksScheduled')}
                         </div>
                       )}
                     </div>
@@ -333,8 +333,8 @@ const Home = () => {
                       <div className="w-12 h-12 rounded-full bg-muted mx-auto mb-3 flex items-center justify-center">
                         <Clock className="w-6 h-6" />
                       </div>
-                      <p className="text-sm font-medium">No recent tasks</p>
-                      <p className="text-xs mt-1">Add your first task above</p>
+                      <p className="text-sm font-medium">{t('home:emptyState.noRecentTasks')}</p>
+                      <p className="text-xs mt-1">{t('home:emptyState.addFirstTask')}</p>
                     </div>
                   )}
                 </div>
@@ -345,12 +345,12 @@ const Home = () => {
           {/* Motivation Link */}
           {completedThisWeek > 0 && (
             <button
-              onClick={() => navigate('/lists?filter=completed')}
+              onClick={() => navigate(getLocalizedPath('/lists?filter=completed'))}
               className="w-full flex items-center justify-center gap-2 py-3 text-sm text-success hover:text-success/80 transition-colors animate-fade-up"
             >
               <TrendingUp className="h-4 w-4" />
               <span className="font-medium">
-                {completedThisWeek} {completedThisWeek === 1 ? 'task' : 'tasks'} completed this week 🎉
+                {t('home:completedThisWeek', { count: completedThisWeek })}
               </span>
             </button>
           )}
@@ -363,7 +363,7 @@ const Home = () => {
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle className="flex items-center gap-2">
               <Brain className="w-5 h-5 text-primary" />
-              Drop a brain-dump
+              {t('home:brainDump.dialogTitle')}
             </DialogTitle>
           </DialogHeader>
           <div className="px-6 pb-6">

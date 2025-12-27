@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +24,8 @@ const TIMEZONES = [
   { value: 'Europe/London', label: 'London (GMT/BST)' },
   { value: 'Europe/Paris', label: 'Paris (CET/CEST)' },
   { value: 'Europe/Berlin', label: 'Berlin (CET/CEST)' },
+  { value: 'Europe/Rome', label: 'Rome (CET/CEST)' },
+  { value: 'Europe/Madrid', label: 'Madrid (CET/CEST)' },
   { value: 'Asia/Dubai', label: 'Dubai (GST)' },
   { value: 'Asia/Kolkata', label: 'India (IST)' },
   { value: 'Asia/Singapore', label: 'Singapore (SGT)' },
@@ -32,6 +35,7 @@ const TIMEZONES = [
 ];
 
 export function TimezoneField() {
+  const { t } = useTranslation('profile');
   const { user } = useAuth();
   const { toast } = useToast();
   const [timezone, setTimezone] = useState<string>('America/New_York');
@@ -87,14 +91,14 @@ export function TimezoneField() {
 
       setHasChanged(false);
       toast({
-        title: "Timezone updated",
-        description: "Your timezone preference has been saved.",
+        title: t('timezoneField.updated'),
+        description: t('timezoneField.updatedDescription'),
       });
     } catch (error) {
       console.error('Error updating timezone:', error);
       toast({
-        title: "Error",
-        description: "Failed to update timezone. Please try again.",
+        title: t('common:errors.somethingWentWrong'),
+        description: t('timezoneField.error'),
         variant: "destructive",
       });
     } finally {
@@ -116,9 +120,9 @@ export function TimezoneField() {
         <Globe className="h-5 w-5 text-muted-foreground mt-0.5" />
         <div className="flex-1 space-y-3">
           <div>
-            <p className="text-sm font-medium text-foreground mb-1">Your Timezone</p>
+            <p className="text-sm font-medium text-foreground mb-1">{t('timezoneField.title')}</p>
             <p className="text-xs text-muted-foreground mb-3">
-              Set your timezone so reminders are scheduled correctly
+              {t('timezoneField.description')}
             </p>
           </div>
           
@@ -130,7 +134,7 @@ export function TimezoneField() {
             }}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select timezone" />
+              <SelectValue placeholder={t('timezoneField.placeholder')} />
             </SelectTrigger>
             <SelectContent>
               {TIMEZONES.map((tz) => (
@@ -151,10 +155,10 @@ export function TimezoneField() {
               {saving ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
+                  {t('timezoneField.saving')}
                 </>
               ) : (
-                'Save Timezone'
+                t('timezoneField.save')
               )}
             </Button>
           )}

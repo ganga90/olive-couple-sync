@@ -34,5 +34,45 @@
       "subtitle": "Cambiar el idioma de la aplicación"
     }
   },
-  "version": "Olive v1.0.0"
+  "version": "Olive v1.0.0",
+  "timezoneField": {
+    "title": "Tu Zona Horaria",
+    "description": "Configura tu zona horaria para que los recordatorios se programen correctamente",
+    "placeholder": "Selecciona zona horaria",
+    "updated": "Zona horaria actualizada",
+    "updatedDescription": "Tu preferencia de zona horaria ha sido guardada.",
+    "error": "Error al actualizar la zona horaria. Inténtalo de nuevo.",
+    "save": "Guardar Zona Horaria",
+    "saving": "Guardando..."
+  },
+  "phoneField": {
+    "title": "Integración de WhatsApp",
+    "description": "Conecta tu WhatsApp para chatear con Olive, descargar notas y recibir actualizaciones instantáneas sobre tus tareas!",
+    "label": "Número de Teléfono",
+    "placeholder": "+34 612 345 678",
+    "hint": "Incluye el código de país (ej. +34 para España)",
+    "save": "Guardar Número de Teléfono",
+    "saving": "Guardando...",
+    "success": "Número de teléfono actualizado correctamente",
+    "error": "Error al actualizar el número de teléfono"
+  },
+  "whatsappLink": {
+    "description": "Vincula tu WhatsApp para enviar tareas por mensaje",
+    "generateButton": "Vincular Cuenta de WhatsApp",
+    "generating": "Generando Enlace...",
+    "tokenExpires": "Tu token de vinculación caduca en 10 minutos",
+    "yourToken": "Tu Token:",
+    "copy": "Copiar",
+    "openWhatsapp": "Abrir WhatsApp y Enviar Token",
+    "instructions": "Instrucciones:",
+    "step1": "Haz clic en el botón de arriba para abrir WhatsApp",
+    "step2": "El mensaje con el token estará pre-completado",
+    "step3": "Envía el mensaje para completar la vinculación",
+    "generateNew": "Generar Nuevo Token",
+    "linkGenerated": "Enlace de WhatsApp Generado",
+    "linkGeneratedDesc": "Haz clic en el enlace de abajo para conectar tu cuenta de WhatsApp.",
+    "tokenCopied": "Token Copiado",
+    "tokenCopiedDesc": "Pega este token en WhatsApp para vincular tu cuenta.",
+    "error": "Error al generar el enlace de WhatsApp. Inténtalo de nuevo."
+  }
 }

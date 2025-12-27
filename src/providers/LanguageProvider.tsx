@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { LANGUAGES, DEFAULT_LANGUAGE, LOCALE_PATHS } from '@/lib/i18n/languages';
@@ -24,14 +24,15 @@ export const useLanguage = () => {
 };
 
 // Detect locale from URL path
-const getLocaleFromPath = (pathname: string): string => {
+const getLocaleFromPath = (pathname: string): string | null => {
   const segments = pathname.split('/').filter(Boolean);
   const firstSegment = segments[0]?.toLowerCase();
   
   if (firstSegment === 'es-es') return 'es-ES';
   if (firstSegment === 'it-it') return 'it-IT';
   
-  return DEFAULT_LANGUAGE;
+  // Return null to indicate no locale in URL (not English)
+  return null;
 };
 
 // Strip locale prefix from path
@@ -71,54 +72,115 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
-  const [currentLanguage, setCurrentLanguage] = useState<string>(DEFAULT_LANGUAGE);
+  const [currentLanguage, setCurrentLanguage] = useState<string>(() => {
+    // Initialize from localStorage for immediate hydration
+    const saved = localStorage.getItem('olive_language');
+    return saved && LANGUAGES[saved] ? saved : DEFAULT_LANGUAGE;
+  });
+  const initialLoadDone = useRef(false);
+  const isChangingLanguage = useRef(false);
 
-  // Detect language from URL on mount and route changes
+  // Load and apply language on mount - prioritize: URL > DB > localStorage > default
   useEffect(() => {
-    const detectedLocale = getLocaleFromPath(location.pathname);
-    
-    if (detectedLocale !== i18n.language) {
-      i18n.changeLanguage(detectedLocale);
-    }
-    
-    setCurrentLanguage(detectedLocale);
-    document.documentElement.lang = detectedLocale;
-    setIsLoading(false);
-  }, [location.pathname, i18n]);
-
-  // Load user's saved language preference when authenticated
-  useEffect(() => {
-    const loadUserLanguage = async () => {
-      if (!isAuthenticated || !user?.id) return;
+    const initializeLanguage = async () => {
+      if (initialLoadDone.current) return;
       
-      try {
-        const { data, error } = await supabase
-          .from('clerk_profiles')
-          .select('language_preference')
-          .eq('id', user.id)
-          .single();
-        
-        if (error || !data?.language_preference) return;
-        
-        const savedLang = data.language_preference;
-        const currentPathLocale = getLocaleFromPath(location.pathname);
-        
-        // If URL doesn't have a locale but user has a preference, redirect
-        if (savedLang !== DEFAULT_LANGUAGE && currentPathLocale === DEFAULT_LANGUAGE) {
-          const newPath = generateLocalizedPath(location.pathname, savedLang);
-          navigate(newPath, { replace: true });
-        }
-      } catch (error) {
-        console.error('Error loading language preference:', error);
+      // 1. Check URL for locale
+      const urlLocale = getLocaleFromPath(location.pathname);
+      
+      if (urlLocale) {
+        // URL has explicit locale - use it and save
+        await applyLanguage(urlLocale, false);
+        localStorage.setItem('olive_language', urlLocale);
+        initialLoadDone.current = true;
+        setIsLoading(false);
+        return;
       }
+      
+      // 2. Check localStorage
+      const savedLang = localStorage.getItem('olive_language');
+      
+      // 3. If authenticated, check database (might override localStorage)
+      if (isAuthenticated && user?.id) {
+        try {
+          const { data } = await supabase
+            .from('clerk_profiles')
+            .select('language_preference')
+            .eq('id', user.id)
+            .single();
+          
+          if (data?.language_preference && LANGUAGES[data.language_preference]) {
+            await applyLanguage(data.language_preference, true);
+            localStorage.setItem('olive_language', data.language_preference);
+            initialLoadDone.current = true;
+            setIsLoading(false);
+            return;
+          }
+        } catch (error) {
+          console.error('Error loading language preference:', error);
+        }
+      }
+      
+      // 4. Use localStorage saved language
+      if (savedLang && LANGUAGES[savedLang]) {
+        await applyLanguage(savedLang, true);
+        initialLoadDone.current = true;
+        setIsLoading(false);
+        return;
+      }
+      
+      // 5. Use default
+      await applyLanguage(DEFAULT_LANGUAGE, false);
+      initialLoadDone.current = true;
+      setIsLoading(false);
     };
     
-    loadUserLanguage();
+    initializeLanguage();
   }, [isAuthenticated, user?.id]);
 
-  const changeLanguage = useCallback(async (lang: string) => {
+  // Apply language and optionally redirect to localized URL
+  const applyLanguage = async (lang: string, shouldRedirect: boolean) => {
     if (!LANGUAGES[lang]) return;
     
+    await i18n.changeLanguage(lang);
+    setCurrentLanguage(lang);
+    document.documentElement.lang = lang;
+    
+    if (shouldRedirect) {
+      const currentPath = location.pathname;
+      const newPath = generateLocalizedPath(currentPath, lang);
+      
+      if (currentPath !== newPath) {
+        navigate(newPath, { replace: true });
+      }
+    }
+  };
+
+  // Handle URL changes - ensure language stays consistent
+  useEffect(() => {
+    if (!initialLoadDone.current || isChangingLanguage.current) return;
+    
+    const urlLocale = getLocaleFromPath(location.pathname);
+    
+    if (urlLocale && urlLocale !== currentLanguage) {
+      // URL changed to a different locale - sync state
+      i18n.changeLanguage(urlLocale);
+      setCurrentLanguage(urlLocale);
+      document.documentElement.lang = urlLocale;
+      localStorage.setItem('olive_language', urlLocale);
+    } else if (!urlLocale && currentLanguage !== DEFAULT_LANGUAGE) {
+      // URL has no locale but we have a non-default language - redirect to localized URL
+      const newPath = generateLocalizedPath(location.pathname, currentLanguage);
+      if (location.pathname !== newPath) {
+        navigate(newPath, { replace: true });
+      }
+    }
+  }, [location.pathname]);
+
+  const changeLanguage = useCallback(async (lang: string) => {
+    if (!LANGUAGES[lang] || lang === currentLanguage) return;
+    
+    isChangingLanguage.current = true;
     setIsLoading(true);
     
     try {
@@ -146,8 +208,9 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
       console.error('Error changing language:', error);
     } finally {
       setIsLoading(false);
+      isChangingLanguage.current = false;
     }
-  }, [i18n, isAuthenticated, user?.id, location.pathname, navigate]);
+  }, [i18n, isAuthenticated, user?.id, location.pathname, navigate, currentLanguage]);
 
   const getLocalizedPath = useCallback((path: string) => {
     return generateLocalizedPath(path, currentLanguage);

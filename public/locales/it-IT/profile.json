@@ -34,5 +34,45 @@
       "subtitle": "Cambia la lingua dell'app"
     }
   },
-  "version": "Olive v1.0.0"
+  "version": "Olive v1.0.0",
+  "timezoneField": {
+    "title": "Il Tuo Fuso Orario",
+    "description": "Imposta il fuso orario per programmare correttamente i promemoria",
+    "placeholder": "Seleziona fuso orario",
+    "updated": "Fuso orario aggiornato",
+    "updatedDescription": "La tua preferenza sul fuso orario è stata salvata.",
+    "error": "Impossibile aggiornare il fuso orario. Riprova.",
+    "save": "Salva Fuso Orario",
+    "saving": "Salvataggio..."
+  },
+  "phoneField": {
+    "title": "Integrazione WhatsApp",
+    "description": "Collega il tuo WhatsApp per chattare con Olive, scaricare note e ricevere aggiornamenti istantanei sulle tue attività!",
+    "label": "Numero di Telefono",
+    "placeholder": "+39 123 456 7890",
+    "hint": "Includi il prefisso internazionale (es. +39 per Italia)",
+    "save": "Salva Numero di Telefono",
+    "saving": "Salvataggio...",
+    "success": "Numero di telefono aggiornato con successo",
+    "error": "Impossibile aggiornare il numero di telefono"
+  },
+  "whatsappLink": {
+    "description": "Collega il tuo WhatsApp per inviare attività via messaggi",
+    "generateButton": "Collega Account WhatsApp",
+    "generating": "Generazione Link...",
+    "tokenExpires": "Il token scade tra 10 minuti",
+    "yourToken": "Il Tuo Token:",
+    "copy": "Copia",
+    "openWhatsapp": "Apri WhatsApp e Invia Token",
+    "instructions": "Istruzioni:",
+    "step1": "Clicca il pulsante sopra per aprire WhatsApp",
+    "step2": "Il messaggio con il token sarà pre-compilato",
+    "step3": "Invia il messaggio per completare il collegamento",
+    "generateNew": "Genera Nuovo Token",
+    "linkGenerated": "Link WhatsApp Generato",
+    "linkGeneratedDesc": "Clicca il link qui sotto per collegare il tuo account WhatsApp.",
+    "tokenCopied": "Token Copiato",
+    "tokenCopiedDesc": "Incolla questo token in WhatsApp per collegare il tuo account.",
+    "error": "Impossibile generare il link WhatsApp. Riprova."
+  }
 }
