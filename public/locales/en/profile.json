@@ -34,5 +34,45 @@
       "subtitle": "Change the app language"
     }
   },
-  "version": "Olive v1.0.0"
+  "version": "Olive v1.0.0",
+  "timezoneField": {
+    "title": "Your Timezone",
+    "description": "Set your timezone so reminders are scheduled correctly",
+    "placeholder": "Select timezone",
+    "updated": "Timezone updated",
+    "updatedDescription": "Your timezone preference has been saved.",
+    "error": "Failed to update timezone. Please try again.",
+    "save": "Save Timezone",
+    "saving": "Saving..."
+  },
+  "phoneField": {
+    "title": "WhatsApp Integration",
+    "description": "Connect your WhatsApp to chat with Olive, dump brain notes, and get instant updates about your tasks and lists!",
+    "label": "Phone Number",
+    "placeholder": "+1234567890",
+    "hint": "Include country code (e.g., +1 for US)",
+    "save": "Save Phone Number",
+    "saving": "Saving...",
+    "success": "Phone number updated successfully",
+    "error": "Failed to update phone number"
+  },
+  "whatsappLink": {
+    "description": "Link your WhatsApp to send tasks via messaging",
+    "generateButton": "Link WhatsApp Account",
+    "generating": "Generating Link...",
+    "tokenExpires": "Your linking token expires in 10 minutes",
+    "yourToken": "Your Token:",
+    "copy": "Copy",
+    "openWhatsapp": "Open WhatsApp & Send Token",
+    "instructions": "Instructions:",
+    "step1": "Click the button above to open WhatsApp",
+    "step2": "The token message will be pre-filled",
+    "step3": "Send the message to complete linking",
+    "generateNew": "Generate New Token",
+    "linkGenerated": "WhatsApp Link Generated",
+    "linkGeneratedDesc": "Click the link below to connect your WhatsApp account.",
+    "tokenCopied": "Token Copied",
+    "tokenCopiedDesc": "Paste this token in WhatsApp to link your account.",
+    "error": "Failed to generate WhatsApp link. Please try again."
+  }
 }
