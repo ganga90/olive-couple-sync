@@ -1,0 +1,39 @@
+{
+  "greeting": "Hola, {{name}} 👋",
+  "whatsOnMind": "¿Qué tienes en mente hoy?",
+  "brainDump": {
+    "title": "Escribe lo que se te ocurra...",
+    "subtitle": "Tareas, recordatorios, ideas—escribe natural",
+    "dialogTitle": "Añade una idea rápida"
+  },
+  "hint": {
+    "try": "Prueba:",
+    "example": "\"cena con Luca el miércoles a las 19h, preguntarle a Almu por las entradas\""
+  },
+  "quickStart": {
+    "title": "Inicio rápido",
+    "subtitle": "Crea tu primera tarea ahora"
+  },
+  "connectCalendar": {
+    "title": "Conectar Calendario",
+    "subtitle": "Sincroniza con Google Calendar"
+  },
+  "tabs": {
+    "priority": "🔥 Prioridad",
+    "daily": "📅 Diario",
+    "recent": "🕐 Reciente"
+  },
+  "emptyState": {
+    "noTasksMatch": "No hay tareas que coincidan con los filtros",
+    "adjustFilters": "Intenta ajustar los filtros",
+    "noRecentTasks": "No hay tareas recientes",
+    "addFirstTask": "Añade tu primera tarea arriba",
+    "noTasksScheduled": "No hay tareas programadas"
+  },
+  "completedThisWeek": "{{count}} tarea completada esta semana 🎉",
+  "completedThisWeek_plural": "{{count}} tareas completadas esta semana 🎉",
+  "notAuthenticated": {
+    "title": "Bienvenido a Olive",
+    "subtitle": "Por favor, inicia sesión para continuar"
+  }
+}

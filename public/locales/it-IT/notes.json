@@ -1,0 +1,28 @@
+{
+  "noteNotFound": "Nota non trovata.",
+  "dueDate": "Data di Scadenza",
+  "notSet": "Non impostata",
+  "reminder": "Promemoria",
+  "setReminder": "Imposta promemoria",
+  "assignedTo": "Assegnato A",
+  "notAssigned": "Non assegnato",
+  "createdBy": "Creato Da",
+  "overdue": "Scaduta",
+  "completed": "Completata",
+  "originalNote": "Nota Originale",
+  "details": "Dettagli",
+  "tags": "Tag",
+  "askOliveChat": {
+    "greeting": "Ciao! Come posso aiutarti con \"{{summary}}\"?",
+    "title": "Chiedi a Olive",
+    "placeholder": "Chiedi informazioni su questa attività...",
+    "newConversation": "Nuova conversazione",
+    "connectionError": "Mi dispiace, ho problemi di connessione in questo momento. Per favore riprova."
+  },
+  "edit": {
+    "category": "Categoria",
+    "priority": "Priorità",
+    "tags": "Tag (separati da virgola)",
+    "items": "Sotto-elementi (uno per riga)"
+  }
+}

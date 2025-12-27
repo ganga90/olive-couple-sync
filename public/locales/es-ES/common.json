@@ -1,0 +1,100 @@
+{
+  "nav": {
+    "home": "Inicio",
+    "lists": "Listas",
+    "calendar": "Calendario",
+    "reminders": "Recordatorios",
+    "profile": "Perfil"
+  },
+  "buttons": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "back": "Volver",
+    "continue": "Continuar",
+    "signIn": "Iniciar Sesión",
+    "signUp": "Registrarse",
+    "signOut": "Cerrar Sesión",
+    "getStarted": "Empezar",
+    "learnMore": "Más Información",
+    "complete": "Completar",
+    "askOlive": "Preguntar a Olive"
+  },
+  "common": {
+    "welcome": "Bienvenido a Olive",
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "notFound": "No encontrado",
+    "today": "Hoy",
+    "tomorrow": "Mañana",
+    "priority": "Prioridad",
+    "daily": "Diario",
+    "recent": "Reciente",
+    "all": "Todo",
+    "allCategories": "Todas las Categorías",
+    "everyone": "Todos",
+    "you": "Tú",
+    "partner": "Pareja",
+    "both": "Ambos"
+  },
+  "priority": {
+    "high": "Alta",
+    "medium": "Media",
+    "low": "Baja",
+    "highPriority": "Prioridad Alta",
+    "mediumPriority": "Prioridad Media",
+    "lowPriority": "Prioridad Baja",
+    "noPriority": "Sin Prioridad"
+  },
+  "categories": {
+    "task": "Tarea",
+    "groceries": "Supermercado",
+    "shopping": "Compras",
+    "home_improvement": "Hogar",
+    "travel": "Viajes",
+    "date_ideas": "Ideas para Citas",
+    "personal": "Personal",
+    "reminder": "Recordatorio",
+    "work": "Trabajo",
+    "health": "Salud",
+    "finance": "Finanzas",
+    "entertainment": "Entretenimiento",
+    "movies_tv": "Películas y TV",
+    "books": "Libros"
+  },
+  "footer": {
+    "copyright": "© 2025 Olive. Todos los derechos reservados.",
+    "madeWithLove": "Hecho con ❤️ para parejas que quieren organizarse juntas"
+  },
+  "time": {
+    "hoursAgo": "hace {{count}} hora",
+    "hoursAgo_plural": "hace {{count}} horas",
+    "minutesAgo": "hace {{count}} minuto",
+    "minutesAgo_plural": "hace {{count}} minutos",
+    "daysAgo": "hace {{count}} día",
+    "daysAgo_plural": "hace {{count}} días",
+    "justNow": "Ahora mismo"
+  },
+  "errors": {
+    "somethingWentWrong": "Algo salió mal",
+    "pleaseSignIn": "Por favor, inicia sesión para continuar",
+    "noteNotFound": "Nota no encontrada",
+    "failedToSave": "Error al guardar",
+    "failedToDelete": "Error al eliminar"
+  },
+  "toast": {
+    "noteDeleted": "Nota eliminada",
+    "noteUpdated": "¡Nota actualizada!",
+    "markedComplete": "¡Marcada como completada!",
+    "welcomeToOlive": "¡Bienvenido a Olive! 🫒"
+  },
+  "language": {
+    "title": "Idioma",
+    "selectLanguage": "Seleccionar idioma",
+    "english": "Inglés",
+    "spanish": "Español (España)",
+    "italian": "Italiano"
+  }
+}

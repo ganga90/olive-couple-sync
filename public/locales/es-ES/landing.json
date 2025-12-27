@@ -1,0 +1,11 @@
+{
+  "hero": {
+    "title": "Escribe lo que piensas. Olive lo convierte en pasos a seguir.",
+    "description": "Escribe o habla lo que tengas en mente—Olive organiza automáticamente en listas, asigna responsables y fechas, y os mantiene sincronizados. Pídele ayuda a Olive con cualquier tarea."
+  },
+  "cta": {
+    "getStarted": "Empezar",
+    "seeHowItWorks": "Ver Cómo Funciona",
+    "tryDemo": "Probar Demo"
+  }
+}

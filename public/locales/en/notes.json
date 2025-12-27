@@ -1,0 +1,28 @@
+{
+  "noteNotFound": "Note not found.",
+  "dueDate": "Due Date",
+  "notSet": "Not set",
+  "reminder": "Reminder",
+  "setReminder": "Set reminder",
+  "assignedTo": "Assigned To",
+  "notAssigned": "Not assigned",
+  "createdBy": "Created By",
+  "overdue": "Overdue",
+  "completed": "Completed",
+  "originalNote": "Original Note",
+  "details": "Details",
+  "tags": "Tags",
+  "askOliveChat": {
+    "greeting": "Hi! How can I help with \"{{summary}}\"?",
+    "title": "Ask Olive",
+    "placeholder": "Ask about this task...",
+    "newConversation": "New conversation",
+    "connectionError": "Sorry, I'm having trouble connecting right now. Please try again."
+  },
+  "edit": {
+    "category": "Category",
+    "priority": "Priority",
+    "tags": "Tags (comma-separated)",
+    "items": "Sub-items (one per line)"
+  }
+}

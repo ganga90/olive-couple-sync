@@ -1,0 +1,27 @@
+{
+  "howWillYouUse": "¿Cómo usarás Olive?",
+  "personalizeExperience": "Personalizaremos tu experiencia según tu elección.",
+  "justMe": {
+    "title": "Solo yo",
+    "subtitle": "Gestión personal de tareas"
+  },
+  "withPartner": {
+    "title": "Con mi pareja",
+    "subtitle": "Listas compartidas y coordinación"
+  },
+  "whatAreYourNames": "¿Cómo os llamáis?",
+  "whatsYourName": "¿Cómo te llamas?",
+  "personalizeTasks": "Usaremos esto para personalizar tus tareas.",
+  "yourName": "Tu nombre",
+  "partnerName": "Nombre de tu pareja",
+  "namePlaceholder": "ej., Alejandro",
+  "partnerPlaceholder": "ej., Sara",
+  "connectWith": "Conecta con {{partner}}",
+  "invitePartner": "Invita a tu pareja a compartir tu espacio en Olive.",
+  "validation": {
+    "enterYourName": "Por favor, introduce tu nombre",
+    "enterPartnerName": "Por favor, introduce el nombre de tu pareja"
+  },
+  "welcomeMessage": "Tu organizador personal de tareas está listo.",
+  "dataSecure": "Tus datos están cifrados y seguros"
+}
