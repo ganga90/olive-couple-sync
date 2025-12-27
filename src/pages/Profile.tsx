@@ -1,5 +1,6 @@
 import { useSEO } from "@/hooks/useSEO";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PartnerInfo } from "@/components/PartnerInfo";
@@ -9,12 +10,16 @@ import { WhatsAppLink } from "@/components/WhatsAppLink";
 import { NoteStyleField } from "@/components/NoteStyleField";
 import { MemoryPersonalization } from "@/components/MemoryPersonalization";
 import { GoogleCalendarConnect } from "@/components/GoogleCalendarConnect";
-import { User, LogOut, Bell, Shield, HelpCircle, Brain, Sparkles, Calendar, ChevronRight } from "lucide-react";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { User, LogOut, Bell, Shield, HelpCircle, Brain, Sparkles, Calendar, ChevronRight, Globe } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
+import { useLanguage } from "@/providers/LanguageProvider";
 
 const Profile = () => {
-  useSEO({ title: "Profile — Olive", description: "Manage your Olive account profile and settings." });
+  const { t } = useTranslation(['profile', 'common']);
+  const { getLocalizedPath } = useLanguage();
+  useSEO({ title: `${t('profile:title')} — Olive`, description: t('profile:subtitle') });
   
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
@@ -22,7 +27,7 @@ const Profile = () => {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/landing');
+    navigate(getLocalizedPath('/landing'));
   };
 
   if (!isAuthenticated) {
@@ -31,9 +36,9 @@ const Profile = () => {
         <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
           <User className="h-10 w-10 text-primary" />
         </div>
-        <h2 className="text-2xl font-semibold mb-2">Profile</h2>
-        <p className="text-muted-foreground mb-6">Sign in to manage your account</p>
-        <Button onClick={() => navigate('/sign-in')} size="lg">Sign In</Button>
+        <h2 className="text-2xl font-semibold mb-2">{t('profile:title')}</h2>
+        <p className="text-muted-foreground mb-6">{t('profile:signInToManage')}</p>
+        <Button onClick={() => navigate(getLocalizedPath('/sign-in'))} size="lg">{t('common:buttons.signIn')}</Button>
       </div>
     );
   }
@@ -61,11 +66,26 @@ const Profile = () => {
               <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                 <User className="h-4 w-4 text-primary" />
               </div>
-              Partner Connection
+              {t('profile:partnerConnection')}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <PartnerInfo />
+          </CardContent>
+        </Card>
+
+        {/* Language */}
+        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '75ms' }}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-info/10 flex items-center justify-center">
+                <Globe className="h-4 w-4 text-info" />
+              </div>
+              {t('common:language.title')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LanguageSwitcher />
           </CardContent>
         </Card>
 
@@ -76,7 +96,7 @@ const Profile = () => {
               <div className="w-8 h-8 rounded-lg bg-secondary/50 flex items-center justify-center">
                 🌍
               </div>
-              Timezone
+              {t('profile:timezone')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -91,7 +111,7 @@ const Profile = () => {
               <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center">
                 📱
               </div>
-              WhatsApp Notifications
+              {t('profile:whatsappNotifications')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -106,7 +126,7 @@ const Profile = () => {
               <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center">
                 💬
               </div>
-              WhatsApp AI Assistant
+              {t('profile:whatsappAssistant')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -121,10 +141,10 @@ const Profile = () => {
               <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
                 <Calendar className="h-4 w-4 text-accent" />
               </div>
-              Google Calendar
+              {t('profile:googleCalendar.title')}
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Sync your calendar and create events from notes
+              {t('profile:googleCalendar.subtitle')}
             </p>
           </CardHeader>
           <CardContent>
@@ -139,7 +159,7 @@ const Profile = () => {
               <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                 <Brain className="h-4 w-4 text-primary" />
               </div>
-              Note Processing Style
+              {t('profile:noteProcessingStyle')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -154,10 +174,10 @@ const Profile = () => {
               <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
                 <Sparkles className="h-4 w-4 text-accent" />
               </div>
-              Memory & Personalization
+              {t('profile:memoryPersonalization.title')}
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              What Olive knows about you to personalize your experience
+              {t('profile:memoryPersonalization.subtitle')}
             </p>
           </CardHeader>
           <CardContent>
@@ -168,7 +188,7 @@ const Profile = () => {
         {/* Settings Menu */}
         <Card className="shadow-card animate-fade-up" style={{ animationDelay: '400ms' }}>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Settings</CardTitle>
+            <CardTitle className="text-base">{t('profile:settings.title')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 p-2">
             <button className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-muted/50 transition-colors text-left group">
@@ -176,8 +196,8 @@ const Profile = () => {
                 <Bell className="h-5 w-5 text-muted-foreground" />
               </div>
               <div className="flex-1">
-                <p className="font-medium text-foreground">Notifications</p>
-                <p className="text-xs text-muted-foreground">Manage notification preferences</p>
+                <p className="font-medium text-foreground">{t('profile:settings.notifications.title')}</p>
+                <p className="text-xs text-muted-foreground">{t('profile:settings.notifications.subtitle')}</p>
               </div>
               <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
             </button>
@@ -187,8 +207,8 @@ const Profile = () => {
                 <Shield className="h-5 w-5 text-muted-foreground" />
               </div>
               <div className="flex-1">
-                <p className="font-medium text-foreground">Privacy & Security</p>
-                <p className="text-xs text-muted-foreground">Manage your privacy settings</p>
+                <p className="font-medium text-foreground">{t('profile:settings.privacy.title')}</p>
+                <p className="text-xs text-muted-foreground">{t('profile:settings.privacy.subtitle')}</p>
               </div>
               <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
             </button>
@@ -198,8 +218,8 @@ const Profile = () => {
                 <HelpCircle className="h-5 w-5 text-muted-foreground" />
               </div>
               <div className="flex-1">
-                <p className="font-medium text-foreground">Help & Support</p>
-                <p className="text-xs text-muted-foreground">Get help with Olive</p>
+                <p className="font-medium text-foreground">{t('profile:settings.help.title')}</p>
+                <p className="text-xs text-muted-foreground">{t('profile:settings.help.subtitle')}</p>
               </div>
               <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
             </button>
@@ -215,13 +235,13 @@ const Profile = () => {
             onClick={handleSignOut}
           >
             <LogOut className="mr-2 h-4 w-4" />
-            Sign Out
+            {t('common:buttons.signOut')}
           </Button>
         </div>
 
         {/* Version Info */}
         <div className="text-center pb-8">
-          <p className="text-xs text-muted-foreground">Olive v1.0.0</p>
+          <p className="text-xs text-muted-foreground">{t('profile:version')}</p>
         </div>
       </div>
     </div>

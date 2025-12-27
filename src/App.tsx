@@ -23,9 +23,37 @@ import { MobileLayout } from "./components/MobileLayout";
 import { AuthProvider } from "./providers/AuthProvider";
 import { SupabaseCoupleProvider } from "./providers/SupabaseCoupleProvider";
 import { SupabaseNotesProvider } from "./providers/SupabaseNotesProvider";
+import { LanguageProvider } from "./providers/LanguageProvider";
 import SignInPage from "./pages/SignIn";
 import SignUpPage from "./pages/SignUp";
+
+// Import i18n configuration
+import './lib/i18n/config';
+
 const queryClient = new QueryClient();
+
+// Define all app routes to be used with optional locale prefix
+const AppRoutes = () => (
+  <Routes>
+    <Route path="/" element={<Root />} />
+    <Route path="/landing" element={<Landing />} />
+    <Route path="/home" element={<Home />} />
+    <Route path="/lists" element={<Lists />} />
+    <Route path="/lists/:listId" element={<ListCategory />} />
+    <Route path="/calendar" element={<CalendarPage />} />
+    <Route path="/reminders" element={<Reminders />} />
+    <Route path="/onboarding" element={<Onboarding />} />
+    <Route path="/welcome" element={<Welcome />} />
+    <Route path="/profile" element={<Profile />} />
+    <Route path="/notes/:id" element={<NoteDetails />} />
+    <Route path="/sign-in" element={<SignInPage />} />
+    <Route path="/sign-up" element={<SignUpPage />} />
+    <Route path="/accept-invite" element={<AcceptInvite />} />
+    <Route path="/join/:token" element={<JoinInvite />} />
+    <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -35,29 +63,36 @@ const App = () => (
       <SupabaseCoupleProvider>
         <SupabaseNotesProvider>
           <BrowserRouter>
-            <NavBar />
-            <MobileLayout>
-              <Routes>
-                <Route path="/" element={<Root />} />
-                <Route path="/landing" element={<Landing />} />
-                <Route path="/home" element={<Home />} />
-                <Route path="/lists" element={<Lists />} />
-                <Route path="/lists/:listId" element={<ListCategory />} />
-                <Route path="/calendar" element={<CalendarPage />} />
-                <Route path="/reminders" element={<Reminders />} />
-                <Route path="/onboarding" element={<Onboarding />} />
-                <Route path="/welcome" element={<Welcome />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/notes/:id" element={<NoteDetails />} />
-                <Route path="/sign-in" element={<SignInPage />} />
-                <Route path="/sign-up" element={<SignUpPage />} />
-                <Route path="/accept-invite" element={<AcceptInvite />} />
-                <Route path="/join/:token" element={<JoinInvite />} />
-                <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
-                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </MobileLayout>
+            <LanguageProvider>
+              <NavBar />
+              <MobileLayout>
+                <Routes>
+                  {/* Spanish (Spain) routes */}
+                  <Route path="/es-es/*" element={<AppRoutes />} />
+                  {/* Italian routes */}
+                  <Route path="/it-it/*" element={<AppRoutes />} />
+                  {/* English (default) routes */}
+                  <Route path="/" element={<Root />} />
+                  <Route path="/landing" element={<Landing />} />
+                  <Route path="/home" element={<Home />} />
+                  <Route path="/lists" element={<Lists />} />
+                  <Route path="/lists/:listId" element={<ListCategory />} />
+                  <Route path="/calendar" element={<CalendarPage />} />
+                  <Route path="/reminders" element={<Reminders />} />
+                  <Route path="/onboarding" element={<Onboarding />} />
+                  <Route path="/welcome" element={<Welcome />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/notes/:id" element={<NoteDetails />} />
+                  <Route path="/sign-in" element={<SignInPage />} />
+                  <Route path="/sign-up" element={<SignUpPage />} />
+                  <Route path="/accept-invite" element={<AcceptInvite />} />
+                  <Route path="/join/:token" element={<JoinInvite />} />
+                  <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
+                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </MobileLayout>
+            </LanguageProvider>
           </BrowserRouter>
         </SupabaseNotesProvider>
       </SupabaseCoupleProvider>

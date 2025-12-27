@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Plus, TrendingUp, Sparkles, CalendarPlus, Brain, Clock } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
+import { useLanguage } from "@/providers/LanguageProvider";
 import { TaskItem } from "@/components/TaskItem";
 import type { Note } from "@/types/note";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -17,6 +19,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { categories } from "@/constants/categories";
 
 const Home = () => {
+  const { t } = useTranslation(['home', 'common']);
+  const { getLocalizedPath } = useLanguage();
+  
   useSEO({ 
     title: "Home — Olive", 
     description: "Your AI-powered task organizer for couples." 
@@ -117,9 +122,9 @@ const Home = () => {
         <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
           <Brain className="w-8 h-8 text-primary" />
         </div>
-        <h2 className="text-2xl font-bold text-foreground mb-2">Welcome to Olive</h2>
-        <p className="text-muted-foreground mb-6">Please sign in to continue</p>
-        <Button size="lg" onClick={() => navigate('/sign-in')}>Sign In</Button>
+        <h2 className="text-2xl font-bold text-foreground mb-2">{t('home:notAuthenticated.title')}</h2>
+        <p className="text-muted-foreground mb-6">{t('home:notAuthenticated.subtitle')}</p>
+        <Button size="lg" onClick={() => navigate(getLocalizedPath('/sign-in'))}>{t('common:buttons.signIn')}</Button>
       </div>
     );
   }
