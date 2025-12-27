@@ -1,12 +1,16 @@
 import { NavLink, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Home, ListTodo, Calendar, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 import { useMemo } from "react";
 import { addHours, isBefore } from "date-fns";
 
 const MobileTabBar = () => {
   const location = useLocation();
+  const { t } = useTranslation('common');
+  const { getLocalizedPath } = useLocalizedNavigate();
   const { notes } = useSupabaseNotesContext();
   
   // Calculate upcoming reminders count (within next 24 hours)
@@ -39,26 +43,26 @@ const MobileTabBar = () => {
     { 
       to: "/home", 
       icon: Home, 
-      label: "Home",
+      label: t('nav.home'),
       badge: 0
     },
     { 
       to: "/lists", 
       icon: ListTodo, 
-      label: "Lists",
+      label: t('nav.lists'),
       badge: urgentTasksCount > 0 ? urgentTasksCount : 0
     },
     { 
       to: "/calendar", 
       icon: Calendar, 
-      label: "Calendar",
+      label: t('nav.calendar'),
       badge: 0,
       featured: true
     },
     { 
       to: "/reminders", 
       icon: Bell, 
-      label: "Reminders",
+      label: t('nav.reminders'),
       badge: upcomingRemindersCount
     },
   ];
@@ -70,14 +74,16 @@ const MobileTabBar = () => {
     >
       <div className="mx-auto flex items-center justify-around px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
         {tabs.map((tab) => {
-          const isActive = location.pathname === tab.to || 
-            (tab.to === "/lists" && location.pathname.startsWith("/lists/")) ||
-            (tab.to === "/home" && location.pathname.startsWith("/notes/"));
+          const localizedPath = getLocalizedPath(tab.to);
+          const isActive = location.pathname === localizedPath || 
+            location.pathname.endsWith(tab.to) ||
+            (tab.to === "/lists" && location.pathname.includes("/lists/")) ||
+            (tab.to === "/home" && location.pathname.includes("/notes/"));
           
           return (
             <NavLink
               key={tab.to}
-              to={tab.to}
+              to={localizedPath}
               className={cn(
                 "relative flex flex-col items-center justify-center gap-1 py-2 px-4 rounded-xl transition-all duration-200 min-w-[64px]",
                 isActive 

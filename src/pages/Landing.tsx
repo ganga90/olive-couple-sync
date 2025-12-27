@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useSEO } from "@/hooks/useSEO";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { InteractivePlayground } from "@/components/landing/InteractivePlayground";
@@ -9,9 +10,11 @@ import { FAQSection } from "@/components/landing/FAQSection";
 import { FloatingActionButton } from "@/components/FloatingActionButton";
 
 const Landing = () => {
+  const { t } = useTranslation('landing');
+  
   useSEO({ 
-    title: "Drop a brain-dump. Olive turns it into next steps.", 
-    description: "Type or speak whatever's on your mind—Olive auto-categorizes into lists, assigns owners & dates, and keeps you both in sync. Ask Olive to help with any task." 
+    title: t('hero.title'), 
+    description: t('hero.description')
   });
 
   return (
@@ -30,7 +33,7 @@ const Landing = () => {
         {/* Footer */}
         <div className="text-center pt-12 pb-8">
           <p className="text-muted-foreground">
-            Made with ❤️ for couples who want to stay organized together
+            {t('footer.madeWithLove', { ns: 'common' })}
           </p>
         </div>
       </div>

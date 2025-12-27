@@ -1,0 +1,24 @@
+{
+  "title": "Calendario",
+  "signInPrompt": "Accedi per vedere il tuo calendario",
+  "weekdays": {
+    "sun": "Dom",
+    "mon": "Lun",
+    "tue": "Mar",
+    "wed": "Mer",
+    "thu": "Gio",
+    "fri": "Ven",
+    "sat": "Sab"
+  },
+  "priority": {
+    "high": "Alta",
+    "medium": "Media",
+    "low": "Bassa"
+  },
+  "empty": {
+    "noTasksScheduled": "Nessuna attività programmata per questo giorno"
+  },
+  "actions": {
+    "close": "Chiudi"
+  }
+}

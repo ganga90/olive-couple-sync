@@ -1,14 +1,16 @@
 import { SignUp } from "@clerk/clerk-react";
+import { useTranslation } from "react-i18next";
 import { useSEO } from "@/hooks/useSEO";
 import { Card } from "@/components/ui/card";
 import { OliveLogo } from "@/components/OliveLogo";
 import { useSearchParams } from "react-router-dom";
 
 const SignUpPage = () => {
+  const { t } = useTranslation('auth');
   const [searchParams] = useSearchParams();
   const redirectUrl = searchParams.get("redirect") || "/";
   
-  useSEO({ title: "Sign up — Olive", description: "Create your Olive account to start organizing together." });
+  useSEO({ title: `${t('signUp.title')} — Olive`, description: t('signUp.description') });
 
   return (
     <main className="min-h-screen bg-gradient-soft">
@@ -19,8 +21,8 @@ const SignUpPage = () => {
           </div>
         </div>
         
-        <h1 className="mb-2 text-center text-3xl font-bold text-olive-dark">Create account</h1>
-        <p className="mb-6 text-center text-muted-foreground">Join Olive and set up your space in minutes.</p>
+        <h1 className="mb-2 text-center text-3xl font-bold text-olive-dark">{t('signUp.title')}</h1>
+        <p className="mb-6 text-center text-muted-foreground">{t('signUp.description')}</p>
         
         <Card className="p-4 bg-white/50 border-olive/20 shadow-soft">
           <SignUp fallbackRedirectUrl={redirectUrl} />

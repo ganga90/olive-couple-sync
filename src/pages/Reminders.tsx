@@ -1,13 +1,16 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useSEO } from "@/hooks/useSEO";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Bell, Clock, Calendar, AlertTriangle, CheckCircle2, ChevronRight } from "lucide-react";
 import { addHours, isBefore, isAfter, addDays, format, formatDistanceToNow } from "date-fns";
+import { useDateLocale } from "@/hooks/useDateLocale";
 import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
 import { FloatingActionButton } from "@/components/FloatingActionButton";
 import { SwipeableReminderCard } from "@/components/SwipeableReminderCard";
@@ -28,9 +31,13 @@ interface GroupedReminders {
 }
 
 const Reminders = () => {
+  const { t } = useTranslation(['reminders', 'common']);
+  const dateLocale = useDateLocale();
+  const { getLocalizedPath } = useLocalizedNavigate();
+  
   useSEO({ 
-    title: "Reminders — Olive", 
-    description: "View and manage all your scheduled reminders." 
+    title: `${t('title')} — Olive`, 
+    description: t('empty.description')
   });
 
   const navigate = useNavigate();
@@ -56,7 +63,7 @@ const Reminders = () => {
             note,
             type: "explicit",
             time: reminderTime,
-            label: "Reminder"
+            label: t('labels.reminder')
           });
         }
       }
@@ -73,7 +80,7 @@ const Reminders = () => {
             note,
             type: "auto-24h",
             time: reminder24h,
-            label: "24h before due"
+            label: t('labels.24hBefore')
           });
         }
 
@@ -82,7 +89,7 @@ const Reminders = () => {
             note,
             type: "auto-2h",
             time: reminder2h,
-            label: "2h before due"
+            label: t('labels.2hBefore')
           });
         }
       }
@@ -96,7 +103,7 @@ const Reminders = () => {
       thisWeek: sorted.filter(r => isAfter(r.time, in24h) && isBefore(r.time, in7d)),
       later: sorted.filter(r => isAfter(r.time, in7d))
     };
-  }, [notes]);
+  }, [notes, t]);
 
   const totalReminders = groupedReminders.upcoming.length + groupedReminders.thisWeek.length + groupedReminders.later.length;
 
@@ -117,7 +124,7 @@ const Reminders = () => {
   };
 
   const handleNoteClick = (noteId: string) => {
-    navigate(`/notes/${noteId}`);
+    navigate(getLocalizedPath(`/notes/${noteId}`));
   };
 
   const ReminderSection = ({ 
@@ -190,9 +197,9 @@ const Reminders = () => {
         <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
           <Bell className="h-8 w-8 text-primary" />
         </div>
-        <h1 className="text-2xl font-bold mb-2">Reminders</h1>
-        <p className="text-muted-foreground mb-6">Sign in to view your reminders</p>
-        <Button variant="accent" onClick={() => navigate("/sign-in")}>Sign In</Button>
+        <h1 className="text-2xl font-bold mb-2">{t('title')}</h1>
+        <p className="text-muted-foreground mb-6">{t('signInPrompt')}</p>
+        <Button variant="accent" onClick={() => navigate(getLocalizedPath("/sign-in"))}>{t('buttons.signIn', { ns: 'common' })}</Button>
       </div>
     );
   }
@@ -209,9 +216,9 @@ const Reminders = () => {
               <Bell className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Reminders</h1>
+              <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
               <p className="text-sm text-muted-foreground">
-                {totalReminders === 0 ? "All caught up!" : `${totalReminders} upcoming`}
+                {totalReminders === 0 ? t('allCaughtUp') : t('upcoming', { count: totalReminders })}
               </p>
             </div>
           </div>
@@ -224,9 +231,9 @@ const Reminders = () => {
               <div className="h-16 w-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
                 <CheckCircle2 className="h-8 w-8 text-success" />
               </div>
-              <h3 className="font-semibold text-foreground mb-1">No upcoming reminders</h3>
+              <h3 className="font-semibold text-foreground mb-1">{t('empty.title')}</h3>
               <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                You're all set! Set a reminder on a task to get notified at the right time.
+                {t('empty.description')}
               </p>
             </CardContent>
           </Card>
@@ -234,7 +241,7 @@ const Reminders = () => {
           <div className="space-y-6">
             {/* Upcoming (Next 24 hours) */}
             <ReminderSection
-              title="Upcoming (24h)"
+              title={t('sections.upcoming24h')}
               icon={AlertTriangle}
               reminders={groupedReminders.upcoming}
               variant="urgent"
@@ -242,7 +249,7 @@ const Reminders = () => {
 
             {/* This Week */}
             <ReminderSection
-              title="This Week"
+              title={t('sections.thisWeek')}
               icon={Calendar}
               reminders={groupedReminders.thisWeek}
               variant="warning"
@@ -250,7 +257,7 @@ const Reminders = () => {
 
             {/* Later */}
             <ReminderSection
-              title="Later"
+              title={t('sections.later')}
               icon={Clock}
               reminders={groupedReminders.later}
               variant="default"

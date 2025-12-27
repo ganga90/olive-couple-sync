@@ -1,0 +1,24 @@
+{
+  "title": "Calendar",
+  "signInPrompt": "Sign in to view your calendar",
+  "weekdays": {
+    "sun": "Sun",
+    "mon": "Mon",
+    "tue": "Tue",
+    "wed": "Wed",
+    "thu": "Thu",
+    "fri": "Fri",
+    "sat": "Sat"
+  },
+  "priority": {
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low"
+  },
+  "empty": {
+    "noTasksScheduled": "No tasks scheduled for this day"
+  },
+  "actions": {
+    "close": "Close"
+  }
+}

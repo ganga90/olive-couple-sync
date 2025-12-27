@@ -1,0 +1,22 @@
+{
+  "title": "Listas",
+  "searchPlaceholder": "Buscar listas...",
+  "signInPrompt": "Inicia sesión para gestionar tus listas",
+  "empty": {
+    "noListsFound": "No se encontraron listas",
+    "noListsYet": "Aún no hay listas",
+    "tryDifferentSearch": "Prueba con otro término de búsqueda",
+    "createFirstList": "Crea tu primera lista para organizarte"
+  },
+  "stats": {
+    "active": "activas",
+    "overdue": "vencidas",
+    "thisWeek": "esta semana"
+  },
+  "badges": {
+    "ai": "IA"
+  },
+  "actions": {
+    "deleteConfirm": "¿Eliminar \"{{name}}\"? Esta acción no se puede deshacer."
+  }
+}

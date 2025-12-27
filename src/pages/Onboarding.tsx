@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +9,7 @@ import { toast } from "sonner";
 import { useSEO } from "@/hooks/useSEO";
 import { OliveLogo } from "@/components/OliveLogo";
 import { InviteFlow } from "@/components/InviteFlow";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 import { 
   User, 
   Users, 
@@ -20,6 +22,8 @@ import {
 type OnboardingStep = "role" | "names" | "demo" | "invite";
 
 const Onboarding = () => {
+  const { t } = useTranslation('onboarding');
+  const { getLocalizedPath } = useLocalizedNavigate();
   const [step, setStep] = useState<OnboardingStep>("role");
   const [userRole, setUserRole] = useState<"solo" | "couple" | null>(null);
   const [you, setYou] = useState("");
@@ -28,7 +32,7 @@ const Onboarding = () => {
   
   useSEO({ 
     title: "Get Started — Olive", 
-    description: "Set up Olive to personalize your task management experience." 
+    description: t('personalizeExperience')
   });
 
   const handleRoleSelect = (role: "solo" | "couple") => {
@@ -39,11 +43,11 @@ const Onboarding = () => {
   const handleNamesSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!you.trim()) {
-      toast.error("Please enter your name");
+      toast.error(t('validation.enterYourName'));
       return;
     }
     if (userRole === "couple" && !partner.trim()) {
-      toast.error("Please enter your partner's name");
+      toast.error(t('validation.enterPartnerName'));
       return;
     }
     
@@ -57,9 +61,9 @@ const Onboarding = () => {
   const handleComplete = () => {
     console.log('[Onboarding] handleComplete called, navigating to home');
     toast.success("Welcome to Olive! 🫒", {
-      description: "Your personal task organizer is ready."
+      description: t('welcomeMessage')
     });
-    navigate("/home");
+    navigate(getLocalizedPath("/home"));
   };
 
   const handleBack = () => {
@@ -115,10 +119,10 @@ const Onboarding = () => {
         {step === "role" && (
           <div className="w-full max-w-md animate-fade-up">
             <h1 className="text-2xl font-bold text-foreground text-center mb-2">
-              How will you use Olive?
+              {t('howWillYouUse')}
             </h1>
             <p className="text-muted-foreground text-center mb-8">
-              We'll personalize your experience based on your choice.
+              {t('personalizeExperience')}
             </p>
             
             <div className="space-y-3">
@@ -133,8 +137,8 @@ const Onboarding = () => {
                     <User className="w-6 h-6 text-primary" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-foreground">Just me</h3>
-                    <p className="text-sm text-muted-foreground">Personal task management</p>
+                    <h3 className="font-semibold text-foreground">{t('justMe.title')}</h3>
+                    <p className="text-sm text-muted-foreground">{t('justMe.subtitle')}</p>
                   </div>
                   <ArrowRight className="w-5 h-5 text-muted-foreground" />
                 </div>
@@ -151,8 +155,8 @@ const Onboarding = () => {
                     <Users className="w-6 h-6 text-accent" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-foreground">With my partner</h3>
-                    <p className="text-sm text-muted-foreground">Shared lists & coordination</p>
+                    <h3 className="font-semibold text-foreground">{t('withPartner.title')}</h3>
+                    <p className="text-sm text-muted-foreground">{t('withPartner.subtitle')}</p>
                   </div>
                   <ArrowRight className="w-5 h-5 text-muted-foreground" />
                 </div>
@@ -165,23 +169,23 @@ const Onboarding = () => {
         {step === "names" && (
           <div className="w-full max-w-md animate-fade-up">
             <h1 className="text-2xl font-bold text-foreground text-center mb-2">
-              {userRole === "couple" ? "What are your names?" : "What's your name?"}
+              {userRole === "couple" ? t('whatAreYourNames') : t('whatsYourName')}
             </h1>
             <p className="text-muted-foreground text-center mb-8">
-              We'll use this to personalize your tasks.
+              {t('personalizeTasks')}
             </p>
 
             <Card className="p-6 bg-card/80 border-border/50 shadow-card">
               <form onSubmit={handleNamesSubmit} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="you" className="text-foreground font-medium">
-                    Your name
+                    {t('yourName')}
                   </Label>
                   <Input 
                     id="you" 
                     value={you} 
                     onChange={(e) => setYou(e.target.value)} 
-                    placeholder="e.g., Alex"
+                    placeholder={t('namePlaceholder')}
                     className="h-12 text-base border-border/50 focus:border-primary"
                     autoFocus
                   />
@@ -190,20 +194,20 @@ const Onboarding = () => {
                 {userRole === "couple" && (
                   <div className="space-y-2">
                     <Label htmlFor="partner" className="text-foreground font-medium">
-                      Partner's name
+                      {t('partnerName')}
                     </Label>
                     <Input 
                       id="partner" 
                       value={partner} 
                       onChange={(e) => setPartner(e.target.value)} 
-                      placeholder="e.g., Sam"
+                      placeholder={t('partnerPlaceholder')}
                       className="h-12 text-base border-border/50 focus:border-primary"
                     />
                   </div>
                 )}
                 
                 <Button type="submit" size="lg" className="w-full group">
-                  Continue
+                  {t('buttons.continue', { ns: 'common' })}
                   <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                 </Button>
               </form>
@@ -215,10 +219,10 @@ const Onboarding = () => {
         {step === "invite" && (
           <div className="w-full max-w-md animate-fade-up">
             <h1 className="text-2xl font-bold text-foreground text-center mb-2">
-              Connect with {partner}
+              {t('connectWith', { partner })}
             </h1>
             <p className="text-muted-foreground text-center mb-6">
-              Invite your partner to share your Olive space.
+              {t('invitePartner')}
             </p>
             
             <InviteFlow 
@@ -234,7 +238,7 @@ const Onboarding = () => {
       <footer className="px-6 py-4 text-center">
         <p className="text-xs text-muted-foreground flex items-center justify-center gap-1.5">
           <Sparkles className="w-3 h-3" />
-          Your data is encrypted and secure
+          {t('dataSecure')}
         </p>
       </footer>
     </main>
