@@ -19,7 +19,11 @@
     "title": "Ask Olive",
     "placeholder": "Ask about this task...",
     "newConversation": "New conversation",
-    "connectionError": "Sorry, I'm having trouble connecting right now. Please try again."
+    "connectionError": "Sorry, I'm having trouble connecting right now. Please try again.",
+    "onboarding": {
+      "title": "💬 Chat with Olive",
+      "description": "Have a conversation with Olive about this task! Ask questions, get suggestions, or request changes like adjusting the due date or priority."
+    }
   },
   "edit": {
     "category": "Category",

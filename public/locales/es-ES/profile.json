@@ -168,6 +168,10 @@
     "linkGeneratedDesc": "Haz clic en el enlace de abajo para conectar tu cuenta de WhatsApp.",
     "tokenCopied": "Token Copiado",
     "tokenCopiedDesc": "Pega este token en WhatsApp para vincular tu cuenta.",
-    "error": "Error al generar el enlace de WhatsApp. Inténtalo de nuevo."
+    "error": "Error al generar el enlace de WhatsApp. Inténtalo de nuevo.",
+    "onboarding": {
+      "title": "📱 Integración WhatsApp",
+      "description": "¡Vincula tu WhatsApp para enviar tareas por mensaje! Escribe a Olive de forma natural y tus tareas aparecerán en la app."
+    }
   }
 }

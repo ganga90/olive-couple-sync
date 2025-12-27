@@ -168,6 +168,10 @@
     "linkGeneratedDesc": "Click the link below to connect your WhatsApp account.",
     "tokenCopied": "Token Copied",
     "tokenCopiedDesc": "Paste this token in WhatsApp to link your account.",
-    "error": "Failed to generate WhatsApp link. Please try again."
+    "error": "Failed to generate WhatsApp link. Please try again.",
+    "onboarding": {
+      "title": "📱 WhatsApp Integration",
+      "description": "Link your WhatsApp to send tasks via messaging! Just text Olive naturally and your tasks will appear in the app."
+    }
   }
 }

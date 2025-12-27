@@ -19,7 +19,11 @@
     "title": "Preguntar a Olive",
     "placeholder": "Pregunta sobre esta tarea...",
     "newConversation": "Nueva conversación",
-    "connectionError": "Lo siento, tengo problemas de conexión ahora mismo. Por favor, inténtalo de nuevo."
+    "connectionError": "Lo siento, tengo problemas de conexión ahora mismo. Por favor, inténtalo de nuevo.",
+    "onboarding": {
+      "title": "💬 Chatea con Olive",
+      "description": "¡Mantén una conversación con Olive sobre esta tarea! Haz preguntas, obtén sugerencias o solicita cambios como ajustar la fecha o prioridad."
+    }
   },
   "edit": {
     "category": "Categoría",

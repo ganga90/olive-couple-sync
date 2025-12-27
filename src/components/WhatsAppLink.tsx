@@ -5,12 +5,15 @@ import { MessageCircle, Loader2, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useOnboardingTooltip } from '@/hooks/useOnboardingTooltip';
+import { OnboardingTooltip } from '@/components/OnboardingTooltip';
 
 export const WhatsAppLink = () => {
   const { t } = useTranslation('profile');
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [linkData, setLinkData] = useState<{ token: string; whatsappLink: string; expiresAt: string } | null>(null);
+  const whatsappOnboarding = useOnboardingTooltip('whatsapp-link');
 
   const generateLink = async () => {
     setLoading(true);
@@ -55,23 +58,35 @@ export const WhatsAppLink = () => {
       </p>
 
       {!linkData ? (
-        <Button 
-          onClick={generateLink} 
-          disabled={loading}
-          className="w-full"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {t('whatsappLink.generating')}
-            </>
-          ) : (
-            <>
-              <MessageCircle className="mr-2 h-4 w-4" />
-              {t('whatsappLink.generateButton')}
-            </>
-          )}
-        </Button>
+        <div className="relative">
+          <Button 
+            onClick={() => {
+              whatsappOnboarding.dismiss();
+              generateLink();
+            }} 
+            disabled={loading}
+            className="w-full"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {t('whatsappLink.generating')}
+              </>
+            ) : (
+              <>
+                <MessageCircle className="mr-2 h-4 w-4" />
+                {t('whatsappLink.generateButton')}
+              </>
+            )}
+          </Button>
+          <OnboardingTooltip
+            isVisible={whatsappOnboarding.isVisible}
+            onDismiss={whatsappOnboarding.dismiss}
+            title={t('whatsappLink.onboarding.title')}
+            description={t('whatsappLink.onboarding.description')}
+            position="top"
+          />
+        </div>
       ) : (
         <div className="space-y-3">
           <Alert>
