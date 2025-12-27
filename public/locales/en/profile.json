@@ -98,7 +98,8 @@
     "memoryUpdated": "Memory updated",
     "memoryDeleted": "Memory deleted",
     "loadingMemories": "Loading memories...",
-    "autoLearned": "Auto-learned"
+    "autoLearned": "Auto-learned",
+    "error": "Failed to save memory"
   },
   "noteProcessingStyle": "Note Processing Style",
   "memoryPersonalization": {

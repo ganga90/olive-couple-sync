@@ -98,7 +98,8 @@
     "memoryUpdated": "Ricordo aggiornato",
     "memoryDeleted": "Ricordo eliminato",
     "loadingMemories": "Caricamento ricordi...",
-    "autoLearned": "Appreso automaticamente"
+    "autoLearned": "Appreso automaticamente",
+    "error": "Impossibile salvare il ricordo"
   },
   "noteProcessingStyle": "Stile di Elaborazione Note",
   "memoryPersonalization": {
