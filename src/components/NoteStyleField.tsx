@@ -14,7 +14,7 @@ interface NoteStyleFieldProps {
 }
 
 export const NoteStyleField: React.FC<NoteStyleFieldProps> = ({ onStyleChange }) => {
-  const { t } = useTranslation('profile');
+  const { t, ready } = useTranslation('profile');
   const { user } = useAuth();
   const [style, setStyle] = useState<NoteStyle>('auto');
   const [loading, setLoading] = useState(true);
@@ -80,7 +80,7 @@ export const NoteStyleField: React.FC<NoteStyleFieldProps> = ({ onStyleChange })
     }
   };
 
-  if (loading) {
+  if (loading || !ready) {
     return (
       <div className="space-y-3">
         <div className="animate-pulse space-y-2">
