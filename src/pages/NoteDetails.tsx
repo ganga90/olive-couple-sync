@@ -340,9 +340,22 @@ const NoteDetails = () => {
             ) : (
               <>
                 <Badge variant="secondary" className="capitalize">{note.category}</Badge>
-                <Badge className={cn("border-0", priorityConfig.bg, priorityConfig.text)}>
-                  {priorityConfig.label}
-                </Badge>
+                <Select
+                  value={note.priority || "medium"}
+                  onValueChange={async (value) => {
+                    await updateNote(note.id, { priority: value as "low" | "medium" | "high" });
+                    toast.success("Priority updated!");
+                  }}
+                >
+                  <SelectTrigger className={cn("h-7 w-auto gap-1 border-0 px-2.5 text-xs font-medium", priorityConfig.bg, priorityConfig.text)}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low Priority</SelectItem>
+                    <SelectItem value="medium">Medium Priority</SelectItem>
+                    <SelectItem value="high">High Priority</SelectItem>
+                  </SelectContent>
+                </Select>
                 {isOverdue && (
                   <Badge className="bg-priority-high/10 text-priority-high border-0">
                     <AlertTriangle className="h-3 w-3 mr-1" />
