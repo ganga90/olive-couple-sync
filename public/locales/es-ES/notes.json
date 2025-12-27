@@ -58,6 +58,10 @@
     "thinking": "Olive está pensando...",
     "success": "¡Olive encontró algunas sugerencias útiles!",
     "error": "Error al generar consejo. Por favor, inténtalo de nuevo.",
-    "callNow": "Llamar Ahora"
+    "callNow": "Llamar Ahora",
+    "onboarding": {
+      "title": "✨ Pide ayuda a Olive",
+      "description": "¡Olive puede buscar en la web para encontrar enlaces útiles, números de teléfono, direcciones y recomendaciones relacionadas con esta tarea!"
+    }
   }
 }

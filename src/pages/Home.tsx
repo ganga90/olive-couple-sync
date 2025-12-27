@@ -19,6 +19,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { categories } from "@/constants/categories";
 import { useOrganizeAgent } from "@/hooks/useOrganizeAgent";
 import { OptimizationReviewModal } from "@/components/OptimizationReviewModal";
+import { useOnboardingTooltip } from "@/hooks/useOnboardingTooltip";
+import { OnboardingTooltip } from "@/components/OnboardingTooltip";
 
 const Home = () => {
   const { t } = useTranslation(['home', 'common']);
@@ -47,6 +49,9 @@ const Home = () => {
     analyze,
     applyPlan,
   } = useOrganizeAgent({ coupleId: currentCouple?.id, onComplete: refetchNotes });
+  
+  // Onboarding tooltip for Organize feature
+  const organizeOnboarding = useOnboardingTooltip('organize_feature');
 
   const userName = isAuthenticated ? (user?.firstName || user?.fullName || you || "there") : "there";
 
@@ -222,23 +227,41 @@ const Home = () => {
 
           {/* Optimize Organization Button */}
           {notes.length >= 3 && (
-            <Card 
-              onClick={() => !isAnalyzing && analyze("all")}
-              className="p-4 border-l-4 border-l-accent bg-accent/5 cursor-pointer hover:bg-accent/10 
-                         transition-colors animate-fade-up stagger-3 group"
-            >
-              <div className="flex items-center gap-3">
-                {isAnalyzing ? (
-                  <Loader2 className="w-5 h-5 text-accent animate-spin" />
-                ) : (
-                  <Wand2 className="w-5 h-5 text-accent group-hover:rotate-12 transition-transform" />
-                )}
-                <div className="flex-1">
-                  <p className="font-medium text-sm text-foreground">{t('home:organize.title')}</p>
-                  <p className="text-xs text-muted-foreground">{t('home:organize.subtitle')}</p>
+            <div className="relative">
+              <Card 
+                onClick={() => {
+                  if (organizeOnboarding.isVisible) {
+                    organizeOnboarding.dismiss();
+                  }
+                  if (!isAnalyzing) {
+                    analyze("all");
+                  }
+                }}
+                className="p-4 border-l-4 border-l-accent bg-accent/5 cursor-pointer hover:bg-accent/10 
+                           transition-colors animate-fade-up stagger-3 group"
+              >
+                <div className="flex items-center gap-3">
+                  {isAnalyzing ? (
+                    <Loader2 className="w-5 h-5 text-accent animate-spin" />
+                  ) : (
+                    <Wand2 className="w-5 h-5 text-accent group-hover:rotate-12 transition-transform" />
+                  )}
+                  <div className="flex-1">
+                    <p className="font-medium text-sm text-foreground">{t('home:organize.title')}</p>
+                    <p className="text-xs text-muted-foreground">{t('home:organize.subtitle')}</p>
+                  </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
+              
+              {/* Onboarding Tooltip */}
+              <OnboardingTooltip
+                isVisible={organizeOnboarding.isVisible}
+                onDismiss={organizeOnboarding.dismiss}
+                title={t('home:organize.onboarding.title')}
+                description={t('home:organize.onboarding.description')}
+                position="bottom"
+              />
+            </div>
           )}
 
           {/* Tabs Widget with Filters */}
