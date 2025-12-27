@@ -22,7 +22,11 @@
     "connectedSuccess": "¡Google Calendar conectado con éxito!",
     "description": "Conecta tu Google Calendar para crear automáticamente eventos desde tus notas y sincronizar tu agenda con Olive.",
     "permissionNote": "Solicitaremos acceso para leer y crear eventos en tu calendario.",
-    "error": "Error al conectar el calendario"
+    "error": "Error al conectar el calendario",
+    "onboarding": {
+      "title": "📅 Sincroniza tu Calendario",
+      "description": "¡Conecta Google Calendar para ver todos tus eventos en Olive y crear automáticamente eventos desde tus notas!"
+    }
   },
   "calendarSettings": {
     "showEvents": "Mostrar eventos de Google Calendar",

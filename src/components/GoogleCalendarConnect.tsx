@@ -8,6 +8,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { useSearchParams } from 'react-router-dom';
 import { CalendarSettings } from '@/components/CalendarSettings';
+import { useOnboardingTooltip } from '@/hooks/useOnboardingTooltip';
+import { OnboardingTooltip } from '@/components/OnboardingTooltip';
 
 interface CalendarConnection {
   connected: boolean;
@@ -28,6 +30,9 @@ export function GoogleCalendarConnect() {
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  
+  // Onboarding tooltip
+  const calendarOnboarding = useOnboardingTooltip('google_calendar_feature');
 
   useEffect(() => {
     // Handle callback params
@@ -241,23 +246,39 @@ export function GoogleCalendarConnect() {
         {t('googleCalendar.description')}
       </p>
       
-      <Button
-        onClick={handleConnect}
-        disabled={connecting}
-        className="w-full"
-      >
-        {connecting ? (
-          <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            {t('googleCalendar.connecting')}
-          </>
-        ) : (
-          <>
-            <Calendar className="h-4 w-4 mr-2" />
-            {t('googleCalendar.connectButton')}
-          </>
-        )}
-      </Button>
+      <div className="relative">
+        <Button
+          onClick={() => {
+            if (calendarOnboarding.isVisible) {
+              calendarOnboarding.dismiss();
+            }
+            handleConnect();
+          }}
+          disabled={connecting}
+          className="w-full"
+        >
+          {connecting ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              {t('googleCalendar.connecting')}
+            </>
+          ) : (
+            <>
+              <Calendar className="h-4 w-4 mr-2" />
+              {t('googleCalendar.connectButton')}
+            </>
+          )}
+        </Button>
+        
+        {/* Onboarding Tooltip */}
+        <OnboardingTooltip
+          isVisible={calendarOnboarding.isVisible}
+          onDismiss={calendarOnboarding.dismiss}
+          title={t('googleCalendar.onboarding.title')}
+          description={t('googleCalendar.onboarding.description')}
+          position="top"
+        />
+      </div>
 
       <p className="text-xs text-muted-foreground text-center">
         {t('googleCalendar.permissionNote')}

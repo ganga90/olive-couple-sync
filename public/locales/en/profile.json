@@ -22,7 +22,11 @@
     "connectedSuccess": "Google Calendar connected successfully!",
     "description": "Connect your Google Calendar to automatically create events from your notes and sync your schedule with Olive.",
     "permissionNote": "We'll request access to read and create events in your calendar.",
-    "error": "Failed to connect calendar"
+    "error": "Failed to connect calendar",
+    "onboarding": {
+      "title": "📅 Sync Your Calendar",
+      "description": "Connect Google Calendar to see all your events in Olive and automatically create calendar events from your notes!"
+    }
   },
   "calendarSettings": {
     "showEvents": "Show Google Calendar events",

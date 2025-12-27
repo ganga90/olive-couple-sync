@@ -14,7 +14,11 @@
     },
     "moreAllowed": "{{count}} more allowed",
     "startOver": "Start Over",
-    "saveNote": "Save Note"
+    "saveNote": "Save Note",
+    "onboarding": {
+      "title": "✨ Welcome to Brain Dump!",
+      "description": "Type anything here - shopping lists, reminders, ideas. Olive's AI will automatically organize and categorize everything for you!"
+    }
   },
   "hint": {
     "try": "Try:",
