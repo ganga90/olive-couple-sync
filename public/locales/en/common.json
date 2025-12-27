@@ -1,0 +1,100 @@
+{
+  "nav": {
+    "home": "Home",
+    "lists": "Lists",
+    "calendar": "Calendar",
+    "reminders": "Reminders",
+    "profile": "Profile"
+  },
+  "buttons": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back",
+    "continue": "Continue",
+    "signIn": "Sign In",
+    "signUp": "Sign Up",
+    "signOut": "Sign Out",
+    "getStarted": "Get Started",
+    "learnMore": "Learn More",
+    "complete": "Complete",
+    "askOlive": "Ask Olive"
+  },
+  "common": {
+    "welcome": "Welcome to Olive",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "notFound": "Not found",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "priority": "Priority",
+    "daily": "Daily",
+    "recent": "Recent",
+    "all": "All",
+    "allCategories": "All Categories",
+    "everyone": "Everyone",
+    "you": "You",
+    "partner": "Partner",
+    "both": "Both"
+  },
+  "priority": {
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "highPriority": "High Priority",
+    "mediumPriority": "Medium Priority",
+    "lowPriority": "Low Priority",
+    "noPriority": "No Priority"
+  },
+  "categories": {
+    "task": "Task",
+    "groceries": "Groceries",
+    "shopping": "Shopping",
+    "home_improvement": "Home",
+    "travel": "Travel",
+    "date_ideas": "Date Ideas",
+    "personal": "Personal",
+    "reminder": "Reminder",
+    "work": "Work",
+    "health": "Health",
+    "finance": "Finance",
+    "entertainment": "Entertainment",
+    "movies_tv": "Movies & TV",
+    "books": "Books"
+  },
+  "footer": {
+    "copyright": "© 2025 Olive. All rights reserved.",
+    "madeWithLove": "Made with ❤️ for couples who want to stay organized together"
+  },
+  "time": {
+    "hoursAgo": "{{count}} hour ago",
+    "hoursAgo_plural": "{{count}} hours ago",
+    "minutesAgo": "{{count}} minute ago",
+    "minutesAgo_plural": "{{count}} minutes ago",
+    "daysAgo": "{{count}} day ago",
+    "daysAgo_plural": "{{count}} days ago",
+    "justNow": "Just now"
+  },
+  "errors": {
+    "somethingWentWrong": "Something went wrong",
+    "pleaseSignIn": "Please sign in to continue",
+    "noteNotFound": "Note not found",
+    "failedToSave": "Failed to save",
+    "failedToDelete": "Failed to delete"
+  },
+  "toast": {
+    "noteDeleted": "Note deleted",
+    "noteUpdated": "Note updated!",
+    "markedComplete": "Marked as complete!",
+    "welcomeToOlive": "Welcome to Olive! 🫒"
+  },
+  "language": {
+    "title": "Language",
+    "selectLanguage": "Select language",
+    "english": "English",
+    "spanish": "Spanish (Spain)",
+    "italian": "Italian"
+  }
+}

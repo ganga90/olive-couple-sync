@@ -1,0 +1,39 @@
+{
+  "greeting": "Ciao, {{name}} 👋",
+  "whatsOnMind": "Cosa hai in mente oggi?",
+  "brainDump": {
+    "title": "Scrivi quello che ti viene in mente...",
+    "subtitle": "Attività, promemoria, idee—scrivi naturalmente",
+    "dialogTitle": "Aggiungi un'idea veloce"
+  },
+  "hint": {
+    "try": "Prova:",
+    "example": "\"cena con Luca mercoledì alle 19, chiedere ad Almu i biglietti\""
+  },
+  "quickStart": {
+    "title": "Inizio rapido",
+    "subtitle": "Crea la tua prima attività ora"
+  },
+  "connectCalendar": {
+    "title": "Collega Calendario",
+    "subtitle": "Sincronizza con Google Calendar"
+  },
+  "tabs": {
+    "priority": "🔥 Priorità",
+    "daily": "📅 Giornaliero",
+    "recent": "🕐 Recente"
+  },
+  "emptyState": {
+    "noTasksMatch": "Nessuna attività corrisponde ai filtri",
+    "adjustFilters": "Prova a modificare i filtri",
+    "noRecentTasks": "Nessuna attività recente",
+    "addFirstTask": "Aggiungi la tua prima attività sopra",
+    "noTasksScheduled": "Nessuna attività programmata"
+  },
+  "completedThisWeek": "{{count}} attività completata questa settimana 🎉",
+  "completedThisWeek_plural": "{{count}} attività completate questa settimana 🎉",
+  "notAuthenticated": {
+    "title": "Benvenuto a Olive",
+    "subtitle": "Per favore accedi per continuare"
+  }
+}

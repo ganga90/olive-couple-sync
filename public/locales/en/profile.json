@@ -1,0 +1,38 @@
+{
+  "title": "Profile",
+  "subtitle": "Manage your Olive account profile and settings.",
+  "signInToManage": "Sign in to manage your account",
+  "partnerConnection": "Partner Connection",
+  "timezone": "Timezone",
+  "whatsappNotifications": "WhatsApp Notifications",
+  "whatsappAssistant": "WhatsApp AI Assistant",
+  "googleCalendar": {
+    "title": "Google Calendar",
+    "subtitle": "Sync your calendar and create events from notes"
+  },
+  "noteProcessingStyle": "Note Processing Style",
+  "memoryPersonalization": {
+    "title": "Memory & Personalization",
+    "subtitle": "What Olive knows about you to personalize your experience"
+  },
+  "settings": {
+    "title": "Settings",
+    "notifications": {
+      "title": "Notifications",
+      "subtitle": "Manage notification preferences"
+    },
+    "privacy": {
+      "title": "Privacy & Security",
+      "subtitle": "Manage your privacy settings"
+    },
+    "help": {
+      "title": "Help & Support",
+      "subtitle": "Get help with Olive"
+    },
+    "language": {
+      "title": "Language",
+      "subtitle": "Change the app language"
+    }
+  },
+  "version": "Olive v1.0.0"
+}

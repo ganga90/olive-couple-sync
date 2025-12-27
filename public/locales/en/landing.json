@@ -1,0 +1,11 @@
+{
+  "hero": {
+    "title": "Drop a brain-dump. Olive turns it into next steps.",
+    "description": "Type or speak whatever's on your mind—Olive auto-categorizes into lists, assigns owners & dates, and keeps you both in sync. Ask Olive to help with any task."
+  },
+  "cta": {
+    "getStarted": "Get Started",
+    "seeHowItWorks": "See How It Works",
+    "tryDemo": "Try Demo"
+  }
+}

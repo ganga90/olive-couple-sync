@@ -1,0 +1,27 @@
+{
+  "howWillYouUse": "Come userai Olive?",
+  "personalizeExperience": "Personalizzeremo la tua esperienza in base alla tua scelta.",
+  "justMe": {
+    "title": "Solo io",
+    "subtitle": "Gestione personale delle attività"
+  },
+  "withPartner": {
+    "title": "Con il mio partner",
+    "subtitle": "Liste condivise e coordinamento"
+  },
+  "whatAreYourNames": "Come vi chiamate?",
+  "whatsYourName": "Come ti chiami?",
+  "personalizeTasks": "Useremo questo per personalizzare le tue attività.",
+  "yourName": "Il tuo nome",
+  "partnerName": "Nome del partner",
+  "namePlaceholder": "es., Alessandro",
+  "partnerPlaceholder": "es., Sara",
+  "connectWith": "Connettiti con {{partner}}",
+  "invitePartner": "Invita il tuo partner a condividere il tuo spazio Olive.",
+  "validation": {
+    "enterYourName": "Per favore inserisci il tuo nome",
+    "enterPartnerName": "Per favore inserisci il nome del tuo partner"
+  },
+  "welcomeMessage": "Il tuo organizzatore personale di attività è pronto.",
+  "dataSecure": "I tuoi dati sono crittografati e sicuri"
+}

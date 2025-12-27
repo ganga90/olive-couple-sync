@@ -1,0 +1,28 @@
+{
+  "noteNotFound": "Nota no encontrada.",
+  "dueDate": "Fecha Límite",
+  "notSet": "Sin establecer",
+  "reminder": "Recordatorio",
+  "setReminder": "Establecer recordatorio",
+  "assignedTo": "Asignado A",
+  "notAssigned": "Sin asignar",
+  "createdBy": "Creado Por",
+  "overdue": "Vencida",
+  "completed": "Completada",
+  "originalNote": "Nota Original",
+  "details": "Detalles",
+  "tags": "Etiquetas",
+  "askOliveChat": {
+    "greeting": "¡Hola! ¿Cómo puedo ayudarte con \"{{summary}}\"?",
+    "title": "Preguntar a Olive",
+    "placeholder": "Pregunta sobre esta tarea...",
+    "newConversation": "Nueva conversación",
+    "connectionError": "Lo siento, tengo problemas de conexión ahora mismo. Por favor, inténtalo de nuevo."
+  },
+  "edit": {
+    "category": "Categoría",
+    "priority": "Prioridad",
+    "tags": "Etiquetas (separadas por comas)",
+    "items": "Sub-elementos (uno por línea)"
+  }
+}

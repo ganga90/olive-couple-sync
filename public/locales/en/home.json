@@ -1,0 +1,39 @@
+{
+  "greeting": "Hi, {{name}} 👋",
+  "whatsOnMind": "What's on your mind today?",
+  "brainDump": {
+    "title": "Drop a brain-dump here...",
+    "subtitle": "Tasks, reminders, ideas—type naturally",
+    "dialogTitle": "Drop a brain-dump"
+  },
+  "hint": {
+    "try": "Try:",
+    "example": "\"dinner with Luca next Wed 7pm, ask Almu about tickets\""
+  },
+  "quickStart": {
+    "title": "Quick start",
+    "subtitle": "Create your first task now"
+  },
+  "connectCalendar": {
+    "title": "Connect Calendar",
+    "subtitle": "Sync with Google Calendar"
+  },
+  "tabs": {
+    "priority": "🔥 Priority",
+    "daily": "📅 Daily",
+    "recent": "🕐 Recent"
+  },
+  "emptyState": {
+    "noTasksMatch": "No tasks match the filters",
+    "adjustFilters": "Try adjusting your filters above",
+    "noRecentTasks": "No recent tasks",
+    "addFirstTask": "Add your first task above",
+    "noTasksScheduled": "No tasks scheduled"
+  },
+  "completedThisWeek": "{{count}} task completed this week 🎉",
+  "completedThisWeek_plural": "{{count}} tasks completed this week 🎉",
+  "notAuthenticated": {
+    "title": "Welcome to Olive",
+    "subtitle": "Please sign in to continue"
+  }
+}
