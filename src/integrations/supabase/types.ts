@@ -17,6 +17,7 @@ export type Database = {
       calendar_connections: {
         Row: {
           access_token: string
+          auto_add_to_calendar: boolean | null
           auto_create_events: boolean | null
           calendar_name: string | null
           calendar_type: string | null
@@ -30,6 +31,7 @@ export type Database = {
           last_sync_time: string | null
           primary_calendar_id: string
           refresh_token: string
+          show_google_events: boolean | null
           sync_direction: string | null
           sync_enabled: boolean | null
           token_expiry: string | null
@@ -38,6 +40,7 @@ export type Database = {
         }
         Insert: {
           access_token: string
+          auto_add_to_calendar?: boolean | null
           auto_create_events?: boolean | null
           calendar_name?: string | null
           calendar_type?: string | null
@@ -51,6 +54,7 @@ export type Database = {
           last_sync_time?: string | null
           primary_calendar_id: string
           refresh_token: string
+          show_google_events?: boolean | null
           sync_direction?: string | null
           sync_enabled?: boolean | null
           token_expiry?: string | null
@@ -59,6 +63,7 @@ export type Database = {
         }
         Update: {
           access_token?: string
+          auto_add_to_calendar?: boolean | null
           auto_create_events?: boolean | null
           calendar_name?: string | null
           calendar_type?: string | null
@@ -72,6 +77,7 @@ export type Database = {
           last_sync_time?: string | null
           primary_calendar_id?: string
           refresh_token?: string
+          show_google_events?: boolean | null
           sync_direction?: string | null
           sync_enabled?: boolean | null
           token_expiry?: string | null

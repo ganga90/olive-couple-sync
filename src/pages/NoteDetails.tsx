@@ -26,6 +26,7 @@ import ReactMarkdown from 'react-markdown';
 import { cn } from "@/lib/utils";
 import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
 import { NoteMediaSection } from "@/components/NoteMediaSection";
+import { AddToCalendarButton } from "@/components/AddToCalendarButton";
 
 const NoteDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -360,29 +361,35 @@ const NoteDetails = () => {
 
           {/* Action Buttons */}
           {!note.completed && (
-            <div className="flex gap-2 animate-fade-up" style={{ animationDelay: '150ms' }}>
-              <Button 
-                variant="accent"
-                size="lg" 
-                className="flex-1"
-                onClick={() => setChatOpen(true)}
-              >
-                <MessageSquare className="h-4 w-4 mr-2" />
-                Ask Olive
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                className="flex-1 border-success/30 text-success hover:bg-success/10"
-                onClick={async () => {
-                  await updateNote(note.id, { completed: true });
-                  toast.success("Marked as complete!");
-                  navigate(note.list_id ? `/lists/${note.list_id}` : "/");
-                }}
-              >
-                <CheckCircle2 className="h-4 w-4 mr-2" />
-                Complete
-              </Button>
+            <div className="flex flex-col gap-2 animate-fade-up" style={{ animationDelay: '150ms' }}>
+              <div className="flex gap-2">
+                <Button 
+                  variant="accent"
+                  size="lg" 
+                  className="flex-1"
+                  onClick={() => setChatOpen(true)}
+                >
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Ask Olive
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="flex-1 border-success/30 text-success hover:bg-success/10"
+                  onClick={async () => {
+                    await updateNote(note.id, { completed: true });
+                    toast.success("Marked as complete!");
+                    navigate(note.list_id ? `/lists/${note.list_id}` : "/");
+                  }}
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Complete
+                </Button>
+              </div>
+              {/* Add to Google Calendar */}
+              {(note.dueDate || note.reminder_time) && (
+                <AddToCalendarButton note={note} size="lg" className="w-full" />
+              )}
             </div>
           )}
 
