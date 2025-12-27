@@ -52,6 +52,9 @@ const Home = () => {
   
   // Onboarding tooltip for Organize feature
   const organizeOnboarding = useOnboardingTooltip('organize_feature');
+  
+  // Onboarding tooltip for Brain Dump feature
+  const brainDumpOnboarding = useOnboardingTooltip('brain_dump_feature');
 
   const userName = isAuthenticated ? (user?.firstName || user?.fullName || you || "there") : "there";
 
@@ -163,30 +166,46 @@ const Home = () => {
           </div>
 
           {/* Brain-dump Input - Hero Style */}
-          <div 
-            onClick={() => setIsInputOpen(true)}
-            className="group relative bg-card border-2 border-primary/30 rounded-2xl p-5 shadow-card cursor-pointer 
-                       hover:border-primary hover:shadow-raised transition-all duration-300 
-                       active:scale-[0.99] animate-fade-up stagger-1"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 
-                              group-hover:bg-primary/20 transition-colors">
-                <Brain className="w-5 h-5 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-foreground font-medium text-base mb-0.5">
-                  {t('home:brainDump.title')}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {t('home:brainDump.subtitle')}
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center flex-shrink-0
-                              shadow-sm group-hover:shadow-glow transition-shadow">
-                <Plus className="h-5 w-5 text-primary-foreground" />
+          <div className="relative">
+            <div 
+              onClick={() => {
+                if (brainDumpOnboarding.isVisible) {
+                  brainDumpOnboarding.dismiss();
+                }
+                setIsInputOpen(true);
+              }}
+              className="group relative bg-card border-2 border-primary/30 rounded-2xl p-5 shadow-card cursor-pointer 
+                         hover:border-primary hover:shadow-raised transition-all duration-300 
+                         active:scale-[0.99] animate-fade-up stagger-1"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 
+                                group-hover:bg-primary/20 transition-colors">
+                  <Brain className="w-5 h-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-foreground font-medium text-base mb-0.5">
+                    {t('home:brainDump.title')}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {t('home:brainDump.subtitle')}
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center flex-shrink-0
+                                shadow-sm group-hover:shadow-glow transition-shadow">
+                  <Plus className="h-5 w-5 text-primary-foreground" />
+                </div>
               </div>
             </div>
+            
+            {/* Onboarding Tooltip */}
+            <OnboardingTooltip
+              isVisible={brainDumpOnboarding.isVisible}
+              onDismiss={brainDumpOnboarding.dismiss}
+              title={t('home:brainDump.onboarding.title')}
+              description={t('home:brainDump.onboarding.description')}
+              position="bottom"
+            />
           </div>
 
           {/* Guidance Hint */}
