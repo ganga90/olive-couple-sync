@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Check, Loader2, RefreshCw, Unlink, ExternalLink } from 'lucide-react';
+import { Calendar, Check, Loader2, RefreshCw, Unlink } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
@@ -17,6 +18,7 @@ interface CalendarConnection {
 }
 
 export function GoogleCalendarConnect() {
+  const { t } = useTranslation('profile');
   const { user } = useAuth();
   const userId = user?.id;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -31,17 +33,17 @@ export function GoogleCalendarConnect() {
     // Handle callback params
     const calendarParam = searchParams.get('calendar');
     if (calendarParam === 'connected') {
-      toast.success('Google Calendar connected successfully!');
+      toast.success(t('googleCalendar.connectedSuccess'));
       searchParams.delete('calendar');
       setSearchParams(searchParams, { replace: true });
     } else if (calendarParam === 'error') {
-      const message = searchParams.get('message') || 'Failed to connect calendar';
+      const message = searchParams.get('message') || t('googleCalendar.error');
       toast.error(message);
       searchParams.delete('calendar');
       searchParams.delete('message');
       setSearchParams(searchParams, { replace: true });
     }
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, t]);
 
   useEffect(() => {
     if (userId) {
@@ -102,7 +104,7 @@ export function GoogleCalendarConnect() {
       }
     } catch (error) {
       console.error('Failed to start calendar connection:', error);
-      toast.error('Failed to connect calendar');
+      toast.error(t('googleCalendar.error'));
       setConnecting(false);
     }
   }
@@ -119,14 +121,14 @@ export function GoogleCalendarConnect() {
       if (error) throw error;
       
       if (data?.success) {
-        toast.success(`Synced ${data.synced_count} events`);
+        toast.success(t('googleCalendar.syncSuccess', { count: data.synced_count }));
         await checkConnection();
       } else {
         throw new Error(data?.error || 'Sync failed');
       }
     } catch (error: any) {
       console.error('Failed to sync calendar:', error);
-      toast.error(error.message || 'Failed to sync calendar');
+      toast.error(error.message || t('googleCalendar.error'));
     } finally {
       setSyncing(false);
     }
@@ -135,7 +137,7 @@ export function GoogleCalendarConnect() {
   async function handleDisconnect() {
     if (!userId) return;
     
-    if (!confirm('Are you sure you want to disconnect your Google Calendar?')) {
+    if (!confirm(t('googleCalendar.disconnectConfirm'))) {
       return;
     }
     
@@ -148,14 +150,14 @@ export function GoogleCalendarConnect() {
       if (error) throw error;
       
       if (data?.success) {
-        toast.success('Calendar disconnected');
+        toast.success(t('googleCalendar.disconnected'));
         setConnection({ connected: false });
       } else {
         throw new Error(data?.error || 'Disconnect failed');
       }
     } catch (error: any) {
       console.error('Failed to disconnect calendar:', error);
-      toast.error(error.message || 'Failed to disconnect calendar');
+      toast.error(error.message || t('googleCalendar.error'));
     } finally {
       setDisconnecting(false);
     }
@@ -183,7 +185,7 @@ export function GoogleCalendarConnect() {
               </span>
               <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
                 <Check className="h-3 w-3 mr-1" />
-                Connected
+                {t('googleCalendar.connected')}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground truncate">
@@ -191,7 +193,7 @@ export function GoogleCalendarConnect() {
             </p>
             {connection.last_sync && (
               <p className="text-xs text-muted-foreground mt-1">
-                Last synced: {new Date(connection.last_sync).toLocaleString()}
+                {t('googleCalendar.lastSynced')} {new Date(connection.last_sync).toLocaleString()}
               </p>
             )}
           </div>
@@ -210,7 +212,7 @@ export function GoogleCalendarConnect() {
             ) : (
               <RefreshCw className="h-4 w-4 mr-2" />
             )}
-            Sync Now
+            {t('googleCalendar.syncNow')}
           </Button>
           <Button
             variant="outline"
@@ -236,7 +238,7 @@ export function GoogleCalendarConnect() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Connect your Google Calendar to automatically create events from your notes and sync your schedule with Olive.
+        {t('googleCalendar.description')}
       </p>
       
       <Button
@@ -247,18 +249,18 @@ export function GoogleCalendarConnect() {
         {connecting ? (
           <>
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Connecting...
+            {t('googleCalendar.connecting')}
           </>
         ) : (
           <>
             <Calendar className="h-4 w-4 mr-2" />
-            Connect Google Calendar
+            {t('googleCalendar.connectButton')}
           </>
         )}
       </Button>
 
       <p className="text-xs text-muted-foreground text-center">
-        We'll request access to read and create events in your calendar.
+        {t('googleCalendar.permissionNote')}
       </p>
     </div>
   );

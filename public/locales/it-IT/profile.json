@@ -8,7 +8,97 @@
   "whatsappAssistant": "Assistente IA WhatsApp",
   "googleCalendar": {
     "title": "Google Calendar",
-    "subtitle": "Sincronizza il calendario e crea eventi dalle note"
+    "subtitle": "Sincronizza il calendario e crea eventi dalle note",
+    "connected": "Connesso",
+    "lastSynced": "Ultima sincronizzazione:",
+    "syncNow": "Sincronizza Ora",
+    "syncing": "Sincronizzazione...",
+    "syncSuccess": "Sincronizzati {{count}} eventi",
+    "connectButton": "Collega Google Calendar",
+    "connecting": "Collegamento...",
+    "disconnect": "Scollega",
+    "disconnectConfirm": "Sei sicuro di voler scollegare il tuo Google Calendar?",
+    "disconnected": "Calendario scollegato",
+    "connectedSuccess": "Google Calendar collegato con successo!",
+    "description": "Collega il tuo Google Calendar per creare automaticamente eventi dalle note e sincronizzare il calendario con Olive.",
+    "permissionNote": "Richiederemo l'accesso per leggere e creare eventi nel tuo calendario.",
+    "error": "Impossibile collegare il calendario"
+  },
+  "calendarSettings": {
+    "showEvents": "Mostra eventi di Google Calendar",
+    "showEventsDescription": "Visualizza gli eventi di Google Calendar nella vista calendario di Olive",
+    "showEventsEnabled": "Gli eventi di Google Calendar saranno mostrati",
+    "showEventsDisabled": "Eventi di Google Calendar nascosti",
+    "autoAdd": "Aggiungi automaticamente note al calendario",
+    "autoAddDescription": "Crea automaticamente eventi per le note con scadenza",
+    "autoAddEnabled": "Le note saranno aggiunte automaticamente al calendario",
+    "autoAddDisabled": "Aggiunta automatica disabilitata",
+    "updateError": "Impossibile aggiornare l'impostazione"
+  },
+  "noteStyle": {
+    "description": "Scegli come scrivi di solito le tue note. Olive si adatterà per capire meglio il tuo stile.",
+    "auto": {
+      "title": "Rilevamento automatico",
+      "recommended": "Consigliato",
+      "description": "Olive rileva automaticamente se stai usando appunti veloci o messaggi più discorsivi"
+    },
+    "succinct": {
+      "title": "Stile appunti veloci",
+      "description": "Note brevi come \"comprare latte, chiamare dottore domani, prenotare ristorante venerdì\""
+    },
+    "conversational": {
+      "title": "Stile discorsivo",
+      "description": "Messaggi naturali come \"Ehi, penso che dobbiamo andare a prendere i bambini martedì e forse cenare fuori venerdì\""
+    },
+    "updated": "Stile note aggiornato",
+    "error": "Impossibile salvare la preferenza"
+  },
+  "partnerInfo": {
+    "noCoupleSpace": "Nessuno spazio coppia trovato",
+    "setupDescription": "Configura il tuo spazio coppia per iniziare a condividere note e liste.",
+    "setupButton": "Configura Spazio",
+    "yourCoupleSpace": "Il Tuo Spazio Coppia",
+    "you": "Tu",
+    "partner": "Partner",
+    "notSet": "Non impostato",
+    "invitePartner": "Invita Partner",
+    "createInviteDescription": "Crea un link condivisibile per invitare il tuo partner in questo spazio.",
+    "createInviteButton": "Crea Link di Invito",
+    "creating": "Creazione...",
+    "cancel": "Annulla",
+    "inviteMessage": "Messaggio di Invito",
+    "justTheLink": "Solo il Link",
+    "createAnother": "Crea un Altro Invito",
+    "dangerZone": "Zona Pericolosa",
+    "unlinkDescription": "Scollega da questo spazio coppia. Verrai rimosso dallo spazio condiviso e potrai crearne uno nuovo.",
+    "unlinkButton": "Scollega dallo Spazio",
+    "unlinking": "Scollegamento...",
+    "unlinkConfirmTitle": "Scollegare dallo Spazio Coppia?",
+    "unlinkConfirmDesc1": "Questo ti rimuoverà dallo spazio \"{{spaceName}}\".",
+    "unlinkConfirmDesc2": "Perderai l'accesso a tutte le note e liste condivise in questo spazio.",
+    "unlinkConfirmDesc3": "Dopo lo scollegamento, potrai creare un nuovo spazio coppia o continuare con uno spazio personale.",
+    "yesUnlink": "Sì, Scollega"
+  },
+  "memory": {
+    "tabMemories": "Ricordi",
+    "tabAddNew": "Aggiungi Nuovo",
+    "searchPlaceholder": "Cerca ricordi...",
+    "noMemoriesYet": "Nessun ricordo ancora",
+    "noMemoriesDescription": "Racconta a Olive di te, della tua famiglia, animali, preferenze e altro per personalizzare la tua esperienza",
+    "addFirstMemory": "Aggiungi il tuo primo ricordo",
+    "noMatchingMemories": "Nessun ricordo corrisponde alla ricerca",
+    "addMemoryTitle": "Aggiungi un ricordo",
+    "addMemoryDescription": "Racconta a Olive qualcosa di te che aiuterà a personalizzare la tua esperienza",
+    "placeholder": "es. Ho un cane di nome Milka. È un golden retriever e ha bisogno di controlli veterinari ogni 6 mesi.",
+    "category": "Categoria",
+    "importance": "Importanza",
+    "saveMemory": "Salva Ricordo",
+    "saving": "Salvataggio...",
+    "memorySaved": "Ricordo salvato",
+    "memoryUpdated": "Ricordo aggiornato",
+    "memoryDeleted": "Ricordo eliminato",
+    "loadingMemories": "Caricamento ricordi...",
+    "autoLearned": "Appreso automaticamente"
   },
   "noteProcessingStyle": "Stile di Elaborazione Note",
   "memoryPersonalization": {

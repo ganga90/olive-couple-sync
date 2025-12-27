@@ -8,7 +8,97 @@
   "whatsappAssistant": "WhatsApp AI Assistant",
   "googleCalendar": {
     "title": "Google Calendar",
-    "subtitle": "Sync your calendar and create events from notes"
+    "subtitle": "Sync your calendar and create events from notes",
+    "connected": "Connected",
+    "lastSynced": "Last synced:",
+    "syncNow": "Sync Now",
+    "syncing": "Syncing...",
+    "syncSuccess": "Synced {{count}} events",
+    "connectButton": "Connect Google Calendar",
+    "connecting": "Connecting...",
+    "disconnect": "Disconnect",
+    "disconnectConfirm": "Are you sure you want to disconnect your Google Calendar?",
+    "disconnected": "Calendar disconnected",
+    "connectedSuccess": "Google Calendar connected successfully!",
+    "description": "Connect your Google Calendar to automatically create events from your notes and sync your schedule with Olive.",
+    "permissionNote": "We'll request access to read and create events in your calendar.",
+    "error": "Failed to connect calendar"
+  },
+  "calendarSettings": {
+    "showEvents": "Show Google Calendar events",
+    "showEventsDescription": "Display events from Google Calendar in the Olive calendar view",
+    "showEventsEnabled": "Google Calendar events will be shown",
+    "showEventsDisabled": "Google Calendar events hidden",
+    "autoAdd": "Auto-add notes to calendar",
+    "autoAddDescription": "Automatically create calendar events for notes with due dates",
+    "autoAddEnabled": "Notes will be auto-added to calendar",
+    "autoAddDisabled": "Auto-add disabled",
+    "updateError": "Failed to update setting"
+  },
+  "noteStyle": {
+    "description": "Choose how you typically write your notes. Olive will adapt to understand your style better.",
+    "auto": {
+      "title": "Auto-detect",
+      "recommended": "Recommended",
+      "description": "Olive automatically detects if you're using quick brain-dumps or conversational messages"
+    },
+    "succinct": {
+      "title": "Brain-dump style",
+      "description": "Quick, keyword-focused notes like \"buy milk, call doctor tomorrow, book restaurant Friday\""
+    },
+    "conversational": {
+      "title": "Conversational style",
+      "description": "Natural messages like \"Hey, I think we need to pick up the kids on Tuesday and maybe go to dinner Friday\""
+    },
+    "updated": "Note style updated",
+    "error": "Failed to save preference"
+  },
+  "partnerInfo": {
+    "noCoupleSpace": "No couple space found",
+    "setupDescription": "Set up your couple space to start sharing notes and lists.",
+    "setupButton": "Set Up Space",
+    "yourCoupleSpace": "Your Couple Space",
+    "you": "You",
+    "partner": "Partner",
+    "notSet": "Not set",
+    "invitePartner": "Invite Partner",
+    "createInviteDescription": "Create a shareable link to invite your partner to this space.",
+    "createInviteButton": "Create Invite Link",
+    "creating": "Creating...",
+    "cancel": "Cancel",
+    "inviteMessage": "Invite Message",
+    "justTheLink": "Just the Link",
+    "createAnother": "Create Another Invite",
+    "dangerZone": "Danger Zone",
+    "unlinkDescription": "Unlink from this couple space. This will remove you from the shared space and you can create a new one.",
+    "unlinkButton": "Unlink from Space",
+    "unlinking": "Unlinking...",
+    "unlinkConfirmTitle": "Unlink from Couple Space?",
+    "unlinkConfirmDesc1": "This will remove you from the \"{{spaceName}}\" space.",
+    "unlinkConfirmDesc2": "You will lose access to all shared notes and lists in this space.",
+    "unlinkConfirmDesc3": "After unlinking, you'll be able to create a new couple space or continue with a personal space.",
+    "yesUnlink": "Yes, Unlink"
+  },
+  "memory": {
+    "tabMemories": "Memories",
+    "tabAddNew": "Add New",
+    "searchPlaceholder": "Search memories...",
+    "noMemoriesYet": "No memories yet",
+    "noMemoriesDescription": "Tell Olive about yourself, your family, pets, preferences, and more to personalize your experience",
+    "addFirstMemory": "Add your first memory",
+    "noMatchingMemories": "No memories match your search",
+    "addMemoryTitle": "Add a memory",
+    "addMemoryDescription": "Tell Olive something about yourself that will help personalize your experience",
+    "placeholder": "e.g., I have a dog named Milka. She's a golden retriever and needs her vet checkups every 6 months.",
+    "category": "Category",
+    "importance": "Importance",
+    "saveMemory": "Save Memory",
+    "saving": "Saving...",
+    "memorySaved": "Memory saved",
+    "memoryUpdated": "Memory updated",
+    "memoryDeleted": "Memory deleted",
+    "loadingMemories": "Loading memories...",
+    "autoLearned": "Auto-learned"
   },
   "noteProcessingStyle": "Note Processing Style",
   "memoryPersonalization": {
