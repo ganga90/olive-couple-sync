@@ -65,5 +65,9 @@
     "typeQuestion": "Scrivi la tua domanda...",
     "send": "Invia",
     "sending": "Invio..."
+  },
+  "organize": {
+    "title": "Ottimizza le tue liste",
+    "subtitle": "Lascia che Olive AI riorganizzi le attività nelle liste giuste"
   }
 }
