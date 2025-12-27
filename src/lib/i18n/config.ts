@@ -1,8 +1,41 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
-import HttpBackend from 'i18next-http-backend';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from './languages';
+
+// Import translation files directly for bundling (avoids HTTP loading issues)
+import enCommon from '../../../public/locales/en/common.json';
+import enHome from '../../../public/locales/en/home.json';
+import enLanding from '../../../public/locales/en/landing.json';
+import enProfile from '../../../public/locales/en/profile.json';
+import enNotes from '../../../public/locales/en/notes.json';
+import enOnboarding from '../../../public/locales/en/onboarding.json';
+import enLists from '../../../public/locales/en/lists.json';
+import enReminders from '../../../public/locales/en/reminders.json';
+import enCalendar from '../../../public/locales/en/calendar.json';
+import enAuth from '../../../public/locales/en/auth.json';
+
+import esCommon from '../../../public/locales/es-ES/common.json';
+import esHome from '../../../public/locales/es-ES/home.json';
+import esLanding from '../../../public/locales/es-ES/landing.json';
+import esProfile from '../../../public/locales/es-ES/profile.json';
+import esNotes from '../../../public/locales/es-ES/notes.json';
+import esOnboarding from '../../../public/locales/es-ES/onboarding.json';
+import esLists from '../../../public/locales/es-ES/lists.json';
+import esReminders from '../../../public/locales/es-ES/reminders.json';
+import esCalendar from '../../../public/locales/es-ES/calendar.json';
+import esAuth from '../../../public/locales/es-ES/auth.json';
+
+import itCommon from '../../../public/locales/it-IT/common.json';
+import itHome from '../../../public/locales/it-IT/home.json';
+import itLanding from '../../../public/locales/it-IT/landing.json';
+import itProfile from '../../../public/locales/it-IT/profile.json';
+import itNotes from '../../../public/locales/it-IT/notes.json';
+import itOnboarding from '../../../public/locales/it-IT/onboarding.json';
+import itLists from '../../../public/locales/it-IT/lists.json';
+import itReminders from '../../../public/locales/it-IT/reminders.json';
+import itCalendar from '../../../public/locales/it-IT/calendar.json';
+import itAuth from '../../../public/locales/it-IT/auth.json';
 
 // Custom path detector for URL-based locale detection
 const PathDetector = {
@@ -27,11 +60,51 @@ const PathDetector = {
 const languageDetector = new LanguageDetector();
 languageDetector.addDetector(PathDetector);
 
+// Resources bundled directly for immediate availability
+const resources = {
+  en: {
+    common: enCommon,
+    home: enHome,
+    landing: enLanding,
+    profile: enProfile,
+    notes: enNotes,
+    onboarding: enOnboarding,
+    lists: enLists,
+    reminders: enReminders,
+    calendar: enCalendar,
+    auth: enAuth
+  },
+  'es-ES': {
+    common: esCommon,
+    home: esHome,
+    landing: esLanding,
+    profile: esProfile,
+    notes: esNotes,
+    onboarding: esOnboarding,
+    lists: esLists,
+    reminders: esReminders,
+    calendar: esCalendar,
+    auth: esAuth
+  },
+  'it-IT': {
+    common: itCommon,
+    home: itHome,
+    landing: itLanding,
+    profile: itProfile,
+    notes: itNotes,
+    onboarding: itOnboarding,
+    lists: itLists,
+    reminders: itReminders,
+    calendar: itCalendar,
+    auth: itAuth
+  }
+};
+
 i18n
-  .use(HttpBackend)
   .use(languageDetector)
   .use(initReactI18next)
   .init({
+    resources,
     supportedLngs: Object.keys(SUPPORTED_LANGUAGES),
     fallbackLng: DEFAULT_LANGUAGE,
     ns: ['common', 'home', 'landing', 'profile', 'notes', 'onboarding', 'lists', 'reminders', 'calendar', 'auth'],
@@ -40,9 +113,6 @@ i18n
       order: ['path', 'localStorage', 'navigator'],
       lookupLocalStorage: 'olive_language',
       caches: ['localStorage']
-    },
-    backend: {
-      loadPath: '/locales/{{lng}}/{{ns}}.json'
     },
     interpolation: {
       escapeValue: false
