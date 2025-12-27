@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -21,6 +22,7 @@ interface NoteInputProps {
 }
 
 export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => {
+  const { t } = useTranslation('home');
   const [text, setText] = useState("");
   const [interim, setInterim] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -58,7 +60,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
               <Brain className="w-6 h-6 text-primary animate-pulse" />
             </div>
           </div>
-          <p className="text-sm text-muted-foreground">Loading your notes space...</p>
+          <p className="text-sm text-muted-foreground">{t('loading')}</p>
         </div>
       </Card>
     );
@@ -158,7 +160,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     });
     
     if (!text.trim() && mediaFiles.length === 0) {
-      toast.error("Please enter a note or attach media");
+      toast.error(t('toast.enterNoteOrMedia'));
       return;
     }
 
@@ -236,7 +238,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
 
         setText("");
         clearMediaFiles();
-        toast.success(`AI identified ${aiProcessedNote.notes.length} separate tasks!`);
+        toast.success(t('toast.multipleTasksIdentified', { count: aiProcessedNote.notes.length }));
         return;
       }
       
@@ -259,7 +261,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       });
 
       // Success feedback
-      toast.success("Note processed! Review and save below ✨");
+      toast.success(t('toast.noteProcessed'));
       
       // Clear the input
       setText("");
@@ -269,7 +271,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       // Don't call onNoteAdded yet - wait for user to accept
     } catch (error) {
       console.error("Error processing note:", error);
-      toast.error("Failed to process note. Please try again.");
+      toast.error(t('toast.failedToProcess'));
     } finally {
       setIsProcessing(false);
     }
@@ -322,7 +324,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         throw new Error('Failed to save note to database');
       }
       
-      toast.success("Note saved successfully! 🎉");
+      toast.success(t('toast.noteSaved'));
       
       // Refetch and close
       await refetchNotes();
@@ -330,7 +332,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       onNoteAdded?.(); // Notify parent to close dialog/refresh
     } catch (error) {
       console.error('[NoteInput] Error saving note:', error);
-      toast.error("Failed to save note");
+      toast.error(t('toast.failedToSave'));
     }
   };
 
@@ -346,21 +348,21 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     
     // Weekend suggestions
     if (day === 0 || day === 6) {
-      return "Weekend plans, errands, or fun activities...";
+      return t('brainDump.placeholder.weekend');
     }
     
     // Morning suggestions
     if (hour < 12) {
-      return "Morning tasks, groceries, or today's priorities...";
+      return t('brainDump.placeholder.morning');
     }
     
     // Afternoon suggestions
     if (hour < 18) {
-      return "Afternoon goals, errands, or evening plans...";
+      return t('brainDump.placeholder.afternoon');
     }
     
     // Evening suggestions
-    return "Tomorrow's prep, shopping lists, or date ideas...";
+    return t('brainDump.placeholder.evening');
   };
 
   // If we have multiple notes, show the multiple notes recap
@@ -390,7 +392,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             variant="outline" 
             className="flex-1 border-border hover:bg-muted transition-all duration-200"
           >
-            Start Over
+            {t('brainDump.startOver')}
           </Button>
           <Button 
             onClick={handleSaveNote}
@@ -398,7 +400,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             className="flex-1 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02]"
           >
             <Sparkles className="w-4 h-4 mr-2" />
-            Save Note
+            {t('brainDump.saveNote')}
           </Button>
         </div>
       </div>
@@ -432,11 +434,11 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
               )} />
             </div>
             <h2 className="text-lg font-semibold text-foreground">
-              Brain dump
+              {t('brainDump.title')}
             </h2>
           </div>
           <p className="text-sm text-muted-foreground">
-            Drop your thoughts, I'll organize them with AI ✨
+            {t('brainDump.subtitle')}
           </p>
         </div>
         
@@ -470,7 +472,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
               </div>
             ))}
             <span className="text-xs text-muted-foreground self-end pb-1">
-              {5 - mediaFiles.length} more allowed
+              {t('brainDump.moreAllowed', { count: 5 - mediaFiles.length })}
             </span>
           </div>
         )}

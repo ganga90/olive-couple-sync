@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,11 +22,12 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   onToggleComplete, 
   onAskOlive 
 }) => {
+  const { t } = useTranslation('notes');
   const { you, partner } = useSupabaseCouple();
   const { updateNote } = useSupabaseNotesContext();
   
   const isYourNote = note.addedBy === "you" || you === note.addedBy;
-  const authorName = isYourNote ? "You" : partner || "Partner";
+  const authorName = isYourNote ? t('card.you') : partner || t('card.partner');
   
   const [isCompleting, setIsCompleting] = React.useState(false);
   const [showReminderDialog, setShowReminderDialog] = React.useState(false);
@@ -87,7 +89,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             {/* AI Auto tag - shown for all AI-processed notes */}
             <Badge variant="ai" className="text-xs flex items-center gap-1">
               <Sparkles className="h-3 w-3" />
-              Auto
+              {t('card.auto')}
             </Badge>
             
             {/* Priority tag with more visual weight */}
@@ -120,7 +122,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             ))}
             {note.items.length > 3 && (
               <div className="text-xs text-muted-foreground">
-                +{note.items.length - 3} more items
+                {t('card.moreItems', { count: note.items.length - 3 })}
               </div>
             )}
           </div>
@@ -150,7 +152,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               <div className="flex items-center gap-1 text-olive">
                 <Bell className="h-3 w-3" />
                 <span className="font-medium">
-                  Reminder: {format(new Date(note.reminder_time), "PPp")}
+                  {t('card.reminderLabel')} {format(new Date(note.reminder_time), "PPp")}
                 </span>
               </div>
             )}
@@ -164,7 +166,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               className="text-xs h-auto py-1 px-2 hover:bg-accent"
             >
               <Bell className="h-3 w-3 mr-1" />
-              {note.reminder_time ? "Edit" : "Set"} Reminder
+              {note.reminder_time ? t('card.editReminder') : t('card.setReminder')}
             </Button>
             
             <Button
@@ -174,7 +176,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               className="text-xs h-auto py-1 px-2 text-olive hover:text-olive-dark hover:bg-olive/10"
             >
               <MessageCircle className="h-3 w-3 mr-1" />
-              Ask Olive
+              {t('askOlive')}
             </Button>
           </div>
         </div>

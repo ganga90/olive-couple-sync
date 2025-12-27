@@ -1,10 +1,20 @@
 {
   "greeting": "Hi, {{name}} 👋",
   "whatsOnMind": "What's on your mind today?",
+  "loading": "Loading your notes space...",
   "brainDump": {
-    "title": "Drop a brain-dump here...",
-    "subtitle": "Tasks, reminders, ideas—type naturally",
-    "dialogTitle": "Drop a brain-dump"
+    "title": "Brain dump",
+    "subtitle": "Drop your thoughts, I'll organize them with AI ✨",
+    "dialogTitle": "Drop a brain-dump",
+    "placeholder": {
+      "weekend": "Weekend plans, errands, or fun activities...",
+      "morning": "Morning tasks, groceries, or today's priorities...",
+      "afternoon": "Afternoon goals, errands, or evening plans...",
+      "evening": "Tomorrow's prep, shopping lists, or date ideas..."
+    },
+    "moreAllowed": "{{count}} more allowed",
+    "startOver": "Start Over",
+    "saveNote": "Save Note"
   },
   "hint": {
     "try": "Try:",
@@ -35,5 +45,25 @@
   "notAuthenticated": {
     "title": "Welcome to Olive",
     "subtitle": "Please sign in to continue"
+  },
+  "toast": {
+    "enterNoteOrMedia": "Please enter a note or attach media",
+    "multipleTasksIdentified": "AI identified {{count}} separate tasks!",
+    "noteProcessed": "Note processed! Review and save below ✨",
+    "noteSaved": "Note saved successfully! 🎉",
+    "failedToProcess": "Failed to process note. Please try again.",
+    "failedToSave": "Failed to save note",
+    "taskCompleted": "Task completed!",
+    "markedIncomplete": "Task marked as incomplete",
+    "taskCompletedShort": "Task completed!",
+    "failedToUpdate": "Failed to update task"
+  },
+  "recentTasks": {
+    "by": "By",
+    "oliveAssistant": "Olive Assistant",
+    "thinking": "Thinking...",
+    "typeQuestion": "Type your question...",
+    "send": "Send",
+    "sending": "Sending..."
   }
 }

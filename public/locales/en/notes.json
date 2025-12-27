@@ -9,9 +9,11 @@
   "createdBy": "Created By",
   "overdue": "Overdue",
   "completed": "Completed",
+  "complete": "Complete",
   "originalNote": "Original Note",
   "details": "Details",
   "tags": "Tags",
+  "askOlive": "Ask Olive",
   "askOliveChat": {
     "greeting": "Hi! How can I help with \"{{summary}}\"?",
     "title": "Ask Olive",
@@ -23,6 +25,30 @@
     "category": "Category",
     "priority": "Priority",
     "tags": "Tags (comma-separated)",
-    "items": "Sub-items (one per line)"
-  }
+    "items": "Sub-items (one per line)",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "card": {
+    "you": "You",
+    "partner": "Partner",
+    "auto": "Auto",
+    "moreItems": "+{{count}} more items",
+    "reminderLabel": "Reminder:",
+    "editReminder": "Edit",
+    "setReminder": "Set"
+  },
+  "priority": {
+    "high": "High Priority",
+    "medium": "Medium Priority",
+    "low": "Low Priority"
+  },
+  "toast": {
+    "noteDeleted": "Note deleted",
+    "noteUpdated": "Note updated!",
+    "failedToUpdate": "Failed to update note",
+    "priorityUpdated": "Priority updated!",
+    "markedComplete": "Marked as complete!"
+  },
+  "back": "Back"
 }

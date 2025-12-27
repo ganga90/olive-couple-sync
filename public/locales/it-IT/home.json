@@ -1,10 +1,20 @@
 {
   "greeting": "Ciao, {{name}} 👋",
   "whatsOnMind": "Cosa hai in mente oggi?",
+  "loading": "Caricamento del tuo spazio note...",
   "brainDump": {
-    "title": "Scrivi quello che ti viene in mente...",
-    "subtitle": "Attività, promemoria, idee—scrivi naturalmente",
-    "dialogTitle": "Aggiungi un'idea veloce"
+    "title": "Brain dump",
+    "subtitle": "Scrivi i tuoi pensieri, li organizzerò con l'IA ✨",
+    "dialogTitle": "Aggiungi un'idea veloce",
+    "placeholder": {
+      "weekend": "Piani per il weekend, commissioni, o attività divertenti...",
+      "morning": "Attività mattutine, spesa, o priorità di oggi...",
+      "afternoon": "Obiettivi pomeridiani, commissioni, o piani serali...",
+      "evening": "Preparativi per domani, liste della spesa, o idee per appuntamenti..."
+    },
+    "moreAllowed": "{{count}} ancora consentiti",
+    "startOver": "Ricomincia",
+    "saveNote": "Salva Nota"
   },
   "hint": {
     "try": "Prova:",
@@ -35,5 +45,25 @@
   "notAuthenticated": {
     "title": "Benvenuto a Olive",
     "subtitle": "Per favore accedi per continuare"
+  },
+  "toast": {
+    "enterNoteOrMedia": "Inserisci una nota o allega un file",
+    "multipleTasksIdentified": "L'IA ha identificato {{count}} attività separate!",
+    "noteProcessed": "Nota elaborata! Rivedi e salva qui sotto ✨",
+    "noteSaved": "Nota salvata con successo! 🎉",
+    "failedToProcess": "Impossibile elaborare la nota. Riprova.",
+    "failedToSave": "Impossibile salvare la nota",
+    "taskCompleted": "Attività completata!",
+    "markedIncomplete": "Attività segnata come incompleta",
+    "taskCompletedShort": "Attività completata!",
+    "failedToUpdate": "Impossibile aggiornare l'attività"
+  },
+  "recentTasks": {
+    "by": "Da",
+    "oliveAssistant": "Assistente Olive",
+    "thinking": "Sto pensando...",
+    "typeQuestion": "Scrivi la tua domanda...",
+    "send": "Invia",
+    "sending": "Invio..."
   }
 }

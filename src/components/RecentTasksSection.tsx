@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,8 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
   emptyMessage,
   icon,
 }) => {
+  const { t } = useTranslation('home');
+  const { t: tNotes } = useTranslation('notes');
   const navigate = useNavigate();
   const { updateNote } = useSupabaseNotesContext();
   const [chatOpen, setChatOpen] = useState(false);
@@ -46,7 +49,7 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
   const handleAskOlive = (task: any) => {
     setCurrentTask(task);
     setMessages([
-      { role: "assistant", content: `Hi! How can I help with "${task.summary}"?` }
+      { role: "assistant", content: tNotes('askOliveChat.greeting', { summary: task.summary }) }
     ]);
     setChatOpen(true);
   };
@@ -54,10 +57,10 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
   const handleCompleteTask = async (task: any) => {
     try {
       await updateNote(task.id, { completed: !task.completed });
-      toast.success(task.completed ? "Task marked as incomplete" : "Task completed!");
+      toast.success(task.completed ? t('toast.markedIncomplete') : t('toast.taskCompletedShort'));
     } catch (error) {
       console.error("Error updating task:", error);
-      toast.error("Failed to update task");
+      toast.error(t('toast.failedToUpdate'));
     }
   };
 
@@ -81,7 +84,7 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
       console.error("Error getting assistance:", error);
       setMessages([...newMessages, { 
         role: "assistant" as const, 
-        content: "Sorry, I'm having trouble connecting right now. Please try again later." 
+        content: tNotes('askOliveChat.connectionError')
       }]);
     } finally {
       setIsAssistantLoading(false);
@@ -92,7 +95,7 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
     if (!currentTask) return;
     await clearNoteConversation(currentTask.id, supabase);
     setMessages([
-      { role: "assistant", content: `Hi! How can I help with "${currentTask.summary}"?` }
+      { role: "assistant", content: tNotes('askOliveChat.greeting', { summary: currentTask.summary }) }
     ]);
   };
 
@@ -154,7 +157,7 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
                   </div>
                   
                   <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                    <span>By {task.addedBy}</span>
+                    <span>{t('recentTasks.by')} {task.addedBy}</span>
                     <span className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
                       {format(new Date(task.createdAt), "MMM d, h:mm a")}
@@ -199,14 +202,14 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
             <DialogTitle className="flex items-center justify-between text-olive-dark">
               <div className="flex items-center gap-2">
                 <OliveLogo size={20} />
-                Olive Assistant
+                {t('recentTasks.oliveAssistant')}
               </div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleNewConversation}
                 className="text-muted-foreground hover:text-olive"
-                title="Start new conversation"
+                title={tNotes('askOliveChat.newConversation')}
               >
                 <RotateCcw className="h-4 w-4" />
               </Button>
@@ -242,7 +245,7 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
                 <div className="inline-block rounded-lg bg-white border border-olive/20 px-3 py-2 text-olive-dark shadow-soft">
                   <div className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin text-olive" />
-                    <span className="text-sm text-muted-foreground">Thinking...</span>
+                    <span className="text-sm text-muted-foreground">{t('recentTasks.thinking')}</span>
                   </div>
                 </div>
               </div>
@@ -252,7 +255,7 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your question..."
+              placeholder={t('recentTasks.typeQuestion')}
               rows={3}
               className="border-olive/30 focus:border-olive focus:ring-olive/20"
               onKeyDown={(e) => {
@@ -271,10 +274,10 @@ export const RecentTasksSection: React.FC<RecentTasksSectionProps> = ({
                 {isAssistantLoading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Sending...
+                    {t('recentTasks.sending')}
                   </>
                 ) : (
-                  'Send'
+                  t('recentTasks.send')
                 )}
               </Button>
             </DialogFooter>

@@ -1,10 +1,20 @@
 {
   "greeting": "Hola, {{name}} 👋",
   "whatsOnMind": "¿Qué tienes en mente hoy?",
+  "loading": "Cargando tu espacio de notas...",
   "brainDump": {
-    "title": "Escribe lo que se te ocurra...",
-    "subtitle": "Tareas, recordatorios, ideas—escribe natural",
-    "dialogTitle": "Añade una idea rápida"
+    "title": "Brain dump",
+    "subtitle": "Escribe tus pensamientos, los organizaré con IA ✨",
+    "dialogTitle": "Añade una idea rápida",
+    "placeholder": {
+      "weekend": "Planes de fin de semana, recados, o actividades divertidas...",
+      "morning": "Tareas matutinas, compras, o prioridades de hoy...",
+      "afternoon": "Objetivos de tarde, recados, o planes de noche...",
+      "evening": "Preparativos para mañana, listas de compras, o ideas para citas..."
+    },
+    "moreAllowed": "{{count}} más permitidos",
+    "startOver": "Empezar de nuevo",
+    "saveNote": "Guardar Nota"
   },
   "hint": {
     "try": "Prueba:",
@@ -35,5 +45,25 @@
   "notAuthenticated": {
     "title": "Bienvenido a Olive",
     "subtitle": "Por favor, inicia sesión para continuar"
+  },
+  "toast": {
+    "enterNoteOrMedia": "Introduce una nota o adjunta un archivo",
+    "multipleTasksIdentified": "¡La IA identificó {{count}} tareas separadas!",
+    "noteProcessed": "¡Nota procesada! Revisa y guarda abajo ✨",
+    "noteSaved": "¡Nota guardada con éxito! 🎉",
+    "failedToProcess": "Error al procesar la nota. Inténtalo de nuevo.",
+    "failedToSave": "Error al guardar la nota",
+    "taskCompleted": "¡Tarea completada!",
+    "markedIncomplete": "Tarea marcada como incompleta",
+    "taskCompletedShort": "¡Tarea completada!",
+    "failedToUpdate": "Error al actualizar la tarea"
+  },
+  "recentTasks": {
+    "by": "Por",
+    "oliveAssistant": "Asistente Olive",
+    "thinking": "Pensando...",
+    "typeQuestion": "Escribe tu pregunta...",
+    "send": "Enviar",
+    "sending": "Enviando..."
   }
 }
