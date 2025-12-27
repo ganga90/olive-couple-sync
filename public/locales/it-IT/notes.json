@@ -19,7 +19,11 @@
     "title": "Chiedi a Olive",
     "placeholder": "Chiedi informazioni su questa attività...",
     "newConversation": "Nuova conversazione",
-    "connectionError": "Mi dispiace, ho problemi di connessione in questo momento. Per favore riprova."
+    "connectionError": "Mi dispiace, ho problemi di connessione in questo momento. Per favore riprova.",
+    "onboarding": {
+      "title": "💬 Chatta con Olive",
+      "description": "Fai una conversazione con Olive su questa attività! Fai domande, ricevi suggerimenti o richiedi modifiche come cambiare la scadenza o la priorità."
+    }
   },
   "edit": {
     "category": "Categoria",

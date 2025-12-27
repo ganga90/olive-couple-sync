@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
+import { useTranslation } from "react-i18next";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseCouples } from "@/hooks/useSupabaseCouples";
 import { supabase } from "@/lib/supabaseClient";
@@ -28,13 +29,17 @@ import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
 import { NoteMediaSection } from "@/components/NoteMediaSection";
 import { AddToCalendarButton } from "@/components/AddToCalendarButton";
 import { OliveTipsSection } from "@/components/OliveTipsSection";
+import { useOnboardingTooltip } from "@/hooks/useOnboardingTooltip";
+import { OnboardingTooltip } from "@/components/OnboardingTooltip";
 
 const NoteDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useUser();
+  const { t } = useTranslation('notes');
   const { notes, deleteNote, updateNote } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouples();
+  const askOliveOnboarding = useOnboardingTooltip('ask-olive-chat');
   
   const note = useMemo(() => notes.find((n) => n.id === id), [notes, id]);
 
@@ -377,27 +382,39 @@ const NoteDetails = () => {
           {!note.completed && (
             <div className="flex flex-col gap-2 animate-fade-up" style={{ animationDelay: '150ms' }}>
               <div className="flex gap-2">
-                <Button 
-                  variant="accent"
-                  size="lg" 
-                  className="flex-1"
-                  onClick={() => setChatOpen(true)}
-                >
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  Ask Olive
-                </Button>
+                <div className="relative flex-1">
+                  <Button 
+                    variant="accent"
+                    size="lg" 
+                    className="w-full"
+                    onClick={() => {
+                      askOliveOnboarding.dismiss();
+                      setChatOpen(true);
+                    }}
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    {t('askOlive')}
+                  </Button>
+                  <OnboardingTooltip
+                    isVisible={askOliveOnboarding.isVisible}
+                    onDismiss={askOliveOnboarding.dismiss}
+                    title={t('askOliveChat.onboarding.title')}
+                    description={t('askOliveChat.onboarding.description')}
+                    position="bottom"
+                  />
+                </div>
                 <Button
                   variant="outline"
                   size="lg"
                   className="flex-1 border-success/30 text-success hover:bg-success/10"
                   onClick={async () => {
                     await updateNote(note.id, { completed: true });
-                    toast.success("Marked as complete!");
+                    toast.success(t('toast.markedComplete'));
                     navigate(note.list_id ? `/lists/${note.list_id}` : "/");
                   }}
                 >
                   <CheckCircle2 className="h-4 w-4 mr-2" />
-                  Complete
+                  {t('complete')}
                 </Button>
               </div>
               {/* Add to Google Calendar */}

@@ -168,6 +168,10 @@
     "linkGeneratedDesc": "Clicca il link qui sotto per collegare il tuo account WhatsApp.",
     "tokenCopied": "Token Copiato",
     "tokenCopiedDesc": "Incolla questo token in WhatsApp per collegare il tuo account.",
-    "error": "Impossibile generare il link WhatsApp. Riprova."
+    "error": "Impossibile generare il link WhatsApp. Riprova.",
+    "onboarding": {
+      "title": "📱 Integrazione WhatsApp",
+      "description": "Collega WhatsApp per inviare attività via messaggio! Scrivi a Olive naturalmente e le tue attività appariranno nell'app."
+    }
   }
 }
