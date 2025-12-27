@@ -12,7 +12,7 @@ import { CreateListDialog } from "@/components/CreateListDialog";
 import { useAuth } from "@/providers/AuthProvider";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
+import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 import { 
   ShoppingCart, 
   CheckSquare, 
@@ -75,7 +75,7 @@ const getCategoryIcon = (category: string) => {
 const Lists = () => {
   const navigate = useNavigate();
   const { t } = useTranslation(['lists', 'common']);
-  const { getLocalizedPath } = useLocalizedNavigate();
+  const getLocalizedPath = useLocalizedHref();
   const { isAuthenticated } = useAuth();
   const [query, setQuery] = useState("");
   const { notes } = useSupabaseNotesContext();

@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useSEO } from "@/hooks/useSEO";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
-import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
+import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +33,7 @@ interface GroupedReminders {
 const Reminders = () => {
   const { t } = useTranslation(['reminders', 'common']);
   const dateLocale = useDateLocale();
-  const { getLocalizedPath } = useLocalizedNavigate();
+  const getLocalizedPath = useLocalizedHref();
   
   useSEO({ 
     title: `${t('title')} — Olive`, 

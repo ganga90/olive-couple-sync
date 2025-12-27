@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { useSEO } from "@/hooks/useSEO";
 import { OliveLogo } from "@/components/OliveLogo";
 import { InviteFlow } from "@/components/InviteFlow";
-import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
+import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 import { 
   User, 
   Users, 
@@ -23,7 +23,7 @@ type OnboardingStep = "role" | "names" | "demo" | "invite";
 
 const Onboarding = () => {
   const { t } = useTranslation('onboarding');
-  const { getLocalizedPath } = useLocalizedNavigate();
+  const getLocalizedPath = useLocalizedHref();
   const [step, setStep] = useState<OnboardingStep>("role");
   const [userRole, setUserRole] = useState<"solo" | "couple" | null>(null);
   const [you, setYou] = useState("");

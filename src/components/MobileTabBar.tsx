@@ -3,14 +3,14 @@ import { useTranslation } from "react-i18next";
 import { Home, ListTodo, Calendar, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
-import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
+import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 import { useMemo } from "react";
 import { addHours, isBefore } from "date-fns";
 
 const MobileTabBar = () => {
   const location = useLocation();
   const { t } = useTranslation('common');
-  const { getLocalizedPath } = useLocalizedNavigate();
+  const getLocalizedPath = useLocalizedHref();
   const { notes } = useSupabaseNotesContext();
   
   // Calculate upcoming reminders count (within next 24 hours)
