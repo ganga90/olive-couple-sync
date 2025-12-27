@@ -1,0 +1,23 @@
+{
+  "modal": {
+    "title": "Organizzatore Olive",
+    "description": "Olive ha trovato {{count}} attività da organizzare",
+    "noChanges": "Tutto è già organizzato!",
+    "alreadyOrganized": "Le tue attività sono già ben organizzate. Ottimo lavoro!",
+    "newLists": "Nuove liste da creare",
+    "suggestedMoves": "Spostamenti suggeriti",
+    "moveTo": "Sposta in",
+    "new": "NUOVA",
+    "tasks": "attività",
+    "noList": "Senza categoria",
+    "applying": "Applicando...",
+    "apply": "Applica {{count}} modifiche"
+  },
+  "errors": {
+    "analysisFailed": "Impossibile analizzare l'organizzazione",
+    "applyFailed": "Impossibile applicare le modifiche"
+  },
+  "success": {
+    "organized": "{{count}} attività organizzate!"
+  }
+}

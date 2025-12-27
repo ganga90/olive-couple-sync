@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Plus, TrendingUp, Sparkles, CalendarPlus, Brain, Clock } from "lucide-react";
+import { Plus, TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2 } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +17,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { format, addDays, startOfDay, isSameDay, formatDistanceToNow } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { categories } from "@/constants/categories";
+import { useOrganizeAgent } from "@/hooks/useOrganizeAgent";
+import { OptimizationReviewModal } from "@/components/OptimizationReviewModal";
 
 const Home = () => {
   const { t } = useTranslation(['home', 'common']);
@@ -29,11 +31,22 @@ const Home = () => {
 
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
-  const { you, partner } = useSupabaseCouple();
-  const { notes, updateNote } = useSupabaseNotesContext();
+  const { you, partner, currentCouple } = useSupabaseCouple();
+  const { notes, updateNote, refetch: refetchNotes } = useSupabaseNotesContext();
   const [isInputOpen, setIsInputOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
+  
+  // Organize Agent
+  const {
+    isAnalyzing,
+    isApplying,
+    plan,
+    isModalOpen,
+    setIsModalOpen,
+    analyze,
+    applyPlan,
+  } = useOrganizeAgent({ coupleId: currentCouple?.id, onComplete: refetchNotes });
 
   const userName = isAuthenticated ? (user?.firstName || user?.fullName || you || "there") : "there";
 
@@ -207,6 +220,27 @@ const Home = () => {
             </div>
           )}
 
+          {/* Optimize Organization Button */}
+          {notes.length >= 3 && (
+            <Card 
+              onClick={() => !isAnalyzing && analyze("all")}
+              className="p-4 border-l-4 border-l-accent bg-accent/5 cursor-pointer hover:bg-accent/10 
+                         transition-colors animate-fade-up stagger-3 group"
+            >
+              <div className="flex items-center gap-3">
+                {isAnalyzing ? (
+                  <Loader2 className="w-5 h-5 text-accent animate-spin" />
+                ) : (
+                  <Wand2 className="w-5 h-5 text-accent group-hover:rotate-12 transition-transform" />
+                )}
+                <div className="flex-1">
+                  <p className="font-medium text-sm text-foreground">{t('home:organize.title')}</p>
+                  <p className="text-xs text-muted-foreground">{t('home:organize.subtitle')}</p>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {/* Tabs Widget with Filters */}
           <Card className="overflow-hidden shadow-card animate-fade-up stagger-3">
             <Tabs defaultValue="priority" className="w-full">
@@ -373,6 +407,15 @@ const Home = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Optimization Review Modal */}
+      <OptimizationReviewModal
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+        plan={plan}
+        onApply={applyPlan}
+        isApplying={isApplying}
+      />
     </div>
   );
 };

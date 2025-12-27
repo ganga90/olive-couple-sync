@@ -13,6 +13,8 @@ import { useAuth } from "@/providers/AuthProvider";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
+import { useOrganizeAgent } from "@/hooks/useOrganizeAgent";
+import { OptimizationReviewModal } from "@/components/OptimizationReviewModal";
 import { 
   ShoppingCart, 
   CheckSquare, 
@@ -34,7 +36,9 @@ import {
   Trash2,
   Search,
   AlertCircle,
-  Clock
+  Clock,
+  Wand2,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isAfter, parseISO, addDays } from "date-fns";
@@ -78,9 +82,20 @@ const Lists = () => {
   const getLocalizedPath = useLocalizedHref();
   const { isAuthenticated } = useAuth();
   const [query, setQuery] = useState("");
-  const { notes } = useSupabaseNotesContext();
+  const { notes, refetch: refetchNotes } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouple();
   const { lists, loading, deleteList, refetch } = useSupabaseLists(currentCouple?.id || null);
+  
+  // Organize Agent
+  const {
+    isAnalyzing,
+    isApplying,
+    plan,
+    isModalOpen,
+    setIsModalOpen,
+    analyze,
+    applyPlan,
+  } = useOrganizeAgent({ coupleId: currentCouple?.id, onComplete: () => { refetch(); refetchNotes(); } });
   
   useSEO({ title: `${t('title')} — Olive`, description: t('empty.createFirstList') });
 
@@ -141,7 +156,25 @@ const Lists = () => {
             </div>
             <h1 className="text-2xl md:text-3xl font-bold text-foreground">{t('title')}</h1>
           </div>
-          <CreateListDialog onListCreated={refetch} />
+          <div className="flex items-center gap-2">
+            {lists.length >= 2 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => analyze("all")}
+                disabled={isAnalyzing}
+                className="gap-1.5"
+              >
+                {isAnalyzing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Wand2 className="h-4 w-4" />
+                )}
+                <span className="hidden sm:inline">{t('organize', { ns: 'common' })}</span>
+              </Button>
+            )}
+            <CreateListDialog onListCreated={refetch} />
+          </div>
         </div>
 
         {/* Search */}
