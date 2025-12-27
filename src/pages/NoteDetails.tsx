@@ -670,10 +670,35 @@ const NoteDetails = () => {
                   {m.role === "user" ? m.content : (
                     <ReactMarkdown 
                       components={{
-                        ul: ({children}) => <ul className="list-disc pl-4 space-y-1">{children}</ul>,
-                        li: ({children}) => <li>{children}</li>,
-                        strong: ({children}) => <strong className="font-semibold">{children}</strong>,
-                        p: ({children}) => <p className="leading-relaxed mb-2 last:mb-0">{children}</p>
+                        a: ({href, children}) => (
+                          <a 
+                            href={href} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="text-primary hover:underline font-medium inline-flex items-center gap-0.5"
+                          >
+                            {children}
+                            <ExternalLink className="h-3 w-3 inline ml-0.5 opacity-70" />
+                          </a>
+                        ),
+                        ul: ({children}) => <ul className="list-disc pl-4 space-y-1 my-2">{children}</ul>,
+                        ol: ({children}) => <ol className="list-decimal pl-4 space-y-1 my-2">{children}</ol>,
+                        li: ({children}) => <li className="leading-relaxed">{children}</li>,
+                        strong: ({children}) => <strong className="font-semibold text-foreground">{children}</strong>,
+                        em: ({children}) => <em className="italic text-muted-foreground">{children}</em>,
+                        p: ({children}) => <p className="leading-relaxed mb-2 last:mb-0">{children}</p>,
+                        h3: ({children}) => <h3 className="font-semibold text-sm mt-3 mb-1">{children}</h3>,
+                        code: ({children}) => (
+                          <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">
+                            {children}
+                          </code>
+                        ),
+                        blockquote: ({children}) => (
+                          <blockquote className="border-l-2 border-primary/50 pl-3 italic text-muted-foreground my-2">
+                            {children}
+                          </blockquote>
+                        ),
+                        hr: () => <hr className="my-3 border-border/50" />
                       }}
                     >
                       {m.content}
