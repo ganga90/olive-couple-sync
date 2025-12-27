@@ -68,6 +68,10 @@
   },
   "organize": {
     "title": "Optimiza tus listas",
-    "subtitle": "Deja que Olive AI reorganice tareas en las listas correctas"
+    "subtitle": "Deja que Olive AI reorganice tareas en las listas correctas",
+    "onboarding": {
+      "title": "✨ Nuevo: Organizador Olive",
+      "description": "Haz clic aquí para que Olive AI analice tus tareas y sugiera una mejor organización. ¡Puede mover tareas a las listas correctas e incluso crear nuevas!"
+    }
   }
 }

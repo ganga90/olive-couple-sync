@@ -68,6 +68,10 @@
   },
   "organize": {
     "title": "Optimize your lists",
-    "subtitle": "Let Olive AI reorganize tasks into the right lists"
+    "subtitle": "Let Olive AI reorganize tasks into the right lists",
+    "onboarding": {
+      "title": "✨ New: Olive Organizer",
+      "description": "Click here to let Olive AI analyze your tasks and suggest better list organization. It can move tasks to the right lists and even create new ones!"
+    }
   }
 }

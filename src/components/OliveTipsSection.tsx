@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { useOnboardingTooltip } from "@/hooks/useOnboardingTooltip";
+import { OnboardingTooltip } from "@/components/OnboardingTooltip";
 import { 
   Sparkles, 
   ExternalLink, 
@@ -248,6 +250,9 @@ export function OliveTipsSection({ note, onTipGenerated }: OliveTipsSectionProps
     }
     return null;
   });
+  
+  // Onboarding tooltip
+  const tipsOnboarding = useOnboardingTooltip('olive_tips_feature');
 
   if (!ready) return null;
 
@@ -332,14 +337,30 @@ export function OliveTipsSection({ note, onTipGenerated }: OliveTipsSectionProps
       ) : tip ? (
         renderTipCard()
       ) : (
-        <Button
-          variant="outline"
-          className="w-full gap-2 h-12 border-dashed"
-          onClick={handleGenerate}
-        >
-          <Sparkles className="h-4 w-4" />
-          Ask Olive for Help
-        </Button>
+        <div className="relative">
+          <Button
+            variant="outline"
+            className="w-full gap-2 h-12 border-dashed"
+            onClick={() => {
+              if (tipsOnboarding.isVisible) {
+                tipsOnboarding.dismiss();
+              }
+              handleGenerate();
+            }}
+          >
+            <Sparkles className="h-4 w-4" />
+            Ask Olive for Help
+          </Button>
+          
+          {/* Onboarding Tooltip */}
+          <OnboardingTooltip
+            isVisible={tipsOnboarding.isVisible}
+            onDismiss={tipsOnboarding.dismiss}
+            title={t('oliveTips.onboarding.title')}
+            description={t('oliveTips.onboarding.description')}
+            position="top"
+          />
+        </div>
       )}
     </div>
   );

@@ -58,6 +58,10 @@
     "thinking": "Olive is thinking...",
     "success": "Olive found some helpful suggestions!",
     "error": "Failed to generate tip. Please try again.",
-    "callNow": "Call Now"
+    "callNow": "Call Now",
+    "onboarding": {
+      "title": "✨ Ask Olive for Help",
+      "description": "Olive can search the web to find useful links, phone numbers, addresses, and recommendations related to this task!"
+    }
   }
 }
