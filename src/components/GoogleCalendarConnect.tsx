@@ -6,6 +6,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { useSearchParams } from 'react-router-dom';
+import { CalendarSettings } from '@/components/CalendarSettings';
 
 interface CalendarConnection {
   connected: boolean;
@@ -225,6 +226,9 @@ export function GoogleCalendarConnect() {
             )}
           </Button>
         </div>
+
+        {/* Calendar Settings */}
+        <CalendarSettings />
       </div>
     );
   }
