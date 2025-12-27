@@ -447,6 +447,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          language_preference: string | null
           note_style: string | null
           phone_number: string | null
           timezone: string | null
@@ -456,6 +457,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id: string
+          language_preference?: string | null
           note_style?: string | null
           phone_number?: string | null
           timezone?: string | null
@@ -465,6 +467,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          language_preference?: string | null
           note_style?: string | null
           phone_number?: string | null
           timezone?: string | null
