@@ -65,5 +65,9 @@
     "typeQuestion": "Escribe tu pregunta...",
     "send": "Enviar",
     "sending": "Enviando..."
+  },
+  "organize": {
+    "title": "Optimiza tus listas",
+    "subtitle": "Deja que Olive AI reorganice tareas en las listas correctas"
   }
 }
