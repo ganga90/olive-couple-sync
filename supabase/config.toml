@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.generate-olive-tip]
 verify_jwt = false
+
+[functions.analyze-organization]
+verify_jwt = false

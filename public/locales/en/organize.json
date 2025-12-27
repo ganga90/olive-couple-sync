@@ -1,0 +1,23 @@
+{
+  "modal": {
+    "title": "Olive Organizer",
+    "description": "Olive found {{count}} tasks to organize",
+    "noChanges": "Everything looks organized!",
+    "alreadyOrganized": "Your tasks are already well organized. Nice work!",
+    "newLists": "New lists to create",
+    "suggestedMoves": "Suggested moves",
+    "moveTo": "Move to",
+    "new": "NEW",
+    "tasks": "tasks",
+    "noList": "Uncategorized",
+    "applying": "Applying...",
+    "apply": "Apply {{count}} changes"
+  },
+  "errors": {
+    "analysisFailed": "Failed to analyze organization",
+    "applyFailed": "Failed to apply changes"
+  },
+  "success": {
+    "organized": "Organized {{count}} tasks!"
+  }
+}

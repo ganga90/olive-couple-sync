@@ -1,0 +1,23 @@
+{
+  "modal": {
+    "title": "Organizador Olive",
+    "description": "Olive encontró {{count}} tareas para organizar",
+    "noChanges": "¡Todo está organizado!",
+    "alreadyOrganized": "Tus tareas ya están bien organizadas. ¡Buen trabajo!",
+    "newLists": "Nuevas listas a crear",
+    "suggestedMoves": "Movimientos sugeridos",
+    "moveTo": "Mover a",
+    "new": "NUEVA",
+    "tasks": "tareas",
+    "noList": "Sin categoría",
+    "applying": "Aplicando...",
+    "apply": "Aplicar {{count}} cambios"
+  },
+  "errors": {
+    "analysisFailed": "Error al analizar organización",
+    "applyFailed": "Error al aplicar cambios"
+  },
+  "success": {
+    "organized": "¡{{count}} tareas organizadas!"
+  }
+}
