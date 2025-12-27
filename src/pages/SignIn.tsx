@@ -1,14 +1,16 @@
 import { SignIn } from "@clerk/clerk-react";
+import { useTranslation } from "react-i18next";
 import { useSEO } from "@/hooks/useSEO";
 import { Card } from "@/components/ui/card";
 import { OliveLogo } from "@/components/OliveLogo";
 import { useSearchParams } from "react-router-dom";
 
 const SignInPage = () => {
+  const { t } = useTranslation('auth');
   const [searchParams] = useSearchParams();
   const redirectUrl = searchParams.get("redirect") || "/";
   
-  useSEO({ title: "Sign in — Olive", description: "Sign in to your Olive account to manage notes and lists." });
+  useSEO({ title: `${t('signIn.title')} — Olive`, description: t('signIn.description') });
 
   return (
     <main className="min-h-screen bg-gradient-soft">
@@ -19,8 +21,8 @@ const SignInPage = () => {
           </div>
         </div>
         
-        <h1 className="mb-2 text-center text-3xl font-bold text-olive-dark">Sign in</h1>
-        <p className="mb-6 text-center text-muted-foreground">Access your notes, lists, and preferences.</p>
+        <h1 className="mb-2 text-center text-3xl font-bold text-olive-dark">{t('signIn.title')}</h1>
+        <p className="mb-6 text-center text-muted-foreground">{t('signIn.description')}</p>
         
         <Card className="p-4 bg-white/50 border-olive/20 shadow-soft">
           <SignIn fallbackRedirectUrl={redirectUrl} />

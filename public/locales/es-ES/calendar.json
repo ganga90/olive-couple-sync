@@ -1,0 +1,24 @@
+{
+  "title": "Calendario",
+  "signInPrompt": "Inicia sesión para ver tu calendario",
+  "weekdays": {
+    "sun": "Dom",
+    "mon": "Lun",
+    "tue": "Mar",
+    "wed": "Mié",
+    "thu": "Jue",
+    "fri": "Vie",
+    "sat": "Sáb"
+  },
+  "priority": {
+    "high": "Alta",
+    "medium": "Media",
+    "low": "Baja"
+  },
+  "empty": {
+    "noTasksScheduled": "No hay tareas programadas para este día"
+  },
+  "actions": {
+    "close": "Cerrar"
+  }
+}

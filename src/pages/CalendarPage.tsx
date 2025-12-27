@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, MapPin } from "lucide-react";
 import { FloatingActionButton } from "@/components/FloatingActionButton";
 import { Button } from "@/components/ui/button";
@@ -8,14 +9,20 @@ import { Badge } from "@/components/ui/badge";
 import { useSEO } from "@/hooks/useSEO";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
+import { useDateLocale } from "@/hooks/useDateLocale";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, parseISO, getDay, startOfWeek, endOfWeek, isToday as checkIsToday } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Note } from "@/types/note";
 
 const CalendarPage = () => {
+  const { t } = useTranslation(['calendar', 'common']);
+  const dateLocale = useDateLocale();
+  const { getLocalizedPath } = useLocalizedNavigate();
+  
   useSEO({ 
-    title: "Calendar — Olive", 
-    description: "View and manage your tasks by date with Olive's intelligent calendar." 
+    title: `${t('title')} — Olive`, 
+    description: t('empty.noTasksScheduled')
   });
 
   const navigate = useNavigate();
@@ -47,7 +54,7 @@ const CalendarPage = () => {
   }, [currentDate]);
 
   const navigateToTask = (taskId: string) => {
-    navigate(`/notes/${taskId}`);
+    navigate(getLocalizedPath(`/notes/${taskId}`));
   };
 
   // Get priority color dots for a day
@@ -61,15 +68,25 @@ const CalendarPage = () => {
     return priorities;
   };
 
+  const weekdays = [
+    t('weekdays.sun'),
+    t('weekdays.mon'),
+    t('weekdays.tue'),
+    t('weekdays.wed'),
+    t('weekdays.thu'),
+    t('weekdays.fri'),
+    t('weekdays.sat')
+  ];
+
   if (!isAuthenticated) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
         <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
           <CalendarIcon className="h-8 w-8 text-primary" />
         </div>
-        <h1 className="text-2xl font-bold mb-2">Calendar</h1>
-        <p className="text-muted-foreground mb-6">Sign in to view your calendar</p>
-        <Button variant="accent" onClick={() => navigate("/sign-in")}>Sign In</Button>
+        <h1 className="text-2xl font-bold mb-2">{t('title')}</h1>
+        <p className="text-muted-foreground mb-6">{t('signInPrompt')}</p>
+        <Button variant="accent" onClick={() => navigate(getLocalizedPath("/sign-in"))}>{t('buttons.signIn', { ns: 'common' })}</Button>
       </div>
     );
   }
@@ -85,7 +102,7 @@ const CalendarPage = () => {
             <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
               <CalendarIcon className="h-5 w-5 text-primary" />
             </div>
-            <h1 className="text-2xl font-bold text-foreground">Calendar</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
           </div>
         </div>
 
@@ -101,7 +118,7 @@ const CalendarPage = () => {
           </Button>
           
           <h2 className="text-lg font-semibold text-foreground">
-            {format(currentDate, 'MMMM yyyy')}
+            {format(currentDate, 'MMMM yyyy', { locale: dateLocale })}
           </h2>
           
           <Button
@@ -119,7 +136,7 @@ const CalendarPage = () => {
           <CardContent className="p-3 sm:p-4">
             {/* Day headers */}
             <div className="grid grid-cols-7 gap-1 mb-2">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, i) => (
+              {weekdays.map((day, i) => (
                 <div key={i} className="p-2 text-center">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                     <span className="hidden sm:inline">{day}</span>
@@ -186,15 +203,15 @@ const CalendarPage = () => {
             <div className="flex items-center justify-center gap-4 mt-4 pt-3 border-t border-border/50">
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 rounded-full bg-priority-high" />
-                <span className="text-[10px] text-muted-foreground">High</span>
+                <span className="text-[10px] text-muted-foreground">{t('priority.high')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 rounded-full bg-priority-medium" />
-                <span className="text-[10px] text-muted-foreground">Medium</span>
+                <span className="text-[10px] text-muted-foreground">{t('priority.medium')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 rounded-full bg-priority-low" />
-                <span className="text-[10px] text-muted-foreground">Low</span>
+                <span className="text-[10px] text-muted-foreground">{t('priority.low')}</span>
               </div>
             </div>
           </CardContent>
@@ -207,10 +224,10 @@ const CalendarPage = () => {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="font-semibold text-foreground">
-                    {format(selectedDate, 'EEEE')}
+                    {format(selectedDate, 'EEEE', { locale: dateLocale })}
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    {format(selectedDate, 'MMMM d, yyyy')}
+                    {format(selectedDate, 'MMMM d, yyyy', { locale: dateLocale })}
                   </p>
                 </div>
                 <Button
@@ -219,7 +236,7 @@ const CalendarPage = () => {
                   onClick={() => setSelectedDate(null)}
                   className="text-muted-foreground"
                 >
-                  Close
+                  {t('actions.close')}
                 </Button>
               </div>
               
@@ -229,7 +246,7 @@ const CalendarPage = () => {
                     <CalendarIcon className="h-6 w-6 text-muted-foreground" />
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    No tasks scheduled for this day
+                    {t('empty.noTasksScheduled')}
                   </p>
                 </div>
               ) : (
@@ -267,7 +284,7 @@ const CalendarPage = () => {
                             {task.reminder_time && (
                               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <Clock className="h-3 w-3" />
-                                {format(parseISO(task.reminder_time), 'h:mm a')}
+                                {format(parseISO(task.reminder_time), 'h:mm a', { locale: dateLocale })}
                               </div>
                             )}
                             <Badge variant="secondary" className="text-[10px] h-4 capitalize">

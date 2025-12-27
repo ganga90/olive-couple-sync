@@ -1,0 +1,20 @@
+{
+  "title": "Recordatorios",
+  "signInPrompt": "Inicia sesión para ver tus recordatorios",
+  "allCaughtUp": "¡Todo al día!",
+  "upcoming": "{{count}} pendientes",
+  "sections": {
+    "upcoming24h": "Próximas (24h)",
+    "thisWeek": "Esta Semana",
+    "later": "Más Tarde"
+  },
+  "empty": {
+    "title": "Sin recordatorios pendientes",
+    "description": "¡Todo listo! Establece un recordatorio en una tarea para recibir notificaciones a tiempo."
+  },
+  "labels": {
+    "reminder": "Recordatorio",
+    "24hBefore": "24h antes",
+    "2hBefore": "2h antes"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "title": "Lists",
+  "searchPlaceholder": "Search lists...",
+  "signInPrompt": "Sign in to manage your lists",
+  "empty": {
+    "noListsFound": "No lists found",
+    "noListsYet": "No lists yet",
+    "tryDifferentSearch": "Try a different search term",
+    "createFirstList": "Create your first list to get organized"
+  },
+  "stats": {
+    "active": "active",
+    "overdue": "overdue",
+    "thisWeek": "this week"
+  },
+  "badges": {
+    "ai": "AI"
+  },
+  "actions": {
+    "deleteConfirm": "Delete \"{{name}}\"? This action cannot be undone."
+  }
+}

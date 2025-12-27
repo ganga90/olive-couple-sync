@@ -1,0 +1,20 @@
+{
+  "title": "Promemoria",
+  "signInPrompt": "Accedi per vedere i tuoi promemoria",
+  "allCaughtUp": "Tutto in ordine!",
+  "upcoming": "{{count}} in arrivo",
+  "sections": {
+    "upcoming24h": "In arrivo (24h)",
+    "thisWeek": "Questa Settimana",
+    "later": "Più Tardi"
+  },
+  "empty": {
+    "title": "Nessun promemoria in arrivo",
+    "description": "Tutto a posto! Imposta un promemoria su un'attività per ricevere notifiche al momento giusto."
+  },
+  "labels": {
+    "reminder": "Promemoria",
+    "24hBefore": "24h prima",
+    "2hBefore": "2h prima"
+  }
+}

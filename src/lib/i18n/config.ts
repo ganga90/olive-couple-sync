@@ -4,55 +4,52 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 import HttpBackend from 'i18next-http-backend';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from './languages';
 
-// Custom path detector that reads from URL
-const pathDetector = {
-  name: 'pathDetector',
+// Custom path detector for URL-based locale detection
+const PathDetector = {
+  name: 'path',
   lookup() {
-    const pathname = window.location.pathname;
-    const segments = pathname.split('/').filter(Boolean);
-    const firstSegment = segments[0]?.toLowerCase();
-    
-    // Map URL paths to language codes
-    if (firstSegment === 'es-es') return 'es-ES';
-    if (firstSegment === 'it-it') return 'it-IT';
-    
-    return DEFAULT_LANGUAGE;
+    const path = window.location.pathname;
+    // Check for /es-es/ or /it-it/ at the start of path
+    const match = path.match(/^\/(es-es|it-it)(\/|$)/i);
+    if (match) {
+      // Map URL path to language code
+      const pathLang = match[1].toLowerCase();
+      if (pathLang === 'es-es') return 'es-ES';
+      if (pathLang === 'it-it') return 'it-IT';
+    }
+    return null;
   },
   cacheUserLanguage() {
-    // We rely on URL, no caching needed
+    // We don't cache from path, let the provider handle persistence
   }
 };
 
+const languageDetector = new LanguageDetector();
+languageDetector.addDetector(PathDetector);
+
 i18n
   .use(HttpBackend)
-  .use(LanguageDetector)
+  .use(languageDetector)
   .use(initReactI18next)
   .init({
+    supportedLngs: Object.keys(SUPPORTED_LANGUAGES),
     fallbackLng: DEFAULT_LANGUAGE,
-    supportedLngs: SUPPORTED_LANGUAGES,
-    ns: ['common', 'home', 'landing', 'profile', 'notes', 'onboarding'],
+    ns: ['common', 'home', 'landing', 'profile', 'notes', 'onboarding', 'lists', 'reminders', 'calendar', 'auth'],
     defaultNS: 'common',
-    debug: import.meta.env.DEV,
-    interpolation: {
-      escapeValue: false, // React already protects against XSS
+    detection: {
+      order: ['path', 'localStorage', 'navigator'],
+      lookupLocalStorage: 'olive_language',
+      caches: ['localStorage']
     },
     backend: {
-      loadPath: '/locales/{{lng}}/{{ns}}.json',
+      loadPath: '/locales/{{lng}}/{{ns}}.json'
     },
-    detection: {
-      order: ['pathDetector', 'localStorage', 'navigator'],
-      caches: ['localStorage'],
-      lookupLocalStorage: 'olive_language',
+    interpolation: {
+      escapeValue: false
     },
     react: {
-      useSuspense: false,
-    },
+      useSuspense: false
+    }
   });
-
-// Register custom detector
-const languageDetector = i18n.services.languageDetector as any;
-if (languageDetector && languageDetector.addDetector) {
-  languageDetector.addDetector(pathDetector);
-}
 
 export default i18n;

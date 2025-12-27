@@ -1,0 +1,22 @@
+{
+  "title": "Liste",
+  "searchPlaceholder": "Cerca liste...",
+  "signInPrompt": "Accedi per gestire le tue liste",
+  "empty": {
+    "noListsFound": "Nessuna lista trovata",
+    "noListsYet": "Ancora nessuna lista",
+    "tryDifferentSearch": "Prova con un termine di ricerca diverso",
+    "createFirstList": "Crea la tua prima lista per organizzarti"
+  },
+  "stats": {
+    "active": "attive",
+    "overdue": "scadute",
+    "thisWeek": "questa settimana"
+  },
+  "badges": {
+    "ai": "IA"
+  },
+  "actions": {
+    "deleteConfirm": "Eliminare \"{{name}}\"? Questa azione non può essere annullata."
+  }
+}

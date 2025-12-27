@@ -1,0 +1,20 @@
+{
+  "title": "Reminders",
+  "signInPrompt": "Sign in to view your reminders",
+  "allCaughtUp": "All caught up!",
+  "upcoming": "{{count}} upcoming",
+  "sections": {
+    "upcoming24h": "Upcoming (24h)",
+    "thisWeek": "This Week",
+    "later": "Later"
+  },
+  "empty": {
+    "title": "No upcoming reminders",
+    "description": "You're all set! Set a reminder on a task to get notified at the right time."
+  },
+  "labels": {
+    "reminder": "Reminder",
+    "24hBefore": "24h before due",
+    "2hBefore": "2h before due"
+  }
+}

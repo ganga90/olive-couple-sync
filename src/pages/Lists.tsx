@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
@@ -11,6 +12,7 @@ import { CreateListDialog } from "@/components/CreateListDialog";
 import { useAuth } from "@/providers/AuthProvider";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 import { 
   ShoppingCart, 
   CheckSquare, 
@@ -72,13 +74,15 @@ const getCategoryIcon = (category: string) => {
 
 const Lists = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation(['lists', 'common']);
+  const { getLocalizedPath } = useLocalizedNavigate();
   const { isAuthenticated } = useAuth();
   const [query, setQuery] = useState("");
   const { notes } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouple();
   const { lists, loading, deleteList, refetch } = useSupabaseLists(currentCouple?.id || null);
   
-  useSEO({ title: "Lists — Olive", description: "Browse and manage all your lists." });
+  useSEO({ title: `${t('title')} — Olive`, description: t('empty.createFirstList') });
 
   const filteredLists = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -107,7 +111,7 @@ const Lists = () => {
   };
 
   const handleDeleteList = async (listId: string, listName: string) => {
-    if (window.confirm(`Delete "${listName}"? This action cannot be undone.`)) {
+    if (window.confirm(t('actions.deleteConfirm', { name: listName }))) {
       await deleteList(listId);
       refetch();
     }
@@ -119,9 +123,9 @@ const Lists = () => {
         <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
           <ListIcon className="h-8 w-8 text-primary" />
         </div>
-        <h1 className="text-2xl font-bold mb-2">Lists</h1>
-        <p className="text-muted-foreground mb-6">Sign in to manage your lists</p>
-        <Button variant="accent" onClick={() => navigate("/sign-in")}>Sign In</Button>
+        <h1 className="text-2xl font-bold mb-2">{t('title')}</h1>
+        <p className="text-muted-foreground mb-6">{t('signInPrompt')}</p>
+        <Button variant="accent" onClick={() => navigate(getLocalizedPath("/sign-in"))}>{t('buttons.signIn', { ns: 'common' })}</Button>
       </div>
     );
   }
@@ -135,7 +139,7 @@ const Lists = () => {
             <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
               <ListIcon className="h-5 w-5 text-primary" />
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground">Lists</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">{t('title')}</h1>
           </div>
           <CreateListDialog onListCreated={refetch} />
         </div>
@@ -146,7 +150,7 @@ const Lists = () => {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search lists..."
+            placeholder={t('searchPlaceholder')}
             className="pl-10 bg-card border-border/50 focus:border-primary rounded-xl h-11"
           />
         </div>
@@ -175,10 +179,10 @@ const Lists = () => {
                 <ListIcon className="h-8 w-8 text-muted-foreground" />
               </div>
               <h3 className="font-semibold text-foreground mb-1">
-                {query ? "No lists found" : "No lists yet"}
+                {query ? t('empty.noListsFound') : t('empty.noListsYet')}
               </h3>
               <p className="text-sm text-muted-foreground mb-4">
-                {query ? "Try a different search term" : "Create your first list to get organized"}
+                {query ? t('empty.tryDifferentSearch') : t('empty.createFirstList')}
               </p>
               {!query && <CreateListDialog onListCreated={refetch} />}
             </CardContent>
@@ -197,7 +201,7 @@ const Lists = () => {
                 >
                   <CardContent className="p-0">
                     <Link 
-                      to={`/lists/${encodeURIComponent(list.id)}`}
+                      to={getLocalizedPath(`/lists/${encodeURIComponent(list.id)}`)}
                       className="flex items-center gap-3 p-4 w-full active:scale-[0.99] transition-transform"
                     >
                       {/* Icon with priority indicator */}
@@ -226,20 +230,20 @@ const Lists = () => {
                           </h3>
                           {!list.is_manual && (
                             <Badge className="text-[10px] px-1.5 py-0 h-4 bg-accent/20 text-accent border-0">
-                              AI
+                              {t('badges.ai')}
                             </Badge>
                           )}
                         </div>
                         
                         {/* Stats row */}
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span>{stats.active} active</span>
+                          <span>{stats.active} {t('stats.active')}</span>
                           {stats.overdue > 0 && (
                             <>
                               <span>•</span>
                               <span className="text-priority-high flex items-center gap-1">
                                 <AlertCircle className="h-3 w-3" />
-                                {stats.overdue} overdue
+                                {stats.overdue} {t('stats.overdue')}
                               </span>
                             </>
                           )}
@@ -248,7 +252,7 @@ const Lists = () => {
                               <span>•</span>
                               <span className="text-priority-medium flex items-center gap-1">
                                 <Clock className="h-3 w-3" />
-                                {stats.dueThisWeek} this week
+                                {stats.dueThisWeek} {t('stats.thisWeek')}
                               </span>
                             </>
                           )}
