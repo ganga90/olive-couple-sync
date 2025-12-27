@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Plus, TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2 } from "lucide-react";
+import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2, Send } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import { TaskItem } from "@/components/TaskItem";
 import type { Note } from "@/types/note";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NoteInput } from "@/components/NoteInput";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { format, addDays, startOfDay, isSameDay, formatDistanceToNow } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -165,37 +166,45 @@ const Home = () => {
             </p>
           </div>
 
-          {/* Brain-dump Input - Hero Style */}
-          <div className="relative">
+          {/* Brain-dump Input - Native Text Box */}
+          <div className="relative animate-fade-up stagger-1">
             <div 
+              className="bg-card border border-border rounded-xl p-4 shadow-card"
               onClick={() => {
                 if (brainDumpOnboarding.isVisible) {
                   brainDumpOnboarding.dismiss();
                 }
-                setIsInputOpen(true);
               }}
-              className="group relative bg-card border-2 border-primary/30 rounded-2xl p-5 shadow-card cursor-pointer 
-                         hover:border-primary hover:shadow-raised transition-all duration-300 
-                         active:scale-[0.99] animate-fade-up stagger-1"
             >
-              <div className="flex items-center gap-4">
-                <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 
-                                group-hover:bg-primary/20 transition-colors">
-                  <Brain className="w-5 h-5 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-foreground font-medium text-base mb-0.5">
-                    {t('home:brainDump.title')}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {t('home:brainDump.subtitle')}
-                  </p>
-                </div>
-                <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center flex-shrink-0
-                                shadow-sm group-hover:shadow-glow transition-shadow">
-                  <Plus className="h-5 w-5 text-primary-foreground" />
+              <div className="flex items-center gap-2 mb-3">
+                <Brain className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-foreground">{t('home:brainDump.title')}</span>
+                <span className="text-xs text-muted-foreground">— {t('home:brainDump.subtitle')}</span>
+              </div>
+              <div 
+                className="relative cursor-text"
+                onClick={() => setIsInputOpen(true)}
+              >
+                <Textarea
+                  placeholder={t(`home:brainDump.placeholder.${
+                    new Date().getDay() === 0 || new Date().getDay() === 6 ? 'weekend' :
+                    new Date().getHours() < 12 ? 'morning' :
+                    new Date().getHours() < 18 ? 'afternoon' : 'evening'
+                  }`)}
+                  className="min-h-[80px] resize-none bg-muted/30 border-0 focus-visible:ring-1 focus-visible:ring-primary/30 cursor-pointer pointer-events-none"
+                  readOnly
+                />
+                <div className="absolute bottom-3 right-3">
+                  <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-sm">
+                    <Send className="h-4 w-4 text-primary-foreground" />
+                  </div>
                 </div>
               </div>
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3 text-accent" />
+                <span>{t('home:hint.try')} </span>
+                <span className="italic text-foreground/70">{t('home:hint.example')}</span>
+              </p>
             </div>
             
             {/* Onboarding Tooltip */}
@@ -206,15 +215,6 @@ const Home = () => {
               description={t('home:brainDump.onboarding.description')}
               position="bottom"
             />
-          </div>
-
-          {/* Guidance Hint */}
-          <div className="text-center px-2 animate-fade-up stagger-2">
-            <p className="text-xs text-muted-foreground flex items-center justify-center gap-1.5">
-              <Sparkles className="w-3 h-3 text-accent" />
-              <span>{t('home:hint.try')} </span>
-              <span className="italic text-foreground/70">{t('home:hint.example')}</span>
-            </p>
           </div>
 
           {/* Quick Action Cards (contextual) */}
@@ -244,10 +244,10 @@ const Home = () => {
             </div>
           )}
 
-          {/* Optimize Organization Button */}
+          {/* Optimize Organization - Compact Inline Button */}
           {notes.length >= 3 && (
-            <div className="relative">
-              <Card 
+            <div className="relative flex justify-center animate-fade-up stagger-2">
+              <button
                 onClick={() => {
                   if (organizeOnboarding.isVisible) {
                     organizeOnboarding.dismiss();
@@ -256,21 +256,18 @@ const Home = () => {
                     analyze("all");
                   }
                 }}
-                className="p-4 border-l-4 border-l-accent bg-accent/5 cursor-pointer hover:bg-accent/10 
-                           transition-colors animate-fade-up stagger-3 group"
+                disabled={isAnalyzing}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground 
+                           hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors group
+                           disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <div className="flex items-center gap-3">
-                  {isAnalyzing ? (
-                    <Loader2 className="w-5 h-5 text-accent animate-spin" />
-                  ) : (
-                    <Wand2 className="w-5 h-5 text-accent group-hover:rotate-12 transition-transform" />
-                  )}
-                  <div className="flex-1">
-                    <p className="font-medium text-sm text-foreground">{t('home:organize.title')}</p>
-                    <p className="text-xs text-muted-foreground">{t('home:organize.subtitle')}</p>
-                  </div>
-                </div>
-              </Card>
+                {isAnalyzing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Wand2 className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+                )}
+                <span>{t('home:organize.title')}</span>
+              </button>
               
               {/* Onboarding Tooltip */}
               <OnboardingTooltip
