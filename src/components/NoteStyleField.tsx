@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -13,6 +14,7 @@ interface NoteStyleFieldProps {
 }
 
 export const NoteStyleField: React.FC<NoteStyleFieldProps> = ({ onStyleChange }) => {
+  const { t } = useTranslation('profile');
   const { user } = useAuth();
   const [style, setStyle] = useState<NoteStyle>('auto');
   const [loading, setLoading] = useState(true);
@@ -62,16 +64,16 @@ export const NoteStyleField: React.FC<NoteStyleFieldProps> = ({ onStyleChange })
 
       if (error) {
         setStyle(previousStyle);
-        toast.error('Failed to save preference');
+        toast.error(t('noteStyle.error'));
         console.error('Error saving note style:', error);
         return;
       }
 
-      toast.success('Note style updated');
+      toast.success(t('noteStyle.updated'));
       onStyleChange?.(newStyle);
     } catch (error) {
       setStyle(previousStyle);
-      toast.error('Failed to save preference');
+      toast.error(t('noteStyle.error'));
       console.error('Error saving note style:', error);
     } finally {
       setSaving(false);
@@ -92,7 +94,7 @@ export const NoteStyleField: React.FC<NoteStyleFieldProps> = ({ onStyleChange })
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Choose how you typically write your notes. Olive will adapt to understand your style better.
+        {t('noteStyle.description')}
       </p>
       
       <RadioGroup
@@ -101,42 +103,42 @@ export const NoteStyleField: React.FC<NoteStyleFieldProps> = ({ onStyleChange })
         disabled={saving}
         className="space-y-3"
       >
-        <div className="flex items-start space-x-3 p-3 rounded-[var(--radius-md)] border border-border hover:border-olive/50 transition-colors cursor-pointer">
+        <div className="flex items-start space-x-3 p-3 rounded-[var(--radius-md)] border border-border hover:border-primary/50 transition-colors cursor-pointer">
           <RadioGroupItem value="auto" id="style-auto" className="mt-0.5" />
           <Label htmlFor="style-auto" className="flex-1 cursor-pointer">
             <div className="flex items-center gap-2 mb-1">
-              <Sparkles className="h-4 w-4 text-olive" />
-              <span className="font-medium">Auto-detect</span>
-              <span className="text-xs bg-olive/10 text-olive px-2 py-0.5 rounded-full">Recommended</span>
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="font-medium">{t('noteStyle.auto.title')}</span>
+              <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">{t('noteStyle.auto.recommended')}</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              Olive automatically detects if you're using quick brain-dumps or conversational messages
+              {t('noteStyle.auto.description')}
             </p>
           </Label>
         </div>
 
-        <div className="flex items-start space-x-3 p-3 rounded-[var(--radius-md)] border border-border hover:border-olive/50 transition-colors cursor-pointer">
+        <div className="flex items-start space-x-3 p-3 rounded-[var(--radius-md)] border border-border hover:border-primary/50 transition-colors cursor-pointer">
           <RadioGroupItem value="succinct" id="style-succinct" className="mt-0.5" />
           <Label htmlFor="style-succinct" className="flex-1 cursor-pointer">
             <div className="flex items-center gap-2 mb-1">
               <Brain className="h-4 w-4 text-primary" />
-              <span className="font-medium">Brain-dump style</span>
+              <span className="font-medium">{t('noteStyle.succinct.title')}</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              Quick, keyword-focused notes like "buy milk, call doctor tomorrow, book restaurant Friday"
+              {t('noteStyle.succinct.description')}
             </p>
           </Label>
         </div>
 
-        <div className="flex items-start space-x-3 p-3 rounded-[var(--radius-md)] border border-border hover:border-olive/50 transition-colors cursor-pointer">
+        <div className="flex items-start space-x-3 p-3 rounded-[var(--radius-md)] border border-border hover:border-primary/50 transition-colors cursor-pointer">
           <RadioGroupItem value="conversational" id="style-conversational" className="mt-0.5" />
           <Label htmlFor="style-conversational" className="flex-1 cursor-pointer">
             <div className="flex items-center gap-2 mb-1">
               <MessageSquare className="h-4 w-4 text-primary" />
-              <span className="font-medium">Conversational style</span>
+              <span className="font-medium">{t('noteStyle.conversational.title')}</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              Natural messages like "Hey, I think we need to pick up the kids on Tuesday and maybe go to dinner Friday"
+              {t('noteStyle.conversational.description')}
             </p>
           </Label>
         </div>
