@@ -113,11 +113,23 @@ export const useSupabaseLists = (coupleId?: string | null) => {
       console.log("[Lists] Creating list:", listData);
       
       const supabase = getSupabase();
+      const normalizedName = listData.name.trim();
+      
+      // Check if list already exists (case-insensitive)
+      const existingList = lists.find(list => 
+        list.name.toLowerCase().trim() === normalizedName.toLowerCase()
+      );
+      
+      if (existingList) {
+        console.log("[Lists] List already exists:", existingList);
+        toast.info("List already exists");
+        return existingList;
+      }
       
       const insertData = {
-        name: listData.name,
+        name: normalizedName,
         description: listData.description || null,
-        is_manual: listData.is_manual !== false, // Default to true for manual creation
+        is_manual: listData.is_manual !== false,
         author_id: user.id,
         couple_id: coupleId || null,
       };
@@ -128,17 +140,26 @@ export const useSupabaseLists = (coupleId?: string | null) => {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // Handle unique constraint violation gracefully
+        if (error.code === '23505') {
+          console.log("[Lists] List already exists (constraint):", normalizedName);
+          await fetchLists(); // Refresh to get the existing list
+          const existing = lists.find(l => l.name.toLowerCase().trim() === normalizedName.toLowerCase());
+          if (existing) return existing;
+        }
+        throw error;
+      }
       
       console.log("[Lists] Successfully created list:", data);
       toast.success("List created successfully");
       return data;
-    } catch (error) {
+    } catch (error: any) {
       console.error("[Lists] Error creating list:", error);
       toast.error(`Failed to create list: ${error.message}`);
       return null;
     }
-  }, [user?.id, coupleId]);
+  }, [user?.id, coupleId, lists, fetchLists]);
 
   const updateList = useCallback(async (id: string, updates: { name?: string; description?: string }) => {
     if (!user?.id) {
@@ -219,10 +240,11 @@ export const useSupabaseLists = (coupleId?: string | null) => {
   }, [lists]);
 
   const findOrCreateListByCategory = useCallback(async (category: string) => {
-    // First check if a list already exists for this category
+    const normalizedCategory = category.toLowerCase().replace(/[_\s]+/g, ' ').trim();
+    
+    // First check if a list already exists for this category (case-insensitive)
     const existingList = lists.find(list => 
-      list.name.toLowerCase() === category.toLowerCase() ||
-      list.name.toLowerCase().replace(/[_\s]+/g, ' ') === category.toLowerCase().replace(/[_\s]+/g, ' ')
+      list.name.toLowerCase().replace(/[_\s]+/g, ' ').trim() === normalizedCategory
     );
     
     if (existingList) {
@@ -238,7 +260,7 @@ export const useSupabaseLists = (coupleId?: string | null) => {
     const newList = await createList({
       name: listName,
       description: `Auto-generated list for ${listName.toLowerCase()} items`,
-      is_manual: false // Mark as auto-generated
+      is_manual: false
     });
     
     return newList;
