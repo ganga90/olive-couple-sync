@@ -14,6 +14,7 @@ import enLists from '../../../public/locales/en/lists.json';
 import enReminders from '../../../public/locales/en/reminders.json';
 import enCalendar from '../../../public/locales/en/calendar.json';
 import enAuth from '../../../public/locales/en/auth.json';
+import enOrganize from '../../../public/locales/en/organize.json';
 
 import esCommon from '../../../public/locales/es-ES/common.json';
 import esHome from '../../../public/locales/es-ES/home.json';
@@ -25,6 +26,7 @@ import esLists from '../../../public/locales/es-ES/lists.json';
 import esReminders from '../../../public/locales/es-ES/reminders.json';
 import esCalendar from '../../../public/locales/es-ES/calendar.json';
 import esAuth from '../../../public/locales/es-ES/auth.json';
+import esOrganize from '../../../public/locales/es-ES/organize.json';
 
 import itCommon from '../../../public/locales/it-IT/common.json';
 import itHome from '../../../public/locales/it-IT/home.json';
@@ -36,6 +38,7 @@ import itLists from '../../../public/locales/it-IT/lists.json';
 import itReminders from '../../../public/locales/it-IT/reminders.json';
 import itCalendar from '../../../public/locales/it-IT/calendar.json';
 import itAuth from '../../../public/locales/it-IT/auth.json';
+import itOrganize from '../../../public/locales/it-IT/organize.json';
 
 // Custom path detector for URL-based locale detection
 const PathDetector = {
@@ -72,7 +75,8 @@ const resources = {
     lists: enLists,
     reminders: enReminders,
     calendar: enCalendar,
-    auth: enAuth
+    auth: enAuth,
+    organize: enOrganize
   },
   'es-ES': {
     common: esCommon,
@@ -84,7 +88,8 @@ const resources = {
     lists: esLists,
     reminders: esReminders,
     calendar: esCalendar,
-    auth: esAuth
+    auth: esAuth,
+    organize: esOrganize
   },
   'it-IT': {
     common: itCommon,
@@ -96,7 +101,8 @@ const resources = {
     lists: itLists,
     reminders: itReminders,
     calendar: itCalendar,
-    auth: itAuth
+    auth: itAuth,
+    organize: itOrganize
   }
 };
 
@@ -107,7 +113,7 @@ i18n
     resources,
     supportedLngs: Object.keys(SUPPORTED_LANGUAGES),
     fallbackLng: DEFAULT_LANGUAGE,
-    ns: ['common', 'home', 'landing', 'profile', 'notes', 'onboarding', 'lists', 'reminders', 'calendar', 'auth'],
+    ns: ['common', 'home', 'landing', 'profile', 'notes', 'onboarding', 'lists', 'reminders', 'calendar', 'auth', 'organize'],
     defaultNS: 'common',
     detection: {
       order: ['path', 'localStorage', 'navigator'],
