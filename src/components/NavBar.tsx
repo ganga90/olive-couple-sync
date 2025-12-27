@@ -4,13 +4,13 @@ import { SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 import { OliveLogoWithText } from "@/components/OliveLogo";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
+import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 
 const NavBar = () => {
   const location = useLocation();
   const isMobile = useIsMobile();
   const { t } = useTranslation('common');
-  const { getLocalizedPath } = useLocalizedNavigate();
+  const getLocalizedPath = useLocalizedHref();
   
   // Hide NavBar on mobile for main app routes (they use MobileLayout instead)
   const mainAppRoutes = ['/home', '/lists', '/calendar', '/reminders', '/profile'];

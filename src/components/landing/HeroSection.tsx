@@ -3,11 +3,11 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Play } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { OliveLogoWithText } from "@/components/OliveLogo";
-import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
+import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 
 export const HeroSection = () => {
   const { t } = useTranslation('landing');
-  const { getLocalizedPath } = useLocalizedNavigate();
+  const getLocalizedPath = useLocalizedHref();
   const navigate = useNavigate();
 
   const scrollToDemo = () => {
