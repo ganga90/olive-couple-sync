@@ -10,6 +10,7 @@
   },
   "stats": {
     "active": "activas",
+    "done": "completadas",
     "overdue": "vencidas",
     "thisWeek": "esta semana"
   },
@@ -18,5 +19,16 @@
   },
   "actions": {
     "deleteConfirm": "¿Eliminar \"{{name}}\"? Esta acción no se puede deshacer."
+  },
+  "createDialog": {
+    "newList": "Nueva Lista",
+    "title": "Crear Nueva Lista",
+    "nameLabel": "Nombre de Lista *",
+    "namePlaceholder": "Introduce el nombre de la lista...",
+    "descriptionLabel": "Descripción (Opcional)",
+    "descriptionPlaceholder": "Describe para qué es esta lista...",
+    "cancel": "Cancelar",
+    "creating": "Creando...",
+    "create": "Crear Lista"
   }
 }

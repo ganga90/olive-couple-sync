@@ -10,6 +10,7 @@
   },
   "stats": {
     "active": "active",
+    "done": "done",
     "overdue": "overdue",
     "thisWeek": "this week"
   },
@@ -18,5 +19,16 @@
   },
   "actions": {
     "deleteConfirm": "Delete \"{{name}}\"? This action cannot be undone."
+  },
+  "createDialog": {
+    "newList": "New List",
+    "title": "Create New List",
+    "nameLabel": "List Name *",
+    "namePlaceholder": "Enter list name...",
+    "descriptionLabel": "Description (Optional)",
+    "descriptionPlaceholder": "Describe what this list is for...",
+    "cancel": "Cancel",
+    "creating": "Creating...",
+    "create": "Create List"
   }
 }

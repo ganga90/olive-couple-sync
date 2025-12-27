@@ -9,9 +9,11 @@
   "createdBy": "Creado Por",
   "overdue": "Vencida",
   "completed": "Completada",
+  "complete": "Completar",
   "originalNote": "Nota Original",
   "details": "Detalles",
   "tags": "Etiquetas",
+  "askOlive": "Preguntar a Olive",
   "askOliveChat": {
     "greeting": "¡Hola! ¿Cómo puedo ayudarte con \"{{summary}}\"?",
     "title": "Preguntar a Olive",
@@ -23,6 +25,30 @@
     "category": "Categoría",
     "priority": "Prioridad",
     "tags": "Etiquetas (separadas por comas)",
-    "items": "Sub-elementos (uno por línea)"
-  }
+    "items": "Sub-elementos (uno por línea)",
+    "save": "Guardar",
+    "cancel": "Cancelar"
+  },
+  "card": {
+    "you": "Tú",
+    "partner": "Pareja",
+    "auto": "Auto",
+    "moreItems": "+{{count}} más elementos",
+    "reminderLabel": "Recordatorio:",
+    "editReminder": "Editar",
+    "setReminder": "Establecer"
+  },
+  "priority": {
+    "high": "Prioridad Alta",
+    "medium": "Prioridad Media",
+    "low": "Prioridad Baja"
+  },
+  "toast": {
+    "noteDeleted": "Nota eliminada",
+    "noteUpdated": "¡Nota actualizada!",
+    "failedToUpdate": "Error al actualizar la nota",
+    "priorityUpdated": "¡Prioridad actualizada!",
+    "markedComplete": "¡Marcada como completada!"
+  },
+  "back": "Volver"
 }

@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -56,6 +57,7 @@ export const CategoryList: React.FC<CategoryListProps> = ({
   category, 
   shared = false 
 }) => {
+  const { t } = useTranslation('lists');
   const { getNotesByCategory } = useSupabaseNotesContext();
   const navigate = useNavigate();
   
@@ -90,12 +92,12 @@ export const CategoryList: React.FC<CategoryListProps> = ({
               variant="secondary" 
               className="bg-olive/10 text-olive border-olive/20"
             >
-              {incompleteCount} active
+              {incompleteCount} {t('stats.active')}
             </Badge>
             
             {totalCount > incompleteCount && (
               <Badge variant="outline" className="text-xs">
-                {totalCount - incompleteCount} done
+                {totalCount - incompleteCount} {t('stats.done')}
               </Badge>
             )}
           </div>

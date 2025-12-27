@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle2, Circle, Calendar, User, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -20,6 +21,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   authorName,
   showCategory = false
 }) => {
+  const { t } = useTranslation('home');
   const { toast } = useToast();
   const [isAnimating, setIsAnimating] = useState(false);
 
@@ -31,7 +33,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
       
       // Show success toast
       toast({
-        title: "Task completed!",
+        title: t('toast.taskCompleted'),
         description: task.summary,
         duration: 2000,
       });

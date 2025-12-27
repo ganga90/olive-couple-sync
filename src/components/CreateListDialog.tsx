@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,7 @@ interface CreateListDialogProps {
 }
 
 export const CreateListDialog: React.FC<CreateListDialogProps> = ({ onListCreated }) => {
+  const { t } = useTranslation('lists');
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -49,36 +51,36 @@ export const CreateListDialog: React.FC<CreateListDialogProps> = ({ onListCreate
       <DialogTrigger asChild>
         <Button className="bg-olive hover:bg-olive/90 text-white">
           <Plus className="h-4 w-4 mr-2" />
-          New List
+          {t('createDialog.newList')}
         </Button>
       </DialogTrigger>
       <DialogContent className="bg-white">
         <DialogHeader>
-          <DialogTitle className="text-olive-dark">Create New List</DialogTitle>
+          <DialogTitle className="text-olive-dark">{t('createDialog.title')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="list-name" className="text-sm font-medium text-olive-dark">
-              List Name *
+              {t('createDialog.nameLabel')}
             </Label>
             <Input
               id="list-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Enter list name..."
+              placeholder={t('createDialog.namePlaceholder')}
               className="border-olive/30 focus:border-olive focus:ring-olive/20"
               required
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="list-description" className="text-sm font-medium text-olive-dark">
-              Description (Optional)
+              {t('createDialog.descriptionLabel')}
             </Label>
             <Textarea
               id="list-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe what this list is for..."
+              placeholder={t('createDialog.descriptionPlaceholder')}
               className="border-olive/30 focus:border-olive focus:ring-olive/20"
               rows={3}
             />
@@ -91,14 +93,14 @@ export const CreateListDialog: React.FC<CreateListDialogProps> = ({ onListCreate
               disabled={loading}
               className="border-olive/30"
             >
-              Cancel
+              {t('createDialog.cancel')}
             </Button>
             <Button
               type="submit"
               disabled={loading || !name.trim()}
               className="bg-olive hover:bg-olive/90 text-white"
             >
-              {loading ? "Creating..." : "Create List"}
+              {loading ? t('createDialog.creating') : t('createDialog.create')}
             </Button>
           </div>
         </form>
