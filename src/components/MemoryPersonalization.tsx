@@ -11,6 +11,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 interface Memory {
   id: string;
@@ -43,6 +44,7 @@ const getCategoryInfo = (value: string) => {
 };
 
 export function MemoryPersonalization() {
+  const { t } = useTranslation('profile');
   const { user } = useAuth();
   const userId = user?.id;
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -104,7 +106,7 @@ export function MemoryPersonalization() {
       }
     } catch (error) {
       console.error('Failed to load memories:', error);
-      toast.error('Failed to load memories');
+      toast.error(t('memory.loadingMemories'));
     } finally {
       setLoading(false);
     }
@@ -130,7 +132,7 @@ export function MemoryPersonalization() {
 
       if (error) throw error;
       if (data?.success) {
-        toast.success('Memory saved');
+        toast.success(t('memory.memorySaved'));
         setNewContent('');
         setNewCategory('personal');
         setNewImportance(3);
@@ -139,7 +141,7 @@ export function MemoryPersonalization() {
       }
     } catch (error) {
       console.error('Failed to add memory:', error);
-      toast.error('Failed to save memory');
+      toast.error(t('memory.error'));
     } finally {
       setSaving(false);
     }
@@ -164,13 +166,13 @@ export function MemoryPersonalization() {
 
       if (error) throw error;
       if (data?.success) {
-        toast.success('Memory updated');
+        toast.success(t('memory.memoryUpdated'));
         setEditingId(null);
         await loadMemories();
       }
     } catch (error) {
       console.error('Failed to update memory:', error);
-      toast.error('Failed to update memory');
+      toast.error(t('memory.error'));
     } finally {
       setSaving(false);
     }
@@ -190,12 +192,12 @@ export function MemoryPersonalization() {
 
       if (error) throw error;
       if (data?.success) {
-        toast.success('Memory deleted');
+        toast.success(t('memory.memoryDeleted'));
         await loadMemories();
       }
     } catch (error) {
       console.error('Failed to delete memory:', error);
-      toast.error('Failed to delete memory');
+      toast.error(t('memory.error'));
     }
   }
 
@@ -215,11 +217,11 @@ export function MemoryPersonalization() {
         <TabsList className="grid w-full grid-cols-2 h-11">
           <TabsTrigger value="view" className="gap-2">
             <Sparkles className="h-4 w-4" />
-            Memories ({memories.length})
+            {t('memory.tabMemories')} ({memories.length})
           </TabsTrigger>
           <TabsTrigger value="add" className="gap-2">
             <Plus className="h-4 w-4" />
-            Add New
+            {t('memory.tabAddNew')}
           </TabsTrigger>
         </TabsList>
 
@@ -230,7 +232,7 @@ export function MemoryPersonalization() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search memories..."
+                  placeholder={t('memory.searchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 h-11 bg-muted/30 border-0 focus-visible:ring-1"
@@ -271,7 +273,7 @@ export function MemoryPersonalization() {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
-              <p className="text-sm text-muted-foreground mt-3">Loading memories...</p>
+              <p className="text-sm text-muted-foreground mt-3">{t('memory.loadingMemories')}</p>
             </div>
           ) : memories.length === 0 ? (
             <Card className="border-dashed border-2 bg-muted/20">
@@ -279,19 +281,19 @@ export function MemoryPersonalization() {
                 <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
                   <Sparkles className="h-8 w-8 text-primary" />
                 </div>
-                <h3 className="font-semibold text-lg mb-2">No memories yet</h3>
+                <h3 className="font-semibold text-lg mb-2">{t('memory.noMemoriesYet')}</h3>
                 <p className="text-sm text-muted-foreground mb-6 max-w-xs mx-auto">
-                  Tell Olive about yourself, your family, pets, preferences, and more to personalize your experience
+                  {t('memory.noMemoriesDescription')}
                 </p>
                 <Button onClick={() => setActiveTab('add')} className="gap-2">
                   <Plus className="h-4 w-4" />
-                  Add your first memory
+                  {t('memory.addFirstMemory')}
                 </Button>
               </CardContent>
             </Card>
           ) : filteredMemories.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-muted-foreground">No memories match your search</p>
+              <p className="text-muted-foreground">{t('memory.noMatchingMemories')}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -324,7 +326,7 @@ export function MemoryPersonalization() {
                               disabled={saving}
                             >
                               <X className="h-4 w-4 mr-1" />
-                              Cancel
+                              {t('partnerInfo.cancel')}
                             </Button>
                             <Button
                               size="sm"
@@ -365,7 +367,7 @@ export function MemoryPersonalization() {
                                     className="text-xs bg-accent/10 text-accent border-accent/20"
                                   >
                                     <Sparkles className="h-3 w-3 mr-1" />
-                                    Auto-learned
+                                    {t('memory.autoLearned')}
                                   </Badge>
                                 )}
                               </div>
@@ -429,23 +431,23 @@ export function MemoryPersonalization() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
-                Add a memory
+                {t('memory.addMemoryTitle')}
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Tell Olive something about yourself that will help personalize your experience
+                {t('memory.addMemoryDescription')}
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
               <Textarea
                 value={newContent}
                 onChange={(e) => setNewContent(e.target.value)}
-                placeholder="e.g., I have a dog named Milka. She's a golden retriever and needs her vet checkups every 6 months."
+                placeholder={t('memory.placeholder')}
                 className="min-h-[120px] resize-none"
               />
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Category</label>
+                  <label className="text-sm font-medium">{t('memory.category')}</label>
                   <Select value={newCategory} onValueChange={setNewCategory}>
                     <SelectTrigger className="h-11">
                       <SelectValue />
@@ -464,7 +466,7 @@ export function MemoryPersonalization() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Importance</label>
+                  <label className="text-sm font-medium">{t('memory.importance')}</label>
                   <div className="flex items-center gap-1 h-11 px-3 rounded-md border bg-background">
                     {[1, 2, 3, 4, 5].map((level) => (
                       <button
@@ -495,12 +497,12 @@ export function MemoryPersonalization() {
                 {saving ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Saving...
+                    {t('memory.saving')}
                   </>
                 ) : (
                   <>
                     <Plus className="h-4 w-4 mr-2" />
-                    Save Memory
+                    {t('memory.saveMemory')}
                   </>
                 )}
               </Button>

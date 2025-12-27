@@ -10,8 +10,10 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/providers/AuthProvider";
 import { User2, Share2, Plus, Check, Clock, X, Copy, Trash2, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 export const PartnerInfo = () => {
+  const { t } = useTranslation('profile');
   const [loading, setLoading] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [inviteUrl, setInviteUrl] = useState("");
@@ -218,16 +220,16 @@ export const PartnerInfo = () => {
         <div className="text-center space-y-4">
           <User2 className="h-12 w-12 mx-auto text-muted-foreground" />
           <div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">No couple space found</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-2">{t('partnerInfo.noCoupleSpace')}</h3>
             <p className="text-sm text-muted-foreground">
-              Set up your couple space to start sharing notes and lists.
+              {t('partnerInfo.setupDescription')}
             </p>
           </div>
           <Button 
             onClick={() => window.location.href = "/onboarding"}
             className="bg-olive hover:bg-olive/90 text-white"
           >
-            Set Up Space
+            {t('partnerInfo.setupButton')}
           </Button>
         </div>
       </Card>
@@ -237,7 +239,7 @@ export const PartnerInfo = () => {
   return (
     <Card className="p-6 bg-white/50 border-olive/20 shadow-soft space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-foreground mb-2">Your Couple Space</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-2">{t('partnerInfo.yourCoupleSpace')}</h3>
         <p className="text-sm text-muted-foreground">
           {currentCouple.title || `${you} & ${partner}`}
         </p>
@@ -246,19 +248,19 @@ export const PartnerInfo = () => {
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">You</Label>
-            <p className="text-sm font-medium">{you || "Not set"}</p>
+            <Label className="text-xs text-muted-foreground">{t('partnerInfo.you')}</Label>
+            <p className="text-sm font-medium">{you || t('partnerInfo.notSet')}</p>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Partner</Label>
-            <p className="text-sm font-medium">{partner || "Not set"}</p>
+            <Label className="text-xs text-muted-foreground">{t('partnerInfo.partner')}</Label>
+            <p className="text-sm font-medium">{partner || t('partnerInfo.notSet')}</p>
           </div>
         </div>
 
         {/* Invite Section */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium">Partner Connection</Label>
+            <Label className="text-sm font-medium">{t('partnerConnection')}</Label>
             {!showInviteForm && (
               <Button 
                 onClick={() => setShowInviteForm(true)}
@@ -267,7 +269,7 @@ export const PartnerInfo = () => {
                 className="text-olive border-olive/30 hover:bg-olive/10"
               >
                 <Plus className="h-4 w-4 mr-1" />
-                Invite Partner
+                {t('partnerInfo.invitePartner')}
               </Button>
             )}
           </div>
@@ -275,7 +277,7 @@ export const PartnerInfo = () => {
           {showInviteForm && !inviteUrl && (
             <div className="space-y-3 p-4 bg-olive/5 rounded-lg border border-olive/20">
               <p className="text-sm text-muted-foreground">
-                Create a shareable link to invite your partner to this space.
+                {t('partnerInfo.createInviteDescription')}
               </p>
               <div className="flex gap-2">
                 <Button 
@@ -285,7 +287,7 @@ export const PartnerInfo = () => {
                   disabled={loading}
                 >
                   <Share2 className="h-4 w-4 mr-1" />
-                  {loading ? "Creating..." : "Create Invite Link"}
+                  {loading ? t('partnerInfo.creating') : t('partnerInfo.createInviteButton')}
                 </Button>
                 <Button 
                   onClick={() => {
@@ -295,7 +297,7 @@ export const PartnerInfo = () => {
                   variant="ghost"
                   disabled={loading}
                 >
-                  Cancel
+                  {t('partnerInfo.cancel')}
                 </Button>
               </div>
             </div>
@@ -304,7 +306,7 @@ export const PartnerInfo = () => {
           {inviteUrl && (
             <div className="space-y-3 p-4 bg-olive/5 rounded-lg border border-olive/20">
               <div className="space-y-2">
-                <Label className="text-sm font-medium text-olive-dark">Invite Message</Label>
+                <Label className="text-sm font-medium text-olive-dark">{t('partnerInfo.inviteMessage')}</Label>
                 <div className="relative">
                   <textarea 
                     value={inviteMessage}
@@ -324,7 +326,7 @@ export const PartnerInfo = () => {
               </div>
 
               <div className="space-y-2">
-                <Label className="text-sm font-medium text-olive-dark">Just the Link</Label>
+                <Label className="text-sm font-medium text-olive-dark">{t('partnerInfo.justTheLink')}</Label>
                 <div className="flex gap-2">
                   <input 
                     value={inviteUrl}
@@ -352,7 +354,7 @@ export const PartnerInfo = () => {
                 variant="ghost"
                 className="w-full text-muted-foreground hover:text-olive"
               >
-                Create Another Invite
+                {t('partnerInfo.createAnother')}
               </Button>
             </div>
           )}
@@ -360,10 +362,10 @@ export const PartnerInfo = () => {
 
         {/* Delete Space Section */}
         <div className="border-t pt-4 space-y-3">
-          <Label className="text-sm font-medium text-destructive">Danger Zone</Label>
+          <Label className="text-sm font-medium text-destructive">{t('partnerInfo.dangerZone')}</Label>
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">
-              Unlink from this couple space. This will remove you from the shared space and you can create a new one.
+              {t('partnerInfo.unlinkDescription')}
             </p>
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -374,35 +376,35 @@ export const PartnerInfo = () => {
                   disabled={unlinkLoading}
                 >
                   <Trash2 className="h-4 w-4 mr-1" />
-                  {unlinkLoading ? "Unlinking..." : "Unlink from Space"}
+                  {unlinkLoading ? t('partnerInfo.unlinking') : t('partnerInfo.unlinkButton')}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent className="bg-white border-olive/20">
                 <AlertDialogHeader>
                   <AlertDialogTitle className="flex items-center gap-2 text-destructive">
                     <AlertTriangle className="h-5 w-5" />
-                    Unlink from Couple Space?
+                    {t('partnerInfo.unlinkConfirmTitle')}
                   </AlertDialogTitle>
                   <AlertDialogDescription className="space-y-2">
                     <p>
-                      This will remove you from the "{currentCouple.title || `${you} & ${partner}`}" space.
+                      {t('partnerInfo.unlinkConfirmDesc1', { spaceName: currentCouple.title || `${you} & ${partner}` })}
                     </p>
                     <p className="font-medium">
-                      You will lose access to all shared notes and lists in this space.
+                      {t('partnerInfo.unlinkConfirmDesc2')}
                     </p>
                     <p>
-                      After unlinking, you'll be able to create a new couple space or continue with a personal space.
+                      {t('partnerInfo.unlinkConfirmDesc3')}
                     </p>
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogCancel>{t('partnerInfo.cancel')}</AlertDialogCancel>
                   <AlertDialogAction 
                     onClick={handleUnlinkSpace}
                     className="bg-destructive hover:bg-destructive/90"
                     disabled={unlinkLoading}
                   >
-                    {unlinkLoading ? "Unlinking..." : "Yes, Unlink"}
+                    {unlinkLoading ? t('partnerInfo.unlinking') : t('partnerInfo.yesUnlink')}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>

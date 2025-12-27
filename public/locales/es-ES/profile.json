@@ -98,7 +98,8 @@
     "memoryUpdated": "Recuerdo actualizado",
     "memoryDeleted": "Recuerdo eliminado",
     "loadingMemories": "Cargando recuerdos...",
-    "autoLearned": "Aprendido automáticamente"
+    "autoLearned": "Aprendido automáticamente",
+    "error": "No se pudo guardar el recuerdo"
   },
   "noteProcessingStyle": "Estilo de Procesamiento de Notas",
   "memoryPersonalization": {
