@@ -77,5 +77,10 @@
       "title": "✨ Nuovo: Organizzatore Olive",
       "description": "Clicca qui per far analizzare le tue attività a Olive AI e suggerire una migliore organizzazione. Può spostare le attività nelle liste giuste e persino crearne di nuove!"
     }
+  },
+  "partnerActivity": {
+    "title": "Attività recente di {{name}}",
+    "added": "ha aggiunto un'attività condivisa",
+    "assignedYou": "ti ha assegnato un'attività"
   }
 }

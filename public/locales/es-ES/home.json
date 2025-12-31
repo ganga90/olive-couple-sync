@@ -77,5 +77,10 @@
       "title": "✨ Nuevo: Organizador Olive",
       "description": "Haz clic aquí para que Olive AI analice tus tareas y sugiera una mejor organización. ¡Puede mover tareas a las listas correctas e incluso crear nuevas!"
     }
+  },
+  "partnerActivity": {
+    "title": "Actividad reciente de {{name}}",
+    "added": "añadió una tarea compartida",
+    "assignedYou": "te asignó una tarea"
   }
 }
