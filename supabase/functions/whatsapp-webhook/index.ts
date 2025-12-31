@@ -154,6 +154,187 @@ function isValidTwilioMediaUrl(url: string): boolean {
   }
 }
 
+// Parse natural language date/time expressions
+function parseNaturalDate(expression: string, timezone: string = 'America/New_York'): { date: string | null; time: string | null; readable: string } {
+  const now = new Date();
+  const lowerExpr = expression.toLowerCase().trim();
+  
+  // Helper to format date as ISO string
+  const formatDate = (d: Date): string => {
+    return d.toISOString();
+  };
+  
+  // Helper to get next day of week
+  const getNextDayOfWeek = (dayName: string): Date => {
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const targetDay = days.indexOf(dayName.toLowerCase());
+    if (targetDay === -1) return now;
+    
+    const result = new Date(now);
+    const currentDay = result.getDay();
+    let daysToAdd = targetDay - currentDay;
+    if (daysToAdd <= 0) daysToAdd += 7; // Next week if today or past
+    result.setDate(result.getDate() + daysToAdd);
+    result.setHours(9, 0, 0, 0); // Default to 9 AM
+    return result;
+  };
+  
+  // Time patterns
+  let hours: number | null = null;
+  let minutes: number = 0;
+  
+  // Check for specific time patterns
+  const timeMatch = lowerExpr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (timeMatch) {
+    hours = parseInt(timeMatch[1]);
+    minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+    const meridiem = timeMatch[3]?.toLowerCase();
+    if (meridiem === 'pm' && hours < 12) hours += 12;
+    if (meridiem === 'am' && hours === 12) hours = 0;
+  }
+  
+  // Time of day keywords
+  if (lowerExpr.includes('morning')) { hours = hours ?? 9; }
+  else if (lowerExpr.includes('noon') || lowerExpr.includes('midday')) { hours = hours ?? 12; }
+  else if (lowerExpr.includes('afternoon')) { hours = hours ?? 14; }
+  else if (lowerExpr.includes('evening')) { hours = hours ?? 18; }
+  else if (lowerExpr.includes('night')) { hours = hours ?? 20; }
+  
+  let targetDate: Date | null = null;
+  let readable = '';
+  
+  // Relative day patterns
+  if (lowerExpr.includes('today')) {
+    targetDate = new Date(now);
+    readable = 'today';
+  } else if (lowerExpr.includes('tomorrow')) {
+    targetDate = new Date(now);
+    targetDate.setDate(targetDate.getDate() + 1);
+    readable = 'tomorrow';
+  } else if (lowerExpr.includes('day after tomorrow')) {
+    targetDate = new Date(now);
+    targetDate.setDate(targetDate.getDate() + 2);
+    readable = 'day after tomorrow';
+  } else if (lowerExpr.includes('next week')) {
+    targetDate = new Date(now);
+    targetDate.setDate(targetDate.getDate() + 7);
+    readable = 'next week';
+  } else if (lowerExpr.includes('in a week') || lowerExpr.includes('in 1 week')) {
+    targetDate = new Date(now);
+    targetDate.setDate(targetDate.getDate() + 7);
+    readable = 'in a week';
+  }
+  
+  // "In X minutes/hours/days" patterns
+  const inMinutesMatch = lowerExpr.match(/in\s+(\d+)\s*(?:min(?:ute)?s?)/i);
+  const inHoursMatch = lowerExpr.match(/in\s+(\d+)\s*(?:hour?s?|hr?s?)/i);
+  const inDaysMatch = lowerExpr.match(/in\s+(\d+)\s*days?/i);
+  
+  if (inMinutesMatch) {
+    targetDate = new Date(now);
+    targetDate.setMinutes(targetDate.getMinutes() + parseInt(inMinutesMatch[1]));
+    readable = `in ${inMinutesMatch[1]} minutes`;
+  } else if (inHoursMatch) {
+    targetDate = new Date(now);
+    targetDate.setHours(targetDate.getHours() + parseInt(inHoursMatch[1]));
+    readable = `in ${inHoursMatch[1]} hour(s)`;
+  } else if (inDaysMatch) {
+    targetDate = new Date(now);
+    targetDate.setDate(targetDate.getDate() + parseInt(inDaysMatch[1]));
+    readable = `in ${inDaysMatch[1]} day(s)`;
+  }
+  
+  // Day of week patterns
+  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  for (const day of dayNames) {
+    if (lowerExpr.includes(day) || lowerExpr.includes(day.substring(0, 3))) {
+      targetDate = getNextDayOfWeek(day);
+      readable = `next ${day.charAt(0).toUpperCase() + day.slice(1)}`;
+      break;
+    }
+  }
+  
+  // If we found a date but also have a specific time, apply it
+  if (targetDate && hours !== null) {
+    targetDate.setHours(hours, minutes, 0, 0);
+    readable += ` at ${hours > 12 ? hours - 12 : hours}:${minutes.toString().padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
+  } else if (targetDate && hours === null) {
+    // Default to 9 AM for due dates, current time for reminders
+    targetDate.setHours(9, 0, 0, 0);
+  }
+  
+  if (!targetDate) {
+    return { date: null, time: null, readable: 'unknown' };
+  }
+  
+  return {
+    date: formatDate(targetDate),
+    time: formatDate(targetDate),
+    readable
+  };
+}
+
+// Search for a task by keywords in summary
+async function searchTaskByKeywords(
+  supabase: any, 
+  userId: string, 
+  coupleId: string | null, 
+  keywords: string[]
+): Promise<any | null> {
+  // Build a search query - get recent tasks and filter by keywords
+  let query = supabase
+    .from('clerk_notes')
+    .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time')
+    .eq('completed', false)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  
+  if (coupleId) {
+    // Search shared tasks
+    query = query.eq('couple_id', coupleId);
+  } else {
+    // Search personal tasks
+    query = query.eq('author_id', userId);
+  }
+  
+  const { data: tasks, error } = await query;
+  
+  if (error || !tasks || tasks.length === 0) {
+    return null;
+  }
+  
+  // Score each task based on keyword matches
+  const scoredTasks = tasks.map((task: any) => {
+    const summaryLower = task.summary.toLowerCase();
+    let score = 0;
+    
+    for (const keyword of keywords) {
+      const keywordLower = keyword.toLowerCase();
+      if (keywordLower.length < 2) continue; // Skip very short keywords
+      
+      if (summaryLower.includes(keywordLower)) {
+        // Higher score for exact word match
+        if (summaryLower.split(/\s+/).some((word: string) => word === keywordLower)) {
+          score += 10;
+        } else {
+          score += 5;
+        }
+      }
+    }
+    
+    return { ...task, score };
+  });
+  
+  // Sort by score and return the best match
+  scoredTasks.sort((a: any, b: any) => b.score - a.score);
+  
+  if (scoredTasks[0]?.score > 0) {
+    return scoredTasks[0];
+  }
+  
+  return null;
+}
+
 // Validate coordinates
 function isValidCoordinates(lat: string | null, lon: string | null): boolean {
   if (!lat || !lon) return true; // null is valid (no location)
@@ -505,6 +686,66 @@ serve(async (req) => {
           createTwimlResponse(`🗑️ Done! "${pendingAction.task_summary}" has been deleted.`),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
+      } else if (pendingAction?.type === 'set_due_date') {
+        await supabase
+          .from('clerk_notes')
+          .update({ 
+            due_date: pendingAction.date, 
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', pendingAction.task_id);
+
+        return new Response(
+          createTwimlResponse(`✅ Done! "${pendingAction.task_summary}" is now due ${pendingAction.readable}. 📅`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } else if (pendingAction?.type === 'set_reminder') {
+        // When setting reminder, also set due_date if not already set
+        const updateData: any = { 
+          reminder_time: pendingAction.time, 
+          updated_at: new Date().toISOString() 
+        };
+        
+        // Sync due_date with reminder if no due_date exists
+        if (!pendingAction.has_due_date) {
+          updateData.due_date = pendingAction.time;
+        }
+        
+        await supabase
+          .from('clerk_notes')
+          .update(updateData)
+          .eq('id', pendingAction.task_id);
+
+        return new Response(
+          createTwimlResponse(`✅ Done! I'll remind you about "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } else if (pendingAction?.type === 'clear_due_date') {
+        await supabase
+          .from('clerk_notes')
+          .update({ 
+            due_date: null, 
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', pendingAction.task_id);
+
+        return new Response(
+          createTwimlResponse(`✅ Done! Removed the due date from "${pendingAction.task_summary}".`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } else if (pendingAction?.type === 'clear_reminder') {
+        await supabase
+          .from('clerk_notes')
+          .update({ 
+            reminder_time: null, 
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', pendingAction.task_id);
+
+        return new Response(
+          createTwimlResponse(`✅ Done! Removed the reminder from "${pendingAction.task_summary}".`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
       }
 
       return new Response(
@@ -760,43 +1001,95 @@ serve(async (req) => {
         coupleNames = coupleData;
       }
 
-      // Get the most recent task - prioritize shared tasks (with couple_id) for modifications
-      let recentTask: any = null;
-      
-      if (coupleId) {
-        // First try to get most recent shared task
-        const { data: sharedTask } = await supabase
-          .from('clerk_notes')
-          .select('id, summary, priority, completed, task_owner, author_id, couple_id')
-          .eq('couple_id', coupleId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-        
-        recentTask = sharedTask;
+      // STEP 1: Extract task reference and keywords from user message
+      // Use AI to determine if user is referring to a specific task or the most recent one
+      const taskExtractionPrompt = `Analyze this modification request and extract any task reference.
+
+User message: "${messageBody}"
+
+Respond ONLY with valid JSON:
+{
+  "refers_to_specific_task": true | false,
+  "task_keywords": ["keyword1", "keyword2"] (words that identify the specific task, empty if not specific),
+  "date_expression": "extracted date/time expression if any (e.g., 'tomorrow', 'friday 3pm', 'in 2 hours')" | null,
+  "is_reminder": true | false (true if user mentions 'remind', 'reminder', 'notify', 'alert')
+}
+
+Examples:
+- "assign it to Almu" → { "refers_to_specific_task": false, "task_keywords": [], "date_expression": null, "is_reminder": false }
+- "assign the groceries task to Almu" → { "refers_to_specific_task": true, "task_keywords": ["groceries"], "date_expression": null, "is_reminder": false }
+- "remind me about the dentist tomorrow morning" → { "refers_to_specific_task": true, "task_keywords": ["dentist"], "date_expression": "tomorrow morning", "is_reminder": true }
+- "set due date for friday" → { "refers_to_specific_task": false, "task_keywords": [], "date_expression": "friday", "is_reminder": false }
+- "remind me about it in 2 hours" → { "refers_to_specific_task": false, "task_keywords": [], "date_expression": "in 2 hours", "is_reminder": true }`;
+
+      let taskExtraction: any = { refers_to_specific_task: false, task_keywords: [], date_expression: null, is_reminder: false };
+      try {
+        const extractResponse = await callAI(taskExtractionPrompt, '', 0.2);
+        const jsonMatch = extractResponse.match(/\{[\s\S]*\}/);
+        taskExtraction = JSON.parse(jsonMatch ? jsonMatch[0] : extractResponse);
+      } catch (e) {
+        console.error('Failed to extract task reference:', e);
       }
 
-      if (!recentTask) {
-        // Fall back to user's personal tasks
-        const { data: personalTask } = await supabase
-          .from('clerk_notes')
-          .select('id, summary, priority, completed, task_owner, author_id, couple_id')
-          .eq('author_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+      console.log('Task extraction:', taskExtraction);
+
+      // STEP 2: Find the target task
+      let targetTask: any = null;
+      let searchedByName = false;
+
+      if (taskExtraction.refers_to_specific_task && taskExtraction.task_keywords.length > 0) {
+        // Search for task by keywords
+        targetTask = await searchTaskByKeywords(supabase, userId, coupleId, taskExtraction.task_keywords);
+        searchedByName = true;
         
-        recentTask = personalTask;
+        if (!targetTask) {
+          return new Response(
+            createTwimlResponse(`I couldn't find a task matching "${taskExtraction.task_keywords.join(' ')}". Try:\n• Check your task list: "show my tasks"\n• Use different keywords\n• Or just say "the last task"`),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+      } else {
+        // Get the most recent task - prioritize shared tasks
+        if (coupleId) {
+          const { data: sharedTask } = await supabase
+            .from('clerk_notes')
+            .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time')
+            .eq('couple_id', coupleId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          targetTask = sharedTask;
+        }
+
+        if (!targetTask) {
+          const { data: personalTask } = await supabase
+            .from('clerk_notes')
+            .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time')
+            .eq('author_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          targetTask = personalTask;
+        }
       }
 
-      if (!recentTask) {
+      if (!targetTask) {
         return new Response(
           createTwimlResponse('You don\'t have any tasks yet. Create one first by sending a brain dump!'),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
 
-      // Analyze the modification request with enhanced prompt for assignment
+      // STEP 3: Parse date expression if present
+      let parsedDate: { date: string | null; time: string | null; readable: string } | null = null;
+      if (taskExtraction.date_expression) {
+        parsedDate = parseNaturalDate(taskExtraction.date_expression, profile.timezone || 'America/New_York');
+        console.log('Parsed date:', parsedDate);
+      }
+
+      // STEP 4: Analyze the modification request
       const partnerContext = partnerInfo 
         ? `Partner info: ${partnerInfo.name} (can be assigned tasks)` 
         : 'User is not in a couple (cannot assign to partner)';
@@ -805,22 +1098,29 @@ serve(async (req) => {
         ? `Couple nicknames: User is "${coupleNames.you_name || 'unknown'}", partner is "${coupleNames.partner_name || 'unknown'}"`
         : '';
 
-      const modPrompt = `The user wants to modify their most recent task: "${recentTask.summary}"
+      const dateContext = parsedDate?.date 
+        ? `Detected date/time: "${taskExtraction.date_expression}" → ${parsedDate.readable}`
+        : 'No date/time detected';
+
+      const modPrompt = `The user wants to modify this task: "${targetTask.summary}"
 
 Current status:
-- Priority: ${recentTask.priority || 'medium'}
-- Completed: ${recentTask.completed ? 'Yes' : 'No'}
-- Currently assigned to: ${recentTask.task_owner === userId ? 'User' : recentTask.task_owner === partnerInfo?.id ? partnerInfo.name : 'Nobody'}
-- Is shared task: ${recentTask.couple_id ? 'Yes' : 'No (personal task)'}
+- Priority: ${targetTask.priority || 'medium'}
+- Completed: ${targetTask.completed ? 'Yes' : 'No'}
+- Currently assigned to: ${targetTask.task_owner === userId ? 'User' : targetTask.task_owner === partnerInfo?.id ? partnerInfo.name : 'Nobody'}
+- Is shared task: ${targetTask.couple_id ? 'Yes' : 'No (personal task)'}
+- Current due date: ${targetTask.due_date ? new Date(targetTask.due_date).toLocaleDateString() : 'Not set'}
+- Current reminder: ${targetTask.reminder_time ? new Date(targetTask.reminder_time).toLocaleString() : 'Not set'}
 
 ${partnerContext}
 ${coupleNamesContext}
+${dateContext}
 
 User request: "${messageBody}"
 
 Determine what modification they want and respond ONLY with valid JSON:
 {
-  "action": "update_priority" | "mark_complete" | "mark_incomplete" | "delete" | "assign_to_partner" | "assign_to_self" | "unknown",
+  "action": "update_priority" | "mark_complete" | "mark_incomplete" | "delete" | "assign_to_partner" | "assign_to_self" | "set_due_date" | "set_reminder" | "clear_due_date" | "clear_reminder" | "unknown",
   "priority": "low" | "medium" | "high" (only if action is update_priority),
   "target_name": "extracted name the user mentioned for assignment, if any",
   "response": "A brief confirmation message"
@@ -829,6 +1129,10 @@ Determine what modification they want and respond ONLY with valid JSON:
 IMPORTANT: 
 - If user says "assign to X" or "give it to X" where X matches the partner name/nickname, use "assign_to_partner"
 - If user says "assign to me" or "I'll do it", use "assign_to_self"
+- If user mentions reminder/remind/notify with a date, use "set_reminder"
+- If user mentions due date/due/deadline with a date, use "set_due_date"
+- If user says "remove reminder" or "clear reminder", use "clear_reminder"
+- If user says "remove due date" or "no deadline", use "clear_due_date"
 - Only use assign actions if the task is a shared task (has couple_id)`;
 
       const modResponse = await callAI(modPrompt, messageBody, 0.3);
@@ -856,7 +1160,7 @@ IMPORTANT:
           );
         }
 
-        if (!recentTask.couple_id) {
+        if (!targetTask.couple_id) {
           return new Response(
             createTwimlResponse('This task is private. Only shared tasks can be assigned to your partner. Create a shared task first!'),
             { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
@@ -871,8 +1175,8 @@ IMPORTANT:
             context_data: {
               pending_action: {
                 type: 'assign',
-                task_id: recentTask.id,
-                task_summary: recentTask.summary,
+                task_id: targetTask.id,
+                task_summary: targetTask.summary,
                 target_user_id: partnerInfo.id,
                 target_name: partnerInfo.name
               }
@@ -882,13 +1186,13 @@ IMPORTANT:
           .eq('id', session.id);
 
         return new Response(
-          createTwimlResponse(`🤔 You want me to assign "${recentTask.summary}" to ${partnerInfo.name}?\n\nReply "yes" to confirm or "no" to cancel.`),
+          createTwimlResponse(`🤔 You want me to assign "${targetTask.summary}" to ${partnerInfo.name}?\n\nReply "yes" to confirm or "no" to cancel.`),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
 
       if (modification.action === 'assign_to_self') {
-        if (!recentTask.couple_id) {
+        if (!targetTask.couple_id) {
           return new Response(
             createTwimlResponse('This is already your personal task!'),
             { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
@@ -903,8 +1207,8 @@ IMPORTANT:
             context_data: {
               pending_action: {
                 type: 'assign',
-                task_id: recentTask.id,
-                task_summary: recentTask.summary,
+                task_id: targetTask.id,
+                task_summary: targetTask.summary,
                 target_user_id: userId,
                 target_name: 'yourself'
               }
@@ -914,7 +1218,129 @@ IMPORTANT:
           .eq('id', session.id);
 
         return new Response(
-          createTwimlResponse(`🤔 You want to assign "${recentTask.summary}" to yourself?\n\nReply "yes" to confirm or "no" to cancel.`),
+          createTwimlResponse(`🤔 You want to assign "${targetTask.summary}" to yourself?\n\nReply "yes" to confirm or "no" to cancel.`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+      // Handle date/reminder modifications with confirmation
+      if (modification.action === 'set_due_date') {
+        if (!parsedDate?.date) {
+          return new Response(
+            createTwimlResponse('I couldn\'t understand the date. Try:\n• "set due date for tomorrow"\n• "due on Friday"\n• "deadline in 3 days"'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+
+        await supabase
+          .from('user_sessions')
+          .update({ 
+            conversation_state: 'AWAITING_CONFIRMATION', 
+            context_data: {
+              pending_action: {
+                type: 'set_due_date',
+                task_id: targetTask.id,
+                task_summary: targetTask.summary,
+                date: parsedDate.date,
+                readable: parsedDate.readable
+              }
+            },
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', session.id);
+
+        return new Response(
+          createTwimlResponse(`🤔 Set due date for "${targetTask.summary}" to ${parsedDate.readable}?\n\nReply "yes" to confirm or "no" to cancel.`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+      if (modification.action === 'set_reminder') {
+        if (!parsedDate?.time) {
+          return new Response(
+            createTwimlResponse('I couldn\'t understand the time. Try:\n• "remind me tomorrow at 9am"\n• "reminder on Friday morning"\n• "notify me in 2 hours"'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+
+        await supabase
+          .from('user_sessions')
+          .update({ 
+            conversation_state: 'AWAITING_CONFIRMATION', 
+            context_data: {
+              pending_action: {
+                type: 'set_reminder',
+                task_id: targetTask.id,
+                task_summary: targetTask.summary,
+                time: parsedDate.time,
+                readable: parsedDate.readable,
+                has_due_date: !!targetTask.due_date
+              }
+            },
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', session.id);
+
+        return new Response(
+          createTwimlResponse(`🤔 Set a reminder for "${targetTask.summary}" ${parsedDate.readable}?\n\nReply "yes" to confirm or "no" to cancel.`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+      if (modification.action === 'clear_due_date') {
+        if (!targetTask.due_date) {
+          return new Response(
+            createTwimlResponse(`"${targetTask.summary}" doesn't have a due date set.`),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+
+        await supabase
+          .from('user_sessions')
+          .update({ 
+            conversation_state: 'AWAITING_CONFIRMATION', 
+            context_data: {
+              pending_action: {
+                type: 'clear_due_date',
+                task_id: targetTask.id,
+                task_summary: targetTask.summary
+              }
+            },
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', session.id);
+
+        return new Response(
+          createTwimlResponse(`🤔 Remove the due date from "${targetTask.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+      if (modification.action === 'clear_reminder') {
+        if (!targetTask.reminder_time) {
+          return new Response(
+            createTwimlResponse(`"${targetTask.summary}" doesn't have a reminder set.`),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+
+        await supabase
+          .from('user_sessions')
+          .update({ 
+            conversation_state: 'AWAITING_CONFIRMATION', 
+            context_data: {
+              pending_action: {
+                type: 'clear_reminder',
+                task_id: targetTask.id,
+                task_summary: targetTask.summary
+              }
+            },
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', session.id);
+
+        return new Response(
+          createTwimlResponse(`🤔 Remove the reminder from "${targetTask.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
@@ -925,10 +1351,10 @@ IMPORTANT:
         await supabase
           .from('clerk_notes')
           .update({ priority: modification.priority, updated_at: new Date().toISOString() })
-          .eq('id', recentTask.id);
+          .eq('id', targetTask.id);
         
         return new Response(
-          createTwimlResponse(`✅ Updated "${recentTask.summary}" to ${modification.priority} priority!`),
+          createTwimlResponse(`✅ Updated "${targetTask.summary}" to ${modification.priority} priority!`),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       } else if (modification.action === 'mark_complete') {
@@ -936,20 +1362,20 @@ IMPORTANT:
         await supabase
           .from('clerk_notes')
           .update({ completed: true, updated_at: new Date().toISOString() })
-          .eq('id', recentTask.id);
+          .eq('id', targetTask.id);
         
         return new Response(
-          createTwimlResponse(`✅ Marked "${recentTask.summary}" as complete! 🎉`),
+          createTwimlResponse(`✅ Marked "${targetTask.summary}" as complete! 🎉`),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       } else if (modification.action === 'mark_incomplete') {
         await supabase
           .from('clerk_notes')
           .update({ completed: false, updated_at: new Date().toISOString() })
-          .eq('id', recentTask.id);
+          .eq('id', targetTask.id);
         
         return new Response(
-          createTwimlResponse(`✅ Reopened "${recentTask.summary}"`),
+          createTwimlResponse(`✅ Reopened "${targetTask.summary}"`),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       } else if (modification.action === 'delete') {
@@ -961,8 +1387,8 @@ IMPORTANT:
             context_data: {
               pending_action: {
                 type: 'delete',
-                task_id: recentTask.id,
-                task_summary: recentTask.summary
+                task_id: targetTask.id,
+                task_summary: targetTask.summary
               }
             },
             updated_at: new Date().toISOString() 
@@ -970,12 +1396,12 @@ IMPORTANT:
           .eq('id', session.id);
 
         return new Response(
-          createTwimlResponse(`⚠️ Are you sure you want to delete "${recentTask.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`),
+          createTwimlResponse(`⚠️ Are you sure you want to delete "${targetTask.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       } else {
         return new Response(
-          createTwimlResponse('I\'m not sure what you want to change. Try:\n• "make it urgent"\n• "mark as done"\n• "assign to [name]"\n• "delete it"'),
+          createTwimlResponse('I\'m not sure what you want to change. Try:\n• "make it urgent"\n• "mark as done"\n• "assign to [name]"\n• "remind me tomorrow"\n• "due on Friday"\n• "delete it"'),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
