@@ -144,7 +144,7 @@ export const OptimizationReviewModal = ({
             <p className="text-muted-foreground">{t('modal.alreadyOrganized')}</p>
           </div>
         ) : (
-          <ScrollArea className="flex-1 -mx-6 px-6">
+          <ScrollArea className="flex-1 -mx-6 px-6 max-h-[50vh] overflow-y-auto">
             <div className="space-y-4 pb-4">
               {/* New Lists Section */}
               {plan.new_lists_to_create.length > 0 && (
