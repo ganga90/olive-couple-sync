@@ -77,5 +77,10 @@
       "title": "✨ New: Olive Organizer",
       "description": "Click here to let Olive AI analyze your tasks and suggest better list organization. It can move tasks to the right lists and even create new ones!"
     }
+  },
+  "partnerActivity": {
+    "title": "{{name}}'s recent activity",
+    "added": "added a shared task",
+    "assignedYou": "assigned you a task"
   }
 }

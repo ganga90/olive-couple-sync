@@ -22,6 +22,7 @@ import { useOrganizeAgent } from "@/hooks/useOrganizeAgent";
 import { OptimizationReviewModal } from "@/components/OptimizationReviewModal";
 import { useOnboardingTooltip } from "@/hooks/useOnboardingTooltip";
 import { OnboardingTooltip } from "@/components/OnboardingTooltip";
+import { PartnerActivityWidget } from "@/components/PartnerActivityWidget";
 
 const Home = () => {
   const { t } = useTranslation(['home', 'common']);
@@ -276,9 +277,12 @@ const Home = () => {
                 title={t('home:organize.onboarding.title')}
                 description={t('home:organize.onboarding.description')}
                 position="bottom"
-              />
-            </div>
+            />
+          </div>
           )}
+
+          {/* Partner Activity Widget */}
+          <PartnerActivityWidget notes={notes} />
 
           {/* Tabs Widget with Filters */}
           <Card className="overflow-hidden shadow-card animate-fade-up stagger-3">
