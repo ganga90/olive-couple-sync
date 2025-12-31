@@ -81,6 +81,7 @@
   "partnerActivity": {
     "title": "Attività recente di {{name}}",
     "added": "ha aggiunto un'attività condivisa",
-    "assignedYou": "ti ha assegnato un'attività"
+    "assignedYou": "ti ha assegnato un'attività",
+    "empty": "{{name}} è sospettosamente silenzioso/a... 🤔"
   }
 }

@@ -88,6 +88,7 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
     recurrence_interval: supabaseNote.recurrence_interval || undefined,
     last_reminded_at: supabaseNote.last_reminded_at || undefined,
     addedBy: getAuthorName(supabaseNote.author_id || ""),
+    authorId: supabaseNote.author_id, // Raw ID for filtering
     createdAt: supabaseNote.created_at,
     updatedAt: supabaseNote.updated_at,
     completed: supabaseNote.completed,

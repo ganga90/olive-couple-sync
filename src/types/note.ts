@@ -27,7 +27,8 @@ export interface Note {
   summary: string;
   category: string;
   dueDate?: string | null;
-  addedBy: string;
+  addedBy: string; // Display name
+  authorId?: string; // Raw author_id for filtering
   createdAt: string;
   updatedAt: string;
   completed: boolean;
