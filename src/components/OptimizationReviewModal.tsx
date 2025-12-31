@@ -114,6 +114,18 @@ export const OptimizationReviewModal = ({
 
   const activeMovesCount = plan ? plan.moves.filter(m => !excludedMoves.has(m.task_id)).length : 0;
   const activeNewListsCount = plan ? plan.new_lists_to_create.filter(l => !excludedNewLists.has(l)).length : 0;
+  const totalMovesCount = plan?.moves.length || 0;
+  const allSelected = activeMovesCount === totalMovesCount && totalMovesCount > 0;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      // Deselect all
+      setExcludedMoves(new Set(plan?.moves.map(m => m.task_id) || []));
+    } else {
+      // Select all
+      setExcludedMoves(new Set());
+    }
+  };
 
   if (!plan) return null;
 
@@ -129,21 +141,47 @@ export const OptimizationReviewModal = ({
             </div>
             {t('modal.title')}
           </DialogTitle>
-          <DialogDescription>
+        <DialogDescription className="flex items-center justify-between">
+          <span>
             {hasNoChanges 
               ? t('modal.noChanges')
               : t('modal.description', { count: plan.moves.length })}
-          </DialogDescription>
-        </DialogHeader>
+          </span>
+          {!hasNoChanges && totalMovesCount > 0 && (
+            <span className="text-xs font-medium text-primary">
+              {activeMovesCount}/{totalMovesCount} selected
+            </span>
+          )}
+        </DialogDescription>
+      </DialogHeader>
 
-        {hasNoChanges ? (
-          <div className="flex-1 flex flex-col items-center justify-center py-8 text-center">
-            <div className="h-16 w-16 rounded-full bg-green-500/10 flex items-center justify-center mb-4">
-              <CheckCircle2 className="h-8 w-8 text-green-500" />
-            </div>
-            <p className="text-muted-foreground">{t('modal.alreadyOrganized')}</p>
+      {hasNoChanges ? (
+        <div className="flex-1 flex flex-col items-center justify-center py-8 text-center">
+          <div className="h-16 w-16 rounded-full bg-green-500/10 flex items-center justify-center mb-4">
+            <CheckCircle2 className="h-8 w-8 text-green-500" />
           </div>
-        ) : (
+          <p className="text-muted-foreground">{t('modal.alreadyOrganized')}</p>
+        </div>
+      ) : (
+        <>
+          {/* Select All Toggle */}
+          {totalMovesCount > 1 && (
+            <div className="flex items-center justify-end -mt-2 mb-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleSelectAll}
+                className="text-xs h-7 px-2 text-muted-foreground hover:text-foreground"
+              >
+                <Checkbox 
+                  checked={allSelected} 
+                  className="mr-1.5 h-3.5 w-3.5"
+                  onCheckedChange={toggleSelectAll}
+                />
+                {allSelected ? 'Deselect All' : 'Select All'}
+              </Button>
+            </div>
+          )}
           <ScrollArea className="flex-1 -mx-6 px-6 max-h-[50vh] overflow-y-auto">
             <div className="space-y-4 pb-4">
               {/* New Lists Section */}
@@ -260,7 +298,8 @@ export const OptimizationReviewModal = ({
               )}
             </div>
           </ScrollArea>
-        )}
+        </>
+      )}
 
         <DialogFooter className="flex-shrink-0 gap-2 sm:gap-0">
           <Button 
