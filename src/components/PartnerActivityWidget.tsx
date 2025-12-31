@@ -27,12 +27,14 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
     if (!userId || !currentCouple) return [];
     
     // Filter for shared notes (with coupleId) added by partner (not by current user)
+    // Use authorId (raw user ID) for filtering, not addedBy (display name)
     const partnerNotes = notes
       .filter(note => {
         // Must be a shared note (has coupleId)
         if (!note.coupleId) return false;
         // Must be added by someone other than current user (partner)
-        if (note.addedBy === userId) return false;
+        // Use authorId for accurate comparison
+        if (note.authorId === userId) return false;
         return true;
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -40,7 +42,11 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
     
     return partnerNotes.map(note => {
       // Determine if it was assigned to the current user
-      const isAssignedToYou = note.task_owner === 'you';
+      // task_owner could be 'you', the user's name, or their ID
+      const youName = currentCouple?.you_name;
+      const isAssignedToYou = note.task_owner === 'you' || 
+                              note.task_owner === youName ||
+                              note.task_owner === userId;
       
       return {
         id: note.id,
@@ -52,14 +58,33 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
     });
   }, [notes, userId, currentCouple]);
 
-  // Don't show widget if no couple or no partner activity
-  if (!currentCouple || !partner || partnerActivity.length === 0) {
+  // Don't show widget if no couple
+  if (!currentCouple || !partner) {
     return null;
   }
 
   const handleActivityClick = (noteId: string) => {
     navigate(getLocalizedPath(`/notes/${noteId}`));
   };
+
+  // Show empty state if no partner activity
+  if (partnerActivity.length === 0) {
+    return (
+      <div className="animate-fade-up stagger-2">
+        <div className="flex items-center gap-2 mb-2 px-1">
+          <Users className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs font-medium text-muted-foreground">
+            {t('home:partnerActivity.title', { name: partnerName })}
+          </span>
+        </div>
+        <div className="px-3 py-4 rounded-lg bg-muted/20 border border-border/30 text-center">
+          <p className="text-xs text-muted-foreground italic">
+            {t('home:partnerActivity.empty', { name: partnerName })}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-up stagger-2">

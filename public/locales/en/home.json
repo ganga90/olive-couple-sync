@@ -81,6 +81,7 @@
   "partnerActivity": {
     "title": "{{name}}'s recent activity",
     "added": "added a shared task",
-    "assignedYou": "assigned you a task"
+    "assignedYou": "assigned you a task",
+    "empty": "{{name}} is being suspiciously quiet... 🤔"
   }
 }
