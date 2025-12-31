@@ -159,9 +159,27 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
   const now = new Date();
   const lowerExpr = expression.toLowerCase().trim();
   
+  console.log('parseNaturalDate input:', expression);
+  
   // Helper to format date as ISO string
   const formatDate = (d: Date): string => {
     return d.toISOString();
+  };
+  
+  // Month names mapping
+  const monthNames: Record<string, number> = {
+    'january': 0, 'jan': 0,
+    'february': 1, 'feb': 1,
+    'march': 2, 'mar': 2,
+    'april': 3, 'apr': 3,
+    'may': 4,
+    'june': 5, 'jun': 5,
+    'july': 6, 'jul': 6,
+    'august': 7, 'aug': 7,
+    'september': 8, 'sep': 8, 'sept': 8,
+    'october': 9, 'oct': 9,
+    'november': 10, 'nov': 10,
+    'december': 11, 'dec': 11
   };
   
   // Helper to get next day of week
@@ -179,18 +197,23 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
     return result;
   };
   
-  // Time patterns
+  // Time patterns - extract hours and minutes
   let hours: number | null = null;
   let minutes: number = 0;
   
-  // Check for specific time patterns
+  // Check for specific time patterns (e.g., "10am", "10:30pm", "14:00")
   const timeMatch = lowerExpr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
   if (timeMatch) {
-    hours = parseInt(timeMatch[1]);
-    minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+    const potentialHour = parseInt(timeMatch[1]);
     const meridiem = timeMatch[3]?.toLowerCase();
-    if (meridiem === 'pm' && hours < 12) hours += 12;
-    if (meridiem === 'am' && hours === 12) hours = 0;
+    
+    // Only treat as time if it's a reasonable hour or has am/pm
+    if (meridiem || potentialHour <= 12) {
+      hours = potentialHour;
+      minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+      if (meridiem === 'pm' && hours < 12) hours += 12;
+      if (meridiem === 'am' && hours === 12) hours = 0;
+    }
   }
   
   // Time of day keywords
@@ -244,28 +267,71 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
     readable = `in ${inDaysMatch[1]} day(s)`;
   }
   
-  // Day of week patterns
-  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  for (const day of dayNames) {
-    if (lowerExpr.includes(day) || lowerExpr.includes(day.substring(0, 3))) {
-      targetDate = getNextDayOfWeek(day);
-      readable = `next ${day.charAt(0).toUpperCase() + day.slice(1)}`;
-      break;
+  // EXPLICIT DATE PATTERNS - "January 9th", "9 January", "9-January", "Jan 9", etc.
+  if (!targetDate) {
+    // Pattern: "January 9" or "January 9th" or "Jan 9"
+    const monthFirstMatch = lowerExpr.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
+    
+    // Pattern: "9 January" or "9th January" or "9-January" or "9th of January"
+    const dayFirstMatch = lowerExpr.match(/\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+of\s+|\s*-?\s*)(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\b/i);
+    
+    let monthNum: number | undefined;
+    let dayNum: number | undefined;
+    
+    if (monthFirstMatch) {
+      monthNum = monthNames[monthFirstMatch[1].toLowerCase()];
+      dayNum = parseInt(monthFirstMatch[2]);
+    } else if (dayFirstMatch) {
+      dayNum = parseInt(dayFirstMatch[1]);
+      monthNum = monthNames[dayFirstMatch[2].toLowerCase()];
+    }
+    
+    if (monthNum !== undefined && dayNum !== undefined && dayNum >= 1 && dayNum <= 31) {
+      targetDate = new Date(now);
+      targetDate.setMonth(monthNum, dayNum);
+      
+      // If the date is in the past, move to next year
+      if (targetDate < now) {
+        targetDate.setFullYear(targetDate.getFullYear() + 1);
+      }
+      
+      // Format readable month name
+      const monthDisplayNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                                  'July', 'August', 'September', 'October', 'November', 'December'];
+      readable = `${monthDisplayNames[monthNum]} ${dayNum}`;
+      
+      console.log('Parsed explicit date:', { monthNum, dayNum, targetDate: targetDate.toISOString() });
+    }
+  }
+  
+  // Day of week patterns (check AFTER explicit dates to not override)
+  if (!targetDate) {
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    for (const day of dayNames) {
+      if (lowerExpr.includes(day) || lowerExpr.includes(day.substring(0, 3))) {
+        targetDate = getNextDayOfWeek(day);
+        readable = `next ${day.charAt(0).toUpperCase() + day.slice(1)}`;
+        break;
+      }
     }
   }
   
   // If we found a date but also have a specific time, apply it
   if (targetDate && hours !== null) {
     targetDate.setHours(hours, minutes, 0, 0);
-    readable += ` at ${hours > 12 ? hours - 12 : hours}:${minutes.toString().padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
+    readable += ` at ${hours > 12 ? hours - 12 : hours === 0 ? 12 : hours}:${minutes.toString().padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
   } else if (targetDate && hours === null) {
-    // Default to 9 AM for due dates, current time for reminders
+    // Default to 9 AM for due dates/reminders
     targetDate.setHours(9, 0, 0, 0);
+    readable += ' at 9:00 AM';
   }
   
   if (!targetDate) {
+    console.log('parseNaturalDate: Could not parse date from expression:', expression);
     return { date: null, time: null, readable: 'unknown' };
   }
+  
+  console.log('parseNaturalDate result:', { date: formatDate(targetDate), readable });
   
   return {
     date: formatDate(targetDate),
