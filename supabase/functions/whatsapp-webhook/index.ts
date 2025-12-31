@@ -9,7 +9,8 @@ const corsHeaders = {
 const INTENT_CLASSIFIER_PROMPT = `You are an intent classifier for a task management app. Analyze the user's message and classify it into ONE of these categories:
 
 ORGANIZATION: User wants to CREATE A NEW task, add a new todo, organize something new, or is sharing information they want saved (especially with media/images)
-MODIFICATION: User wants to EDIT/UPDATE/CHANGE/DELETE an EXISTING task (e.g., "make it urgent", "mark as done", "delete last task", "change priority")
+MODIFICATION: User wants to EDIT/UPDATE/CHANGE/DELETE/ASSIGN an EXISTING task (e.g., "make it urgent", "mark as done", "delete last task", "change priority", "assign it to X", "assign to my partner")
+CONFIRMATION: User is responding YES/NO to a previous question (e.g., "yes", "no", "yeah", "nope", "confirm", "cancel", "ok", "sure")
 CONSULTATION: User wants to retrieve information, check their tasks, see what's in a list, or ask about existing data
 CONVERSATION: Casual chat, greetings, or off-topic messages
 
@@ -17,11 +18,12 @@ CRITICAL RULES:
 - If the message includes media (image/audio/video) with descriptive text, it's almost always ORGANIZATION
 - Commands like "check out X", "look at X", "see X" WITH media are ORGANIZATION (user wants to save it)
 - Only use CONSULTATION when asking about existing tasks without adding new content
-- Commands like "make it urgent", "mark as done", "complete it", "delete it" are MODIFICATION, not ORGANIZATION
+- Commands like "make it urgent", "mark as done", "complete it", "delete it", "assign it to X", "assign to partner" are MODIFICATION, not ORGANIZATION
+- Simple responses like "yes", "no", "yeah", "sure", "ok", "nope", "cancel", "confirm" should be CONFIRMATION
 
 Respond ONLY with valid JSON in this format:
 {
-  "intent": "ORGANIZATION" | "MODIFICATION" | "CONSULTATION" | "CONVERSATION",
+  "intent": "ORGANIZATION" | "MODIFICATION" | "CONFIRMATION" | "CONSULTATION" | "CONVERSATION",
   "confidence": 0.0-1.0
 }`;
 
@@ -413,6 +415,104 @@ serve(async (req) => {
       );
     }
 
+    // Handle AWAITING_CONFIRMATION state - user is responding to a confirmation prompt
+    if (session.conversation_state === 'AWAITING_CONFIRMATION') {
+      const contextData = session.context_data as any;
+      const isAffirmative = /^(yes|yeah|yep|sure|ok|okay|confirm|si|sí|do it|go ahead|please|y)$/i.test(messageBody.trim());
+      const isNegative = /^(no|nope|nah|cancel|nevermind|never mind|n)$/i.test(messageBody.trim());
+
+      // Reset session state first
+      await supabase
+        .from('user_sessions')
+        .update({ conversation_state: 'IDLE', context_data: null, updated_at: new Date().toISOString() })
+        .eq('id', session.id);
+
+      if (isNegative) {
+        return new Response(
+          createTwimlResponse('👍 No problem, I cancelled that action.'),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+      if (!isAffirmative) {
+        return new Response(
+          createTwimlResponse('I didn\'t understand. Please reply "yes" to confirm or "no" to cancel.'),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+      // Execute the pending action
+      const pendingAction = contextData?.pending_action;
+      
+      if (pendingAction?.type === 'assign') {
+        const { error: updateError } = await supabase
+          .from('clerk_notes')
+          .update({ 
+            task_owner: pendingAction.target_user_id, 
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', pendingAction.task_id);
+
+        if (updateError) {
+          console.error('Error assigning task:', updateError);
+          return new Response(
+            createTwimlResponse('Sorry, I couldn\'t assign that task. Please try again.'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+
+        return new Response(
+          createTwimlResponse(`✅ Done! I assigned "${pendingAction.task_summary}" to ${pendingAction.target_name}. 🎯`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } else if (pendingAction?.type === 'update_priority') {
+        await supabase
+          .from('clerk_notes')
+          .update({ priority: pendingAction.priority, updated_at: new Date().toISOString() })
+          .eq('id', pendingAction.task_id);
+
+        return new Response(
+          createTwimlResponse(`✅ Done! "${pendingAction.task_summary}" is now ${pendingAction.priority} priority.`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } else if (pendingAction?.type === 'mark_complete') {
+        await supabase
+          .from('clerk_notes')
+          .update({ completed: true, updated_at: new Date().toISOString() })
+          .eq('id', pendingAction.task_id);
+
+        return new Response(
+          createTwimlResponse(`✅ Done! "${pendingAction.task_summary}" is marked complete. 🎉`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } else if (pendingAction?.type === 'mark_incomplete') {
+        await supabase
+          .from('clerk_notes')
+          .update({ completed: false, updated_at: new Date().toISOString() })
+          .eq('id', pendingAction.task_id);
+
+        return new Response(
+          createTwimlResponse(`✅ Done! "${pendingAction.task_summary}" has been reopened.`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } else if (pendingAction?.type === 'delete') {
+        await supabase
+          .from('clerk_notes')
+          .delete()
+          .eq('id', pendingAction.task_id);
+
+        return new Response(
+          createTwimlResponse(`🗑️ Done! "${pendingAction.task_summary}" has been deleted.`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+      return new Response(
+        createTwimlResponse('Something went wrong with the confirmation. Please try again.'),
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      );
+    }
+
     // IDLE state: Check if message is a URL, or classify intent
     // Detect if message is primarily a URL/link
     const urlRegex = /(https?:\/\/[^\s]+)/gi;
@@ -615,13 +715,79 @@ serve(async (req) => {
 
     } else if (intent.intent === 'MODIFICATION') {
       // Handle modification of existing tasks
-      const { data: recentTask } = await supabase
-        .from('clerk_notes')
-        .select('id, summary, priority, completed')
-        .eq('author_id', userId)
-        .order('created_at', { ascending: false })
+      // Get user's couple info for partner assignment
+      const { data: coupleMember } = await supabase
+        .from('clerk_couple_members')
+        .select('couple_id')
+        .eq('user_id', userId)
         .limit(1)
         .single();
+
+      const coupleId = coupleMember?.couple_id || null;
+
+      // Get partner info if in a couple
+      let partnerInfo: { id: string; name: string } | null = null;
+      if (coupleId) {
+        const { data: partnerMember } = await supabase
+          .from('clerk_couple_members')
+          .select('user_id')
+          .eq('couple_id', coupleId)
+          .neq('user_id', userId)
+          .limit(1)
+          .single();
+
+        if (partnerMember) {
+          const { data: partnerProfile } = await supabase
+            .from('clerk_profiles')
+            .select('id, display_name')
+            .eq('id', partnerMember.user_id)
+            .single();
+
+          if (partnerProfile) {
+            partnerInfo = { id: partnerProfile.id, name: partnerProfile.display_name || 'your partner' };
+          }
+        }
+      }
+
+      // Get couple names from the couple record for matching
+      let coupleNames: { you_name: string | null; partner_name: string | null } | null = null;
+      if (coupleId) {
+        const { data: coupleData } = await supabase
+          .from('clerk_couples')
+          .select('you_name, partner_name')
+          .eq('id', coupleId)
+          .single();
+        coupleNames = coupleData;
+      }
+
+      // Get the most recent task - prioritize shared tasks (with couple_id) for modifications
+      let recentTask: any = null;
+      
+      if (coupleId) {
+        // First try to get most recent shared task
+        const { data: sharedTask } = await supabase
+          .from('clerk_notes')
+          .select('id, summary, priority, completed, task_owner, author_id, couple_id')
+          .eq('couple_id', coupleId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        
+        recentTask = sharedTask;
+      }
+
+      if (!recentTask) {
+        // Fall back to user's personal tasks
+        const { data: personalTask } = await supabase
+          .from('clerk_notes')
+          .select('id, summary, priority, completed, task_owner, author_id, couple_id')
+          .eq('author_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        
+        recentTask = personalTask;
+      }
 
       if (!recentTask) {
         return new Response(
@@ -630,21 +796,40 @@ serve(async (req) => {
         );
       }
 
-      // Analyze the modification request
+      // Analyze the modification request with enhanced prompt for assignment
+      const partnerContext = partnerInfo 
+        ? `Partner info: ${partnerInfo.name} (can be assigned tasks)` 
+        : 'User is not in a couple (cannot assign to partner)';
+      
+      const coupleNamesContext = coupleNames 
+        ? `Couple nicknames: User is "${coupleNames.you_name || 'unknown'}", partner is "${coupleNames.partner_name || 'unknown'}"`
+        : '';
+
       const modPrompt = `The user wants to modify their most recent task: "${recentTask.summary}"
 
 Current status:
 - Priority: ${recentTask.priority || 'medium'}
 - Completed: ${recentTask.completed ? 'Yes' : 'No'}
+- Currently assigned to: ${recentTask.task_owner === userId ? 'User' : recentTask.task_owner === partnerInfo?.id ? partnerInfo.name : 'Nobody'}
+- Is shared task: ${recentTask.couple_id ? 'Yes' : 'No (personal task)'}
+
+${partnerContext}
+${coupleNamesContext}
 
 User request: "${messageBody}"
 
 Determine what modification they want and respond ONLY with valid JSON:
 {
-  "action": "update_priority" | "mark_complete" | "mark_incomplete" | "delete" | "unknown",
+  "action": "update_priority" | "mark_complete" | "mark_incomplete" | "delete" | "assign_to_partner" | "assign_to_self" | "unknown",
   "priority": "low" | "medium" | "high" (only if action is update_priority),
+  "target_name": "extracted name the user mentioned for assignment, if any",
   "response": "A brief confirmation message"
-}`;
+}
+
+IMPORTANT: 
+- If user says "assign to X" or "give it to X" where X matches the partner name/nickname, use "assign_to_partner"
+- If user says "assign to me" or "I'll do it", use "assign_to_self"
+- Only use assign actions if the task is a shared task (has couple_id)`;
 
       const modResponse = await callAI(modPrompt, messageBody, 0.3);
       let modification: any;
@@ -655,13 +840,88 @@ Determine what modification they want and respond ONLY with valid JSON:
       } catch (e) {
         console.error('Failed to parse modification:', e);
         return new Response(
-          createTwimlResponse('I\'m not sure what you want to change. Try "make it urgent" or "mark as done"'),
+          createTwimlResponse('I\'m not sure what you want to change. Try "make it urgent", "mark as done", or "assign to [name]"'),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
 
-      // Execute the modification
+      console.log('Parsed modification:', modification);
+
+      // Handle assignment with confirmation
+      if (modification.action === 'assign_to_partner') {
+        if (!partnerInfo) {
+          return new Response(
+            createTwimlResponse('You need to be in a couple to assign tasks to a partner. Invite your partner first! 💑'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+
+        if (!recentTask.couple_id) {
+          return new Response(
+            createTwimlResponse('This task is private. Only shared tasks can be assigned to your partner. Create a shared task first!'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+
+        // Set pending action and ask for confirmation
+        await supabase
+          .from('user_sessions')
+          .update({ 
+            conversation_state: 'AWAITING_CONFIRMATION', 
+            context_data: {
+              pending_action: {
+                type: 'assign',
+                task_id: recentTask.id,
+                task_summary: recentTask.summary,
+                target_user_id: partnerInfo.id,
+                target_name: partnerInfo.name
+              }
+            },
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', session.id);
+
+        return new Response(
+          createTwimlResponse(`🤔 You want me to assign "${recentTask.summary}" to ${partnerInfo.name}?\n\nReply "yes" to confirm or "no" to cancel.`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+      if (modification.action === 'assign_to_self') {
+        if (!recentTask.couple_id) {
+          return new Response(
+            createTwimlResponse('This is already your personal task!'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+
+        // Set pending action and ask for confirmation
+        await supabase
+          .from('user_sessions')
+          .update({ 
+            conversation_state: 'AWAITING_CONFIRMATION', 
+            context_data: {
+              pending_action: {
+                type: 'assign',
+                task_id: recentTask.id,
+                task_summary: recentTask.summary,
+                target_user_id: userId,
+                target_name: 'yourself'
+              }
+            },
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', session.id);
+
+        return new Response(
+          createTwimlResponse(`🤔 You want to assign "${recentTask.summary}" to yourself?\n\nReply "yes" to confirm or "no" to cancel.`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+      // Execute other modifications with confirmation for destructive actions
       if (modification.action === 'update_priority' && modification.priority) {
+        // Priority changes can be immediate (non-destructive)
         await supabase
           .from('clerk_notes')
           .update({ priority: modification.priority, updated_at: new Date().toISOString() })
@@ -672,6 +932,7 @@ Determine what modification they want and respond ONLY with valid JSON:
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       } else if (modification.action === 'mark_complete') {
+        // Completing can be immediate
         await supabase
           .from('clerk_notes')
           .update({ completed: true, updated_at: new Date().toISOString() })
@@ -692,21 +953,39 @@ Determine what modification they want and respond ONLY with valid JSON:
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       } else if (modification.action === 'delete') {
+        // Delete needs confirmation
         await supabase
-          .from('clerk_notes')
-          .delete()
-          .eq('id', recentTask.id);
-        
+          .from('user_sessions')
+          .update({ 
+            conversation_state: 'AWAITING_CONFIRMATION', 
+            context_data: {
+              pending_action: {
+                type: 'delete',
+                task_id: recentTask.id,
+                task_summary: recentTask.summary
+              }
+            },
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', session.id);
+
         return new Response(
-          createTwimlResponse(`🗑️ Deleted "${recentTask.summary}"`),
+          createTwimlResponse(`⚠️ Are you sure you want to delete "${recentTask.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       } else {
         return new Response(
-          createTwimlResponse('I\'m not sure what you want to change. Try "make it urgent" or "mark as done"'),
+          createTwimlResponse('I\'m not sure what you want to change. Try:\n• "make it urgent"\n• "mark as done"\n• "assign to [name]"\n• "delete it"'),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
+
+    } else if (intent.intent === 'CONFIRMATION') {
+      // User sent a confirmation-like message but we're not waiting for one
+      return new Response(
+        createTwimlResponse('I\'m not waiting for a confirmation. What would you like to do? Send me a task or ask me something!'),
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      );
 
     } else if (intent.intent === 'CONSULTATION') {
       // Fetch user's tasks and lists
