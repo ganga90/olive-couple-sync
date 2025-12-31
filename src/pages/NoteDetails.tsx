@@ -4,6 +4,7 @@ import { useUser } from "@clerk/clerk-react";
 import { useTranslation } from "react-i18next";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseCouples } from "@/hooks/useSupabaseCouples";
+import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { supabase } from "@/lib/supabaseClient";
 import { useSEO } from "@/hooks/useSEO";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +40,7 @@ const NoteDetails = () => {
   const { t } = useTranslation('notes');
   const { notes, deleteNote, updateNote } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouples();
+  const { lists } = useSupabaseLists(currentCouple?.id);
   const askOliveOnboarding = useOnboardingTooltip('ask-olive-chat');
   
   const note = useMemo(() => notes.find((n) => n.id === id), [notes, id]);
@@ -313,20 +315,20 @@ const NoteDetails = () => {
                   onValueChange={(value) => setEditedNote(prev => ({ ...prev, category: value }))}
                 >
                   <SelectTrigger className="w-36 h-9 text-sm">
-                    <SelectValue placeholder="Category" />
+                    <SelectValue placeholder="Select list">
+                      {lists.find(l => l.name.toLowerCase() === editedNote.category.toLowerCase())?.name || 
+                       editedNote.category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="task">Task</SelectItem>
-                    <SelectItem value="groceries">Groceries</SelectItem>
-                    <SelectItem value="shopping">Shopping</SelectItem>
-                    <SelectItem value="home_improvement">Home</SelectItem>
-                    <SelectItem value="travel">Travel</SelectItem>
-                    <SelectItem value="date_ideas">Date Ideas</SelectItem>
-                    <SelectItem value="personal">Personal</SelectItem>
-                    <SelectItem value="reminder">Reminder</SelectItem>
-                    <SelectItem value="work">Work</SelectItem>
-                    <SelectItem value="health">Health</SelectItem>
-                    <SelectItem value="finance">Finance</SelectItem>
+                    {lists.map((list) => (
+                      <SelectItem key={list.id} value={list.name.toLowerCase().replace(/\s+/g, '_')}>
+                        {list.name}
+                      </SelectItem>
+                    ))}
+                    {lists.length === 0 && (
+                      <SelectItem value="task" disabled>No lists available</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
                 <Select
