@@ -203,14 +203,48 @@
 }
 
 @layer components {
-  /* ========== Card Variants (High-End) ========== */
+  /* ========== Atmospheric Background ========== */
+  .atmosphere-bg {
+    position: relative;
+  }
+  
+  .atmosphere-bg::before {
+    content: '';
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: 
+      radial-gradient(ellipse 60% 40% at 20% 30%, hsl(150 20% 70% / 0.05), transparent 50%),
+      radial-gradient(ellipse 50% 50% at 80% 70%, hsl(45 85% 74% / 0.04), transparent 50%),
+      radial-gradient(ellipse 40% 60% at 50% 90%, hsl(130 22% 29% / 0.03), transparent 40%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  
+  /* ========== Card Variants (Frosted Glass) ========== */
+  .card-glass {
+    @apply bg-white/80 backdrop-blur-xl rounded-[2rem];
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 8px 30px rgb(0 0 0 / 0.04);
+    transition: all 0.3s ease-out;
+  }
+  
+  .card-glass:hover {
+    box-shadow: 0 12px 40px rgb(0 0 0 / 0.06);
+    transform: translateY(-2px);
+  }
+  
   .card-elevated {
-    @apply bg-card rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)];
-    transition: box-shadow 0.3s ease-out, transform 0.3s ease-out;
+    @apply bg-white/80 backdrop-blur-xl rounded-[2rem];
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 8px 30px rgb(0 0 0 / 0.04);
+    transition: all 0.3s ease-out;
   }
   
   .card-elevated:hover {
-    @apply shadow-[0_12px_40px_rgb(0,0,0,0.08)];
+    box-shadow: 0 12px 40px rgb(0 0 0 / 0.08);
     transform: translateY(-2px);
   }
   
@@ -220,12 +254,58 @@
   
   /* ========== Magic AI Surface ========== */
   .card-magic {
-    @apply bg-gradient-to-br from-white via-[hsl(130_15%_97%)] to-[hsl(45_50%_97%)] rounded-3xl;
-    @apply border border-[hsl(130_20%_90%)] shadow-[0_8px_30px_rgb(0,0,0,0.04)];
+    @apply bg-gradient-to-br from-white via-[hsl(130_15%_97%)] to-[hsl(45_50%_97%)] rounded-[2rem];
+    border: 1px solid hsl(130 20% 90%);
+    box-shadow: 0 8px 30px rgb(0 0 0 / 0.04);
   }
   
   .card-magic-active {
-    @apply card-magic shadow-[var(--shadow-magic)];
+    @apply card-magic;
+    box-shadow: 0 4px 20px hsl(45 85% 74% / 0.3);
+  }
+  
+  /* ========== Paper Input (Premium Floating) ========== */
+  .input-paper {
+    @apply bg-white rounded-[2rem];
+    box-shadow: 0 20px 50px rgb(0 0 0 / 0.08);
+    border: none;
+    transition: all 0.3s ease-out;
+  }
+  
+  .input-paper:focus-within {
+    box-shadow: 0 25px 60px rgb(0 0 0 / 0.12);
+    transform: translateY(-2px);
+  }
+  
+  /* ========== Squircle Icons ========== */
+  .icon-squircle {
+    @apply flex items-center justify-center;
+    border-radius: 28%;
+    background: linear-gradient(135deg, hsl(130 15% 96%), white);
+  }
+  
+  .icon-squircle-lg {
+    @apply icon-squircle w-14 h-14;
+  }
+  
+  .icon-squircle-md {
+    @apply icon-squircle w-12 h-12;
+  }
+
+  /* ========== Meta Chips (Horizontal Pills) ========== */
+  .meta-chip {
+    @apply inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium;
+    @apply bg-stone-100/50 text-stone-600;
+    border: none;
+    transition: all 0.2s ease-out;
+  }
+  
+  .meta-chip:hover {
+    @apply bg-stone-100;
+  }
+  
+  .meta-chip-active {
+    @apply meta-chip bg-primary/10 text-primary;
   }
 
   /* ========== Priority Indicators ========== */
@@ -255,17 +335,25 @@
     text-wrap: balance;
   }
   
-  /* ========== Heading Styles (Serif) ========== */
+  /* ========== Heading Styles (Serif) - Organic Typography ========== */
   .heading-display {
     @apply font-serif font-bold tracking-tight;
+    color: hsl(130 25% 18%);
   }
   
   .heading-page {
-    @apply font-serif font-bold text-2xl md:text-3xl tracking-tight;
+    @apply font-serif font-bold text-3xl md:text-4xl tracking-tight;
+    color: hsl(130 25% 18%);
   }
   
   .heading-card {
     @apply font-serif font-semibold text-lg tracking-tight;
+    color: hsl(130 25% 18%);
+  }
+  
+  .heading-massive {
+    @apply font-serif font-bold text-4xl md:text-5xl tracking-tight;
+    color: hsl(130 25% 18%);
   }
   
   /* ========== AI/Magic Elements ========== */
@@ -338,14 +426,67 @@
   
   .btn-pill-magic {
     @apply btn-pill bg-[hsl(var(--olive-magic))] text-[hsl(130_25%_20%)];
-    @apply shadow-[var(--shadow-magic)] hover:shadow-[0_8px_30px_hsl(45_85%_74%/0.4)];
+    box-shadow: 0 4px 20px hsl(45 85% 74% / 0.3);
   }
   
-  /* ========== Floating Input ========== */
+  .btn-pill-magic:hover {
+    box-shadow: 0 8px 30px hsl(45 85% 74% / 0.4);
+  }
+  
+  /* ========== Floating Input (Paper Style) ========== */
   .input-floating {
-    @apply bg-white rounded-2xl shadow-lg border-0;
-    @apply transition-all duration-300 ease-out;
-    @apply focus-within:shadow-xl focus-within:scale-[1.01];
+    @apply bg-white rounded-[2rem];
+    box-shadow: 0 20px 50px rgb(0 0 0 / 0.08);
+    border: none;
+    transition: all 0.3s ease-out;
+  }
+  
+  .input-floating:focus-within {
+    box-shadow: 0 25px 60px rgb(0 0 0 / 0.12);
+    transform: translateY(-2px);
+  }
+  
+  /* ========== Glassmorphic Nav ========== */
+  .nav-glass {
+    @apply backdrop-blur-lg;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px rgb(0 0 0 / 0.08);
+  }
+  
+  /* ========== Shimmer Loading Effect ========== */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(130 15% 96%) 0%,
+      hsl(45 30% 96%) 50%,
+      hsl(130 15% 96%) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+  
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  
+  /* ========== Task Complete Animation ========== */
+  .task-complete {
+    @apply opacity-50 line-through;
+    transform: scale(0.98);
+    transition: all 0.3s ease-out;
+  }
+  
+  /* ========== Progress Ring ========== */
+  .progress-ring {
+    transform: rotate(-90deg);
+    transform-origin: 50% 50%;
+  }
+  
+  .progress-ring-circle {
+    transition: stroke-dashoffset 0.35s;
+    stroke-linecap: round;
   }
 }
 

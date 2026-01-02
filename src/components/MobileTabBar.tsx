@@ -72,9 +72,9 @@ const MobileTabBar = () => {
       aria-label="Primary navigation"
       className="fixed bottom-5 left-4 right-4 z-50 md:hidden"
     >
-      {/* Floating Dock */}
-      <div className="mx-auto max-w-sm rounded-full bg-white/90 backdrop-blur-md shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-border/30">
-        <div className="flex items-center justify-around px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+      {/* Glassmorphic Floating Dock */}
+      <div className="mx-auto max-w-sm rounded-full nav-glass">
+        <div className="flex items-center justify-around px-3 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           {tabs.map((tab) => {
             const localizedPath = getLocalizedPath(tab.to);
             const isActive = location.pathname === localizedPath || 
@@ -87,18 +87,18 @@ const MobileTabBar = () => {
                 key={tab.to}
                 to={localizedPath}
                 className={cn(
-                  "relative flex flex-col items-center justify-center gap-1 py-2 px-5 rounded-full transition-all duration-300 ease-out",
+                  "relative flex flex-col items-center justify-center gap-1.5 py-2 px-6 rounded-full transition-all duration-300 ease-out",
                   isActive 
-                    ? "text-primary" 
-                    : "text-muted-foreground hover:text-foreground",
+                    ? "text-[hsl(130_25%_18%)]" 
+                    : "text-stone-400 hover:text-stone-600",
                   tab.featured && !isActive && "text-primary/70"
                 )}
                 aria-label={tab.label}
               >
                 {/* Icon container */}
                 <div className={cn(
-                  "relative flex items-center justify-center w-7 h-7 transition-transform duration-300 ease-out",
-                  isActive && "scale-110",
+                  "relative flex items-center justify-center transition-all duration-300 ease-out",
+                  isActive ? "w-8 h-8 scale-110" : "w-7 h-7",
                   tab.featured && "w-8 h-8"
                 )}>
                   <tab.icon 
@@ -113,9 +113,9 @@ const MobileTabBar = () => {
                   {/* Badge */}
                   {tab.badge > 0 && (
                     <span className={cn(
-                      "absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center",
-                      "rounded-full text-[10px] font-bold",
-                      "bg-destructive text-destructive-foreground",
+                      "absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px] px-1 flex items-center justify-center",
+                      "rounded-full text-[10px] font-bold shadow-sm",
+                      "bg-[hsl(var(--priority-high))] text-white",
                       "animate-scale-in"
                     )}>
                       {tab.badge > 9 ? "9+" : tab.badge}
@@ -123,17 +123,17 @@ const MobileTabBar = () => {
                   )}
                 </div>
                 
-                {/* Label */}
+                {/* Label - hidden for cleaner look */}
                 <span className={cn(
                   "text-[10px] font-medium transition-all duration-300",
-                  isActive && "font-semibold"
+                  isActive ? "font-semibold opacity-100" : "opacity-70"
                 )}>
                   {tab.label}
                 </span>
                 
-                {/* Active indicator - small green dot */}
+                {/* Active indicator - glowing green dot */}
                 {isActive && (
-                  <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary" />
+                  <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_hsl(130_22%_29%/0.5)]" />
                 )}
               </NavLink>
             );
