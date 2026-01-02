@@ -14,41 +14,66 @@ const corsHeaders = {
 // CREATE: Everything else (default)
 // ============================================================================
 
-function determineIntent(message: string, hasMedia: boolean): 'SEARCH' | 'MERGE' | 'CREATE' {
-  const trimmed = message.trim().toLowerCase();
+type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE'; isUrgent?: boolean; cleanMessage?: string };
+
+function determineIntent(message: string, hasMedia: boolean): IntentResult {
+  const trimmed = message.trim();
+  const lower = trimmed.toLowerCase();
+  
+  // ============================================================================
+  // QUICK-SEARCH SYNTAX - Power user shortcuts
+  // ? message -> Forces SEARCH
+  // ! message -> Forces URGENT CREATE
+  // / message -> Forces CREATE (explicit)
+  // ============================================================================
+  
+  // ? prefix -> Force SEARCH
+  if (trimmed.startsWith('?')) {
+    return { intent: 'SEARCH', cleanMessage: trimmed.slice(1).trim() };
+  }
+  
+  // ! prefix -> Force URGENT CREATE
+  if (trimmed.startsWith('!')) {
+    return { intent: 'CREATE', isUrgent: true, cleanMessage: trimmed.slice(1).trim() };
+  }
+  
+  // / prefix -> Force CREATE (explicit)
+  if (trimmed.startsWith('/')) {
+    return { intent: 'CREATE', cleanMessage: trimmed.slice(1).trim() };
+  }
   
   // MERGE: exact match only
-  if (trimmed === 'merge') {
-    return 'MERGE';
+  if (lower === 'merge') {
+    return { intent: 'MERGE' };
   }
   
   // SEARCH: specific patterns
-  const searchStarters = ['show', 'find', 'list', 'search', 'get', '?', 'what'];
-  if (searchStarters.some(s => trimmed.startsWith(s))) {
+  const searchStarters = ['show', 'find', 'list', 'search', 'get', 'what'];
+  if (searchStarters.some(s => lower.startsWith(s))) {
     // "what's in my" or "what do i have" patterns
-    if (trimmed.startsWith('what')) {
-      if (/what'?s\s+(in|on|due|urgent|pending)/i.test(trimmed) || 
-          /what\s+(do\s+i|tasks?|items?)/i.test(trimmed)) {
-        return 'SEARCH';
+    if (lower.startsWith('what')) {
+      if (/what'?s\s+(in|on|due|urgent|pending)/i.test(lower) || 
+          /what\s+(do\s+i|tasks?|items?)/i.test(lower)) {
+        return { intent: 'SEARCH' };
       }
     } else {
-      return 'SEARCH';
+      return { intent: 'SEARCH' };
     }
   }
   
   // SEARCH: contains "my tasks", "my list", "my reminders" etc.
-  if (/\bmy\s+(tasks?|list|lists?|reminders?|items?|to-?do)\b/i.test(trimmed)) {
-    return 'SEARCH';
+  if (/\bmy\s+(tasks?|list|lists?|reminders?|items?|to-?do)\b/i.test(lower)) {
+    return { intent: 'SEARCH' };
   }
   
   // SEARCH: asking questions about existing content
-  if (/^(how many|do i have|check my|see my)/i.test(trimmed)) {
-    return 'SEARCH';
+  if (/^(how many|do i have|check my|see my)/i.test(lower)) {
+    return { intent: 'SEARCH' };
   }
   
   // CREATE: default for everything else
   // This includes ambiguous verbs like "check", "review", "look at", etc.
-  return 'CREATE';
+  return { intent: 'CREATE' };
 }
 
 // Standardize phone number format
@@ -813,8 +838,11 @@ serve(async (req) => {
     // ========================================================================
     // DETERMINISTIC ROUTING - "Strict Gatekeeper"
     // ========================================================================
-    const intent = determineIntent(messageBody || '', mediaUrls.length > 0);
-    console.log('Deterministic intent:', intent, 'for message:', messageBody?.substring(0, 50));
+    const intentResult = determineIntent(messageBody || '', mediaUrls.length > 0);
+    const { intent, isUrgent, cleanMessage } = intentResult;
+    // Use cleanMessage if prefix was stripped, otherwise use original
+    const effectiveMessage = cleanMessage ?? messageBody;
+    console.log('Deterministic intent:', intent, 'isUrgent:', isUrgent, 'for message:', effectiveMessage?.substring(0, 50));
 
     // ========================================================================
     // MERGE COMMAND HANDLER
@@ -913,7 +941,7 @@ serve(async (req) => {
       const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
 
       // Check if asking about a specific list
-      const listNameMatch = messageBody?.toLowerCase().match(/(?:what'?s in|show me|list)\s+(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:list|tasks?)/i);
+      const listNameMatch = effectiveMessage?.toLowerCase().match(/(?:what'?s in|show me|list)\s+(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:list|tasks?)/i);
       let specificList: string | null = null;
       
       if (listNameMatch) {
@@ -989,12 +1017,14 @@ serve(async (req) => {
     // ========================================================================
     // CREATE INTENT (Default) - Capture First
     // ========================================================================
-    // Prepare note data
+    // Prepare note data - use effectiveMessage (stripped of prefix if any)
     const notePayload: any = { 
-      text: messageBody || '', 
+      text: effectiveMessage || '', 
       user_id: userId,
       couple_id: coupleId,
-      timezone: profile.timezone || 'America/New_York'
+      timezone: profile.timezone || 'America/New_York',
+      // Pass urgency flag from ! prefix
+      force_priority: isUrgent ? 'high' : undefined
     };
     
     if (latitude && longitude) {
@@ -1039,7 +1069,8 @@ serve(async (req) => {
           reminder_time: note.reminder_time,
           recurrence_frequency: note.recurrence_frequency,
           recurrence_interval: note.recurrence_interval,
-          priority: note.priority || 'medium',
+          // Use high priority if ! prefix, otherwise use AI-determined or default
+          priority: isUrgent ? 'high' : (note.priority || 'medium'),
           tags: note.tags || [],
           items: note.items || [],
           task_owner: note.task_owner,
@@ -1066,14 +1097,15 @@ serve(async (req) => {
         const noteData = {
           author_id: userId,
           couple_id: coupleId,
-          original_text: messageBody,
+          original_text: messageBody, // Keep original message with prefix for reference
           summary: processData.summary,
           category: processData.category || 'task',
           due_date: processData.due_date,
           reminder_time: processData.reminder_time,
           recurrence_frequency: processData.recurrence_frequency,
           recurrence_interval: processData.recurrence_interval,
-          priority: processData.priority || 'medium',
+          // Use high priority if ! prefix, otherwise use AI-determined or default
+          priority: isUrgent ? 'high' : (processData.priority || 'medium'),
           tags: processData.tags || [],
           items: processData.items || [],
           task_owner: processData.task_owner,
