@@ -153,59 +153,53 @@ const Home = () => {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full atmosphere-bg">
       {/* Main Content - Scrollable */}
-      <div className="flex-1 overflow-y-auto pb-32 scrollbar-thin">
-        <div className="px-4 pt-6 space-y-6">
-          {/* Greeting Section - Serif Typography */}
+      <div className="flex-1 overflow-y-auto pb-32 scrollbar-thin relative z-10">
+        <div className="px-4 pt-8 space-y-8">
+          {/* Greeting Section - Massive Editorial Typography */}
           <div className="text-center animate-fade-up">
-            <h1 className="font-serif font-bold text-3xl md:text-4xl text-foreground mb-1 tracking-tight">
+            <h1 className="heading-massive mb-2">
               {t('home:greeting', { name: userName })}
             </h1>
-            <p className="text-base text-muted-foreground">
+            <p className="text-lg text-stone-500 font-light">
               {t('home:whatsOnMind')}
             </p>
           </div>
 
-          {/* Brain-dump Input - Floating Magic Input */}
+          {/* Brain-dump Input - "Premium Paper" Style */}
           <div className="relative animate-fade-up stagger-1">
             <div 
-              className="input-floating p-5"
+              className="input-paper p-8 relative"
               onClick={() => {
                 if (brainDumpOnboarding.isVisible) {
                   brainDumpOnboarding.dismiss();
                 }
+                setIsInputOpen(true);
               }}
             >
-              <div className="flex items-center gap-2 mb-3">
-                <Brain className="w-4 h-4 text-primary" />
-                <span className="font-serif font-semibold text-foreground">{t('home:brainDump.title')}</span>
-              </div>
-              <div 
-                className="relative cursor-text"
-                onClick={() => setIsInputOpen(true)}
-              >
-                <Textarea
-                  placeholder={t(`home:brainDump.placeholder.${
-                    new Date().getDay() === 0 || new Date().getDay() === 6 ? 'weekend' :
-                    new Date().getHours() < 12 ? 'morning' :
-                    new Date().getHours() < 18 ? 'afternoon' : 'evening'
-                  }`)}
-                  className="min-h-[100px] resize-none bg-muted/20 border-0 rounded-xl focus-visible:ring-1 focus-visible:ring-primary/20 cursor-pointer pointer-events-none"
-                  readOnly
-                />
-                {/* Circular Send Button */}
-                <div className="absolute bottom-3 right-3">
-                  <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center shadow-md transition-all duration-300 hover:scale-105 hover:shadow-lg">
-                    <Send className="h-4 w-4 text-primary-foreground" />
-                  </div>
+              {/* Huge Serif Placeholder */}
+              <p className="font-serif text-2xl md:text-3xl text-stone-300 italic mb-6 cursor-text">
+                {t(`home:brainDump.placeholder.${
+                  new Date().getDay() === 0 || new Date().getDay() === 6 ? 'weekend' :
+                  new Date().getHours() < 12 ? 'morning' :
+                  new Date().getHours() < 18 ? 'afternoon' : 'evening'
+                }`)}
+              </p>
+              
+              {/* Helper Text */}
+              <p className="text-sm text-stone-400 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[hsl(var(--olive-magic))]" />
+                <span>{t('home:hint.try')} </span>
+                <span className="italic text-stone-500">{t('home:hint.example')}</span>
+              </p>
+              
+              {/* Floating Send Button - Overlapping Corner */}
+              <div className="absolute -bottom-5 right-6">
+                <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center shadow-[0_8px_25px_hsl(130_22%_29%/0.35)] transition-all duration-300 hover:scale-110 hover:shadow-[0_12px_35px_hsl(130_22%_29%/0.4)] cursor-pointer">
+                  <Send className="h-5 w-5 text-white" />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
-                <Sparkles className="w-3 h-3 text-[hsl(var(--olive-magic))]" />
-                <span>{t('home:hint.try')} </span>
-                <span className="italic text-foreground/70">{t('home:hint.example')}</span>
-              </p>
             </div>
             
             {/* Onboarding Tooltip */}
@@ -218,35 +212,35 @@ const Home = () => {
             />
           </div>
 
-          {/* Quick Action Cards (contextual) */}
+          {/* Quick Action Cards - Glass Style */}
           {notes.length === 0 && (
-            <div className="space-y-3 animate-fade-up stagger-3">
+            <div className="space-y-4 animate-fade-up stagger-3">
               <div 
-                className="bg-card rounded-3xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-l-4 border-l-primary cursor-pointer hover:shadow-lg transition-all duration-300"
+                className="card-glass p-6 cursor-pointer hover:scale-[1.01] transition-all duration-300"
                 onClick={() => setIsInputOpen(true)}
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Sparkles className="w-5 h-5 text-primary" />
+                <div className="flex items-center gap-4">
+                  <div className="icon-squircle-lg bg-gradient-to-br from-primary/10 to-primary/5">
+                    <Sparkles className="w-6 h-6 text-primary" />
                   </div>
                   <div>
-                    <p className="font-serif font-semibold text-foreground">{t('home:quickStart.title')}</p>
-                    <p className="text-sm text-muted-foreground">{t('home:quickStart.subtitle')}</p>
+                    <p className="heading-card">{t('home:quickStart.title')}</p>
+                    <p className="text-sm text-stone-500">{t('home:quickStart.subtitle')}</p>
                   </div>
                 </div>
               </div>
               
               <div 
-                className="bg-card rounded-3xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-l-4 border-l-info cursor-pointer hover:shadow-lg transition-all duration-300"
+                className="card-glass p-6 cursor-pointer hover:scale-[1.01] transition-all duration-300"
                 onClick={() => navigate(getLocalizedPath('/calendar'))}
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-info/10 flex items-center justify-center">
-                    <CalendarPlus className="w-5 h-5 text-info" />
+                <div className="flex items-center gap-4">
+                  <div className="icon-squircle-lg bg-gradient-to-br from-info/10 to-info/5">
+                    <CalendarPlus className="w-6 h-6 text-info" />
                   </div>
                   <div>
-                    <p className="font-serif font-semibold text-foreground">{t('home:connectCalendar.title')}</p>
-                    <p className="text-sm text-muted-foreground">{t('home:connectCalendar.subtitle')}</p>
+                    <p className="heading-card">{t('home:connectCalendar.title')}</p>
+                    <p className="text-sm text-stone-500">{t('home:connectCalendar.subtitle')}</p>
                   </div>
                 </div>
               </div>
@@ -292,26 +286,26 @@ const Home = () => {
           {/* Partner Activity Widget */}
           <PartnerActivityWidget notes={notes} />
 
-          {/* Tabs Widget with Filters - High-End Card */}
-          <div className="bg-card rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden animate-fade-up stagger-3">
+          {/* Tabs Widget - Frosted Glass Card */}
+          <div className="card-glass overflow-hidden animate-fade-up stagger-3">
             <Tabs defaultValue="priority" className="w-full">
-              <div className="bg-muted/30 px-5 py-4 border-b border-border/30">
-                <TabsList className="w-full grid grid-cols-3 bg-background/80 mb-3 h-11 rounded-full p-1">
-                  <TabsTrigger value="priority" className="text-sm font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md">
+              <div className="bg-stone-50/50 backdrop-blur-sm px-6 py-5 border-b border-stone-100/50">
+                <TabsList className="w-full grid grid-cols-3 bg-white/80 mb-4 h-12 rounded-full p-1 shadow-sm">
+                  <TabsTrigger value="priority" className="text-sm font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md">
                     {t('home:tabs.priority')}
                   </TabsTrigger>
-                  <TabsTrigger value="daily" className="text-sm font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md">
+                  <TabsTrigger value="daily" className="text-sm font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md">
                     {t('home:tabs.daily')}
                   </TabsTrigger>
-                  <TabsTrigger value="recent" className="text-sm font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md">
+                  <TabsTrigger value="recent" className="text-sm font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md">
                     {t('home:tabs.recent')}
                   </TabsTrigger>
                 </TabsList>
                 
-                {/* Filters */}
-                <div className="flex gap-2">
+                {/* Filters - Pill Style */}
+                <div className="flex gap-3">
                   <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                    <SelectTrigger className="h-9 text-xs flex-1 bg-background rounded-full border-border/50">
+                    <SelectTrigger className="h-10 text-sm flex-1 bg-white/80 rounded-full border-stone-200/50 shadow-sm">
                       <SelectValue placeholder={t('common:common.allCategories')} />
                     </SelectTrigger>
                     <SelectContent>
@@ -323,7 +317,7 @@ const Home = () => {
                   </Select>
                   
                   <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-                    <SelectTrigger className="h-9 text-xs flex-1 bg-background rounded-full border-border/50">
+                    <SelectTrigger className="h-10 text-sm flex-1 bg-white/80 rounded-full border-stone-200/50 shadow-sm">
                       <SelectValue placeholder={t('common:common.everyone')} />
                     </SelectTrigger>
                     <SelectContent>
