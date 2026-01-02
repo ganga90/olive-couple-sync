@@ -824,7 +824,7 @@ serve(async (req) => {
         }
 
         return new Response(
-          createTwimlResponse(`✅ Merged! I added that info to "${pendingAction.target_summary}".`),
+          createTwimlResponse(`✅ Merged! Combined your note into: "${pendingAction.target_summary}"\n\n🔗 Manage: witholive.app`),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
@@ -1056,6 +1056,30 @@ serve(async (req) => {
     try {
       let insertedNoteId: string | null = null;
       let insertedNoteSummary: string = '';
+      let insertedListId: string | null = null;
+      
+      // Random tips for unique notes
+      const randomTips = [
+        "Reply 'Make it urgent' to change priority",
+        "Reply 'Show my tasks' to see your list",
+        "You can send voice notes too! 🎤",
+        "Reply 'Move to Work' to switch lists",
+        "Use ! prefix for urgent tasks (e.g., !call mom)"
+      ];
+      const getRandomTip = () => randomTips[Math.floor(Math.random() * randomTips.length)];
+      
+      // Helper to get list name from list_id
+      async function getListName(listId: string | null): Promise<string> {
+        if (!listId) return 'Tasks';
+        
+        const { data: list } = await supabase
+          .from('clerk_lists')
+          .select('name')
+          .eq('id', listId)
+          .single();
+        
+        return list?.name || 'Tasks';
+      }
       
       if (processData.multiple && Array.isArray(processData.notes)) {
         // Insert multiple notes
@@ -1069,7 +1093,6 @@ serve(async (req) => {
           reminder_time: note.reminder_time,
           recurrence_frequency: note.recurrence_frequency,
           recurrence_interval: note.recurrence_interval,
-          // Use high priority if ! prefix, otherwise use AI-determined or default
           priority: isUrgent ? 'high' : (note.priority || 'medium'),
           tags: note.tags || [],
           items: note.items || [],
@@ -1083,13 +1106,20 @@ serve(async (req) => {
         const { data: insertedNotes, error: insertError } = await supabase
           .from('clerk_notes')
           .insert(notesToInsert)
-          .select('id, summary');
+          .select('id, summary, list_id');
 
         if (insertError) throw insertError;
 
+        // Get list name for the first item (they likely share the same list)
+        const primaryListId = insertedNotes?.[0]?.list_id;
+        const listName = await getListName(primaryListId);
+        
         const count = processData.notes.length;
+        const itemsList = insertedNotes?.slice(0, 3).map(n => `• ${n.summary}`).join('\n') || '';
+        const moreText = count > 3 ? `\n...and ${count - 3} more` : '';
+        
         return new Response(
-          createTwimlResponse(`✅ Saved ${count} items!\n\n📱 Manage: witholive.app`),
+          createTwimlResponse(`✅ Saved ${count} items!\n${itemsList}${moreText}\n\n📂 Added to: ${listName}\n\n🔗 Manage: witholive.app\n\n💡 ${getRandomTip()}`),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       } else {
@@ -1097,14 +1127,13 @@ serve(async (req) => {
         const noteData = {
           author_id: userId,
           couple_id: coupleId,
-          original_text: messageBody, // Keep original message with prefix for reference
+          original_text: messageBody,
           summary: processData.summary,
           category: processData.category || 'task',
           due_date: processData.due_date,
           reminder_time: processData.reminder_time,
           recurrence_frequency: processData.recurrence_frequency,
           recurrence_interval: processData.recurrence_interval,
-          // Use high priority if ! prefix, otherwise use AI-determined or default
           priority: isUrgent ? 'high' : (processData.priority || 'medium'),
           tags: processData.tags || [],
           items: processData.items || [],
@@ -1118,13 +1147,17 @@ serve(async (req) => {
         const { data: insertedNote, error: insertError } = await supabase
           .from('clerk_notes')
           .insert(noteData)
-          .select('id, summary')
+          .select('id, summary, list_id')
           .single();
 
         if (insertError) throw insertError;
 
         insertedNoteId = insertedNote.id;
         insertedNoteSummary = insertedNote.summary;
+        insertedListId = insertedNote.list_id;
+
+        // Get the list name for rich feedback
+        const listName = await getListName(insertedListId);
 
         // ================================================================
         // POST-INSERTION: Background Duplicate Detection
@@ -1159,22 +1192,34 @@ serve(async (req) => {
           // Non-blocking - continue with the response even if duplicate detection fails
         }
 
-        // Build response based on whether we detected a duplicate
-        const taskSummary = insertedNoteSummary;
-        let confirmationMessage = `✅ Saved! "${taskSummary}"`;
+        // ================================================================
+        // RICH RESPONSE BUILDER
+        // ================================================================
+        let confirmationMessage: string;
         
         if (duplicateWarning?.found) {
-          // Scenario B: Duplicate detected
-          confirmationMessage = `✅ Saved. 💡 Heads up: You have a similar task: "${duplicateWarning.targetTitle}".\n\nReply "Merge" to combine them.`;
+          // Scenario B: Duplicate detected - no tip to avoid clutter
+          confirmationMessage = [
+            `✅ Saved: ${insertedNoteSummary}`,
+            `📂 Added to: ${listName}`,
+            ``,
+            `⚠️ Similar task found: "${duplicateWarning.targetTitle}"`,
+            `Reply "Merge" to combine them.`
+          ].join('\n');
         } else {
-          // Scenario A: Unique note
-          confirmationMessage = `✅ Saved! "${taskSummary}"`;
+          // Scenario A: Unique note - include tip
+          confirmationMessage = [
+            `✅ Saved: ${insertedNoteSummary}`,
+            `📂 Added to: ${listName}`,
+            ``,
+            `🔗 Manage: witholive.app`,
+            ``,
+            `💡 ${getRandomTip()}`
+          ].join('\n');
         }
         
-        const quickReply = '\n\n📱 Manage: witholive.app';
-        
         return new Response(
-          createTwimlResponse(`${confirmationMessage}${quickReply}`),
+          createTwimlResponse(confirmationMessage),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
