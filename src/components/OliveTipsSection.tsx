@@ -304,19 +304,19 @@ export function OliveTipsSection({ note, onTipGenerated }: OliveTipsSectionProps
   };
 
   return (
-    <div className="rounded-xl bg-card/50 p-4 border border-border">
-      <div className="flex items-center justify-between mb-3">
+    <div className="card-magic p-5">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <h3 className="font-medium text-sm text-foreground">
-            Tips from Olive
-          </h3>
+          <span className="text-xs font-semibold uppercase tracking-widest text-primary">
+            ✨ Olive Insights
+          </span>
         </div>
         {tip && (
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-xs"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
             onClick={handleRegenerate}
             disabled={isGenerating}
           >
@@ -329,27 +329,37 @@ export function OliveTipsSection({ note, onTipGenerated }: OliveTipsSectionProps
       {isGenerating ? (
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Sparkles className="h-4 w-4 animate-pulse text-primary" />
+            <Sparkles className="h-4 w-4 animate-pulse text-[hsl(var(--olive-magic))]" />
             <span>Olive is thinking...</span>
           </div>
-          <TipSkeleton />
+          {/* Shimmer skeleton */}
+          <div className="space-y-3 animate-pulse">
+            <div className="h-4 bg-gradient-to-r from-muted via-muted/50 to-muted rounded-lg w-3/4" 
+                 style={{ backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }} />
+            <div className="h-4 bg-gradient-to-r from-muted via-muted/50 to-muted rounded-lg w-1/2"
+                 style={{ backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite', animationDelay: '0.1s' }} />
+            <div className="h-10 bg-gradient-to-r from-muted via-muted/50 to-muted rounded-xl w-full"
+                 style={{ backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite', animationDelay: '0.2s' }} />
+          </div>
         </div>
       ) : tip ? (
         renderTipCard()
       ) : (
         <div className="relative">
+          <p className="text-sm text-muted-foreground mb-4">
+            Ready to analyze this task...
+          </p>
           <Button
-            variant="outline"
-            className="w-full gap-2 h-12 border-dashed"
             onClick={() => {
               if (tipsOnboarding.isVisible) {
                 tipsOnboarding.dismiss();
               }
               handleGenerate();
             }}
+            className="btn-pill bg-primary text-primary-foreground gap-2 w-full sm:w-auto"
           >
             <Sparkles className="h-4 w-4" />
-            Ask Olive for Help
+            Generate Tips
           </Button>
           
           {/* Onboarding Tooltip */}

@@ -111,62 +111,62 @@ const CalendarPage = () => {
     <div className="h-full overflow-y-auto bg-background">
       <FloatingActionButton />
       
-      <div className="px-4 pt-6 pb-24 md:pb-6 space-y-4 max-w-2xl mx-auto">
-        {/* Header */}
+      <div className="px-4 pt-6 pb-32 md:pb-6 space-y-6 max-w-2xl mx-auto">
+        {/* Header - Editorial Style */}
         <div className="flex items-center justify-between animate-fade-up">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <CalendarIcon className="h-5 w-5 text-primary" />
-            </div>
-            <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
+          <div>
+            <h1 className="font-serif font-bold text-4xl text-foreground tracking-tight">
+              {format(currentDate, 'MMMM', { locale: dateLocale })}
+            </h1>
+            <p className="text-lg text-muted-foreground font-medium">
+              {format(currentDate, 'yyyy', { locale: dateLocale })}
+            </p>
           </div>
-          {connection?.connected && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => syncEvents()}
-              disabled={syncing}
-              className="text-muted-foreground"
-            >
-              {syncing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {connection?.connected && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => syncEvents()}
+                disabled={syncing}
+                className="text-muted-foreground rounded-full"
+              >
+                {syncing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </Button>
+            )}
+          </div>
         </div>
 
-        {/* Calendar Navigation */}
-        <div className="flex items-center justify-between bg-card rounded-xl p-2 shadow-card border border-border/50 animate-fade-up" style={{ animationDelay: '50ms' }}>
+        {/* Calendar Navigation - Minimal */}
+        <div className="flex items-center justify-between animate-fade-up" style={{ animationDelay: '50ms' }}>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setCurrentDate(subMonths(currentDate, 1))}
-            className="touch-target"
+            className="touch-target rounded-full"
           >
             <ChevronLeft className="h-5 w-5" />
           </Button>
-          
-          <h2 className="text-lg font-semibold text-foreground">
-            {format(currentDate, 'MMMM yyyy', { locale: dateLocale })}
-          </h2>
           
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-            className="touch-target"
+            className="touch-target rounded-full"
           >
             <ChevronRight className="h-5 w-5" />
           </Button>
         </div>
 
-        {/* Calendar Grid */}
-        <Card className="shadow-card border-border/50 overflow-hidden animate-fade-up" style={{ animationDelay: '100ms' }}>
-          <CardContent className="p-3 sm:p-4">
+        {/* Calendar Grid - Editorial Clean */}
+        <div className="bg-card rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden animate-fade-up" style={{ animationDelay: '100ms' }}>
+          <div className="p-4 sm:p-6">
             {/* Day headers */}
-            <div className="grid grid-cols-7 gap-1 mb-2">
+            <div className="grid grid-cols-7 gap-1 mb-3">
               {weekdays.map((day, i) => (
                 <div key={i} className="p-2 text-center">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -177,9 +177,9 @@ const CalendarPage = () => {
               ))}
             </div>
             
-            {/* Calendar days */}
+            {/* Calendar days - Clean grid, minimal lines */}
             <div className="grid grid-cols-7 gap-1">
-              {calendarDays.map(day => {
+              {calendarDays.map((day, index) => {
                 const dayTasks = getTasksForDate(day);
                 const dayGoogleEvents = getGoogleEventsForDate(day);
                 const isToday = checkIsToday(day);
@@ -188,45 +188,45 @@ const CalendarPage = () => {
                 const priorityDots = getPriorityDots(dayTasks, dayGoogleEvents);
                 const hasEvents = dayTasks.length > 0 || dayGoogleEvents.length > 0;
                 
+                // Add subtle horizontal divider every 7 days (weekly rows)
+                const showDivider = index > 0 && index % 7 === 0;
+                
                 return (
                   <button
                     key={day.toISOString()}
                     className={cn(
-                      "relative min-h-[56px] sm:min-h-[72px] p-1.5 sm:p-2 rounded-lg transition-all duration-200",
-                      "hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/20",
-                      !isCurrentMonth && "opacity-40",
-                      isToday && "bg-primary/10 ring-2 ring-primary/30",
-                      isSelected && "bg-primary/20 ring-2 ring-primary"
+                      "relative min-h-[60px] sm:min-h-[72px] p-2 rounded-2xl transition-all duration-300 ease-out",
+                      "hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20",
+                      !isCurrentMonth && "opacity-30",
+                      isSelected && "bg-muted ring-2 ring-primary/30",
+                      showDivider && "border-t border-border/30"
                     )}
                     onClick={() => setSelectedDate(day)}
                   >
+                    {/* Day number - Today gets solid green circle */}
                     <span className={cn(
-                      "text-sm font-medium block",
-                      isToday && "text-primary font-bold",
-                      !isCurrentMonth && "text-muted-foreground"
+                      "text-sm font-medium flex items-center justify-center",
+                      "w-7 h-7 rounded-full transition-all duration-300",
+                      isToday && "bg-primary text-primary-foreground font-bold",
+                      !isToday && !isCurrentMonth && "text-muted-foreground"
                     )}>
                       {format(day, 'd')}
                     </span>
                     
-                    {/* Priority dots */}
+                    {/* Priority dots - Event indicators */}
                     {hasEvents && (
-                      <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-0.5">
+                      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-0.5">
                         {priorityDots.high > 0 && (
-                          <div className="h-1.5 w-1.5 rounded-full bg-priority-high" />
+                          <div className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--priority-high))]" />
                         )}
                         {priorityDots.medium > 0 && (
-                          <div className="h-1.5 w-1.5 rounded-full bg-priority-medium" />
+                          <div className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--priority-medium))]" />
                         )}
                         {priorityDots.low > 0 && (
-                          <div className="h-1.5 w-1.5 rounded-full bg-priority-low" />
+                          <div className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--priority-low))]" />
                         )}
                         {priorityDots.google > 0 && (
                           <div className="h-1.5 w-1.5 rounded-full bg-info" title="Google Calendar" />
-                        )}
-                        {(dayTasks.length + dayGoogleEvents.length) > 4 && (
-                          <span className="text-[8px] text-muted-foreground ml-0.5">
-                            +{(dayTasks.length + dayGoogleEvents.length) - 4}
-                          </span>
                         )}
                       </div>
                     )}
@@ -235,18 +235,18 @@ const CalendarPage = () => {
               })}
             </div>
 
-            {/* Legend */}
-            <div className="flex items-center justify-center gap-3 sm:gap-4 mt-4 pt-3 border-t border-border/50 flex-wrap">
+            {/* Legend - Minimal */}
+            <div className="flex items-center justify-center gap-4 mt-6 pt-4 border-t border-border/30 flex-wrap">
               <div className="flex items-center gap-1.5">
-                <div className="h-2 w-2 rounded-full bg-priority-high" />
+                <div className="h-2 w-2 rounded-full bg-[hsl(var(--priority-high))]" />
                 <span className="text-[10px] text-muted-foreground">{t('priority.high')}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <div className="h-2 w-2 rounded-full bg-priority-medium" />
+                <div className="h-2 w-2 rounded-full bg-[hsl(var(--priority-medium))]" />
                 <span className="text-[10px] text-muted-foreground">{t('priority.medium')}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <div className="h-2 w-2 rounded-full bg-priority-low" />
+                <div className="h-2 w-2 rounded-full bg-[hsl(var(--priority-low))]" />
                 <span className="text-[10px] text-muted-foreground">{t('priority.low')}</span>
               </div>
               {showGoogleEvents && connection?.connected && (
@@ -256,16 +256,16 @@ const CalendarPage = () => {
                 </div>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Selected Date Details */}
         {selectedDate && (
-          <Card className="shadow-card border-border/50 animate-slide-up">
-            <CardContent className="p-4">
+          <div className="bg-card rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] animate-slide-up">
+            <div className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="font-semibold text-foreground">
+                  <h3 className="font-serif font-semibold text-lg text-foreground">
                     {format(selectedDate, 'EEEE', { locale: dateLocale })}
                   </h3>
                   <p className="text-sm text-muted-foreground">
@@ -276,7 +276,7 @@ const CalendarPage = () => {
                   variant="ghost"
                   size="sm"
                   onClick={() => setSelectedDate(null)}
-                  className="text-muted-foreground"
+                  className="text-muted-foreground rounded-full"
                 >
                   {t('actions.close')}
                 </Button>
@@ -289,7 +289,7 @@ const CalendarPage = () => {
                 
                 if (!hasAnyItems) {
                   return (
-                    <div className="text-center py-6">
+                    <div className="text-center py-8">
                       <div className="h-12 w-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
                         <CalendarIcon className="h-6 w-6 text-muted-foreground" />
                       </div>
@@ -308,8 +308,8 @@ const CalendarPage = () => {
                         key={task.id}
                         onClick={() => navigateToTask(task.id)}
                         className={cn(
-                          "w-full p-3 rounded-xl border text-left transition-all duration-200",
-                          "hover:bg-muted/50 hover:shadow-sm active:scale-[0.99]",
+                          "w-full p-4 rounded-2xl text-left transition-all duration-300 ease-out",
+                          "bg-muted/30 hover:bg-muted/50 hover:shadow-sm active:scale-[0.99]",
                           task.completed && "opacity-60"
                         )}
                         style={{ animationDelay: `${index * 50}ms` }}
@@ -318,9 +318,9 @@ const CalendarPage = () => {
                           {/* Priority indicator */}
                           <div className={cn(
                             "w-1 h-full min-h-[40px] rounded-full flex-shrink-0",
-                            task.priority === 'high' && "bg-priority-high",
-                            task.priority === 'medium' && "bg-priority-medium",
-                            task.priority === 'low' && "bg-priority-low",
+                            task.priority === 'high' && "bg-[hsl(var(--priority-high))]",
+                            task.priority === 'medium' && "bg-[hsl(var(--priority-medium))]",
+                            task.priority === 'low' && "bg-[hsl(var(--priority-low))]",
                             !task.priority && "bg-muted"
                           )} />
                           
@@ -339,7 +339,7 @@ const CalendarPage = () => {
                                   {format(parseISO(task.reminder_time), 'h:mm a', { locale: dateLocale })}
                                 </div>
                               )}
-                              <Badge variant="secondary" className="text-[10px] h-4 capitalize">
+                              <Badge variant="secondary" className="text-[10px] h-4 capitalize rounded-full">
                                 {task.category}
                               </Badge>
                             </div>
@@ -352,7 +352,7 @@ const CalendarPage = () => {
                     {googleEvents.map((event, index) => (
                       <div
                         key={event.id}
-                        className="w-full p-3 rounded-xl border border-info/30 bg-info/5 text-left"
+                        className="w-full p-4 rounded-2xl bg-info/5 border border-info/20 text-left"
                         style={{ animationDelay: `${(tasks.length + index) * 50}ms` }}
                       >
                         <div className="flex items-start gap-3">
@@ -378,7 +378,7 @@ const CalendarPage = () => {
                                   <span className="truncate max-w-[120px]">{event.location}</span>
                                 </div>
                               )}
-                              <Badge variant="outline" className="text-[10px] h-4 border-info/30 text-info">
+                              <Badge variant="outline" className="text-[10px] h-4 border-info/30 text-info rounded-full">
                                 Google
                               </Badge>
                             </div>
@@ -389,8 +389,8 @@ const CalendarPage = () => {
                   </div>
                 );
               })()}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
       </div>
     </div>

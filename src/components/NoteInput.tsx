@@ -411,10 +411,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const hasContent = text.trim() || mediaFiles.length > 0;
 
   return (
-    <Card className={cn(
-      "overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm transition-all duration-300",
-      hasContent ? "shadow-lg ring-1 ring-primary/20" : "shadow-soft",
-      isProcessing && "ring-2 ring-primary/30 animate-pulse"
+    <div className={cn(
+      "input-floating overflow-hidden transition-all duration-300 ease-out",
+      hasContent && "shadow-xl ring-1 ring-primary/10",
+      isProcessing && "ring-2 ring-primary/20"
     )}>
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         {/* Header with animated brain icon */}
@@ -423,17 +423,17 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             <div className={cn(
               "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300",
               isProcessing 
-                ? "bg-primary/20 animate-pulse" 
+                ? "bg-[hsl(var(--olive-magic))]/30 animate-pulse" 
                 : hasContent 
                   ? "bg-primary/15" 
                   : "bg-muted"
             )}>
               <Brain className={cn(
                 "w-4 h-4 transition-colors duration-300",
-                isProcessing || hasContent ? "text-primary" : "text-muted-foreground"
+                isProcessing ? "text-[hsl(130_22%_29%)]" : hasContent ? "text-primary" : "text-muted-foreground"
               )} />
             </div>
-            <h2 className="text-lg font-semibold text-foreground">
+            <h2 className="font-serif font-semibold text-lg text-foreground">
               {t('brainDump.title')}
             </h2>
           </div>
@@ -444,7 +444,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         
         {/* Media previews with improved styling */}
         {mediaPreviews.length > 0 && (
-          <div className="flex flex-wrap gap-3 p-3 bg-muted/50 rounded-xl animate-fade-in">
+          <div className="flex flex-wrap gap-3 p-3 bg-muted/30 rounded-xl animate-fade-in">
             {mediaPreviews.map((preview, index) => (
               <div 
                 key={index} 
@@ -459,7 +459,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                   <img 
                     src={preview} 
                     alt={`Attached ${index + 1}`}
-                    className="w-16 h-16 object-cover rounded-xl border border-border shadow-sm"
+                    className="w-16 h-16 object-cover rounded-xl shadow-sm"
                   />
                 )}
                 <button
@@ -477,18 +477,17 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           </div>
         )}
         
-        {/* Textarea with enhanced styling */}
+        {/* Textarea with enhanced floating styling */}
         <div className="relative group">
           <Textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={getDynamicPlaceholder()}
             className={cn(
-              "min-h-[140px] resize-none text-base pr-24 transition-all duration-300",
-              "bg-background/60 border-border/60",
-              "focus:border-primary/50 focus:ring-2 focus:ring-primary/10",
-              "placeholder:text-muted-foreground/60",
-              hasContent && "border-primary/30"
+              "min-h-[140px] resize-none text-base pr-24 transition-all duration-300 ease-out",
+              "bg-muted/30 border-0 rounded-xl",
+              "focus:ring-2 focus:ring-primary/20 focus:bg-white",
+              "placeholder:text-muted-foreground/60"
             )}
             disabled={isProcessing || isUploadingMedia}
           />
@@ -518,7 +517,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
               onClick={() => fileInputRef.current?.click()}
               disabled={isProcessing || isUploadingMedia || mediaFiles.length >= 5}
               className={cn(
-                "h-9 w-9 rounded-full transition-all duration-200",
+                "h-9 w-9 rounded-full transition-all duration-300",
                 "text-muted-foreground hover:text-primary hover:bg-primary/10",
                 mediaFiles.length > 0 && "text-primary bg-primary/10"
               )}
@@ -535,18 +534,18 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             />
           </div>
           
-          {/* Send button with animation */}
+          {/* Send button - circular, bottom-right */}
           <div className={cn(
-            "absolute bottom-3 right-3 transition-all duration-300",
+            "absolute bottom-3 right-3 transition-all duration-300 ease-out",
             hasContent ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
           )}>
             <Button
               type="submit"
-              size="sm"
-              variant="accent"
+              size="icon"
               disabled={isProcessing || isUploadingMedia || !hasContent}
               className={cn(
-                "shadow-lg transition-all duration-200",
+                "h-10 w-10 rounded-full bg-primary hover:bg-primary-dark text-primary-foreground",
+                "shadow-lg transition-all duration-300 ease-out",
                 "hover:shadow-xl hover:scale-105",
                 isProcessing && "animate-pulse"
               )}
@@ -589,6 +588,6 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         open={showLoginPrompt}
         onOpenChange={setShowLoginPrompt}
       />
-    </Card>
+    </div>
   );
 };

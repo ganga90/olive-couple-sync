@@ -70,72 +70,75 @@ const MobileTabBar = () => {
   return (
     <nav
       aria-label="Primary navigation"
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-border/50 bg-background/95 backdrop-blur-md shadow-bottom-bar md:hidden"
+      className="fixed bottom-5 left-4 right-4 z-50 md:hidden"
     >
-      <div className="mx-auto flex items-center justify-around px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
-        {tabs.map((tab) => {
-          const localizedPath = getLocalizedPath(tab.to);
-          const isActive = location.pathname === localizedPath || 
-            location.pathname.endsWith(tab.to) ||
-            (tab.to === "/lists" && location.pathname.includes("/lists/")) ||
-            (tab.to === "/home" && location.pathname.includes("/notes/"));
-          
-          return (
-            <NavLink
-              key={tab.to}
-              to={localizedPath}
-              className={cn(
-                "relative flex flex-col items-center justify-center gap-1 py-2 px-4 rounded-xl transition-all duration-200 min-w-[64px]",
-                isActive 
-                  ? "text-primary" 
-                  : "text-muted-foreground hover:text-foreground",
-                tab.featured && !isActive && "text-primary/70"
-              )}
-              aria-label={tab.label}
-            >
-              {/* Icon container */}
-              <div className={cn(
-                "relative flex items-center justify-center w-7 h-7 transition-transform duration-200",
-                isActive && "scale-110",
-                tab.featured && "w-8 h-8"
-              )}>
-                <tab.icon 
-                  className={cn(
-                    "transition-all duration-200",
-                    tab.featured ? "h-6 w-6" : "h-5 w-5",
-                    isActive && "stroke-[2.5]"
-                  )} 
-                  aria-hidden="true" 
-                />
-                
-                {/* Badge */}
-                {tab.badge > 0 && (
-                  <span className={cn(
-                    "absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center",
-                    "rounded-full text-[10px] font-bold",
-                    "bg-destructive text-destructive-foreground",
-                    "animate-scale-in"
-                  )}>
-                    {tab.badge > 9 ? "9+" : tab.badge}
-                  </span>
+      {/* Floating Dock */}
+      <div className="mx-auto max-w-sm rounded-full bg-white/90 backdrop-blur-md shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-border/30">
+        <div className="flex items-center justify-around px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+          {tabs.map((tab) => {
+            const localizedPath = getLocalizedPath(tab.to);
+            const isActive = location.pathname === localizedPath || 
+              location.pathname.endsWith(tab.to) ||
+              (tab.to === "/lists" && location.pathname.includes("/lists/")) ||
+              (tab.to === "/home" && location.pathname.includes("/notes/"));
+            
+            return (
+              <NavLink
+                key={tab.to}
+                to={localizedPath}
+                className={cn(
+                  "relative flex flex-col items-center justify-center gap-1 py-2 px-5 rounded-full transition-all duration-300 ease-out",
+                  isActive 
+                    ? "text-primary" 
+                    : "text-muted-foreground hover:text-foreground",
+                  tab.featured && !isActive && "text-primary/70"
                 )}
-              </div>
-              
-              {/* Label */}
-              <span className={cn(
-                "text-[10px] font-medium transition-all duration-200",
-                isActive && "font-semibold"
-              )}>
-                {tab.label}
-              </span>
-              
-              {/* Active indicator */}
-              {isActive && (
-                <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary" />
-              )}
-            </NavLink>
-          );
-        })}
+                aria-label={tab.label}
+              >
+                {/* Icon container */}
+                <div className={cn(
+                  "relative flex items-center justify-center w-7 h-7 transition-transform duration-300 ease-out",
+                  isActive && "scale-110",
+                  tab.featured && "w-8 h-8"
+                )}>
+                  <tab.icon 
+                    className={cn(
+                      "transition-all duration-300",
+                      tab.featured ? "h-6 w-6" : "h-5 w-5",
+                      isActive && "stroke-[2.5]"
+                    )} 
+                    aria-hidden="true" 
+                  />
+                  
+                  {/* Badge */}
+                  {tab.badge > 0 && (
+                    <span className={cn(
+                      "absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center",
+                      "rounded-full text-[10px] font-bold",
+                      "bg-destructive text-destructive-foreground",
+                      "animate-scale-in"
+                    )}>
+                      {tab.badge > 9 ? "9+" : tab.badge}
+                    </span>
+                  )}
+                </div>
+                
+                {/* Label */}
+                <span className={cn(
+                  "text-[10px] font-medium transition-all duration-300",
+                  isActive && "font-semibold"
+                )}>
+                  {tab.label}
+                </span>
+                
+                {/* Active indicator - small green dot */}
+                {isActive && (
+                  <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary" />
+                )}
+              </NavLink>
+            );
+          })}
+        </div>
       </div>
     </nav>
   );
