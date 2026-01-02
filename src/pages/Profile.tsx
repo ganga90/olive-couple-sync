@@ -45,13 +45,13 @@ const Profile = () => {
 
   return (
     <div className="h-full overflow-y-auto bg-background">
-      <div className="px-4 py-6 space-y-4 max-w-2xl mx-auto">
+      <div className="px-4 py-6 space-y-5 max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center animate-fade-up">
-          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center mx-auto mb-4 shadow-soft">
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center mx-auto mb-4 shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
             <User className="h-12 w-12 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground mb-1">
+          <h1 className="text-2xl font-serif font-bold text-foreground mb-1">
             {user?.firstName || user?.fullName || 'Profile'}
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -60,11 +60,11 @@ const Profile = () => {
         </div>
 
         {/* Partner Information */}
-        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '50ms' }}>
+        <Card className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-0 animate-fade-up transition-all duration-300" style={{ animationDelay: '50ms' }}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                <User className="h-4 w-4 text-primary" />
+            <CardTitle className="text-base font-serif flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+                <User className="h-5 w-5 text-primary" />
               </div>
               {t('profile:partnerConnection')}
             </CardTitle>
@@ -75,11 +75,11 @@ const Profile = () => {
         </Card>
 
         {/* Language */}
-        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '75ms' }}>
+        <Card className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-0 animate-fade-up transition-all duration-300" style={{ animationDelay: '75ms' }}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-info/10 flex items-center justify-center">
-                <Globe className="h-4 w-4 text-info" />
+            <CardTitle className="text-base font-serif flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-info/10 to-info/5 flex items-center justify-center">
+                <Globe className="h-5 w-5 text-info" />
               </div>
               {t('common:language.title')}
             </CardTitle>
@@ -90,10 +90,10 @@ const Profile = () => {
         </Card>
 
         {/* Timezone */}
-        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '100ms' }}>
+        <Card className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-0 animate-fade-up transition-all duration-300" style={{ animationDelay: '100ms' }}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-secondary/50 flex items-center justify-center">
+            <CardTitle className="text-base font-serif flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-secondary/30 to-secondary/10 flex items-center justify-center">
                 🌍
               </div>
               {t('profile:timezone')}
@@ -105,10 +105,10 @@ const Profile = () => {
         </Card>
 
         {/* Phone Number */}
-        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '150ms' }}>
+        <Card className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-0 animate-fade-up transition-all duration-300" style={{ animationDelay: '150ms' }}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center">
+            <CardTitle className="text-base font-serif flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-success/10 to-success/5 flex items-center justify-center">
                 📱
               </div>
               {t('profile:whatsappNotifications')}
@@ -120,10 +120,10 @@ const Profile = () => {
         </Card>
 
         {/* WhatsApp AI Link */}
-        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '200ms' }}>
+        <Card className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-0 animate-fade-up transition-all duration-300" style={{ animationDelay: '200ms' }}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center">
+            <CardTitle className="text-base font-serif flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-success/10 to-success/5 flex items-center justify-center">
                 💬
               </div>
               {t('profile:whatsappAssistant')}
@@ -135,15 +135,15 @@ const Profile = () => {
         </Card>
 
         {/* Google Calendar */}
-        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '250ms' }}>
+        <Card className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-0 animate-fade-up transition-all duration-300" style={{ animationDelay: '250ms' }}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
-                <Calendar className="h-4 w-4 text-accent" />
+            <CardTitle className="text-base font-serif flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-accent/10 to-accent/5 flex items-center justify-center">
+                <Calendar className="h-5 w-5 text-accent" />
               </div>
               {t('profile:googleCalendar.title')}
             </CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-1 ml-13">
               {t('profile:googleCalendar.subtitle')}
             </p>
           </CardHeader>
@@ -153,11 +153,11 @@ const Profile = () => {
         </Card>
 
         {/* Note Processing Style */}
-        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '300ms' }}>
+        <Card className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-0 animate-fade-up transition-all duration-300" style={{ animationDelay: '300ms' }}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Brain className="h-4 w-4 text-primary" />
+            <CardTitle className="text-base font-serif flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+                <Brain className="h-5 w-5 text-primary" />
               </div>
               {t('profile:noteProcessingStyle')}
             </CardTitle>
@@ -168,15 +168,15 @@ const Profile = () => {
         </Card>
 
         {/* Memory & Personalization */}
-        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '350ms' }}>
+        <Card className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-0 animate-fade-up transition-all duration-300" style={{ animationDelay: '350ms' }}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
-                <Sparkles className="h-4 w-4 text-accent" />
+            <CardTitle className="text-base font-serif flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-accent/10 to-accent/5 flex items-center justify-center">
+                <Sparkles className="h-5 w-5 text-accent" />
               </div>
               {t('profile:memoryPersonalization.title')}
             </CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-1 ml-13">
               {t('profile:memoryPersonalization.subtitle')}
             </p>
           </CardHeader>
@@ -186,42 +186,42 @@ const Profile = () => {
         </Card>
 
         {/* Settings Menu */}
-        <Card className="shadow-card animate-fade-up" style={{ animationDelay: '400ms' }}>
+        <Card className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-0 animate-fade-up transition-all duration-300" style={{ animationDelay: '400ms' }}>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">{t('profile:settings.title')}</CardTitle>
+            <CardTitle className="text-base font-serif">{t('profile:settings.title')}</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-1 p-2">
-            <button className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-muted/50 transition-colors text-left group">
-              <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
+          <CardContent className="space-y-1 p-3">
+            <button className="flex items-center gap-3 w-full p-3 rounded-2xl hover:bg-muted/50 transition-all duration-300 text-left group">
+              <div className="w-10 h-10 rounded-2xl bg-muted/80 flex items-center justify-center">
                 <Bell className="h-5 w-5 text-muted-foreground" />
               </div>
               <div className="flex-1">
                 <p className="font-medium text-foreground">{t('profile:settings.notifications.title')}</p>
                 <p className="text-xs text-muted-foreground">{t('profile:settings.notifications.subtitle')}</p>
               </div>
-              <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
+              <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground group-hover:translate-x-0.5 transition-all duration-300" />
             </button>
 
-            <button className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-muted/50 transition-colors text-left group">
-              <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
+            <button className="flex items-center gap-3 w-full p-3 rounded-2xl hover:bg-muted/50 transition-all duration-300 text-left group">
+              <div className="w-10 h-10 rounded-2xl bg-muted/80 flex items-center justify-center">
                 <Shield className="h-5 w-5 text-muted-foreground" />
               </div>
               <div className="flex-1">
                 <p className="font-medium text-foreground">{t('profile:settings.privacy.title')}</p>
                 <p className="text-xs text-muted-foreground">{t('profile:settings.privacy.subtitle')}</p>
               </div>
-              <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
+              <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground group-hover:translate-x-0.5 transition-all duration-300" />
             </button>
 
-            <button className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-muted/50 transition-colors text-left group">
-              <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
+            <button className="flex items-center gap-3 w-full p-3 rounded-2xl hover:bg-muted/50 transition-all duration-300 text-left group">
+              <div className="w-10 h-10 rounded-2xl bg-muted/80 flex items-center justify-center">
                 <HelpCircle className="h-5 w-5 text-muted-foreground" />
               </div>
               <div className="flex-1">
                 <p className="font-medium text-foreground">{t('profile:settings.help.title')}</p>
                 <p className="text-xs text-muted-foreground">{t('profile:settings.help.subtitle')}</p>
               </div>
-              <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
+              <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground group-hover:translate-x-0.5 transition-all duration-300" />
             </button>
           </CardContent>
         </Card>
@@ -230,7 +230,7 @@ const Profile = () => {
         <div className="animate-fade-up" style={{ animationDelay: '450ms' }}>
           <Button
             variant="destructive"
-            className="w-full"
+            className="w-full rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 hover:shadow-lg"
             size="lg"
             onClick={handleSignOut}
           >
