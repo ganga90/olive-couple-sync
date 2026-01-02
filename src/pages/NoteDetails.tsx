@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { NotePrivacyToggle } from "@/components/NotePrivacyToggle";
 import { toast } from "sonner";
@@ -347,7 +348,38 @@ const NoteDetails = () => {
               </div>
             ) : (
               <>
-                <Badge variant="secondary" className="capitalize">{note.category}</Badge>
+                {/* List Badge - Clickable */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Badge 
+                      variant="secondary" 
+                      className="capitalize cursor-pointer hover:bg-secondary/80 transition-colors"
+                    >
+                      {note.category}
+                      <ChevronRight className="h-3 w-3 ml-1" />
+                    </Badge>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 p-2" align="start">
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground px-2 py-1">Move to List</p>
+                      {lists.map((list) => (
+                        <Button
+                          key={list.id}
+                          variant={note.category.toLowerCase() === list.name.toLowerCase() ? "secondary" : "ghost"}
+                          size="sm"
+                          className="w-full justify-start"
+                          onClick={async () => {
+                            const categoryValue = list.name.toLowerCase().replace(/\s+/g, '_');
+                            await updateNote(note.id, { category: categoryValue, list_id: list.id });
+                            toast.success(`Moved to ${list.name}!`);
+                          }}
+                        >
+                          {list.name}
+                        </Button>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
                 <Select
                   value={note.priority || "medium"}
                   onValueChange={async (value) => {
@@ -433,27 +465,53 @@ const NoteDetails = () => {
 
           {/* Info Cards Grid */}
           <div className="grid grid-cols-2 gap-3 animate-fade-up" style={{ animationDelay: '200ms' }}>
-            {/* Due Date Card */}
-            <Card className="border-border/50 shadow-card">
-              <CardContent className="p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <CalendarIcon className={cn("h-4 w-4", isOverdue ? "text-priority-high" : "text-primary")} />
-                  <span className="text-xs font-medium text-muted-foreground">Due Date</span>
-                </div>
-                {isEditing ? (
+            {/* Due Date Card - Clickable */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Card className="border-border/50 shadow-card cursor-pointer hover:shadow-raised transition-shadow">
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <CalendarIcon className={cn("h-4 w-4", isOverdue ? "text-priority-high" : "text-primary")} />
+                        <span className="text-xs font-medium text-muted-foreground">Due Date</span>
+                      </div>
+                      <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                    </div>
+                    <p className={cn("text-sm font-medium", isOverdue ? "text-priority-high" : "text-foreground")}>
+                      {note.dueDate ? format(new Date(note.dueDate), "MMM d, yyyy") : "Not set"}
+                    </p>
+                  </CardContent>
+                </Card>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-3" align="start">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Set Due Date</p>
                   <input
                     type="date"
-                    value={editedNote.dueDate}
-                    onChange={(e) => setEditedNote(prev => ({ ...prev, dueDate: e.target.value }))}
-                    className="w-full px-2 py-1 text-sm border rounded-lg border-border/50"
+                    value={note.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : ""}
+                    onChange={async (e) => {
+                      const newDate = e.target.value ? new Date(e.target.value).toISOString() : null;
+                      await updateNote(note.id, { dueDate: newDate });
+                      toast.success("Due date updated!");
+                    }}
+                    className="w-full px-3 py-2 text-sm border rounded-lg border-border bg-background"
                   />
-                ) : (
-                  <p className={cn("text-sm font-medium", isOverdue ? "text-priority-high" : "text-foreground")}>
-                    {note.dueDate ? format(new Date(note.dueDate), "MMM d, yyyy") : "Not set"}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+                  {note.dueDate && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full text-muted-foreground"
+                      onClick={async () => {
+                        await updateNote(note.id, { dueDate: null });
+                        toast.success("Due date cleared!");
+                      }}
+                    >
+                      Clear date
+                    </Button>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
 
             {/* Reminder Card */}
             <Card 
@@ -466,7 +524,7 @@ const NoteDetails = () => {
                     <Bell className="h-4 w-4 text-accent" />
                     <span className="text-xs font-medium text-muted-foreground">Reminder</span>
                   </div>
-                  {!isEditing && <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                  <ChevronRight className="h-3 w-3 text-muted-foreground" />
                 </div>
                 <p className="text-sm font-medium text-foreground">
                   {note.reminder_time ? format(new Date(note.reminder_time), "MMM d, h:mm a") : "Not set"}
@@ -474,35 +532,53 @@ const NoteDetails = () => {
               </CardContent>
             </Card>
 
-            {/* Task Owner Card */}
-            <Card className="border-border/50 shadow-card">
-              <CardContent className="p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <UserCheck className="h-4 w-4 text-primary" />
-                  <span className="text-xs font-medium text-muted-foreground">Owner</span>
-                </div>
-                {isEditing ? (
-                  <Select
-                    value={editedNote.taskOwner || "none"}
-                    onValueChange={(value) => setEditedNote(prev => ({ ...prev, taskOwner: value === "none" ? "" : value }))}
+            {/* Task Owner Card - Clickable */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Card className="border-border/50 shadow-card cursor-pointer hover:shadow-raised transition-shadow">
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="h-4 w-4 text-primary" />
+                        <span className="text-xs font-medium text-muted-foreground">Owner</span>
+                      </div>
+                      <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm font-medium text-foreground">{note.task_owner || "Unassigned"}</p>
+                  </CardContent>
+                </Card>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-2" align="start">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground px-2 py-1">Assign Owner</p>
+                  <Button
+                    variant={!note.task_owner ? "secondary" : "ghost"}
+                    size="sm"
+                    className="w-full justify-start"
+                    onClick={async () => {
+                      await updateNote(note.id, { task_owner: null });
+                      toast.success("Owner cleared!");
+                    }}
                   >
-                    <SelectTrigger className="h-7 text-xs">
-                      <SelectValue placeholder="Select..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No owner</SelectItem>
-                      {availableOwners.map((owner) => (
-                        <SelectItem key={owner.id} value={owner.name}>
-                          {owner.name} {owner.isCurrentUser ? "(You)" : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <p className="text-sm font-medium text-foreground">{note.task_owner || "Unassigned"}</p>
-                )}
-              </CardContent>
-            </Card>
+                    Unassigned
+                  </Button>
+                  {availableOwners.map((owner) => (
+                    <Button
+                      key={owner.id}
+                      variant={note.task_owner === owner.name ? "secondary" : "ghost"}
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={async () => {
+                        await updateNote(note.id, { task_owner: owner.name });
+                        toast.success("Owner updated!");
+                      }}
+                    >
+                      {owner.name} {owner.isCurrentUser ? "(You)" : ""}
+                    </Button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
 
             {/* Privacy Card */}
             <Card className="border-border/50 shadow-card">
