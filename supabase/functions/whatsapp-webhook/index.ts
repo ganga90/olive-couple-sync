@@ -824,7 +824,7 @@ serve(async (req) => {
         }
 
         return new Response(
-          createTwimlResponse(`✅ Merged! Combined your note into: "${pendingAction.target_summary}"\n\n🔗 Manage: witholive.app`),
+          createTwimlResponse(`✅ Merged! Combined your note into: "${pendingAction.target_summary}"\n\n🔗 Manage: https://witholive.app`),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
@@ -1119,7 +1119,7 @@ serve(async (req) => {
         const moreText = count > 3 ? `\n...and ${count - 3} more` : '';
         
         return new Response(
-          createTwimlResponse(`✅ Saved ${count} items!\n${itemsList}${moreText}\n\n📂 Added to: ${listName}\n\n🔗 Manage: witholive.app\n\n💡 ${getRandomTip()}`),
+          createTwimlResponse(`✅ Saved ${count} items!\n${itemsList}${moreText}\n\n📂 Added to: ${listName}\n\n🔗 Manage: https://witholive.app\n\n💡 ${getRandomTip()}`),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       } else {
@@ -1212,7 +1212,7 @@ serve(async (req) => {
             `✅ Saved: ${insertedNoteSummary}`,
             `📂 Added to: ${listName}`,
             ``,
-            `🔗 Manage: witholive.app`,
+            `🔗 Manage: https://witholive.app`,
             ``,
             `💡 ${getRandomTip()}`
           ].join('\n');
