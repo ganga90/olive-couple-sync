@@ -367,6 +367,7 @@ export type Database = {
           couple_id: string | null
           created_at: string
           due_date: string | null
+          embedding: string | null
           id: string
           items: string[] | null
           last_reminded_at: string | null
@@ -392,6 +393,7 @@ export type Database = {
           couple_id?: string | null
           created_at?: string
           due_date?: string | null
+          embedding?: string | null
           id?: string
           items?: string[] | null
           last_reminded_at?: string | null
@@ -417,6 +419,7 @@ export type Database = {
           couple_id?: string | null
           created_at?: string
           due_date?: string | null
+          embedding?: string | null
           id?: string
           items?: string[] | null
           last_reminded_at?: string | null
@@ -815,6 +818,20 @@ export type Database = {
       debug_clerk_user_id: { Args: never; Returns: string }
       debug_clerk_user_id_fixed: { Args: never; Returns: string }
       debug_jwt_claims: { Args: never; Returns: Json }
+      find_similar_notes: {
+        Args: {
+          p_couple_id: string
+          p_limit?: number
+          p_query_embedding: string
+          p_threshold?: number
+          p_user_id: string
+        }
+        Returns: {
+          id: string
+          similarity: number
+          summary: string
+        }[]
+      }
       get_clerk_user_id: { Args: never; Returns: string }
       is_couple_member: {
         Args: { couple_uuid: string; p_user_id: string }
@@ -834,6 +851,10 @@ export type Database = {
       }
       jwt: { Args: never; Returns: Json }
       jwt_sub: { Args: never; Returns: string }
+      merge_notes: {
+        Args: { p_source_id: string; p_target_id: string }
+        Returns: Json
+      }
       search_user_memories: {
         Args: {
           p_match_count?: number
