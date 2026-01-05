@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { OliveLogoWithText } from "@/components/OliveLogo";
 import { Button } from "@/components/ui/button";
 import { Plus, Heart, Clock, AlertCircle, Users, User } from "lucide-react";
@@ -12,6 +11,7 @@ import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { RecentTasksSection } from "@/components/RecentTasksSection";
 import { UniversalSearch } from "@/components/UniversalSearch";
 import { FloatingActionButton } from "@/components/FloatingActionButton";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
 const Index = () => {
   useSEO({ 
@@ -19,7 +19,7 @@ const Index = () => {
     description: "Capture, organize, and act on life's notes with AI-powered assistance." 
   });
 
-  const navigate = useNavigate();
+  const navigate = useLocalizedNavigate();
   const [hasNotes, setHasNotes] = useState(false);
   const [viewMode, setViewMode] = useState<'personal' | 'shared'>('shared'); // Default to shared view
   const { user, loading, isAuthenticated } = useAuth();

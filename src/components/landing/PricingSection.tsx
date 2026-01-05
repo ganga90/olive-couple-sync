@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, Sparkles, Users, MessageSquare, Calendar, ArrowRight } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
 const features = [
   {
@@ -24,7 +24,7 @@ const features = [
 ];
 
 export const PricingSection = () => {
-  const navigate = useNavigate();
+  const navigate = useLocalizedNavigate();
 
   return (
     <section className="mb-16">

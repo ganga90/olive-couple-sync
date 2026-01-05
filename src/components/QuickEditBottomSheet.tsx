@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +9,7 @@ import { CalendarIcon, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Note } from '@/types/note';
 import { cn } from '@/lib/utils';
+import { useLocalizedNavigate } from '@/hooks/useLocalizedNavigate';
 
 interface QuickEditBottomSheetProps {
   note: Note | null;
@@ -28,7 +28,7 @@ export const QuickEditBottomSheet: React.FC<QuickEditBottomSheetProps> = ({
   partnerName,
   yourName
 }) => {
-  const navigate = useNavigate();
+  const navigate = useLocalizedNavigate();
   const [title, setTitle] = useState(note?.summary || '');
   const [dueDate, setDueDate] = useState<Date | undefined>(
     note?.dueDate ? new Date(note.dueDate) : undefined

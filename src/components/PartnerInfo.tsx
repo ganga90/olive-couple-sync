@@ -9,7 +9,7 @@ import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/providers/AuthProvider";
 import { User2, Share2, Plus, Check, Clock, X, Copy, Trash2, AlertTriangle } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 import { useTranslation } from "react-i18next";
 
 export const PartnerInfo = () => {
@@ -22,7 +22,7 @@ export const PartnerInfo = () => {
   const [unlinkLoading, setUnlinkLoading] = useState(false);
   const { currentCouple, you, partner, refetch } = useSupabaseCouple();
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const navigate = useLocalizedNavigate();
   
 
   const handleCreateInvite = async () => {

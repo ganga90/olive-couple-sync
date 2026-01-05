@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
@@ -7,13 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Search, ListIcon, CheckSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
 export const UniversalSearch: React.FC = () => {
   const { notes } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouple();
   const { lists } = useSupabaseLists(currentCouple?.id || null);
   const [searchQuery, setSearchQuery] = useState("");
-  const navigate = useNavigate();
+  const navigate = useLocalizedNavigate();
 
   // Search both notes and lists
   const searchResults = useMemo(() => {

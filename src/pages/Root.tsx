@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/providers/AuthProvider";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
 const Root = () => {
-  const navigate = useNavigate();
+  const navigate = useLocalizedNavigate();
   const { isAuthenticated, loading } = useAuth();
 
   useEffect(() => {

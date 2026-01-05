@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
@@ -17,10 +17,12 @@ import { toast } from "sonner";
 import { NoteInput } from "@/components/NoteInput";
 import { FloatingActionButton } from "@/components/FloatingActionButton";
 import { cn } from "@/lib/utils";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
 const ListCategory = () => {
   const { listId = "" } = useParams();
-  const navigate = useNavigate();
+  const routerNavigate = useNavigate();
+  const navigate = useLocalizedNavigate();
   const { notes, updateNote, deleteNote } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouple();
   const { lists, loading, updateList, deleteList } = useSupabaseLists(currentCouple?.id || null);
@@ -168,7 +170,7 @@ const ListCategory = () => {
             <Button 
               variant="ghost" 
               size="icon"
-              onClick={() => navigate(-1)} 
+              onClick={() => routerNavigate(-1)} 
               aria-label="Go back"
               className="flex-shrink-0 mt-0.5 h-10 w-10"
             >
