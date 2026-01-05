@@ -1,9 +1,10 @@
 import { useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
 const JoinInvite = () => {
   const { token } = useParams<{ token: string }>();
-  const navigate = useNavigate();
+  const navigate = useLocalizedNavigate();
 
   useEffect(() => {
     if (token) {
@@ -11,7 +12,7 @@ const JoinInvite = () => {
       navigate(`/accept-invite?token=${token}`, { replace: true });
     } else {
       // No token, redirect to home
-      navigate("/", { replace: true });
+      navigate("/home", { replace: true });
     }
   }, [token, navigate]);
 

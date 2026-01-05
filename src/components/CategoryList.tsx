@@ -21,7 +21,7 @@ import {
   UtensilsCrossed 
 } from "lucide-react";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
-import { useNavigate } from "react-router-dom";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
 interface CategoryListProps {
   title: string;
@@ -59,7 +59,7 @@ export const CategoryList: React.FC<CategoryListProps> = ({
 }) => {
   const { t } = useTranslation('lists');
   const { getNotesByCategory } = useSupabaseNotesContext();
-  const navigate = useNavigate();
+  const navigate = useLocalizedNavigate();
   
   const notes = getNotesByCategory(category);
   const incompleteCount = notes.filter(note => !note.completed).length;

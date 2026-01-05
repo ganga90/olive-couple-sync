@@ -4,7 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, User, List, Lightbulb, ArrowRight } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
 const EXAMPLE_INPUTS = [
   "dinner with Luca next Wed 7pm—ask Almu to book a table",
@@ -55,7 +55,7 @@ export const InteractivePlayground = () => {
   const [input, setInput] = useState("");
   const [result, setResult] = useState(null);
   const [showConfidence, setShowConfidence] = useState(false);
-  const navigate = useNavigate();
+  const navigate = useLocalizedNavigate();
 
   const handleSubmit = () => {
     if (!input.trim()) return;

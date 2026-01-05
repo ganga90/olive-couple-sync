@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -9,10 +9,11 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { OliveLogo } from "@/components/OliveLogo";
 import { useSEO } from "@/hooks/useSEO";
 import { Check, X, Clock, Heart } from "lucide-react";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
 const AcceptInvite = () => {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
+  const navigate = useLocalizedNavigate();
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const { refetch: refetchCouples, switchCouple } = useSupabaseCouple();
   
@@ -176,7 +177,7 @@ const AcceptInvite = () => {
       }
       
       toast.success("Welcome to your shared Olive space!");
-      navigate("/");
+      navigate("/home");
     } catch (error) {
       console.error("Failed to accept invite:", error);
       toast.error("Failed to accept invite. Please try again.");
@@ -216,7 +217,7 @@ const AcceptInvite = () => {
             <p className="text-muted-foreground">{error}</p>
             
             <Button 
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/home")}
               variant="outline"
               className="border-olive/30 text-olive hover:bg-olive/10"
             >

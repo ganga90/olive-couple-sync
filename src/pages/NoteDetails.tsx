@@ -7,6 +7,7 @@ import { useSupabaseCouples } from "@/hooks/useSupabaseCouples";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { supabase } from "@/lib/supabaseClient";
 import { useSEO } from "@/hooks/useSEO";
+import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ import { OnboardingTooltip } from "@/components/OnboardingTooltip";
 const NoteDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const getLocalizedPath = useLocalizedHref();
   const { user } = useUser();
   const { t } = useTranslation('notes');
   const { notes, deleteNote, updateNote } = useSupabaseNotesContext();
@@ -510,7 +512,7 @@ const NoteDetails = () => {
                   onClick={async () => {
                     await updateNote(note.id, { completed: true });
                     toast.success(t('toast.markedComplete'));
-                    navigate(note.list_id ? `/lists/${note.list_id}` : "/");
+                    navigate(getLocalizedPath(note.list_id ? `/lists/${note.list_id}` : "/home"));
                   }}
                 >
                   <CheckCircle2 className="h-4 w-4 mr-2" />

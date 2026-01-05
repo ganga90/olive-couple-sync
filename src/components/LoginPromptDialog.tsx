@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { OliveLogo } from "@/components/OliveLogo";
-import { useNavigate } from "react-router-dom";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
 interface LoginPromptDialogProps {
   open: boolean;
@@ -14,7 +14,7 @@ export const LoginPromptDialog: React.FC<LoginPromptDialogProps> = ({
   open, 
   onOpenChange 
 }) => {
-  const navigate = useNavigate();
+  const navigate = useLocalizedNavigate();
 
   const handleSignIn = () => {
     navigate("/sign-in");
