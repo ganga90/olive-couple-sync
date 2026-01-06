@@ -129,6 +129,22 @@
       "subtitle": "Cambiar el idioma de la aplicación"
     }
   },
+  "export": {
+    "title": "Exportar Tus Datos",
+    "subtitle": "Descarga tus notas y recuerdos como archivos CSV",
+    "description": "Exporta tus datos para respaldo o para usar en otro lugar. Los archivos se descargan en formato CSV que se puede abrir en Excel, Google Sheets o cualquier aplicación de hojas de cálculo.",
+    "exportNotes": "Exportar Todas las Notas",
+    "exportMemories": "Exportar Recuerdos",
+    "notesCount": "notas disponibles",
+    "memoriesSubtitle": "Recuerdos y preferencias personales",
+    "noNotes": "No hay notas para exportar",
+    "noMemories": "No hay recuerdos para exportar",
+    "notAuthenticated": "Por favor inicia sesión para exportar tus datos",
+    "notesSuccess": "Se exportaron {{count}} notas correctamente",
+    "memoriesSuccess": "Se exportaron {{count}} recuerdos correctamente",
+    "error": "Error al exportar datos. Por favor intenta de nuevo.",
+    "csvFormat": "Los archivos se exportan en formato CSV para fácil importación a otras apps"
+  },
   "version": "Olive v1.0.0",
   "timezoneField": {
     "title": "Tu Zona Horaria",
