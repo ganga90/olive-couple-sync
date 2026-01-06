@@ -129,6 +129,22 @@
       "subtitle": "Change the app language"
     }
   },
+  "export": {
+    "title": "Export Your Data",
+    "subtitle": "Download your notes and memories as CSV files",
+    "description": "Export your data for backup or to use elsewhere. Files are downloaded in CSV format that can be opened in Excel, Google Sheets, or any spreadsheet app.",
+    "exportNotes": "Export All Notes",
+    "exportMemories": "Export Memories",
+    "notesCount": "notes available",
+    "memoriesSubtitle": "Personal memories & preferences",
+    "noNotes": "No notes to export",
+    "noMemories": "No memories to export",
+    "notAuthenticated": "Please sign in to export your data",
+    "notesSuccess": "Successfully exported {{count}} notes",
+    "memoriesSuccess": "Successfully exported {{count}} memories",
+    "error": "Failed to export data. Please try again.",
+    "csvFormat": "Files are exported in CSV format for easy import into other apps"
+  },
   "version": "Olive v1.0.0",
   "timezoneField": {
     "title": "Your Timezone",
