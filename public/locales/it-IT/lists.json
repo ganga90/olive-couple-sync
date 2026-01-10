@@ -1,6 +1,6 @@
 {
   "title": "Liste",
-  "searchPlaceholder": "Cerca liste...",
+  "searchPlaceholder": "Cerca liste e attività...",
   "signInPrompt": "Accedi per gestire le tue liste",
   "subtitle": "Organizza la tua vita, con stile",
   "quickAccess": {
@@ -19,6 +19,11 @@
     "shared": "Condivise",
     "personal": "Personali",
     "ai": "Create da IA"
+  },
+  "search": {
+    "tasksFound": "Attività Trovate",
+    "noResults": "Nessuna lista o attività trovata",
+    "tryDifferent": "Prova con un termine diverso"
   },
   "empty": {
     "noListsFound": "Nessuna lista trovata",

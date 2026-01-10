@@ -1,6 +1,6 @@
 {
   "title": "Listas",
-  "searchPlaceholder": "Buscar listas...",
+  "searchPlaceholder": "Buscar listas y tareas...",
   "signInPrompt": "Inicia sesión para gestionar tus listas",
   "subtitle": "Organiza tu vida, con estilo",
   "quickAccess": {
@@ -19,6 +19,11 @@
     "shared": "Compartidas",
     "personal": "Personales",
     "ai": "Creadas por IA"
+  },
+  "search": {
+    "tasksFound": "Tareas Encontradas",
+    "noResults": "No se encontraron listas ni tareas",
+    "tryDifferent": "Prueba con otro término"
   },
   "empty": {
     "noListsFound": "No se encontraron listas",

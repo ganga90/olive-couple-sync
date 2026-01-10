@@ -1,6 +1,6 @@
 {
   "title": "Lists",
-  "searchPlaceholder": "Search lists...",
+  "searchPlaceholder": "Search lists and tasks...",
   "signInPrompt": "Sign in to manage your lists",
   "subtitle": "Organize your life, beautifully",
   "quickAccess": {
@@ -19,6 +19,11 @@
     "shared": "Shared",
     "personal": "Personal",
     "ai": "AI Created"
+  },
+  "search": {
+    "tasksFound": "Tasks Found",
+    "noResults": "No lists or tasks found",
+    "tryDifferent": "Try a different search term"
   },
   "empty": {
     "noListsFound": "No lists found",
