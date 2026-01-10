@@ -380,8 +380,22 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   };
 
   const handleNoteUpdated = (updatedNote: any) => {
-    // Update the local state with edited values
-    setProcessedNote(prev => prev ? { ...prev, ...updatedNote } : null);
+    // Update the local state with edited values, merging both formats
+    console.log('[NoteInput] Updating processed note with:', updatedNote);
+    setProcessedNote(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        summary: updatedNote.summary ?? prev.summary,
+        category: updatedNote.category ?? prev.category,
+        priority: updatedNote.priority ?? prev.priority,
+        tags: updatedNote.tags ?? prev.tags,
+        items: updatedNote.items ?? prev.items,
+        dueDate: updatedNote.dueDate ?? updatedNote.due_date ?? prev.dueDate,
+        taskOwner: updatedNote.taskOwner ?? updatedNote.task_owner ?? prev.taskOwner,
+        listId: updatedNote.listId ?? updatedNote.list_id ?? prev.listId
+      };
+    });
   };
 
   const handleSaveNote = async () => {
