@@ -15,6 +15,10 @@
     "moreAllowed": "{{count}} more allowed",
     "startOver": "Start Over",
     "saveNote": "Save Note",
+    "dropHere": "Drop images here",
+    "imagePasted": "Image added",
+    "imageDropped": "Image added",
+    "imagesDropped": "{{count}} files added",
     "onboarding": {
       "title": "✨ Welcome to Brain Dump!",
       "description": "Type anything here - shopping lists, reminders, ideas. Olive's AI will automatically organize and categorize everything for you!"
