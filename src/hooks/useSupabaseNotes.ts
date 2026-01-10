@@ -146,11 +146,48 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
     try {
       console.log('[useSupabaseNotes] Inserting note to clerk_notes table');
       
-      const insertData = {
-        ...noteData,
-        couple_id: providedCoupleId || coupleId || null, // Allow null for personal notes
+      // Convert camelCase input to snake_case for database insert
+      const insertData: any = {
+        original_text: noteData.original_text,
+        summary: noteData.summary,
+        category: noteData.category,
+        completed: noteData.completed ?? false,
+        couple_id: providedCoupleId || coupleId || null,
         author_id: user.id,
       };
+      
+      // Handle optional fields with proper snake_case conversion
+      // Support both camelCase (from frontend) and snake_case (from types)
+      if ((noteData as any).listId || noteData.list_id) {
+        insertData.list_id = (noteData as any).listId || noteData.list_id;
+      }
+      if ((noteData as any).taskOwner || noteData.task_owner) {
+        insertData.task_owner = (noteData as any).taskOwner || noteData.task_owner;
+      }
+      if ((noteData as any).dueDate || noteData.due_date) {
+        insertData.due_date = (noteData as any).dueDate || noteData.due_date;
+      }
+      if ((noteData as any).reminderTime || noteData.reminder_time) {
+        insertData.reminder_time = (noteData as any).reminderTime || noteData.reminder_time;
+      }
+      if ((noteData as any).mediaUrls || noteData.media_urls) {
+        insertData.media_urls = (noteData as any).mediaUrls || noteData.media_urls;
+      }
+      if (noteData.priority) {
+        insertData.priority = noteData.priority;
+      }
+      if (noteData.tags) {
+        insertData.tags = noteData.tags;
+      }
+      if (noteData.items) {
+        insertData.items = noteData.items;
+      }
+      if (noteData.recurrence_frequency) {
+        insertData.recurrence_frequency = noteData.recurrence_frequency;
+      }
+      if (noteData.recurrence_interval) {
+        insertData.recurrence_interval = noteData.recurrence_interval;
+      }
       
       console.log('[useSupabaseNotes] Final insert data:', insertData);
       

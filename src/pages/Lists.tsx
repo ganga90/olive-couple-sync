@@ -151,6 +151,21 @@ const Lists = () => {
   // Get task count for a list (used for sorting)
   const getListTaskCount = (listId: string) => notes.filter(n => n.list_id === listId).length;
 
+  // Search tasks matching query (for combined search)
+  const matchingTasks = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    
+    return notes.filter(note => 
+      !note.completed && (
+        note.summary.toLowerCase().includes(q) ||
+        note.originalText.toLowerCase().includes(q) ||
+        note.category.toLowerCase().includes(q) ||
+        note.tags?.some(tag => tag.toLowerCase().includes(q))
+      )
+    ).slice(0, 10); // Limit to 10 task results
+  }, [query, notes]);
+
   // Filter and sort lists
   const filteredAndSortedLists = useMemo(() => {
     let result = [...lists];
@@ -298,6 +313,67 @@ const Lists = () => {
             />
           )}
 
+          {/* Task Search Results */}
+          {query.trim() && matchingTasks.length > 0 && (
+            <div className="space-y-2 animate-fade-up">
+              <div className="flex items-center gap-2 text-sm font-medium text-stone-600 px-1">
+                <CheckSquare className="h-4 w-4" />
+                <span>{t('search.tasksFound')} ({matchingTasks.length})</span>
+              </div>
+              <div className="card-glass p-3 space-y-2">
+                {matchingTasks.map((task) => {
+                  const taskList = lists.find(l => l.id === task.list_id);
+                  return (
+                    <Link
+                      key={task.id}
+                      to={getLocalizedPath(`/note/${task.id}`)}
+                      className="block p-3 rounded-xl hover:bg-stone-50 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm text-[#2A3C24] truncate">{task.summary}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            {taskList && (
+                              <Badge variant="secondary" className="text-[10px] px-2 py-0 h-5 bg-primary/10 text-primary border-0 rounded-full">
+                                {taskList.name}
+                              </Badge>
+                            )}
+                            {task.priority && (
+                              <Badge variant="secondary" className={cn(
+                                "text-[10px] px-2 py-0 h-5 border-0 rounded-full",
+                                task.priority === 'high' && "bg-[hsl(var(--priority-high))]/10 text-[hsl(var(--priority-high))]",
+                                task.priority === 'medium' && "bg-[hsl(var(--priority-medium))]/10 text-[hsl(var(--priority-medium))]",
+                                task.priority === 'low' && "bg-[hsl(var(--priority-low))]/10 text-[hsl(var(--priority-low))]"
+                              )}>
+                                {task.priority}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-stone-300 flex-shrink-0" />
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* No Results State */}
+          {query.trim() && matchingTasks.length === 0 && filteredAndSortedLists.length === 0 && (
+            <div className="card-glass p-10 text-center animate-fade-up">
+              <div className="icon-squircle w-16 h-16 mx-auto mb-5">
+                <Search className="h-8 w-8 text-stone-400" />
+              </div>
+              <h3 className="font-serif font-semibold text-lg text-[#2A3C24] mb-2">
+                {t('search.noResults')}
+              </h3>
+              <p className="text-sm text-stone-500 max-w-xs mx-auto">
+                {t('search.tryDifferent')}
+              </p>
+            </div>
+          )}
+
           {/* Lists */}
           {loading ? (
             <div className="space-y-3">
@@ -313,20 +389,20 @@ const Lists = () => {
                 </div>
               ))}
             </div>
-          ) : filteredAndSortedLists.length === 0 ? (
+          ) : filteredAndSortedLists.length === 0 && !query.trim() ? (
             <div className="card-glass p-10 text-center animate-fade-up">
               <div className="icon-squircle w-16 h-16 mx-auto mb-5">
                 <ListIcon className="h-8 w-8 text-stone-400" />
               </div>
               <h3 className="font-serif font-semibold text-lg text-[#2A3C24] mb-2">
-                {query || filterBy !== "all" ? t('empty.noListsFound') : t('empty.noListsYet')}
+                {filterBy !== "all" ? t('empty.noListsFound') : t('empty.noListsYet')}
               </h3>
               <p className="text-sm text-stone-500 mb-6 max-w-xs mx-auto">
-                {query || filterBy !== "all" ? t('empty.tryDifferentSearch') : t('empty.createFirstList')}
+                {filterBy !== "all" ? t('empty.tryDifferentSearch') : t('empty.createFirstList')}
               </p>
-              {!query && filterBy === "all" && <CreateListDialog onListCreated={refetch} />}
+              {filterBy === "all" && <CreateListDialog onListCreated={refetch} />}
             </div>
-          ) : (
+          ) : filteredAndSortedLists.length > 0 ? (
             <div className="space-y-3">
               {filteredAndSortedLists.map((list, index) => {
                 const stats = getListStats(list.id);
@@ -432,7 +508,7 @@ const Lists = () => {
                 );
               })}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
       
