@@ -95,6 +95,32 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     }
   };
 
+  // Handle paste event for images
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const newFiles: File[] = [];
+    const newPreviews: string[] = [];
+
+    for (let i = 0; i < items.length && mediaFiles.length + newFiles.length < 5; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          newFiles.push(file);
+          newPreviews.push(URL.createObjectURL(file));
+        }
+      }
+    }
+
+    if (newFiles.length > 0) {
+      e.preventDefault(); // Prevent pasting image URL as text
+      setMediaFiles(prev => [...prev, ...newFiles]);
+      setMediaPreviews(prev => [...prev, ...newPreviews]);
+    }
+  };
+
   const removeMedia = (index: number) => {
     setMediaFiles(prev => prev.filter((_, i) => i !== index));
     setMediaPreviews(prev => {
@@ -482,6 +508,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           <Textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onPaste={handlePaste}
             placeholder={getDynamicPlaceholder()}
             className={cn(
               "min-h-[140px] resize-none text-base pr-24 transition-all duration-300 ease-out",
