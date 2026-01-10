@@ -2,6 +2,24 @@
   "title": "Liste",
   "searchPlaceholder": "Cerca liste...",
   "signInPrompt": "Accedi per gestire le tue liste",
+  "subtitle": "Organizza la tua vita, con stile",
+  "quickAccess": {
+    "title": "Accesso Rapido",
+    "empty": "Nessuna attività"
+  },
+  "sort": {
+    "label": "Ordina per",
+    "alphabetical": "A a Z",
+    "taskCount": "Più Attività",
+    "recentlyUsed": "Usate di Recente",
+    "sharedFirst": "Condivise Prima"
+  },
+  "filter": {
+    "all": "Tutte",
+    "shared": "Condivise",
+    "personal": "Personali",
+    "ai": "Create da IA"
+  },
   "empty": {
     "noListsFound": "Nessuna lista trovata",
     "noListsYet": "Ancora nessuna lista",

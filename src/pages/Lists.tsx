@@ -13,6 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 import { useOrganizeAgent } from "@/hooks/useOrganizeAgent";
 import { OptimizationReviewModal } from "@/components/OptimizationReviewModal";
+import { QuickAccessLists } from "@/components/lists/QuickAccessLists";
+import { ListSortFilterBar, type SortOption, type FilterOption } from "@/components/lists/ListSortFilterBar";
 import { 
   ShoppingCart, 
   CheckSquare, 
@@ -123,6 +125,8 @@ const Lists = () => {
   const getLocalizedPath = useLocalizedHref();
   const { isAuthenticated } = useAuth();
   const [query, setQuery] = useState("");
+  const [sortBy, setSortBy] = useState<SortOption>("recentlyUsed");
+  const [filterBy, setFilterBy] = useState<FilterOption>("all");
   const { notes, refetch: refetchNotes } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouple();
   const { lists, loading, deleteList, refetch } = useSupabaseLists(currentCouple?.id || null);
@@ -140,14 +144,62 @@ const Lists = () => {
   
   useSEO({ title: `${t('title')} — Olive`, description: t('empty.createFirstList') });
 
-  const filteredLists = useMemo(() => {
+  // Check for shared and AI lists
+  const hasSharedLists = useMemo(() => lists.some(list => list.couple_id), [lists]);
+  const hasAiLists = useMemo(() => lists.some(list => !list.is_manual), [lists]);
+
+  // Get task count for a list (used for sorting)
+  const getListTaskCount = (listId: string) => notes.filter(n => n.list_id === listId).length;
+
+  // Filter and sort lists
+  const filteredAndSortedLists = useMemo(() => {
+    let result = [...lists];
+    
+    // Apply search filter
     const q = query.trim().toLowerCase();
-    if (!q) return lists;
-    return lists.filter(list => 
-      list.name.toLowerCase().includes(q) || 
-      (list.description && list.description.toLowerCase().includes(q))
-    );
-  }, [query, lists]);
+    if (q) {
+      result = result.filter(list => 
+        list.name.toLowerCase().includes(q) || 
+        (list.description && list.description.toLowerCase().includes(q))
+      );
+    }
+    
+    // Apply category filter
+    switch (filterBy) {
+      case "shared":
+        result = result.filter(list => list.couple_id);
+        break;
+      case "personal":
+        result = result.filter(list => !list.couple_id);
+        break;
+      case "ai":
+        result = result.filter(list => !list.is_manual);
+        break;
+    }
+    
+    // Apply sorting
+    switch (sortBy) {
+      case "alphabetical":
+        result.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case "taskCount":
+        result.sort((a, b) => getListTaskCount(b.id) - getListTaskCount(a.id));
+        break;
+      case "recentlyUsed":
+        result.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+        break;
+      case "shared":
+        result.sort((a, b) => {
+          const aShared = a.couple_id ? 1 : 0;
+          const bShared = b.couple_id ? 1 : 0;
+          if (bShared !== aShared) return bShared - aShared;
+          return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+        });
+        break;
+    }
+    
+    return result;
+  }, [query, lists, filterBy, sortBy, notes]);
 
   const getListStats = (listId: string) => {
     const listNotes = notes.filter(note => note.list_id === listId);
@@ -195,8 +247,13 @@ const Lists = () => {
           {/* Header - Editorial Style */}
           <div className="animate-fade-up">
             <h1 className="text-4xl font-serif font-bold text-[#2A3C24] mb-1">{t('title')}</h1>
-            <p className="text-stone-500 text-sm">Organize your life, beautifully</p>
+            <p className="text-stone-500 text-sm">{t('subtitle')}</p>
           </div>
+
+          {/* Quick Access Section - Top 4 most used lists */}
+          {!loading && lists.length >= 4 && (
+            <QuickAccessLists lists={lists} notes={notes} />
+          )}
 
           {/* Actions Row */}
           <div className="flex items-center gap-3 animate-fade-up" style={{ animationDelay: '50ms' }}>
@@ -229,6 +286,18 @@ const Lists = () => {
             <CreateListDialog onListCreated={refetch} />
           </div>
 
+          {/* Sort and Filter Bar */}
+          {!loading && lists.length > 1 && (
+            <ListSortFilterBar
+              sortBy={sortBy}
+              filterBy={filterBy}
+              onSortChange={setSortBy}
+              onFilterChange={setFilterBy}
+              hasSharedLists={hasSharedLists}
+              hasAiLists={hasAiLists}
+            />
+          )}
+
           {/* Lists */}
           {loading ? (
             <div className="space-y-3">
@@ -244,22 +313,22 @@ const Lists = () => {
                 </div>
               ))}
             </div>
-          ) : filteredLists.length === 0 ? (
+          ) : filteredAndSortedLists.length === 0 ? (
             <div className="card-glass p-10 text-center animate-fade-up">
               <div className="icon-squircle w-16 h-16 mx-auto mb-5">
                 <ListIcon className="h-8 w-8 text-stone-400" />
               </div>
               <h3 className="font-serif font-semibold text-lg text-[#2A3C24] mb-2">
-                {query ? t('empty.noListsFound') : t('empty.noListsYet')}
+                {query || filterBy !== "all" ? t('empty.noListsFound') : t('empty.noListsYet')}
               </h3>
               <p className="text-sm text-stone-500 mb-6 max-w-xs mx-auto">
-                {query ? t('empty.tryDifferentSearch') : t('empty.createFirstList')}
+                {query || filterBy !== "all" ? t('empty.tryDifferentSearch') : t('empty.createFirstList')}
               </p>
-              {!query && <CreateListDialog onListCreated={refetch} />}
+              {!query && filterBy === "all" && <CreateListDialog onListCreated={refetch} />}
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredLists.map((list, index) => {
+              {filteredAndSortedLists.map((list, index) => {
                 const stats = getListStats(list.id);
                 const ListIconComponent = getCategoryIcon(list.name);
                 const hasOverdue = stats.overdue > 0;
