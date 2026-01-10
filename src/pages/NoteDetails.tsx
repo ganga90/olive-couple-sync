@@ -348,7 +348,17 @@ const NoteDetails = () => {
                 <Popover>
                   <PopoverTrigger asChild>
                     <button className="meta-chip whitespace-nowrap hover:bg-stone-100 transition-colors">
-                      📋 {note.category}
+                      📋 {(() => {
+                        // Look up list name from list_id first, fallback to category
+                        const assignedList = lists.find(l => l.id === note.list_id);
+                        if (assignedList) return assignedList.name;
+                        // Fallback: try to match category to a list name
+                        const matchedList = lists.find(l => 
+                          l.name.toLowerCase().replace(/\s+/g, '_') === note.category.toLowerCase() ||
+                          l.name.toLowerCase() === note.category.toLowerCase()
+                        );
+                        return matchedList?.name || note.category;
+                      })()}
                     </button>
                   </PopoverTrigger>
                   <PopoverContent className="w-48 p-2" align="start">
@@ -357,12 +367,11 @@ const NoteDetails = () => {
                       {lists.map((list) => (
                         <Button
                           key={list.id}
-                          variant={note.category.toLowerCase() === list.name.toLowerCase() ? "secondary" : "ghost"}
+                          variant={note.list_id === list.id ? "secondary" : "ghost"}
                           size="sm"
                           className="w-full justify-start rounded-lg"
                           onClick={async () => {
-                            const categoryValue = list.name.toLowerCase().replace(/\s+/g, '_');
-                            await updateNote(note.id, { category: categoryValue, list_id: list.id });
+                            await updateNote(note.id, { category: list.name, list_id: list.id });
                             toast.success(`Moved to ${list.name}!`);
                           }}
                         >
