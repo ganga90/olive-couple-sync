@@ -27,7 +27,9 @@ interface NoteRecapProps {
     author?: string;
     createdAt?: string;
     task_owner?: string | null;
+    taskOwner?: string | null;  // Support both formats
     list_id?: string | null;
+    listId?: string | null;     // Support both formats
   };
   onClose?: () => void;
   onNoteUpdated?: (updatedNote: any) => void;
@@ -47,6 +49,10 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
     }
   };
   
+  // Support both snake_case and camelCase formats
+  const noteListId = note.list_id ?? note.listId ?? "";
+  const noteTaskOwner = note.task_owner ?? note.taskOwner ?? "";
+  
   const [editedNote, setEditedNote] = useState({
     summary: note.summary,
     category: note.category,
@@ -54,8 +60,8 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
     tags: note.tags ? note.tags.join(", ") : "",
     items: note.items ? note.items.join("\n") : "",
     dueDate: formatDateSafely(note.dueDate),
-    taskOwner: note.task_owner || "",
-    listId: note.list_id || ""
+    taskOwner: noteTaskOwner,
+    listId: noteListId
   });
   const [newListName, setNewListName] = useState("");
   const [showNewListInput, setShowNewListInput] = useState(false);
@@ -151,14 +157,10 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
   }, [lists, editedNote.category]);
 
   const handleSaveEdit = async () => {
-    if (!note.id) {
-      toast.error("Cannot edit note - no ID found");
-      return;
-    }
-
     let finalListId = editedNote.listId;
     let finalCategory = editedNote.category;
     
+    // Handle creating a new list if user entered a new list name
     if (showNewListInput && newListName.trim()) {
       try {
         const newList = await createList({
@@ -182,16 +184,41 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
       finalCategory = deriveCategoryFromList(finalListId);
     }
 
+    // Build the updated note data
+    const updatedData = {
+      summary: editedNote.summary.trim(),
+      category: finalCategory,
+      priority: editedNote.priority,
+      tags: editedNote.tags.split(",").map(tag => tag.trim()).filter(Boolean),
+      items: editedNote.items.split("\n").map(item => item.trim()).filter(Boolean),
+      dueDate: editedNote.dueDate ? new Date(editedNote.dueDate).toISOString() : null,
+      task_owner: editedNote.taskOwner.trim() || null,
+      taskOwner: editedNote.taskOwner.trim() || null, // Include both formats for compatibility
+      list_id: finalListId || null,
+      listId: finalListId || null // Include both formats for compatibility
+    };
+
+    // If note doesn't have an ID yet (hasn't been saved), just update the local state
+    // and notify the parent via onNoteUpdated
+    if (!note.id) {
+      console.log('[NoteRecap] Note not yet saved, updating local state:', updatedData);
+      onNoteUpdated?.(updatedData);
+      setIsEditing(false);
+      toast.success("Changes saved - click 'Save Note' to confirm");
+      return;
+    }
+
+    // If note already exists in the database, update it
     try {
       const updates = {
-        summary: editedNote.summary.trim(),
-        category: finalCategory,
-        priority: editedNote.priority,
-        tags: editedNote.tags.split(",").map(tag => tag.trim()).filter(Boolean),
-        items: editedNote.items.split("\n").map(item => item.trim()).filter(Boolean),
-        due_date: editedNote.dueDate ? new Date(editedNote.dueDate).toISOString() : null,
-        task_owner: editedNote.taskOwner.trim() || null,
-        list_id: finalListId || null
+        summary: updatedData.summary,
+        category: updatedData.category,
+        priority: updatedData.priority,
+        tags: updatedData.tags,
+        items: updatedData.items,
+        due_date: updatedData.dueDate,
+        task_owner: updatedData.task_owner,
+        list_id: updatedData.list_id
       };
 
       const updatedNote = await updateNote(note.id, updates);
@@ -214,8 +241,8 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
       tags: note.tags ? note.tags.join(", ") : "",
       items: note.items ? note.items.join("\n") : "",
       dueDate: formatDateSafely(note.dueDate),
-      taskOwner: note.task_owner || "",
-      listId: note.list_id || ""
+      taskOwner: noteTaskOwner,
+      listId: noteListId
     });
     setIsEditing(false);
     setShowNewListInput(false);
@@ -321,6 +348,20 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
         {/* Badges row */}
         {!isEditing && (
           <div className="flex flex-wrap gap-2 animate-fade-in">
+            {/* List badge - show which list the note is assigned to */}
+            {noteListId && (() => {
+              const listName = lists.find(l => l.id === noteListId)?.name;
+              if (listName) {
+                return (
+                  <Badge className="text-xs font-medium border bg-primary/10 text-primary border-primary/20">
+                    <List className="w-3 h-3 mr-1" />
+                    {listName}
+                  </Badge>
+                );
+              }
+              return null;
+            })()}
+            
             <Badge className={cn(
               "text-xs font-medium border",
               categoryConfig.bg, categoryConfig.text, "border-current/20"
