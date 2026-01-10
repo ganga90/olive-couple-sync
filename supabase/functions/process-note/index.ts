@@ -799,16 +799,34 @@ serve(async (req) => {
       console.log('[process-note] Media descriptions:', mediaDescriptions);
     }
 
-    // Fetch user memories for context personalization
+    // Fetch RELEVANT user memories using semantic search
     let memoryContext = '';
     try {
+      // Build a search query from text and media descriptions
+      const searchQuery = [
+        safeText,
+        ...mediaDescriptions.map(d => d.replace(/^\[.*?\]\s*/, '').substring(0, 200))
+      ].filter(Boolean).join(' ');
+      
+      console.log('[process-note] Searching relevant memories for query:', searchQuery.substring(0, 100));
+      
       const { data: memoryData } = await supabase.functions.invoke('manage-memories', {
-        body: { action: 'get_context', user_id }
+        body: { action: 'search_relevant', user_id, query: searchQuery }
       });
       
       if (memoryData?.success && memoryData.context) {
         memoryContext = memoryData.context;
-        console.log('[process-note] Retrieved', memoryData.count, 'user memories for context');
+        console.log('[process-note] Retrieved', memoryData.count, 'relevant user memories via semantic search');
+      } else {
+        console.log('[process-note] No relevant memories found, using fallback');
+        // Fallback to get_context if search fails
+        const { data: fallbackData } = await supabase.functions.invoke('manage-memories', {
+          body: { action: 'get_context', user_id }
+        });
+        if (fallbackData?.success && fallbackData.context) {
+          memoryContext = fallbackData.context;
+          console.log('[process-note] Fallback: Retrieved', fallbackData.count, 'memories');
+        }
       }
     } catch (memErr) {
       console.warn('[process-note] Could not fetch user memories:', memErr);

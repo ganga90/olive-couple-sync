@@ -22,7 +22,7 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const { action, user_id, memory_id, title, content, category, importance } = await req.json();
+    const { action, user_id, memory_id, title, content, category, importance, query } = await req.json();
 
     if (!user_id) {
       throw new Error('Missing required field: user_id');
@@ -217,6 +217,120 @@ serve(async (req) => {
           success: true, 
           context: memoryContext,
           count: memories?.length || 0
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      case 'search_relevant': {
+        // Semantic search to find memories relevant to a specific task/input
+        const inputQuery = query || title || content || '';
+        
+        if (!inputQuery) {
+          return new Response(JSON.stringify({ 
+            success: true, 
+            context: '',
+            count: 0,
+            memories: []
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        console.log('[manage-memories] Searching relevant memories for:', inputQuery.substring(0, 100));
+
+        // Generate embedding for the search query
+        const queryEmbedding = await generateEmbedding(inputQuery);
+        
+        if (!queryEmbedding) {
+          // Fallback to keyword-based search if embedding fails
+          console.log('[manage-memories] Embedding failed, falling back to keyword search');
+          
+          const keywords = inputQuery.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+          
+          const { data: memories, error } = await supabase
+            .from('user_memories')
+            .select('id, title, content, category, importance')
+            .eq('user_id', user_id)
+            .eq('is_active', true)
+            .order('importance', { ascending: false })
+            .limit(20);
+          
+          if (error) throw error;
+          
+          // Simple keyword matching
+          const relevantMemories = (memories || []).filter((m: any) => {
+            const memoryText = `${m.title} ${m.content}`.toLowerCase();
+            return keywords.some((k: string) => memoryText.includes(k));
+          }).slice(0, 5);
+          
+          const contextLines = relevantMemories.map((m: any) => 
+            `- [${m.category}] ${m.title}: ${m.content}`
+          );
+          
+          return new Response(JSON.stringify({ 
+            success: true, 
+            context: contextLines.length > 0 
+              ? `RELEVANT USER MEMORIES FOR THIS TASK:\n${contextLines.join('\n')}`
+              : '',
+            count: relevantMemories.length,
+            memories: relevantMemories
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Use pgvector similarity search if available
+        const { data: similarMemories, error: searchError } = await supabase.rpc(
+          'search_user_memories',
+          {
+            p_user_id: user_id,
+            p_query_embedding: JSON.stringify(queryEmbedding),
+            p_match_threshold: 0.5, // Lower threshold to catch more relevant matches
+            p_match_count: 5
+          }
+        );
+
+        if (searchError) {
+          console.error('[manage-memories] Similarity search error:', searchError);
+          // Fallback to importance-based if RPC fails
+          const { data: fallbackMemories } = await supabase
+            .from('user_memories')
+            .select('id, title, content, category, importance')
+            .eq('user_id', user_id)
+            .eq('is_active', true)
+            .order('importance', { ascending: false })
+            .limit(5);
+
+          const contextLines = (fallbackMemories || []).map((m: any) => 
+            `- [${m.category}] ${m.title}: ${m.content}`
+          );
+
+          return new Response(JSON.stringify({ 
+            success: true, 
+            context: contextLines.length > 0 
+              ? `USER'S PREFERENCES:\n${contextLines.join('\n')}`
+              : '',
+            count: fallbackMemories?.length || 0,
+            memories: fallbackMemories || []
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        console.log('[manage-memories] Found', similarMemories?.length || 0, 'relevant memories via similarity search');
+
+        const contextLines = (similarMemories || []).map((m: any) => 
+          `- [${m.category}] ${m.title}: ${m.content} (relevance: ${Math.round(m.similarity * 100)}%)`
+        );
+
+        return new Response(JSON.stringify({ 
+          success: true, 
+          context: contextLines.length > 0 
+            ? `RELEVANT USER MEMORIES FOR THIS TASK:\n${contextLines.join('\n')}`
+            : '',
+          count: similarMemories?.length || 0,
+          memories: similarMemories || []
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });

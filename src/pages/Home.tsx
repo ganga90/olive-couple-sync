@@ -1,19 +1,16 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2, Send } from "lucide-react";
+import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2 } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useLanguage } from "@/providers/LanguageProvider";
 import { TaskItem } from "@/components/TaskItem";
 import type { Note } from "@/types/note";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NoteInput } from "@/components/NoteInput";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { format, addDays, startOfDay, isSameDay, formatDistanceToNow } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,7 +34,6 @@ const Home = () => {
   const { user, isAuthenticated } = useAuth();
   const { you, partner, currentCouple } = useSupabaseCouple();
   const { notes, updateNote, refetch: refetchNotes } = useSupabaseNotesContext();
-  const [isInputOpen, setIsInputOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   
@@ -167,39 +163,14 @@ const Home = () => {
             </p>
           </div>
 
-          {/* Brain-dump Input - "Premium Paper" Style */}
+          {/* Brain-dump Input - Inline, directly usable */}
           <div className="relative animate-fade-up stagger-1">
-            <div 
-              className="input-paper p-8 relative"
-              onClick={() => {
-                if (brainDumpOnboarding.isVisible) {
-                  brainDumpOnboarding.dismiss();
-                }
-                setIsInputOpen(true);
-              }}
-            >
-              {/* Huge Serif Placeholder */}
-              <p className="font-serif text-2xl md:text-3xl text-stone-300 italic mb-6 cursor-text">
-                {t(`home:brainDump.placeholder.${
-                  new Date().getDay() === 0 || new Date().getDay() === 6 ? 'weekend' :
-                  new Date().getHours() < 12 ? 'morning' :
-                  new Date().getHours() < 18 ? 'afternoon' : 'evening'
-                }`)}
-              </p>
-              
-              {/* Helper Text */}
-              <p className="text-sm text-stone-400 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[hsl(var(--olive-magic))]" />
-                <span>{t('home:hint.try')} </span>
-                <span className="italic text-stone-500">{t('home:hint.example')}</span>
-              </p>
-              
-              {/* Floating Send Button - Overlapping Corner */}
-              <div className="absolute -bottom-5 right-6">
-                <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center shadow-[0_8px_25px_hsl(130_22%_29%/0.35)] transition-all duration-300 hover:scale-110 hover:shadow-[0_12px_35px_hsl(130_22%_29%/0.4)] cursor-pointer">
-                  <Send className="h-5 w-5 text-white" />
-                </div>
-              </div>
+            <div onClick={() => {
+              if (brainDumpOnboarding.isVisible) {
+                brainDumpOnboarding.dismiss();
+              }
+            }}>
+              <NoteInput onNoteAdded={() => refetchNotes()} />
             </div>
             
             {/* Onboarding Tooltip */}
@@ -212,24 +183,9 @@ const Home = () => {
             />
           </div>
 
-          {/* Quick Action Cards - Glass Style */}
+          {/* Quick Action Cards - Glass Style (only show if no notes) */}
           {notes.length === 0 && (
             <div className="space-y-4 animate-fade-up stagger-3">
-              <div 
-                className="card-glass p-6 cursor-pointer hover:scale-[1.01] transition-all duration-300"
-                onClick={() => setIsInputOpen(true)}
-              >
-                <div className="flex items-center gap-4">
-                  <div className="icon-squircle-lg bg-gradient-to-br from-primary/10 to-primary/5">
-                    <Sparkles className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <p className="heading-card">{t('home:quickStart.title')}</p>
-                    <p className="text-sm text-stone-500">{t('home:quickStart.subtitle')}</p>
-                  </div>
-                </div>
-              </div>
-              
               <div 
                 className="card-glass p-6 cursor-pointer hover:scale-[1.01] transition-all duration-300"
                 onClick={() => navigate(getLocalizedPath('/calendar'))}
@@ -435,22 +391,6 @@ const Home = () => {
         </div>
       </div>
 
-      {/* Input Dialog */}
-      <Dialog open={isInputOpen} onOpenChange={setIsInputOpen}>
-        <DialogContent className="max-w-2xl p-0 gap-0 rounded-2xl">
-          <DialogHeader className="px-6 pt-6 pb-4">
-            <DialogTitle className="flex items-center gap-2">
-              <Brain className="w-5 h-5 text-primary" />
-              {t('home:brainDump.dialogTitle')}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="px-6 pb-6">
-            <NoteInput 
-              onNoteAdded={() => setIsInputOpen(false)} 
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Optimization Review Modal */}
       <OptimizationReviewModal
