@@ -2,6 +2,24 @@
   "title": "Lists",
   "searchPlaceholder": "Search lists...",
   "signInPrompt": "Sign in to manage your lists",
+  "subtitle": "Organize your life, beautifully",
+  "quickAccess": {
+    "title": "Quick Access",
+    "empty": "No tasks"
+  },
+  "sort": {
+    "label": "Sort by",
+    "alphabetical": "A to Z",
+    "taskCount": "Most Tasks",
+    "recentlyUsed": "Recently Used",
+    "sharedFirst": "Shared First"
+  },
+  "filter": {
+    "all": "All",
+    "shared": "Shared",
+    "personal": "Personal",
+    "ai": "AI Created"
+  },
   "empty": {
     "noListsFound": "No lists found",
     "noListsYet": "No lists yet",
