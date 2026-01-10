@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,7 +32,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
   const [mediaPreviews, setMediaPreviews] = useState<string[]>([]);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
   
   const { user, loading, isAuthenticated } = useAuth();
   const { currentCouple, createCouple } = useSupabaseCouple();
@@ -118,8 +120,67 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       e.preventDefault(); // Prevent pasting image URL as text
       setMediaFiles(prev => [...prev, ...newFiles]);
       setMediaPreviews(prev => [...prev, ...newPreviews]);
+      toast.success(t('brainDump.imagePasted') || 'Image added');
     }
   };
+
+  // Drag and drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer?.types.includes('Files')) {
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragging to false if we're leaving the drop zone entirely
+    if (dropZoneRef.current && !dropZoneRef.current.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer?.files;
+    if (!files) return;
+
+    const newFiles: File[] = [];
+    const newPreviews: string[] = [];
+
+    for (let i = 0; i < files.length && mediaFiles.length + newFiles.length < 5; i++) {
+      const file = files[i];
+      // Accept images and audio
+      if (file.type.startsWith('image/') || file.type.startsWith('audio/')) {
+        newFiles.push(file);
+        if (file.type.startsWith('image/')) {
+          newPreviews.push(URL.createObjectURL(file));
+        } else {
+          newPreviews.push('audio');
+        }
+      }
+    }
+
+    if (newFiles.length > 0) {
+      setMediaFiles(prev => [...prev, ...newFiles]);
+      setMediaPreviews(prev => [...prev, ...newPreviews]);
+      toast.success(
+        newFiles.length === 1 
+          ? t('brainDump.imageDropped') || 'Image added' 
+          : t('brainDump.imagesDropped', { count: newFiles.length }) || `${newFiles.length} files added`
+      );
+    }
+  }, [mediaFiles.length, t]);
 
   const removeMedia = (index: number) => {
     setMediaFiles(prev => prev.filter((_, i) => i !== index));
@@ -437,11 +498,30 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const hasContent = text.trim() || mediaFiles.length > 0;
 
   return (
-    <div className={cn(
-      "input-floating overflow-hidden transition-all duration-300 ease-out",
-      hasContent && "shadow-xl ring-1 ring-primary/10",
-      isProcessing && "ring-2 ring-primary/20"
-    )}>
+    <div 
+      ref={dropZoneRef}
+      className={cn(
+        "input-floating overflow-hidden transition-all duration-300 ease-out relative",
+        hasContent && "shadow-xl ring-1 ring-primary/10",
+        isProcessing && "ring-2 ring-primary/20",
+        isDragging && "ring-2 ring-primary/40 bg-primary/5"
+      )}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drop overlay indicator */}
+      {isDragging && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-primary/10 backdrop-blur-sm rounded-2xl border-2 border-dashed border-primary/50 pointer-events-none animate-fade-in">
+          <div className="text-center">
+            <Image className="w-10 h-10 mx-auto mb-2 text-primary animate-bounce" />
+            <p className="text-sm font-medium text-primary">
+              {t('brainDump.dropHere') || 'Drop images here'}
+            </p>
+          </div>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         {/* Header with animated brain icon */}
         <div className="text-center mb-2">

@@ -15,6 +15,10 @@
     "moreAllowed": "{{count}} más permitidos",
     "startOver": "Empezar de nuevo",
     "saveNote": "Guardar Nota",
+    "dropHere": "Suelta las imágenes aquí",
+    "imagePasted": "Imagen añadida",
+    "imageDropped": "Imagen añadida",
+    "imagesDropped": "{{count}} archivos añadidos",
     "onboarding": {
       "title": "✨ ¡Bienvenido a Brain Dump!",
       "description": "Escribe cualquier cosa aquí - listas de compras, recordatorios, ideas. ¡La IA de Olive organizará y categorizará todo automáticamente!"
