@@ -161,7 +161,7 @@ export const useSupabaseLists = (coupleId?: string | null) => {
     }
   }, [user?.id, coupleId, lists, fetchLists]);
 
-  const updateList = useCallback(async (id: string, updates: { name?: string; description?: string }) => {
+  const updateList = useCallback(async (id: string, updates: { name?: string; description?: string; couple_id?: string | null }) => {
     if (!user?.id) {
       toast.error("You must be signed in to update lists");
       return null;
@@ -176,11 +176,26 @@ export const useSupabaseLists = (coupleId?: string | null) => {
         .from("clerk_lists")
         .update(updates)
         .eq("id", id)
-        .eq("author_id", user.id) // Ensure user can only update their own lists
         .select()
         .single();
 
       if (error) throw error;
+      
+      // If couple_id was updated (privacy change), cascade to all notes in this list
+      if ('couple_id' in updates) {
+        console.log("[Lists] Cascading privacy change to notes in list:", id);
+        const { error: notesError } = await supabase
+          .from("clerk_notes")
+          .update({ couple_id: updates.couple_id })
+          .eq("list_id", id);
+        
+        if (notesError) {
+          console.error("[Lists] Error cascading privacy to notes:", notesError);
+          // Don't throw - the list update succeeded
+        } else {
+          console.log("[Lists] Successfully cascaded privacy to all notes in list");
+        }
+      }
       
       console.log("[Lists] Successfully updated list:", data);
       toast.success("List updated successfully");

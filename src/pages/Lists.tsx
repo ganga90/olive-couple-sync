@@ -38,7 +38,9 @@ import {
   AlertCircle,
   Clock,
   Wand2,
-  Loader2
+  Loader2,
+  Users,
+  Lock
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isAfter, parseISO, addDays } from "date-fns";
@@ -184,7 +186,7 @@ const Lists = () => {
       case "shared":
         result = result.filter(list => list.couple_id);
         break;
-      case "personal":
+      case "private":
         result = result.filter(list => !list.couple_id);
         break;
       case "ai":
@@ -453,13 +455,24 @@ const Lists = () => {
 
                         {/* Content */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <h3 className="font-serif font-semibold text-[#2A3C24] text-lg truncate">
                               {list.name}
                             </h3>
                             {!list.is_manual && (
                               <Badge className="text-[10px] px-2 py-0.5 h-5 bg-[hsl(var(--magic-accent))]/20 text-[hsl(var(--magic-accent))] border-0 rounded-full">
                                 ✨ AI
+                              </Badge>
+                            )}
+                            {list.couple_id ? (
+                              <Badge variant="secondary" className="text-[10px] px-2 py-0.5 h-5 bg-primary/10 text-primary border-0 rounded-full gap-0.5">
+                                <Users className="h-3 w-3" />
+                                Shared
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-[10px] px-2 py-0.5 h-5 bg-stone-100 text-stone-500 border-0 rounded-full gap-0.5">
+                                <Lock className="h-3 w-3" />
+                                Private
                               </Badge>
                             )}
                           </div>

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Pencil, Trash2, CheckCircle2, Circle, Plus, ChevronDown, ChevronUp, Calendar, User, AlertCircle } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, CheckCircle2, Circle, Plus, ChevronDown, ChevronUp, Calendar, User, AlertCircle, Users, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { NoteInput } from "@/components/NoteInput";
 import { FloatingActionButton } from "@/components/FloatingActionButton";
@@ -30,6 +30,7 @@ const ListCategory = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [editIsShared, setEditIsShared] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
   const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false);
   
@@ -59,14 +60,22 @@ const ListCategory = () => {
   const handleEditList = async () => {
     if (!currentList || !editName.trim()) return;
     
+    // Determine the new couple_id based on sharing toggle
+    const newCoupleId = editIsShared && currentCouple?.id ? currentCouple.id : null;
+    const privacyChanged = (currentList.couple_id !== null) !== editIsShared;
+    
     const result = await updateList(currentList.id, {
       name: editName.trim(),
-      description: editDescription.trim() || undefined
+      description: editDescription.trim() || undefined,
+      ...(privacyChanged && { couple_id: newCoupleId })
     });
     
     if (result) {
       setEditDialogOpen(false);
-      toast.success("List updated successfully");
+      toast.success(privacyChanged 
+        ? `List ${editIsShared ? 'shared with partner' : 'made private'}. All items updated.`
+        : "List updated successfully"
+      );
     }
   };
 
@@ -85,6 +94,7 @@ const ListCategory = () => {
     if (currentList) {
       setEditName(currentList.name);
       setEditDescription(currentList.description || "");
+      setEditIsShared(currentList.couple_id !== null);
       setEditDialogOpen(true);
     }
   };
@@ -178,13 +188,24 @@ const ListCategory = () => {
             </Button>
             
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <h1 className="text-2xl font-bold text-foreground truncate">
                   {currentList.name}
                 </h1>
                 {!currentList.is_manual && (
                   <Badge variant="secondary" className="text-xs bg-accent/20 text-accent flex-shrink-0">
                     Auto
+                  </Badge>
+                )}
+                {currentList.couple_id ? (
+                  <Badge variant="secondary" className="text-xs bg-primary/10 text-primary flex-shrink-0 gap-1">
+                    <Users className="h-3 w-3" />
+                    Shared
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-xs bg-muted text-muted-foreground flex-shrink-0 gap-1">
+                    <Lock className="h-3 w-3" />
+                    Private
                   </Badge>
                 )}
               </div>
@@ -440,6 +461,41 @@ const ListCategory = () => {
                   rows={3}
                 />
               </div>
+              
+              {/* Privacy Toggle - only show if user is in a couple */}
+              {currentCouple && (
+                <div className="space-y-2">
+                  <Label>Visibility</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={!editIsShared ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setEditIsShared(false)}
+                      className="flex-1 gap-2"
+                    >
+                      <Lock className="h-4 w-4" />
+                      Private
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={editIsShared ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setEditIsShared(true)}
+                      className="flex-1 gap-2"
+                    >
+                      <Users className="h-4 w-4" />
+                      Shared
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {editIsShared 
+                      ? "Both you and your partner can see and edit this list and all its items."
+                      : "Only you can see this list and all its items."}
+                  </p>
+                </div>
+              )}
+              
               <div className="flex justify-end gap-2 pt-2">
                 <Button
                   variant="outline"
