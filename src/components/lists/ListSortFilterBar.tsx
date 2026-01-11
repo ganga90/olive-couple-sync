@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { ArrowUpDown, Users, User, Sparkles, LayoutGrid } from "lucide-react";
 
 export type SortOption = "alphabetical" | "taskCount" | "recentlyUsed" | "shared";
-export type FilterOption = "all" | "shared" | "personal" | "ai";
+export type FilterOption = "all" | "shared" | "private" | "ai";
 
 interface ListSortFilterBarProps {
   sortBy: SortOption;
@@ -36,7 +36,7 @@ export const ListSortFilterBar: React.FC<ListSortFilterBarProps> = ({
   const filterOptions = [
     { value: "all" as FilterOption, label: t('filter.all'), icon: LayoutGrid },
     { value: "shared" as FilterOption, label: t('filter.shared'), icon: Users, disabled: !hasSharedLists },
-    { value: "personal" as FilterOption, label: t('filter.personal'), icon: User },
+    { value: "private" as FilterOption, label: t('filter.private'), icon: User },
     { value: "ai" as FilterOption, label: t('filter.ai'), icon: Sparkles, disabled: !hasAiLists },
   ];
 

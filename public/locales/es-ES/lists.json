@@ -17,7 +17,7 @@
   "filter": {
     "all": "Todas",
     "shared": "Compartidas",
-    "personal": "Personales",
+    "private": "Privadas",
     "ai": "Creadas por IA"
   },
   "search": {

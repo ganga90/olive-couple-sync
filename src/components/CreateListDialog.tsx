@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Plus } from "lucide-react";
+import { Plus, Lock, Users } from "lucide-react";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 
@@ -18,6 +18,7 @@ export const CreateListDialog: React.FC<CreateListDialogProps> = ({ onListCreate
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [isShared, setIsShared] = useState(true); // Default to shared if in a couple
   const [loading, setLoading] = useState(false);
   
   const { currentCouple } = useSupabaseCouple();
@@ -30,15 +31,30 @@ export const CreateListDialog: React.FC<CreateListDialogProps> = ({ onListCreate
     
     setLoading(true);
     
+    // Note: createList already uses the coupleId from the hook
+    // For shared lists, we pass the coupleId; for private, we override with null
     const result = await createList({
       name: name.trim(),
       description: description.trim() || undefined,
       is_manual: true
     });
     
+    // If user wants private and we're in a couple, update the list to remove couple_id
+    if (result && !isShared && currentCouple) {
+      // The list was created with couple_id by default, but user wants private
+      // We need to update it to remove the couple_id
+      const { useSupabaseLists: getSupabaseLists } = await import("@/hooks/useSupabaseLists");
+      const supabase = (await import("@/lib/supabaseClient")).getSupabase();
+      await supabase
+        .from("clerk_lists")
+        .update({ couple_id: null })
+        .eq("id", result.id);
+    }
+    
     if (result) {
       setName("");
       setDescription("");
+      setIsShared(true);
       setOpen(false);
       onListCreated?.();
     }
@@ -85,6 +101,41 @@ export const CreateListDialog: React.FC<CreateListDialogProps> = ({ onListCreate
               rows={3}
             />
           </div>
+          
+          {/* Privacy Toggle - only show if user is in a couple */}
+          {currentCouple && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-olive-dark">Visibility</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={!isShared ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setIsShared(false)}
+                  className="flex-1 gap-2"
+                >
+                  <Lock className="h-4 w-4" />
+                  Private
+                </Button>
+                <Button
+                  type="button"
+                  variant={isShared ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setIsShared(true)}
+                  className="flex-1 gap-2"
+                >
+                  <Users className="h-4 w-4" />
+                  Shared
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {isShared 
+                  ? "Both you and your partner can see and edit this list."
+                  : "Only you can see this list."}
+              </p>
+            </div>
+          )}
+          
           <div className="flex justify-end gap-2">
             <Button
               type="button"
