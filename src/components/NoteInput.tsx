@@ -218,11 +218,17 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           continue;
         }
         
-        const { data: { publicUrl } } = supabase.storage
+        // Use signed URL for private bucket access
+        const { data: signedData, error: signedError } = await supabase.storage
           .from('note-media')
-          .getPublicUrl(filename);
+          .createSignedUrl(filename, 60 * 60 * 24 * 365); // 1 year expiry for stored URLs
         
-        uploadedUrls.push(publicUrl);
+        if (signedError || !signedData?.signedUrl) {
+          console.error('[NoteInput] Failed to create signed URL:', signedError);
+          continue;
+        }
+        
+        uploadedUrls.push(signedData.signedUrl);
       }
       
       return uploadedUrls;
