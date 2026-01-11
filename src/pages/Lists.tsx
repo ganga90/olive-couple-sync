@@ -326,7 +326,7 @@ const Lists = () => {
                   return (
                     <Link
                       key={task.id}
-                      to={getLocalizedPath(`/note/${task.id}`)}
+                      to={getLocalizedPath(`/notes/${task.id}`)}
                       className="block p-3 rounded-xl hover:bg-stone-50 transition-colors"
                     >
                       <div className="flex items-center justify-between gap-3">

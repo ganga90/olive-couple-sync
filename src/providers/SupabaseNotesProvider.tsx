@@ -117,6 +117,7 @@ const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "upda
   items: note.items || null,
   task_owner: note.task_owner || null,
   list_id: note.list_id || null,
+  media_urls: note.media_urls || null,
 });
 
 export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

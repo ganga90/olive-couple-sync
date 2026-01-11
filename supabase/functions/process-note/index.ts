@@ -502,6 +502,26 @@ async function analyzeImageWithGemini(genai: GoogleGenAI, imageUrl: string): Pro
     // Enhanced prompt for structured data extraction - especially for business/location pages
     const extractionPrompt = `Analyze this image and extract ALL useful information with MAXIMUM detail. Be thorough and specific.
 
+**STOCK/FINANCIAL SCREENSHOTS - CRITICAL:**
+- Stock Ticker Symbol (e.g., "$RACE", "$AAPL", "$AMZN")
+- Company Name (e.g., "Ferrari N.V.", "Apple Inc.")
+- Current Price (exact number)
+- Price Change (amount and percentage)
+- Market Cap, P/E Ratio, Volume if visible
+- Chart timeframe and trend direction
+- Any analyst ratings or price targets
+- News headlines about the stock
+FORMAT: "[TICKER] - [COMPANY NAME]" as primary identification
+
+**SOCIAL MEDIA POSTS (Twitter/X, Instagram, Reddit, etc.):**
+- Username/Handle of poster
+- Main text content (VERBATIM if important)
+- Any stock tickers mentioned (extract ALL $SYMBOLS)
+- Links or URLs mentioned
+- Date/time if visible
+- Key claims or recommendations
+FORMAT: Extract the ACTUAL content being shared, not "social media post"
+
 **BUSINESS/LOCATION PAGES (Google Maps, Yelp, etc.) - EXTRACT ALL:**
 - Business Name (exact name as shown)
 - Phone Number (with area code)
@@ -538,23 +558,13 @@ async function analyzeImageWithGemini(genai: GoogleGenAI, imageUrl: string): Pro
 **CONTACT INFO:**
 - Phone numbers, emails, websites, social media handles
 
-FORMAT YOUR RESPONSE AS STRUCTURED DATA:
-For a BUSINESS/RESTAURANT, respond like:
-"[Business Name] - [Type/Category]
-Phone: [number]
-Website: [URL]
-Address: [full address]
-Hours: [hours]
-Rating: [rating] ([reviews] reviews)
-Price: [level]
-Cuisine: [type]
-Features: [amenities]
-Notes: [any special info]"
-
+FORMAT YOUR RESPONSE AS STRUCTURED DATA with the PRIMARY SUBJECT clearly identified first.
+For STOCKS: Start with "[TICKER] [COMPANY] - [PRICE]"
+For SOCIAL MEDIA about stocks: Start with the stock ticker(s) and company name(s)
 For other content types, start with the MAIN SUBJECT clearly identified.
 
-CRITICAL: Extract EVERY piece of visible information. Be specific and complete. Never return generic text.
-Max 300 words.`;
+CRITICAL: Extract EVERY piece of visible information. Be specific and complete. Never return generic text like "social media post" - extract the ACTUAL content.
+Max 400 words.`;
 
 
     // Use Gemini with vision capability
@@ -578,7 +588,7 @@ Max 300 words.`;
       ],
       config: {
         temperature: 0.1,
-        maxOutputTokens: 500
+        maxOutputTokens: 600
       }
     });
     
@@ -1041,7 +1051,9 @@ Process this note:
       'books': ['book', 'author', 'novel', 'reading', 'chapter', 'isbn', 'publisher', 'paperback', 'hardcover', 'ebook', 'kindle'],
       'movies': ['movie', 'film', 'tv show', 'series', 'watch', 'streaming', 'netflix', 'hulu', 'disney', 'hbo', 'prime video', 'actor', 'director'],
       'recipes': ['recipe', 'cook', 'bake', 'ingredients', 'cuisine', 'dish', 'meal'],
-      'music': ['song', 'album', 'artist', 'band', 'playlist', 'spotify', 'music']
+      'music': ['song', 'album', 'artist', 'band', 'playlist', 'spotify', 'music'],
+      'stocks': ['stock', 'ticker', '$', 'share', 'shares', 'invest', 'portfolio', 'market', 'trading', 'dividend', 'earnings', 'nasdaq', 'nyse', 'price target', 'buy rating', 'sell rating', 'analyst', 'ferrari', 'apple', 'amazon', 'tesla', 'nvidia', 'microsoft', 'google', 'meta'],
+      'finance': ['finance', 'investment', 'crypto', 'bitcoin', 'ethereum', 'currency', 'forex', 'bond', 'etf', 'mutual fund']
     };
 
     const findOrCreateList = async (category: string, tags: string[] = [], targetList?: string, summary?: string) => {
