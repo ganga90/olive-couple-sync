@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.analyze-organization]
 verify_jwt = false
+
+[functions.get-signed-url]
+verify_jwt = false
