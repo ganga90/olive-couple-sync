@@ -404,7 +404,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     try {
       console.log('[NoteInput] Saving accepted note to database:', processedNote);
       
-      // Prepare note data in the correct format for addNote
+      // Prepare note data in the correct format for SupabaseNotesProvider (Note shape)
       const noteData = {
         originalText: processedNote.originalText,
         summary: processedNote.summary,
@@ -414,10 +414,11 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         priority: processedNote.priority,
         tags: processedNote.tags || [],
         items: processedNote.items || [],
-        listId: processedNote.listId,
-        taskOwner: processedNote.taskOwner,
-        mediaUrls: processedNote.mediaUrls || []
+        list_id: processedNote.listId || null,
+        task_owner: processedNote.taskOwner || null,
+        media_urls: processedNote.mediaUrls || [],
       };
+
       
       const newNote = await addNote(noteData);
       
