@@ -135,10 +135,10 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
 
   const deriveCategoryFromList = useCallback((listId: string) => {
     if (!listId) return editedNote.category;
-    
+
     const selectedList = lists.find(list => list.id === listId);
     if (!selectedList) return editedNote.category;
-    
+
     const listName = selectedList.name.toLowerCase();
     const categoryMap: { [key: string]: string } = {
       'groceries': 'groceries',
@@ -152,9 +152,11 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
       'task': 'task',
       'tasks': 'task'
     };
-    
-    return categoryMap[listName] || 'task';
+
+    // If the list is a “true category list”, map it; otherwise preserve the current category.
+    return categoryMap[listName] ?? editedNote.category;
   }, [lists, editedNote.category]);
+
 
   const handleSaveEdit = async () => {
     let finalListId = editedNote.listId;

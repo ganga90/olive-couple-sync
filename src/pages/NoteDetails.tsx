@@ -371,10 +371,11 @@ const NoteDetails = () => {
                           size="sm"
                           className="w-full justify-start rounded-lg"
                           onClick={async () => {
-                            await updateNote(note.id, { category: list.name, list_id: list.id });
+                            await updateNote(note.id, { list_id: list.id });
                             toast.success(`Moved to ${list.name}!`);
                           }}
                         >
+
                           {list.name}
                         </Button>
                       ))}
