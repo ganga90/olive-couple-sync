@@ -70,11 +70,11 @@ const MobileTabBar = () => {
   return (
     <nav
       aria-label="Primary navigation"
-      className="fixed bottom-5 left-4 right-4 z-50 md:hidden"
+      className="fixed bottom-0 left-0 right-0 z-50 md:hidden pb-[env(safe-area-inset-bottom)]"
     >
       {/* Glassmorphic Floating Dock */}
-      <div className="mx-auto max-w-sm rounded-full nav-glass">
-        <div className="flex items-center justify-around px-3 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+      <div className="mx-4 mb-2 rounded-full nav-glass">
+        <div className="flex items-center justify-around px-3 py-3">
           {tabs.map((tab) => {
             const localizedPath = getLocalizedPath(tab.to);
             const isActive = location.pathname === localizedPath || 
@@ -87,10 +87,10 @@ const MobileTabBar = () => {
                 key={tab.to}
                 to={localizedPath}
                 className={cn(
-                  "relative flex flex-col items-center justify-center gap-1.5 py-2 px-6 rounded-full transition-all duration-300 ease-out",
+                  "relative flex flex-col items-center justify-center gap-1.5 py-2 px-6 rounded-full transition-all duration-300 ease-out select-ui touch-target-48",
                   isActive 
                     ? "text-[hsl(130_25%_18%)]" 
-                    : "text-stone-400 hover:text-stone-600",
+                    : "text-stone-400 active:text-stone-600",
                   tab.featured && !isActive && "text-primary/70"
                 )}
                 aria-label={tab.label}
@@ -123,7 +123,7 @@ const MobileTabBar = () => {
                   )}
                 </div>
                 
-                {/* Label - hidden for cleaner look */}
+                {/* Label */}
                 <span className={cn(
                   "text-[10px] font-medium transition-all duration-300",
                   isActive ? "font-semibold opacity-100" : "opacity-70"

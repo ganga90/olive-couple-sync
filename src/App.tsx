@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Root from "./pages/Root";
 import Home from "./pages/Home";
-import Index from "./pages/Index";
 import Landing from "./pages/Landing";
 import NotFound from "./pages/NotFound";
 import Lists from "./pages/Lists";
@@ -18,8 +17,7 @@ import Reminders from "./pages/Reminders";
 import AcceptInvite from "./pages/AcceptInvite";
 import JoinInvite from "./pages/JoinInvite";
 import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
-import NavBar from "./components/NavBar";
-import { MobileLayout } from "./components/MobileLayout";
+import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider } from "./providers/AuthProvider";
 import { SupabaseCoupleProvider } from "./providers/SupabaseCoupleProvider";
 import { SupabaseNotesProvider } from "./providers/SupabaseNotesProvider";
@@ -64,8 +62,7 @@ const App = () => (
         <SupabaseNotesProvider>
           <BrowserRouter>
             <LanguageProvider>
-              <NavBar />
-              <MobileLayout>
+              <AppLayout>
                 <Routes>
                   {/* Spanish (Spain) routes */}
                   <Route path="/es-es/*" element={<AppRoutes />} />
@@ -91,7 +88,7 @@ const App = () => (
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
-              </MobileLayout>
+              </AppLayout>
             </LanguageProvider>
           </BrowserRouter>
         </SupabaseNotesProvider>
