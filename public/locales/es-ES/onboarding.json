@@ -23,5 +23,57 @@
     "enterPartnerName": "Por favor, introduce el nombre de tu pareja"
   },
   "welcomeMessage": "Tu organizador personal de tareas está listo.",
-  "dataSecure": "Tus datos están cifrados y seguros"
+  "dataSecure": "Tus datos están cifrados y seguros",
+  "skip": "Omitir por ahora",
+  "maybeLater": "Quizás más tarde",
+  "couple": {
+    "header": "Dos es mejor que uno.",
+    "subtext": "Olive funciona mejor cuando gestionáis el hogar juntos. Invita a tu pareja a compartir listas, calendarios y tareas.",
+    "inviteButton": "Invitar pareja",
+    "skipText": "Lo haré más tarde"
+  },
+  "whatsapp": {
+    "header": "Tu asistente personal, directamente en WhatsApp.",
+    "subtext": "No abras la app cada vez. Solo escribe a Olive para añadir la compra, recordatorios o eventos.",
+    "connectButton": "Conectar WhatsApp"
+  },
+  "calendar": {
+    "header": "Ve toda tu semana de un vistazo.",
+    "subtext": "Sincroniza tu Google Calendar para que Olive organice tu agenda junto con tus tareas.",
+    "connectButton": "Conectar Google Calendar"
+  },
+  "style": {
+    "header": "¿Cómo tomas notas?",
+    "subtext": "Olive se adapta a tu estilo de escritura.",
+    "auto": {
+      "title": "Detección automática",
+      "recommended": "Recomendado",
+      "description": "Olive detecta automáticamente si usas notas rápidas o mensajes conversacionales."
+    },
+    "succinct": {
+      "title": "Estilo brain-dump",
+      "description": "Notas rápidas y enfocadas en palabras clave."
+    },
+    "conversational": {
+      "title": "Estilo conversacional",
+      "description": "Mensajes naturales como si hablaras con un amigo."
+    }
+  },
+  "notifications": {
+    "header": "No te pierdas nada.",
+    "subtext": "Olive necesita permiso para enviarte recordatorios de las tareas y eventos que añadas.",
+    "enableButton": "Activar notificaciones",
+    "mockup": "📅 Confirmar masaje tailandés mañana a las 14:00"
+  },
+  "demo": {
+    "header": "Vamos a probarlo.",
+    "subtext": "Escribe un pensamiento aquí abajo y mira cómo Olive lo organiza por ti.",
+    "placeholder": "¿Qué tienes en mente?",
+    "chip1": "Recuérdame llamar a mamá mañana a las 17:00",
+    "chip2": "Añadir leche, huevos y pan a la lista de la compra",
+    "chip3": "Cena con Sara el próximo viernes a las 19:00",
+    "processing": "Organizando...",
+    "submit": "Enviar a Olive",
+    "skipToHome": "Saltar e ir al inicio"
+  }
 }
