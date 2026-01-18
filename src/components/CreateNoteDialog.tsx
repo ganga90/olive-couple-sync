@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { 
+  ResponsiveDialog, 
+  ResponsiveDialogContent, 
+  ResponsiveDialogHeader, 
+  ResponsiveDialogTitle, 
+  ResponsiveDialogTrigger,
+  ResponsiveDialogFooter 
+} from "@/components/ui/responsive-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -94,18 +101,18 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <ResponsiveDialog open={open} onOpenChange={setOpen}>
+      <ResponsiveDialogTrigger asChild>
         <Button className="bg-olive hover:bg-olive/90 text-white">
           <Plus className="h-4 w-4 mr-2" />
           Add Note
         </Button>
-      </DialogTrigger>
-      <DialogContent className="bg-white max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-olive-dark">Add New Note</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+      </ResponsiveDialogTrigger>
+      <ResponsiveDialogContent className="bg-background max-w-md">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle className="text-olive-dark">Add New Note</ResponsiveDialogTitle>
+        </ResponsiveDialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 px-4 md:px-0">
           <div className="space-y-2">
             <Label htmlFor="note-summary" className="text-sm font-medium text-olive-dark">
               Summary *
@@ -218,26 +225,26 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          <ResponsiveDialogFooter className="flex gap-2 pt-2">
             <Button
               type="button"
               variant="outline"
               onClick={() => setOpen(false)}
               disabled={loading}
-              className="border-olive/30"
+              className="border-olive/30 flex-1 md:flex-none"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={loading || !summary.trim()}
-              className="bg-olive hover:bg-olive/90 text-white"
+              className="bg-olive hover:bg-olive/90 text-white flex-1 md:flex-none"
             >
               {loading ? "Creating..." : "Create Note"}
             </Button>
-          </div>
+          </ResponsiveDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 };
