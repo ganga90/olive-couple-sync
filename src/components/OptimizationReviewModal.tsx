@@ -1,13 +1,13 @@
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+} from "@/components/ui/responsive-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -132,16 +132,16 @@ export const OptimizationReviewModal = ({
   const hasNoChanges = plan.moves.length === 0 && plan.new_lists_to_create.length === 0;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="flex items-center gap-2">
+    <ResponsiveDialog open={open} onOpenChange={handleOpenChange}>
+      <ResponsiveDialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+        <ResponsiveDialogHeader className="flex-shrink-0">
+          <ResponsiveDialogTitle className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-full bg-accent/10 flex items-center justify-center">
               <Sparkles className="h-4 w-4 text-accent" />
             </div>
             {t('modal.title')}
-          </DialogTitle>
-        <DialogDescription className="flex items-center justify-between">
+          </ResponsiveDialogTitle>
+        <ResponsiveDialogDescription className="flex items-center justify-between">
           <span>
             {hasNoChanges 
               ? t('modal.noChanges')
@@ -152,8 +152,8 @@ export const OptimizationReviewModal = ({
               {activeMovesCount}/{totalMovesCount} selected
             </span>
           )}
-        </DialogDescription>
-      </DialogHeader>
+        </ResponsiveDialogDescription>
+      </ResponsiveDialogHeader>
 
       {hasNoChanges ? (
         <div className="flex-1 flex flex-col items-center justify-center py-8 text-center">
@@ -301,11 +301,12 @@ export const OptimizationReviewModal = ({
         </>
       )}
 
-        <DialogFooter className="flex-shrink-0 gap-2 sm:gap-0">
+        <ResponsiveDialogFooter className="flex-shrink-0 gap-2">
           <Button 
             variant="outline" 
             onClick={() => handleOpenChange(false)}
             disabled={isApplying}
+            className="flex-1 md:flex-none"
           >
             {t('buttons.cancel', { ns: 'common' })}
           </Button>
@@ -313,7 +314,7 @@ export const OptimizationReviewModal = ({
             <Button 
               onClick={handleApply}
               disabled={isApplying || (activeMovesCount === 0 && activeNewListsCount === 0)}
-              className="gap-2"
+              className="gap-2 flex-1 md:flex-none"
             >
               {isApplying ? (
                 <>
@@ -328,8 +329,8 @@ export const OptimizationReviewModal = ({
               )}
             </Button>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 };
