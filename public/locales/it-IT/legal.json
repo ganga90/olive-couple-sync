@@ -1,0 +1,55 @@
+{
+  "back": "Indietro",
+  "terms": {
+    "title": "Termini di Servizio",
+    "lastUpdated": "Ultimo aggiornamento",
+    "sections": {
+      "acceptance": { "title": "Accettazione dei Termini" },
+      "description": { "title": "Descrizione del Servizio" },
+      "aiDisclaimer": { "title": "Avviso sull'Elaborazione IA" },
+      "whatsappConsent": { "title": "Consenso WhatsApp" },
+      "userAccounts": { "title": "Account Utente" },
+      "userConduct": { "title": "Condotta dell'Utente" },
+      "sharedSpaces": { "title": "Spazi Condivisi" },
+      "intellectualProperty": { "title": "Proprietà Intellettuale" },
+      "thirdPartyServices": { "title": "Servizi di Terze Parti" },
+      "termination": { "title": "Risoluzione" },
+      "disclaimers": { "title": "Esclusioni di Responsabilità" },
+      "limitation": { "title": "Limitazione di Responsabilità" },
+      "changes": { "title": "Modifiche ai Termini" },
+      "contact": { "title": "Contattaci" }
+    }
+  },
+  "privacy": {
+    "title": "Informativa sulla Privacy",
+    "lastUpdated": "Ultimo aggiornamento",
+    "sections": {
+      "introduction": { "title": "Introduzione" },
+      "dataCollection": { "title": "Informazioni che Raccogliamo" },
+      "googleLimitedUse": { "title": "Divulgazione Uso Limitato API Google" },
+      "whatsappIntegration": { "title": "Integrazione WhatsApp" },
+      "howWeUse": { "title": "Come Utilizziamo le Tue Informazioni" },
+      "aiProcessing": { "title": "Elaborazione IA" },
+      "dataSharing": { "title": "Condivisione delle Informazioni" },
+      "dataSecurity": { "title": "Sicurezza dei Dati" },
+      "dataRetention": { "title": "Conservazione dei Dati" },
+      "yourRights": { "title": "I Tuoi Diritti" },
+      "children": { "title": "Privacy dei Minori" },
+      "internationalTransfers": { "title": "Trasferimenti Internazionali dei Dati" },
+      "changes": { "title": "Modifiche a Questa Policy" },
+      "contact": { "title": "Contattaci" }
+    }
+  },
+  "consent": {
+    "agreementText": "Continuando, accetti i",
+    "termsLink": "Termini di Servizio",
+    "and": "e l'",
+    "privacyLink": "Informativa sulla Privacy"
+  },
+  "settings": {
+    "title": "Legale e Supporto",
+    "terms": "Termini di Servizio",
+    "privacy": "Informativa sulla Privacy",
+    "licenses": "Licenze di Terze Parti"
+  }
+}

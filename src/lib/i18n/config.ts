@@ -15,6 +15,7 @@ import enReminders from '../../../public/locales/en/reminders.json';
 import enCalendar from '../../../public/locales/en/calendar.json';
 import enAuth from '../../../public/locales/en/auth.json';
 import enOrganize from '../../../public/locales/en/organize.json';
+import enLegal from '../../../public/locales/en/legal.json';
 
 import esCommon from '../../../public/locales/es-ES/common.json';
 import esHome from '../../../public/locales/es-ES/home.json';
@@ -27,6 +28,7 @@ import esReminders from '../../../public/locales/es-ES/reminders.json';
 import esCalendar from '../../../public/locales/es-ES/calendar.json';
 import esAuth from '../../../public/locales/es-ES/auth.json';
 import esOrganize from '../../../public/locales/es-ES/organize.json';
+import esLegal from '../../../public/locales/es-ES/legal.json';
 
 import itCommon from '../../../public/locales/it-IT/common.json';
 import itHome from '../../../public/locales/it-IT/home.json';
@@ -39,6 +41,7 @@ import itReminders from '../../../public/locales/it-IT/reminders.json';
 import itCalendar from '../../../public/locales/it-IT/calendar.json';
 import itAuth from '../../../public/locales/it-IT/auth.json';
 import itOrganize from '../../../public/locales/it-IT/organize.json';
+import itLegal from '../../../public/locales/it-IT/legal.json';
 
 // Custom path detector for URL-based locale detection
 const PathDetector = {
@@ -76,7 +79,8 @@ const resources = {
     reminders: enReminders,
     calendar: enCalendar,
     auth: enAuth,
-    organize: enOrganize
+    organize: enOrganize,
+    legal: enLegal
   },
   'es-ES': {
     common: esCommon,
@@ -89,7 +93,8 @@ const resources = {
     reminders: esReminders,
     calendar: esCalendar,
     auth: esAuth,
-    organize: esOrganize
+    organize: esOrganize,
+    legal: esLegal
   },
   'it-IT': {
     common: itCommon,
@@ -102,7 +107,8 @@ const resources = {
     reminders: itReminders,
     calendar: itCalendar,
     auth: itAuth,
-    organize: itOrganize
+    organize: itOrganize,
+    legal: itLegal
   }
 };
 
@@ -113,7 +119,7 @@ i18n
     resources,
     supportedLngs: Object.keys(SUPPORTED_LANGUAGES),
     fallbackLng: DEFAULT_LANGUAGE,
-    ns: ['common', 'home', 'landing', 'profile', 'notes', 'onboarding', 'lists', 'reminders', 'calendar', 'auth', 'organize'],
+    ns: ['common', 'home', 'landing', 'profile', 'notes', 'onboarding', 'lists', 'reminders', 'calendar', 'auth', 'organize', 'legal'],
     defaultNS: 'common',
     detection: {
       order: ['path', 'localStorage', 'navigator'],

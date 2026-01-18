@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useSEO } from "@/hooks/useSEO";
 import { Card } from "@/components/ui/card";
 import { OliveLogo } from "@/components/OliveLogo";
+import { LegalConsentText } from "@/components/LegalConsentText";
 import { useSearchParams } from "react-router-dom";
 
 const SignInPage = () => {
@@ -26,6 +27,7 @@ const SignInPage = () => {
         
         <Card className="p-4 bg-white/50 border-olive/20 shadow-soft">
           <SignIn fallbackRedirectUrl={redirectUrl} />
+          <LegalConsentText className="mt-4 px-2" />
         </Card>
       </section>
     </main>
