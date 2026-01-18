@@ -11,7 +11,7 @@ import { MemoryPersonalization } from "@/components/MemoryPersonalization";
 import { GoogleCalendarConnect } from "@/components/GoogleCalendarConnect";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { DataExport } from "@/components/DataExport";
-import { User, LogOut, Bell, Shield, HelpCircle, Brain, Sparkles, Calendar, ChevronRight, Globe, MessageSquare, Clock, Users, Download } from "lucide-react";
+import { User, LogOut, Bell, Shield, HelpCircle, Brain, Sparkles, Calendar, ChevronRight, Globe, MessageSquare, Clock, Users, Download, FileText, Scale } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
 import { useLanguage } from "@/providers/LanguageProvider";
@@ -235,6 +235,32 @@ const Profile = () => {
               icon={<HelpCircle className="h-5 w-5 text-stone-500" />}
               title={t('profile:settings.help.title')}
               subtitle={t('profile:settings.help.subtitle')}
+            />
+          </div>
+        </div>
+
+        {/* Legal & Support Section */}
+        <div className="card-glass overflow-hidden animate-fade-up" style={{ animationDelay: '425ms' }}>
+          <div className="px-5 pt-5 pb-2">
+            <h3 className="font-serif font-semibold text-[#2A3C24] text-lg">{t('profile:legal.title', 'Legal & Support')}</h3>
+          </div>
+          <div className="px-2 pb-2">
+            <SettingsRow
+              icon={<FileText className="h-5 w-5 text-stone-500" />}
+              title={t('profile:legal.terms', 'Terms of Service')}
+              subtitle={t('profile:legal.termsSubtitle', 'Read our terms and conditions')}
+              onClick={() => navigate(getLocalizedPath('/legal/terms'))}
+            />
+            <SettingsRow
+              icon={<Shield className="h-5 w-5 text-stone-500" />}
+              title={t('profile:legal.privacy', 'Privacy Policy')}
+              subtitle={t('profile:legal.privacySubtitle', 'How we handle your data')}
+              onClick={() => navigate(getLocalizedPath('/legal/privacy'))}
+            />
+            <SettingsRow
+              icon={<Scale className="h-5 w-5 text-stone-500" />}
+              title={t('profile:legal.licenses', 'Third-Party Licenses')}
+              subtitle={t('profile:legal.licensesSubtitle', 'Open source attributions')}
             />
           </div>
         </div>

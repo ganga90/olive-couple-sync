@@ -1,0 +1,55 @@
+{
+  "back": "Back",
+  "terms": {
+    "title": "Terms of Service",
+    "lastUpdated": "Last Updated",
+    "sections": {
+      "acceptance": { "title": "Acceptance of Terms" },
+      "description": { "title": "Description of Service" },
+      "aiDisclaimer": { "title": "AI Processing Disclaimer" },
+      "whatsappConsent": { "title": "WhatsApp Consent" },
+      "userAccounts": { "title": "User Accounts" },
+      "userConduct": { "title": "User Conduct" },
+      "sharedSpaces": { "title": "Shared Spaces" },
+      "intellectualProperty": { "title": "Intellectual Property" },
+      "thirdPartyServices": { "title": "Third-Party Services" },
+      "termination": { "title": "Termination" },
+      "disclaimers": { "title": "Disclaimers" },
+      "limitation": { "title": "Limitation of Liability" },
+      "changes": { "title": "Changes to Terms" },
+      "contact": { "title": "Contact Us" }
+    }
+  },
+  "privacy": {
+    "title": "Privacy Policy",
+    "lastUpdated": "Last Updated",
+    "sections": {
+      "introduction": { "title": "Introduction" },
+      "dataCollection": { "title": "Information We Collect" },
+      "googleLimitedUse": { "title": "Google API Limited Use Disclosure" },
+      "whatsappIntegration": { "title": "WhatsApp Integration" },
+      "howWeUse": { "title": "How We Use Your Information" },
+      "aiProcessing": { "title": "AI Processing" },
+      "dataSharing": { "title": "Information Sharing" },
+      "dataSecurity": { "title": "Data Security" },
+      "dataRetention": { "title": "Data Retention" },
+      "yourRights": { "title": "Your Rights" },
+      "children": { "title": "Children's Privacy" },
+      "internationalTransfers": { "title": "International Data Transfers" },
+      "changes": { "title": "Changes to This Policy" },
+      "contact": { "title": "Contact Us" }
+    }
+  },
+  "consent": {
+    "agreementText": "By continuing, you agree to Olive's",
+    "termsLink": "Terms of Service",
+    "and": "and",
+    "privacyLink": "Privacy Policy"
+  },
+  "settings": {
+    "title": "Legal & Support",
+    "terms": "Terms of Service",
+    "privacy": "Privacy Policy",
+    "licenses": "Third-Party Licenses"
+  }
+}

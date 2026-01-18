@@ -17,6 +17,8 @@ import Reminders from "./pages/Reminders";
 import AcceptInvite from "./pages/AcceptInvite";
 import JoinInvite from "./pages/JoinInvite";
 import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
+import TermsOfService from "./pages/legal/TermsOfService";
+import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider } from "./providers/AuthProvider";
 import { SupabaseCoupleProvider } from "./providers/SupabaseCoupleProvider";
@@ -49,6 +51,8 @@ const AppRoutes = () => (
     <Route path="/accept-invite" element={<AcceptInvite />} />
     <Route path="/join/:token" element={<JoinInvite />} />
     <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
+    <Route path="/legal/terms" element={<TermsOfService />} />
+    <Route path="/legal/privacy" element={<PrivacyPolicy />} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );
@@ -85,6 +89,8 @@ const App = () => (
                   <Route path="/accept-invite" element={<AcceptInvite />} />
                   <Route path="/join/:token" element={<JoinInvite />} />
                   <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
+                  <Route path="/legal/terms" element={<TermsOfService />} />
+                  <Route path="/legal/privacy" element={<PrivacyPolicy />} />
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
