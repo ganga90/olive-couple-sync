@@ -23,5 +23,57 @@
     "enterPartnerName": "Per favore inserisci il nome del tuo partner"
   },
   "welcomeMessage": "Il tuo organizzatore personale di attività è pronto.",
-  "dataSecure": "I tuoi dati sono crittografati e sicuri"
+  "dataSecure": "I tuoi dati sono crittografati e sicuri",
+  "skip": "Salta per ora",
+  "maybeLater": "Forse più tardi",
+  "couple": {
+    "header": "Due è meglio di uno.",
+    "subtext": "Olive funziona meglio quando gestite la casa insieme. Invita il tuo partner a condividere liste, calendari e attività.",
+    "inviteButton": "Invita partner",
+    "skipText": "Lo farò più tardi"
+  },
+  "whatsapp": {
+    "header": "Il tuo assistente personale, direttamente su WhatsApp.",
+    "subtext": "Non aprire l'app ogni volta. Scrivi a Olive per aggiungere la spesa, promemoria o eventi.",
+    "connectButton": "Connetti WhatsApp"
+  },
+  "calendar": {
+    "header": "Guarda tutta la settimana a colpo d'occhio.",
+    "subtext": "Sincronizza il tuo Google Calendar per permettere a Olive di organizzare i tuoi impegni insieme alle attività.",
+    "connectButton": "Connetti Google Calendar"
+  },
+  "style": {
+    "header": "Come prendi appunti?",
+    "subtext": "Olive si adatta al tuo stile di scrittura.",
+    "auto": {
+      "title": "Rilevamento automatico",
+      "recommended": "Consigliato",
+      "description": "Olive rileva automaticamente se usi note rapide o messaggi conversazionali."
+    },
+    "succinct": {
+      "title": "Stile brain-dump",
+      "description": "Note rapide focalizzate su parole chiave."
+    },
+    "conversational": {
+      "title": "Stile conversazionale",
+      "description": "Messaggi naturali come se stessi messaggiando con un amico."
+    }
+  },
+  "notifications": {
+    "header": "Non perderti nulla.",
+    "subtext": "Olive ha bisogno del permesso per inviarti promemoria per le attività e gli eventi che aggiungi.",
+    "enableButton": "Attiva notifiche",
+    "mockup": "📅 Conferma massaggio thailandese domani alle 14:00"
+  },
+  "demo": {
+    "header": "Proviamolo.",
+    "subtext": "Scrivi un pensiero qui sotto e guarda Olive organizzarlo per te.",
+    "placeholder": "Cosa hai in mente?",
+    "chip1": "Ricordami di chiamare mamma domani alle 17:00",
+    "chip2": "Aggiungi latte, uova e pane alla lista della spesa",
+    "chip3": "Cena con Sara venerdì prossimo alle 19:00",
+    "processing": "Organizzando...",
+    "submit": "Invia a Olive",
+    "skipToHome": "Salta e vai alla Home"
+  }
 }

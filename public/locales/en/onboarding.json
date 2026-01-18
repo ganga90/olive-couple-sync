@@ -23,5 +23,57 @@
     "enterPartnerName": "Please enter your partner's name"
   },
   "welcomeMessage": "Your personal task organizer is ready.",
-  "dataSecure": "Your data is encrypted and secure"
+  "dataSecure": "Your data is encrypted and secure",
+  "skip": "Skip for now",
+  "maybeLater": "Maybe later",
+  "couple": {
+    "header": "Two is better than one.",
+    "subtext": "Olive works best when you manage your household together. Invite your partner to share lists, calendars, and tasks.",
+    "inviteButton": "Invite Partner",
+    "skipText": "I'll do this later"
+  },
+  "whatsapp": {
+    "header": "Your personal assistant, right in WhatsApp.",
+    "subtext": "Don't open the app every time. Just text Olive to add groceries, reminders, or events.",
+    "connectButton": "Connect WhatsApp"
+  },
+  "calendar": {
+    "header": "See your whole week at a glance.",
+    "subtext": "Sync your Google Calendar to let Olive organize your schedule alongside your tasks.",
+    "connectButton": "Connect Google Calendar"
+  },
+  "style": {
+    "header": "How do you take notes?",
+    "subtext": "Olive adapts to your writing style.",
+    "auto": {
+      "title": "Auto-detect",
+      "recommended": "Recommended",
+      "description": "Olive automatically detects if you're using quick brain-dumps or conversational messages."
+    },
+    "succinct": {
+      "title": "Brain-dump style",
+      "description": "Quick, keyword-focused notes."
+    },
+    "conversational": {
+      "title": "Conversational style",
+      "description": "Natural messages like you're texting a friend."
+    }
+  },
+  "notifications": {
+    "header": "Never miss a moment.",
+    "subtext": "Olive needs permission to send you reminders for the tasks and events you add.",
+    "enableButton": "Enable Notifications",
+    "mockup": "📅 Confirm Thai Massage tomorrow at 2 PM"
+  },
+  "demo": {
+    "header": "Let's try it out.",
+    "subtext": "Drop a raw thought below, and watch Olive organize it for you.",
+    "placeholder": "What's on your mind?",
+    "chip1": "Remind me to call Mom tomorrow at 5pm",
+    "chip2": "Add milk, eggs, and bread to grocery list",
+    "chip3": "Dinner with Sarah next Friday at 7pm",
+    "processing": "Organizing...",
+    "submit": "Send to Olive",
+    "skipToHome": "Skip and go to Home"
+  }
 }
