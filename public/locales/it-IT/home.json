@@ -84,8 +84,14 @@
   },
   "partnerActivity": {
     "title": "Attività recente di {{name}}",
+    "railTitle": "Partner",
     "added": "ha aggiunto un'attività condivisa",
     "assignedYou": "ti ha assegnato un'attività",
     "empty": "{{name}} è sospettosamente silenzioso/a... 🤔"
+  },
+  "contextRail": {
+    "calendar": "Calendario",
+    "upcoming": "Prossimi",
+    "noEvents": "Nessun evento in arrivo"
   }
 }

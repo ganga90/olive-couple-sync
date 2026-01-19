@@ -589,12 +589,12 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 placeholder={t('brainDump.heroPlaceholder', "What's on your mind?")}
                 className={cn(
                   // HERO: 180px min-height, text-4xl SERIF - looks like document title
-                  "min-h-[180px] resize-none pr-16 transition-all duration-300 ease-out",
+                  "min-h-[180px] resize-none pr-16 pb-20 transition-all duration-300 ease-out",
                   "text-2xl md:text-3xl lg:text-4xl font-serif leading-relaxed",
                   "bg-transparent border-0 rounded-none",
                   "focus:ring-0 focus:outline-none",
-                  // Placeholder: Subtle, light - "What's on your mind?" in stone-300
-                  "placeholder:text-stone-300 placeholder:font-light placeholder:text-3xl lg:placeholder:text-4xl"
+                  // Placeholder: Better contrast - stone-400 instead of stone-300
+                  "placeholder:text-stone-400 placeholder:font-light placeholder:text-3xl lg:placeholder:text-4xl"
                 )}
                 disabled={isProcessing || isUploadingMedia}
               />
@@ -673,13 +673,13 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
               </div>
             )}
             
-            {/* Submit row */}
-            <div className="flex items-center justify-between">
+            {/* Submit row - Floating pill button inside input area */}
+            <div className="flex items-center justify-between mt-4">
               <p className={cn(
                 "text-sm transition-all duration-300",
                 isProcessing || isUploadingMedia 
                   ? "text-primary font-medium" 
-                  : "text-stone-400"
+                  : "text-stone-500"
               )}>
                 {isUploadingMedia ? "Uploading..." : isProcessing ? "AI is organizing..." : "AI will organize your note"}
               </p>
@@ -688,7 +688,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 type="submit"
                 disabled={isProcessing || isUploadingMedia || !hasContent}
                 className={cn(
-                  "h-12 px-8 rounded-full bg-primary hover:bg-primary-dark text-white font-semibold",
+                  // PILL BUTTON: Floating on the writing paper
+                  "h-11 px-6 rounded-full font-semibold",
+                  "bg-stone-800 hover:bg-black text-white",
                   "shadow-lg transition-all duration-300 ease-out",
                   "hover:shadow-xl hover:scale-105",
                   !hasContent && "opacity-50",
@@ -699,7 +701,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                   <Sparkles className="h-5 w-5 animate-spin" />
                 ) : (
                   <>
-                    <Send className="h-5 w-5 mr-2" />
+                    <Send className="h-4 w-4 mr-2" />
                     {t('brainDump.submit', 'Capture')}
                   </>
                 )}
