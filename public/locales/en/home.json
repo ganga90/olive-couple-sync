@@ -85,8 +85,14 @@
   },
   "partnerActivity": {
     "title": "{{name}}'s recent activity",
+    "railTitle": "Partner",
     "added": "added a shared task",
     "assignedYou": "assigned you a task",
     "empty": "{{name}} is being suspiciously quiet... 🤔"
+  },
+  "contextRail": {
+    "calendar": "Calendar",
+    "upcoming": "Upcoming",
+    "noEvents": "No upcoming events"
   }
 }

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { MobileHeader } from '../MobileHeader';
 import MobileTabBar from '../MobileTabBar';
 import DesktopSidebar from './DesktopSidebar';
+import ContextRail from './ContextRail';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useLanguage } from '@/providers/LanguageProvider';
 
@@ -75,28 +76,30 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     );
   }
 
-  // Desktop layout: Sidebar + Floating Sheet on Stone Desk
+  // Desktop layout: 3-Column Grid - Sidebar | Floating Sheet | Context Rail
   return (
-    <div className="flex min-h-screen bg-[hsl(40_20%_88%)]">
-      {/* Fixed Left Sidebar - 280px - blends with stone background */}
-      <DesktopSidebar />
-      
-      {/* Main Content Area - "FLOATING SHEET OF PAPER" */}
-      <main className="flex-1 ml-72 py-6 pr-6 xl:pr-8">
-        {/* Paper Surface - Floating sheet with shadow, rounded top */}
-        <div className="bg-[hsl(48_60%_99%)] rounded-3xl shadow-2xl min-h-[calc(100vh-3rem)] overflow-hidden">
-          {/* Central Focus Container - max-w-3xl (768px) centered */}
-          <div className="max-w-3xl mx-auto px-8 lg:px-12 pt-12 lg:pt-16 pb-12">
-            {children}
+    <div className="min-h-screen bg-[hsl(40_20%_88%)]">
+      {/* CSS Grid: Precise 3-column layout for xl screens */}
+      <div className="grid grid-cols-[280px_1fr] xl:grid-cols-[280px_1fr_320px] min-h-screen">
+        {/* Left Column: Navigation Sidebar - blends with stone */}
+        <DesktopSidebar />
+        
+        {/* Center Column: "FLOATING SHEET OF PAPER" */}
+        <main className="py-6 px-6 xl:px-8">
+          {/* Paper Surface - Floating sheet with heavy shadow */}
+          <div className="bg-[hsl(48_60%_99%)] rounded-3xl shadow-2xl min-h-[calc(100vh-3rem)] overflow-hidden">
+            {/* Central Focus Container - max-w-3xl (768px) centered with generous top padding */}
+            <div className="max-w-3xl mx-auto px-8 lg:px-12 pt-12 lg:pt-16 pb-12">
+              {children}
+            </div>
           </div>
-        </div>
-      </main>
-      
-      {/* Context Rail - Optional right column for xl screens */}
-      <aside className="hidden xl:block w-80 py-6 pr-6 shrink-0">
-        {/* This space can be used for Partner Status, Mini Calendar, etc. */}
-        {/* Currently empty - transparent on stone background */}
-      </aside>
+        </main>
+        
+        {/* Right Column: Context Rail - Sticky, transparent on stone */}
+        <aside className="hidden xl:block py-8 pr-8">
+          <ContextRail />
+        </aside>
+      </div>
     </div>
   );
 };
