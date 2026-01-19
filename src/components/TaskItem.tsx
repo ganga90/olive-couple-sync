@@ -54,13 +54,14 @@ export const TaskItem: React.FC<TaskItemProps> = ({
     <div
       onClick={() => onTaskClick(task)}
       className={cn(
-        "flex items-center gap-3 md:gap-5 py-3 md:py-5 lg:py-6 px-4 md:px-6 rounded-[var(--radius-md)] border bg-card transition-all cursor-pointer",
+        // RADICAL DESKTOP: py-6 for breathing room, larger gaps, rounded-2xl
+        "flex items-center gap-4 md:gap-6 py-4 md:py-6 px-5 md:px-8 rounded-xl md:rounded-2xl border bg-card transition-all cursor-pointer",
         "hover:shadow-[var(--shadow-raised)] active:scale-[0.98]",
         task.completed && "opacity-60",
         isAnimating && "animate-scale-in"
       )}
     >
-      {/* Checkmark Button */}
+      {/* Checkmark Button - LARGER on desktop */}
       <button
         onClick={handleCheckClick}
         className={cn(
@@ -71,40 +72,41 @@ export const TaskItem: React.FC<TaskItemProps> = ({
       >
         {task.completed ? (
           <CheckCircle2 
-            className="h-6 w-6 md:h-7 md:w-7 text-primary" 
+            className="h-6 w-6 md:h-8 md:w-8 text-primary" 
             fill="currentColor"
           />
         ) : (
-          <Circle className="h-6 w-6 md:h-7 md:w-7 text-primary hover:text-primary/80" />
+          <Circle className="h-6 w-6 md:h-8 md:w-8 text-primary hover:text-primary/80" />
         )}
       </button>
 
-      {/* Task Content */}
+      {/* Task Content - RADICAL TEXT SIZE */}
       <div className="flex-1 min-w-0">
         <h3 
           className={cn(
-            "font-medium text-base md:text-lg lg:text-xl leading-tight mb-1 md:mb-2",
+            // DESKTOP: text-xl (20px) for comfortable reading
+            "font-semibold text-base md:text-xl leading-snug mb-1.5 md:mb-2",
             task.completed ? "line-through text-muted-foreground" : "text-foreground"
           )}
         >
           {task.summary}
         </h3>
         
-        {/* Metadata - DESKTOP SIZED UP */}
-        <div className="flex items-center gap-3 md:gap-4 text-xs md:text-sm lg:text-base text-muted-foreground">
+        {/* Metadata - DESKTOP: text-base (16px) for readability */}
+        <div className="flex items-center gap-3 md:gap-5 text-sm md:text-base text-muted-foreground">
           {task.dueDate && (
             <div className={cn(
               "flex items-center gap-1.5 md:gap-2",
               isOverdue && "text-destructive font-medium"
             )}>
-              <Calendar className="h-3 w-3 md:h-4 md:w-4" />
+              <Calendar className="h-4 w-4 md:h-5 md:w-5" />
               <span>{format(new Date(task.dueDate), 'MMM d')}</span>
             </div>
           )}
           
           {authorName && (
             <div className="flex items-center gap-1.5 md:gap-2">
-              <User className="h-3 w-3 md:h-4 md:w-4" />
+              <User className="h-4 w-4 md:h-5 md:w-5" />
               <span>{authorName}</span>
             </div>
           )}
@@ -117,7 +119,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
           
           {task.category === 'auto' && (
             <div className="flex items-center gap-1.5 md:gap-2 text-[hsl(var(--ai-accent))]">
-              <Sparkles className="h-3 w-3 md:h-4 md:w-4" />
+              <Sparkles className="h-4 w-4 md:h-5 md:w-5" />
               <span className="font-medium">AI</span>
             </div>
           )}

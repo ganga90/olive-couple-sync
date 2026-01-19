@@ -534,8 +534,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     <div 
       ref={dropZoneRef}
       className={cn(
+        // RADICAL DESKTOP: min-h-[300px] for premium notepad feel
         "input-floating overflow-hidden transition-all duration-300 ease-out relative",
-        "md:min-h-[200px] lg:min-h-[220px]",
+        "md:min-h-[280px] lg:min-h-[320px]",
         hasContent && "shadow-xl ring-1 ring-primary/10",
         isProcessing && "ring-2 ring-primary/20",
         isDragging && "ring-2 ring-primary/40 bg-primary/5"
@@ -549,19 +550,20 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       {isDragging && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-primary/10 backdrop-blur-sm rounded-2xl border-2 border-dashed border-primary/50 pointer-events-none animate-fade-in">
           <div className="text-center">
-            <Image className="w-10 h-10 mx-auto mb-2 text-primary animate-bounce" />
-            <p className="text-sm font-medium text-primary">
+            <Image className="w-12 h-12 mx-auto mb-3 text-primary animate-bounce" />
+            <p className="text-base md:text-lg font-medium text-primary">
               {t('brainDump.dropHere') || 'Drop images here'}
             </p>
           </div>
         </div>
       )}
-      <form onSubmit={handleSubmit} className="p-6 md:p-8 lg:p-10 space-y-4 md:space-y-6">
-        {/* Header with animated brain icon */}
-        <div className="text-center mb-2 lg:mb-4">
-          <div className="inline-flex items-center gap-2 lg:gap-3 mb-2">
+      {/* RADICAL PADDING: p-8 on tablet, p-10 on desktop */}
+      <form onSubmit={handleSubmit} className="p-6 md:p-10 space-y-5 md:space-y-8">
+        {/* Header with animated brain icon - LARGER on desktop */}
+        <div className="text-center mb-2 md:mb-6">
+          <div className="inline-flex items-center gap-3 md:gap-4 mb-3">
             <div className={cn(
-              "w-8 h-8 lg:w-10 lg:h-10 rounded-full flex items-center justify-center transition-all duration-300",
+              "w-10 h-10 md:w-14 md:h-14 rounded-full flex items-center justify-center transition-all duration-300",
               isProcessing 
                 ? "bg-[hsl(var(--olive-magic))]/30 animate-pulse" 
                 : hasContent 
@@ -569,15 +571,15 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                   : "bg-muted"
             )}>
               <Brain className={cn(
-                "w-4 h-4 lg:w-5 lg:h-5 transition-colors duration-300",
+                "w-5 h-5 md:w-7 md:h-7 transition-colors duration-300",
                 isProcessing ? "text-[hsl(130_22%_29%)]" : hasContent ? "text-primary" : "text-muted-foreground"
               )} />
             </div>
-            <h2 className="font-serif font-semibold text-lg lg:text-xl text-foreground">
+            <h2 className="font-serif font-semibold text-xl md:text-2xl text-foreground">
               {t('brainDump.title')}
             </h2>
           </div>
-          <p className="text-sm lg:text-base text-muted-foreground">
+          <p className="text-base md:text-lg text-muted-foreground">
             {t('brainDump.subtitle')}
           </p>
         </div>
@@ -623,7 +625,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           </div>
         )}
         
-        {/* Textarea with enhanced floating styling - DESKTOP UPSCALE */}
+        {/* Textarea - RADICAL UPSCALE: 200px min-height, text-2xl/3xl, looks like a HEADING */}
         <div className="relative group">
           <Textarea
             value={text}
@@ -631,18 +633,21 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             onPaste={handlePaste}
             placeholder={getDynamicPlaceholder()}
             className={cn(
-              "min-h-[140px] md:min-h-[180px] lg:min-h-[200px] resize-none pr-24 transition-all duration-300 ease-out",
-              "text-base md:text-xl lg:text-2xl leading-relaxed md:leading-relaxed",
-              "bg-muted/30 border-0 rounded-xl",
+              // RADICAL: 200px mobile, 240px desktop - feels like a writing pad
+              "min-h-[160px] md:min-h-[200px] lg:min-h-[240px] resize-none pr-24 transition-all duration-300 ease-out",
+              // RADICAL TYPOGRAPHY: text-2xl on tablet, text-3xl on desktop (30px)
+              "text-lg md:text-2xl lg:text-3xl leading-relaxed md:leading-loose",
+              "bg-muted/30 border-0 rounded-2xl",
               "focus:ring-2 focus:ring-primary/20 focus:bg-white",
-              "placeholder:text-muted-foreground/60 md:placeholder:text-xl lg:placeholder:text-2xl"
+              // Placeholder also huge - looks like a HEADING
+              "placeholder:text-muted-foreground/50 placeholder:font-light md:placeholder:text-2xl lg:placeholder:text-3xl"
             )}
             disabled={isProcessing || isUploadingMedia}
           />
           
           {/* Interim transcript with better visibility */}
           {interim && (
-            <div className="absolute top-3 left-4 right-24 text-sm text-primary/70 italic pointer-events-none animate-pulse">
+            <div className="absolute top-4 left-5 right-28 text-base md:text-lg text-primary/70 italic pointer-events-none animate-pulse">
               {interim}...
             </div>
           )}
