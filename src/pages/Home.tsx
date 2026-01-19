@@ -152,13 +152,13 @@ const Home = () => {
     <div className="flex flex-col h-full atmosphere-bg">
       {/* Main Content - Scrollable */}
       <div className="flex-1 overflow-y-auto pb-32 scrollbar-thin relative z-10">
-        <div className="px-4 lg:px-0 pt-8 lg:pt-12 space-y-8 lg:space-y-10">
+        <div className="px-4 md:px-0 pt-8 md:pt-12 lg:pt-16 space-y-8 md:space-y-10 lg:space-y-12">
           {/* Greeting Section - Massive Editorial Typography */}
           <div className="text-center animate-fade-up">
-            <h1 className="heading-massive lg:text-5xl xl:text-6xl mb-2 lg:mb-4">
+            <h1 className="heading-massive md:text-5xl lg:text-6xl xl:text-7xl mb-2 md:mb-4 lg:mb-6">
               {t('home:greeting', { name: userName })}
             </h1>
-            <p className="text-lg lg:text-xl text-stone-500 font-light">
+            <p className="text-lg md:text-xl lg:text-2xl text-stone-500 font-light">
               {t('home:whatsOnMind')}
             </p>
           </div>
@@ -285,7 +285,7 @@ const Home = () => {
                 </div>
               </div>
               <TabsContent value="priority" className="mt-0">
-                <div className="p-4 space-y-2">
+                <div className="p-4 md:p-6 space-y-3 md:space-y-4">
                   {priorityTasks.length > 0 ? (
                     priorityTasks.map((task, index) => (
                       <div key={task.id} className={`animate-fade-up stagger-${Math.min(index + 1, 5)}`}>
@@ -310,7 +310,7 @@ const Home = () => {
               </TabsContent>
 
               <TabsContent value="daily" className="mt-0">
-                <div className="p-4 space-y-5">
+                <div className="p-4 md:p-6 space-y-5 md:space-y-6">
                   {dailyViewTasks.map((dayData, dayIndex) => (
                     <div key={dayData.date.toISOString()} className={`animate-fade-up stagger-${Math.min(dayIndex + 1, 3)}`}>
                       <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
@@ -322,7 +322,7 @@ const Home = () => {
                         </span>
                       </h3>
                       {dayData.tasks.length > 0 ? (
-                        <div className="space-y-2">
+                        <div className="space-y-3 md:space-y-4">
                           {dayData.tasks.map((task) => (
                             <TaskItem
                               key={task.id}
@@ -344,7 +344,7 @@ const Home = () => {
               </TabsContent>
 
               <TabsContent value="recent" className="mt-0">
-                <div className="p-4 space-y-2">
+                <div className="p-4 md:p-6 space-y-3 md:space-y-4">
                   {recentTasks.length > 0 ? (
                     recentTasks.map((task, index) => (
                       <div key={task.id} className={`animate-fade-up stagger-${Math.min(index + 1, 5)}`}>
