@@ -205,5 +205,11 @@
     "privacySubtitle": "Come gestiamo i tuoi dati",
     "licenses": "Licenze di Terze Parti",
     "licensesSubtitle": "Attribuzioni open source"
+  },
+  "contextRail": {
+    "stats": "Statistiche Rapide",
+    "completed": "Completate",
+    "active": "Attività Attive",
+    "shared": "Attività Condivise"
   }
 }

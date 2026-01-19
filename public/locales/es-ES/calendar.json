@@ -20,5 +20,9 @@
   },
   "actions": {
     "close": "Cerrar"
+  },
+  "contextRail": {
+    "todaysFocus": "Enfoque de Hoy",
+    "noTasksToday": "Sin tareas para hoy"
   }
 }

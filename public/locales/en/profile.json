@@ -205,5 +205,11 @@
     "privacySubtitle": "How we handle your data",
     "licenses": "Third-Party Licenses",
     "licensesSubtitle": "Open source attributions"
+  },
+  "contextRail": {
+    "stats": "Quick Stats",
+    "completed": "Completed",
+    "active": "Active Tasks",
+    "shared": "Shared Tasks"
   }
 }
