@@ -53,5 +53,9 @@
     "cancel": "Cancelar",
     "creating": "Creando...",
     "create": "Crear Lista"
+  },
+  "contextRail": {
+    "popular": "Listas Populares",
+    "noLists": "Sin listas aún"
   }
 }
