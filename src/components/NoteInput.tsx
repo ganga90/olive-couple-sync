@@ -535,6 +535,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       ref={dropZoneRef}
       className={cn(
         "input-floating overflow-hidden transition-all duration-300 ease-out relative",
+        "md:min-h-[200px] lg:min-h-[220px]",
         hasContent && "shadow-xl ring-1 ring-primary/10",
         isProcessing && "ring-2 ring-primary/20",
         isDragging && "ring-2 ring-primary/40 bg-primary/5"
@@ -555,7 +556,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           </div>
         </div>
       )}
-      <form onSubmit={handleSubmit} className="p-6 space-y-4">
+      <form onSubmit={handleSubmit} className="p-6 md:p-8 lg:p-10 space-y-4 md:space-y-6">
         {/* Header with animated brain icon */}
         <div className="text-center mb-2 lg:mb-4">
           <div className="inline-flex items-center gap-2 lg:gap-3 mb-2">
@@ -622,7 +623,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           </div>
         )}
         
-        {/* Textarea with enhanced floating styling */}
+        {/* Textarea with enhanced floating styling - DESKTOP UPSCALE */}
         <div className="relative group">
           <Textarea
             value={text}
@@ -630,10 +631,11 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             onPaste={handlePaste}
             placeholder={getDynamicPlaceholder()}
             className={cn(
-              "min-h-[140px] lg:min-h-[180px] resize-none text-base lg:text-lg xl:text-xl pr-24 transition-all duration-300 ease-out",
+              "min-h-[140px] md:min-h-[180px] lg:min-h-[200px] resize-none pr-24 transition-all duration-300 ease-out",
+              "text-base md:text-xl lg:text-2xl leading-relaxed md:leading-relaxed",
               "bg-muted/30 border-0 rounded-xl",
               "focus:ring-2 focus:ring-primary/20 focus:bg-white",
-              "placeholder:text-muted-foreground/60 lg:placeholder:text-lg"
+              "placeholder:text-muted-foreground/60 md:placeholder:text-xl lg:placeholder:text-2xl"
             )}
             disabled={isProcessing || isUploadingMedia}
           />
