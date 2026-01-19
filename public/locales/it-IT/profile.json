@@ -189,5 +189,21 @@
       "title": "📱 Integrazione WhatsApp",
       "description": "Collega WhatsApp per inviare attività via messaggio! Scrivi a Olive naturalmente e le tue attività appariranno nell'app."
     }
+  },
+  "cookieSettings": {
+    "title": "Preferenze Cookie",
+    "subtitle": "Gestisci come utilizziamo i cookie",
+    "description": "Aggiorna le tue preferenze sui cookie in qualsiasi momento. Le modifiche avranno effetto immediato.",
+    "saved": "Preferenze cookie salvate",
+    "saveButton": "Salva Preferenze"
+  },
+  "legal": {
+    "title": "Legale e Supporto",
+    "terms": "Termini di Servizio",
+    "termsSubtitle": "Leggi i nostri termini e condizioni",
+    "privacy": "Informativa sulla Privacy",
+    "privacySubtitle": "Come gestiamo i tuoi dati",
+    "licenses": "Licenze di Terze Parti",
+    "licensesSubtitle": "Attribuzioni open source"
   }
 }

@@ -11,7 +11,8 @@ import { MemoryPersonalization } from "@/components/MemoryPersonalization";
 import { GoogleCalendarConnect } from "@/components/GoogleCalendarConnect";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { DataExport } from "@/components/DataExport";
-import { User, LogOut, Bell, Shield, HelpCircle, Brain, Sparkles, Calendar, ChevronRight, Globe, MessageSquare, Clock, Users, Download, FileText, Scale } from "lucide-react";
+import { CookieSettings } from "@/components/CookieSettings";
+import { User, LogOut, Bell, Shield, HelpCircle, Brain, Sparkles, Calendar, ChevronRight, Globe, MessageSquare, Clock, Users, Download, FileText, Scale, Cookie } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
 import { useLanguage } from "@/providers/LanguageProvider";
@@ -204,13 +205,24 @@ const Profile = () => {
           <MemoryPersonalization />
         </SettingsCard>
 
+        {/* Cookie Settings */}
+        <SettingsCard
+          icon={<Cookie className="h-5 w-5 text-amber-600" />}
+          iconBg="bg-amber-500/10"
+          title={t('profile:cookieSettings.title')}
+          subtitle={t('profile:cookieSettings.subtitle')}
+          delay={375}
+        >
+          <CookieSettings />
+        </SettingsCard>
+
         {/* Data Export */}
         <SettingsCard
           icon={<Download className="h-5 w-5 text-blue-600" />}
           iconBg="bg-blue-500/10"
           title={t('profile:export.title')}
           subtitle={t('profile:export.subtitle')}
-          delay={375}
+          delay={400}
         >
           <DataExport />
         </SettingsCard>
