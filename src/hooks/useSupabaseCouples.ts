@@ -11,6 +11,9 @@ export type SupabaseCouple = {
   created_by?: string;
   created_at: string;
   updated_at: string;
+  // Dynamic names based on current user (computed, not stored)
+  resolvedYouName?: string;
+  resolvedPartnerName?: string;
 };
 
 export type SupabaseCoupleMember = {
@@ -78,7 +81,33 @@ export const useSupabaseCouples = () => {
 
       if (error) throw error;
 
-      const userCouples = (data?.map(member => member?.clerk_couples).filter(Boolean) || []) as unknown as SupabaseCouple[];
+      // Transform couples with resolved names based on current user
+      const userCouples = (data?.map(member => {
+        const couple = member?.clerk_couples as unknown as SupabaseCouple;
+        if (!couple) return null;
+        
+        // Determine if current user is the creator or the partner
+        const isCreator = couple.created_by === user.id;
+        
+        // Swap names based on who is logged in:
+        // - If current user is the creator: you_name is correct, partner_name is correct
+        // - If current user is NOT the creator: swap them (partner sees you_name as their partner)
+        const resolvedYouName = isCreator ? couple.you_name : couple.partner_name;
+        const resolvedPartnerName = isCreator ? couple.partner_name : couple.you_name;
+        
+        console.log("[Couples] Resolving names for user:", user.id, {
+          isCreator,
+          original: { you_name: couple.you_name, partner_name: couple.partner_name },
+          resolved: { resolvedYouName, resolvedPartnerName }
+        });
+        
+        return {
+          ...couple,
+          resolvedYouName,
+          resolvedPartnerName,
+        };
+      }).filter(Boolean) || []) as SupabaseCouple[];
+      
       console.log("[Couples] Found couples:", userCouples);
       setCouples(userCouples);
       

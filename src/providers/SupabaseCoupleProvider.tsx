@@ -56,8 +56,9 @@ export const SupabaseCoupleProvider: React.FC<{ children: React.ReactNode }> = (
       couples,
       loading,
       isOnboarded: isOnboardedValue,
-      you: currentCouple?.you_name || "",
-      partner: currentCouple?.partner_name || "",
+      // Use resolved names that are dynamically swapped based on logged-in user
+      you: currentCouple?.resolvedYouName || currentCouple?.you_name || "",
+      partner: currentCouple?.resolvedPartnerName || currentCouple?.partner_name || "",
       createCouple,
       updateCouple,
       switchCouple,
