@@ -45,15 +45,19 @@ const mapAICategory = (aiCategory: string): string => {
 
 // Convert Supabase note to app Note type
 const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any, currentCouple?: any): Note => {
+  // Get resolved names (already swapped based on current user in useSupabaseCouples)
+  const resolvedYouName = currentCouple?.resolvedYouName || currentCouple?.you_name;
+  const resolvedPartnerName = currentCouple?.resolvedPartnerName || currentCouple?.partner_name;
+  
   // Map author_id to display name
   const getAuthorName = (authorId: string): string => {
     if (authorId === currentUser?.id) {
-      return currentCouple?.you_name || currentUser?.firstName || currentUser?.fullName || "You";
+      return resolvedYouName || currentUser?.firstName || currentUser?.fullName || "You";
     }
     
     // For shared notes, if it's not the current user, it must be the partner
     if (currentCouple && supabaseNote.couple_id) {
-      return currentCouple.partner_name || "Partner";
+      return resolvedPartnerName || "Partner";
     }
     
     // For personal notes from unknown users, fall back to "Unknown"
@@ -64,12 +68,16 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
   const getTaskOwnerName = (taskOwner: string | null): string | undefined => {
     if (!taskOwner) return undefined;
     
+    // Get resolved names
+    const resolvedYouName = currentCouple?.resolvedYouName || currentCouple?.you_name;
+    const resolvedPartnerName = currentCouple?.resolvedPartnerName || currentCouple?.partner_name;
+    
     if (taskOwner.startsWith('user_')) {
       if (taskOwner === currentUser?.id) {
-        return currentCouple?.you_name || currentUser?.firstName || currentUser?.fullName || "You";
+        return resolvedYouName || currentUser?.firstName || currentUser?.fullName || "You";
       }
       if (currentCouple) {
-        return currentCouple.partner_name || "Partner";
+        return resolvedPartnerName || "Partner";
       }
       return "Unknown";
     }
