@@ -97,5 +97,24 @@
     "english": "English",
     "spanish": "Spanish (Spain)",
     "italian": "Italian"
+  },
+  "cookies": {
+    "title": "We value your privacy",
+    "description": "We use cookies to enhance your browsing experience, provide personalized content, and analyze our traffic. By clicking \"Accept All\", you consent to our use of cookies.",
+    "acceptAll": "Accept all",
+    "necessaryOnly": "Necessary only",
+    "managePreferences": "Manage preferences",
+    "hidePreferences": "Hide preferences",
+    "savePreferences": "Save preferences",
+    "necessary": "Necessary",
+    "necessaryDesc": "Essential for the website to function properly",
+    "functional": "Functional",
+    "functionalDesc": "Remember your preferences and settings",
+    "analytics": "Analytics",
+    "analyticsDesc": "Help us understand how you use our app",
+    "marketing": "Marketing",
+    "marketingDesc": "Personalized advertisements and content",
+    "learnMore": "Learn more in our",
+    "privacyPolicy": "Privacy Policy"
   }
 }

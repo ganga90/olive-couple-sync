@@ -97,5 +97,24 @@
     "english": "Inglese",
     "spanish": "Spagnolo (Spagna)",
     "italian": "Italiano"
+  },
+  "cookies": {
+    "title": "Rispettiamo la tua privacy",
+    "description": "Utilizziamo i cookie per migliorare la tua esperienza di navigazione, fornire contenuti personalizzati e analizzare il nostro traffico. Cliccando su \"Accetta tutto\", acconsenti all'uso dei cookie.",
+    "acceptAll": "Accetta tutto",
+    "necessaryOnly": "Solo necessari",
+    "managePreferences": "Gestisci preferenze",
+    "hidePreferences": "Nascondi preferenze",
+    "savePreferences": "Salva preferenze",
+    "necessary": "Necessari",
+    "necessaryDesc": "Essenziali per il funzionamento del sito",
+    "functional": "Funzionali",
+    "functionalDesc": "Ricordano le tue preferenze e impostazioni",
+    "analytics": "Analitici",
+    "analyticsDesc": "Ci aiutano a capire come usi la nostra app",
+    "marketing": "Marketing",
+    "marketingDesc": "Pubblicità e contenuti personalizzati",
+    "learnMore": "Scopri di più nella nostra",
+    "privacyPolicy": "Informativa sulla Privacy"
   }
 }
