@@ -75,16 +75,16 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     );
   }
 
-  // Desktop layout: Sidebar + Content
+  // Desktop layout: Sidebar + Content - RADICAL OVERHAUL
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-background">
       {/* Fixed Left Sidebar - 288px (w-72) */}
       <DesktopSidebar />
       
-      {/* Main Content Area - with left padding to clear sidebar */}
+      {/* Main Content Area - FOCUSED PAPER LAYOUT */}
       <main className="flex-1 ml-72">
-        {/* Central Focus Container - AGGRESSIVE max-width for readability */}
-        <div className="md:max-w-3xl lg:max-w-4xl md:mx-auto md:px-8 lg:px-12">
+        {/* Central Focus Container - NARROW max-w-2xl (672px) like Notion/Linear */}
+        <div className="max-w-2xl mx-auto px-8 pt-12 lg:pt-16">
           {children}
         </div>
       </main>

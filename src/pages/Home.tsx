@@ -152,13 +152,13 @@ const Home = () => {
     <div className="flex flex-col h-full atmosphere-bg">
       {/* Main Content - Scrollable */}
       <div className="flex-1 overflow-y-auto pb-32 scrollbar-thin relative z-10">
-        <div className="px-4 md:px-0 pt-8 md:pt-12 lg:pt-16 space-y-8 md:space-y-10 lg:space-y-12">
-          {/* Greeting Section - Massive Editorial Typography */}
+        <div className="px-4 md:px-0 space-y-8 md:space-y-12">
+          {/* Greeting Section - MASSIVE Editorial Typography */}
           <div className="text-center animate-fade-up">
-            <h1 className="heading-massive md:text-5xl lg:text-6xl xl:text-7xl mb-2 md:mb-4 lg:mb-6">
+            <h1 className="heading-massive text-4xl md:text-5xl lg:text-6xl mb-3 md:mb-6">
               {t('home:greeting', { name: userName })}
             </h1>
-            <p className="text-lg md:text-xl lg:text-2xl text-stone-500 font-light">
+            <p className="text-lg md:text-2xl text-stone-500 font-light">
               {t('home:whatsOnMind')}
             </p>
           </div>
@@ -242,18 +242,19 @@ const Home = () => {
           {/* Partner Activity Widget */}
           <PartnerActivityWidget notes={notes} />
 
-          {/* Tabs Widget - Frosted Glass Card */}
-          <div className="card-glass overflow-hidden animate-fade-up stagger-3">
+          {/* Tabs Widget - CARD AESTHETIC: White surface, heavy shadow, rounded-3xl */}
+          <div className="bg-white rounded-3xl shadow-xl overflow-hidden animate-fade-up stagger-3">
             <Tabs defaultValue="priority" className="w-full">
-              <div className="bg-stone-50/50 backdrop-blur-sm px-6 py-5 border-b border-stone-100/50">
-                <TabsList className="w-full grid grid-cols-3 bg-white/80 mb-4 h-12 rounded-full p-1 shadow-sm">
-                  <TabsTrigger value="priority" className="text-sm font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md">
+              {/* Header with tabs and filters - DESKTOP PADDING p-8 */}
+              <div className="bg-stone-50/50 backdrop-blur-sm px-6 md:px-8 py-5 md:py-6 border-b border-stone-100/50">
+                <TabsList className="w-full grid grid-cols-3 bg-white/80 mb-4 h-12 md:h-14 rounded-full p-1 shadow-sm">
+                  <TabsTrigger value="priority" className="text-sm md:text-base font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md">
                     {t('home:tabs.priority')}
                   </TabsTrigger>
-                  <TabsTrigger value="daily" className="text-sm font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md">
+                  <TabsTrigger value="daily" className="text-sm md:text-base font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md">
                     {t('home:tabs.daily')}
                   </TabsTrigger>
-                  <TabsTrigger value="recent" className="text-sm font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md">
+                  <TabsTrigger value="recent" className="text-sm md:text-base font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md">
                     {t('home:tabs.recent')}
                   </TabsTrigger>
                 </TabsList>
@@ -284,8 +285,9 @@ const Home = () => {
                   </Select>
                 </div>
               </div>
+              {/* Priority Tab - DESKTOP PADDING p-8, space-y-5 for breathing room */}
               <TabsContent value="priority" className="mt-0">
-                <div className="p-4 md:p-6 space-y-3 md:space-y-4">
+                <div className="p-4 md:p-8 space-y-4 md:space-y-5">
                   {priorityTasks.length > 0 ? (
                     priorityTasks.map((task, index) => (
                       <div key={task.id} className={`animate-fade-up stagger-${Math.min(index + 1, 5)}`}>
@@ -298,22 +300,23 @@ const Home = () => {
                       </div>
                     ))
                   ) : (
-                    <div className="text-center py-10 text-muted-foreground">
-                      <div className="w-12 h-12 rounded-full bg-muted mx-auto mb-3 flex items-center justify-center">
-                        <Sparkles className="w-6 h-6" />
+                    <div className="text-center py-12 md:py-16 text-muted-foreground">
+                      <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
+                        <Sparkles className="w-7 h-7 md:w-8 md:h-8" />
                       </div>
-                      <p className="text-sm font-medium">{t('home:emptyState.noTasksMatch')}</p>
-                      <p className="text-xs mt-1">{t('home:emptyState.adjustFilters')}</p>
+                      <p className="text-base md:text-lg font-medium">{t('home:emptyState.noTasksMatch')}</p>
+                      <p className="text-sm md:text-base mt-2">{t('home:emptyState.adjustFilters')}</p>
                     </div>
                   )}
                 </div>
               </TabsContent>
 
+              {/* Daily Tab - DESKTOP PADDING */}
               <TabsContent value="daily" className="mt-0">
-                <div className="p-4 md:p-6 space-y-5 md:space-y-6">
+                <div className="p-4 md:p-8 space-y-6 md:space-y-8">
                   {dailyViewTasks.map((dayData, dayIndex) => (
                     <div key={dayData.date.toISOString()} className={`animate-fade-up stagger-${Math.min(dayIndex + 1, 3)}`}>
-                      <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                      <h3 className="text-base md:text-lg font-semibold text-foreground mb-3 md:mb-4 flex items-center gap-2">
                         <span className={dayIndex === 0 ? "text-primary" : ""}>
                           {dayIndex === 0 ? t('common:common.today') : dayIndex === 1 ? t('common:common.tomorrow') : format(dayData.date, 'EEEE')}
                         </span>
@@ -322,7 +325,7 @@ const Home = () => {
                         </span>
                       </h3>
                       {dayData.tasks.length > 0 ? (
-                        <div className="space-y-3 md:space-y-4">
+                        <div className="space-y-4 md:space-y-5">
                           {dayData.tasks.map((task) => (
                             <TaskItem
                               key={task.id}
@@ -334,7 +337,7 @@ const Home = () => {
                           ))}
                         </div>
                       ) : (
-                        <div className="text-center py-4 text-muted-foreground text-xs bg-muted/30 rounded-lg">
+                        <div className="text-center py-6 md:py-8 text-muted-foreground text-sm md:text-base bg-muted/30 rounded-xl">
                           {t('home:emptyState.noTasksScheduled')}
                         </div>
                       )}
@@ -343,14 +346,15 @@ const Home = () => {
                 </div>
               </TabsContent>
 
+              {/* Recent Tab - DESKTOP PADDING */}
               <TabsContent value="recent" className="mt-0">
-                <div className="p-4 md:p-6 space-y-3 md:space-y-4">
+                <div className="p-4 md:p-8 space-y-4 md:space-y-5">
                   {recentTasks.length > 0 ? (
                     recentTasks.map((task, index) => (
                       <div key={task.id} className={`animate-fade-up stagger-${Math.min(index + 1, 5)}`}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <Clock className="w-3 h-3 text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Clock className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground" />
+                          <span className="text-sm md:text-base text-muted-foreground">
                             {formatDistanceToNow(new Date(task.createdAt), { addSuffix: true })}
                           </span>
                         </div>
@@ -363,12 +367,12 @@ const Home = () => {
                       </div>
                     ))
                   ) : (
-                    <div className="text-center py-10 text-muted-foreground">
-                      <div className="w-12 h-12 rounded-full bg-muted mx-auto mb-3 flex items-center justify-center">
-                        <Clock className="w-6 h-6" />
+                    <div className="text-center py-12 md:py-16 text-muted-foreground">
+                      <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
+                        <Clock className="w-7 h-7 md:w-8 md:h-8" />
                       </div>
-                      <p className="text-sm font-medium">{t('home:emptyState.noRecentTasks')}</p>
-                      <p className="text-xs mt-1">{t('home:emptyState.addFirstTask')}</p>
+                      <p className="text-base md:text-lg font-medium">{t('home:emptyState.noRecentTasks')}</p>
+                      <p className="text-sm md:text-base mt-2">{t('home:emptyState.addFirstTask')}</p>
                     </div>
                   )}
                 </div>

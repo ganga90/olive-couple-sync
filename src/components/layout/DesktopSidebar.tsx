@@ -50,15 +50,15 @@ const DesktopSidebar = () => {
 
   return (
     <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-72 flex-col bg-sidebar-background border-r border-sidebar-border z-40">
-      {/* Logo */}
+      {/* Logo - Larger padding */}
       <div className="p-8 border-b border-sidebar-border">
         <Link to={getLocalizedPath("/")} className="hover:opacity-80 transition-opacity">
           <OliveLogoWithText size="md" />
         </Link>
       </div>
 
-      {/* Navigation - Aggressive spacing */}
-      <nav className="flex-1 p-6 space-y-2">
+      {/* Navigation - RADICAL TYPOGRAPHY: text-lg, py-5, icons 28px */}
+      <nav className="flex-1 p-6 space-y-3">
         {navItems.map((item) => {
           const localizedPath = getLocalizedPath(item.to);
           const isActive = location.pathname === localizedPath || 
@@ -71,20 +71,20 @@ const DesktopSidebar = () => {
               key={item.to}
               to={localizedPath}
               className={cn(
-                "flex items-center gap-4 px-5 py-4 rounded-xl transition-all duration-200 group select-none",
-                "text-base font-medium",
+                "flex items-center gap-4 px-5 py-5 rounded-2xl transition-all duration-200 group select-none",
+                "text-lg font-semibold",
                 isActive 
-                  ? "bg-primary/20 text-primary font-semibold shadow-md border-l-4 border-primary" 
+                  ? "bg-primary/20 text-primary shadow-lg border-l-4 border-primary" 
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               )}
             >
               <item.icon className={cn(
-                "h-6 w-6 transition-transform group-hover:scale-110",
+                "h-7 w-7 transition-transform group-hover:scale-110",
                 isActive && "text-primary"
               )} />
               <span className="flex-1">{item.label}</span>
               {item.badge > 0 && (
-                <span className="min-w-[24px] h-7 px-2 flex items-center justify-center rounded-full text-sm font-semibold bg-[hsl(var(--priority-high))] text-white">
+                <span className="min-w-[28px] h-8 px-2.5 flex items-center justify-center rounded-full text-sm font-bold bg-[hsl(var(--priority-high))] text-white">
                   {item.badge > 9 ? "9+" : item.badge}
                 </span>
               )}
