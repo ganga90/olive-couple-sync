@@ -189,5 +189,21 @@
       "title": "📱 WhatsApp Integration",
       "description": "Link your WhatsApp to send tasks via messaging! Just text Olive naturally and your tasks will appear in the app."
     }
+  },
+  "cookieSettings": {
+    "title": "Cookie Preferences",
+    "subtitle": "Manage how we use cookies",
+    "description": "Update your cookie preferences at any time. Changes will take effect immediately.",
+    "saved": "Cookie preferences saved",
+    "saveButton": "Save Preferences"
+  },
+  "legal": {
+    "title": "Legal & Support",
+    "terms": "Terms of Service",
+    "termsSubtitle": "Read our terms and conditions",
+    "privacy": "Privacy Policy",
+    "privacySubtitle": "How we handle your data",
+    "licenses": "Third-Party Licenses",
+    "licensesSubtitle": "Open source attributions"
   }
 }

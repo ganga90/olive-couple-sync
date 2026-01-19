@@ -189,5 +189,21 @@
       "title": "📱 Integración WhatsApp",
       "description": "¡Vincula tu WhatsApp para enviar tareas por mensaje! Escribe a Olive de forma natural y tus tareas aparecerán en la app."
     }
+  },
+  "cookieSettings": {
+    "title": "Preferencias de Cookies",
+    "subtitle": "Gestiona cómo usamos las cookies",
+    "description": "Actualiza tus preferencias de cookies en cualquier momento. Los cambios tendrán efecto inmediato.",
+    "saved": "Preferencias de cookies guardadas",
+    "saveButton": "Guardar Preferencias"
+  },
+  "legal": {
+    "title": "Legal y Soporte",
+    "terms": "Términos de Servicio",
+    "termsSubtitle": "Lee nuestros términos y condiciones",
+    "privacy": "Política de Privacidad",
+    "privacySubtitle": "Cómo gestionamos tus datos",
+    "licenses": "Licencias de Terceros",
+    "licensesSubtitle": "Atribuciones de código abierto"
   }
 }
