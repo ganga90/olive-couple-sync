@@ -18,7 +18,7 @@ export const NoteMediaSection = ({ mediaUrls, location }: NoteMediaSectionProps)
     return null;
   }
 
-  const getMediaType = (url: string): { type: 'image' | 'audio' | 'video' | 'document'; icon: any; color: string } => {
+  const getMediaType = (url: string): { type: 'image' | 'audio' | 'video' | 'pdf' | 'document'; icon: any; color: string } => {
     const lowerUrl = url.toLowerCase();
     
     if (lowerUrl.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i)) {
@@ -30,7 +30,10 @@ export const NoteMediaSection = ({ mediaUrls, location }: NoteMediaSectionProps)
     if (lowerUrl.match(/\.(mp4|mov|avi|wmv|webm|mkv)(\?|$)/i)) {
       return { type: 'video', icon: Video, color: 'text-red-500 bg-red-500/10' };
     }
-    return { type: 'document', icon: FileText, color: 'text-orange-500 bg-orange-500/10' };
+    if (lowerUrl.match(/\.pdf(\?|$)/i)) {
+      return { type: 'pdf', icon: FileText, color: 'text-orange-500 bg-orange-500/10' };
+    }
+    return { type: 'document', icon: FileText, color: 'text-stone-500 bg-stone-500/10' };
   };
 
   const getFileName = (url: string): string => {
@@ -141,6 +144,23 @@ export const NoteMediaSection = ({ mediaUrls, location }: NoteMediaSectionProps)
                 <source src={url} />
                 Your browser does not support video playback.
               </video>
+            )}
+            {type === 'pdf' && (
+              <div className="bg-background rounded-lg overflow-hidden">
+                <iframe
+                  src={url}
+                  className="w-full h-[400px] border-0"
+                  title={fileName}
+                />
+                <div className="p-3 border-t border-border flex justify-center">
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={url} target="_blank" rel="noopener noreferrer" download>
+                      <Download className="h-4 w-4 mr-2" />
+                      Download PDF
+                    </a>
+                  </Button>
+                </div>
+              </div>
             )}
             {type === 'document' && (
               <div className="text-center py-6 bg-background rounded-lg">

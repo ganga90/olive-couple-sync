@@ -26,6 +26,7 @@ import { SupabaseNotesProvider } from "./providers/SupabaseNotesProvider";
 import { LanguageProvider } from "./providers/LanguageProvider";
 import SignInPage from "./pages/SignIn";
 import SignUpPage from "./pages/SignUp";
+import CookieConsentBanner from "./components/CookieConsentBanner";
 
 // Import i18n configuration
 import './lib/i18n/config';
@@ -94,6 +95,7 @@ const App = () => (
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
+                <CookieConsentBanner />
               </AppLayout>
             </LanguageProvider>
           </BrowserRouter>

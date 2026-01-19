@@ -75,13 +75,19 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     const newFiles: File[] = [];
     const newPreviews: string[] = [];
     
+    // Supported file types: images, audio, PDFs
+    const supportedTypes = ['image/', 'audio/', 'application/pdf'];
+    
     for (let i = 0; i < files.length && mediaFiles.length + newFiles.length < 5; i++) {
       const file = files[i];
-      // Accept images and audio
-      if (file.type.startsWith('image/') || file.type.startsWith('audio/')) {
+      const isSupported = supportedTypes.some(type => file.type.startsWith(type));
+      
+      if (isSupported) {
         newFiles.push(file);
         if (file.type.startsWith('image/')) {
           newPreviews.push(URL.createObjectURL(file));
+        } else if (file.type === 'application/pdf') {
+          newPreviews.push('pdf');
         } else {
           newPreviews.push('audio');
         }
@@ -158,13 +164,19 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     const newFiles: File[] = [];
     const newPreviews: string[] = [];
 
+    // Supported file types: images, audio, PDFs
+    const supportedTypes = ['image/', 'audio/', 'application/pdf'];
+
     for (let i = 0; i < files.length && mediaFiles.length + newFiles.length < 5; i++) {
       const file = files[i];
-      // Accept images and audio
-      if (file.type.startsWith('image/') || file.type.startsWith('audio/')) {
+      const isSupported = supportedTypes.some(type => file.type.startsWith(type));
+      
+      if (isSupported) {
         newFiles.push(file);
         if (file.type.startsWith('image/')) {
           newPreviews.push(URL.createObjectURL(file));
+        } else if (file.type === 'application/pdf') {
+          newPreviews.push('pdf');
         } else {
           newPreviews.push('audio');
         }
@@ -176,8 +188,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       setMediaPreviews(prev => [...prev, ...newPreviews]);
       toast.success(
         newFiles.length === 1 
-          ? t('brainDump.imageDropped') || 'Image added' 
-          : t('brainDump.imagesDropped', { count: newFiles.length }) || `${newFiles.length} files added`
+          ? t('brainDump.fileAdded') || 'File added' 
+          : t('brainDump.filesAdded', { count: newFiles.length }) || `${newFiles.length} files added`
       );
     }
   }, [mediaFiles.length, t]);
@@ -186,7 +198,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     setMediaFiles(prev => prev.filter((_, i) => i !== index));
     setMediaPreviews(prev => {
       const preview = prev[index];
-      if (preview && preview !== 'audio') {
+      if (preview && preview !== 'audio' && preview !== 'pdf') {
         URL.revokeObjectURL(preview);
       }
       return prev.filter((_, i) => i !== index);
@@ -582,6 +594,12 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                   <div className="w-16 h-16 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-sm">
                     <Mic className="w-6 h-6 text-primary" />
                   </div>
+                ) : preview === 'pdf' ? (
+                  <div className="w-16 h-16 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20 shadow-sm">
+                    <svg className="w-6 h-6 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
                 ) : (
                   <img 
                     src={preview} 
@@ -633,7 +651,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
               type="file"
               ref={fileInputRef}
               onChange={handleFileSelect}
-              accept="image/*,audio/*"
+              accept="image/*,audio/*,application/pdf"
               multiple
               className="hidden"
             />

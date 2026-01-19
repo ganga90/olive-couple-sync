@@ -603,21 +603,104 @@ Max 400 words.`;
 }
 
 // Determine media type from URL or content type
-function getMediaType(url: string, contentType?: string): 'image' | 'audio' | 'video' | 'unknown' {
+function getMediaType(url: string, contentType?: string): 'image' | 'audio' | 'video' | 'pdf' | 'unknown' {
   const urlLower = url.toLowerCase();
   
   if (contentType) {
     if (contentType.startsWith('image/')) return 'image';
     if (contentType.startsWith('audio/')) return 'audio';
     if (contentType.startsWith('video/')) return 'video';
+    if (contentType === 'application/pdf') return 'pdf';
   }
   
   // Check URL extension
   if (/\.(jpg|jpeg|png|gif|webp|heic|heif)(\?|$)/i.test(urlLower)) return 'image';
   if (/\.(mp3|wav|ogg|webm|m4a|aac|opus)(\?|$)/i.test(urlLower)) return 'audio';
   if (/\.(mp4|mov|avi|mkv)(\?|$)/i.test(urlLower)) return 'video';
+  if (/\.pdf(\?|$)/i.test(urlLower)) return 'pdf';
   
   return 'unknown';
+}
+
+// Analyze PDF with Gemini
+async function analyzePdfWithGemini(genai: GoogleGenAI, pdfUrl: string): Promise<string> {
+  try {
+    console.log('[Gemini PDF] Analyzing PDF:', pdfUrl);
+    
+    // Download the PDF
+    const pdfResponse = await fetch(pdfUrl);
+    if (!pdfResponse.ok) {
+      console.error('[Gemini PDF] Failed to download PDF:', pdfResponse.status);
+      return '';
+    }
+    
+    const pdfBlob = await pdfResponse.blob();
+    const arrayBuffer = await pdfBlob.arrayBuffer();
+    const base64Pdf = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    
+    console.log('[Gemini PDF] PDF downloaded, size:', pdfBlob.size);
+    
+    const extractionPrompt = `Analyze this PDF document and extract ALL relevant information. Be thorough and specific.
+
+**RECEIPTS/INVOICES:**
+- Store/Vendor name, Date, Total amount
+- Individual line items with prices
+- Payment method, transaction ID
+
+**MEDICAL RECORDS:**
+- Provider name, Date of service
+- Patient information (if visible)
+- Diagnoses, Treatments, Medications
+- Follow-up instructions
+
+**CONTRACTS/LEGAL DOCUMENTS:**
+- Document type, Parties involved
+- Key terms, Dates, Amounts
+- Important clauses
+
+**PET/VETERINARY RECORDS:**
+- Pet name, Species, Breed
+- Veterinarian/Clinic name
+- Vaccinations, Treatments, Medications
+- Next appointment dates
+
+**GENERAL DOCUMENTS:**
+- Document title and type
+- Key dates and amounts
+- Important information and action items
+
+Extract ALL useful information. Max 500 words.`;
+
+    const response = await genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: extractionPrompt },
+            {
+              inlineData: {
+                mimeType: "application/pdf",
+                data: base64Pdf
+              }
+            }
+          ]
+        }
+      ],
+      config: {
+        temperature: 0.1,
+        maxOutputTokens: 800
+      }
+    });
+    
+    const description = response.text || '';
+    console.log('[Gemini PDF] Analysis result:', description.substring(0, 200));
+    
+    return description;
+  } catch (error) {
+    console.error('[Gemini PDF] Error analyzing PDF:', error);
+    return '';
+  }
 }
 
 // Auto-extract potential memories from brain-dump text
@@ -791,6 +874,11 @@ serve(async (req) => {
           const description = await analyzeImageWithGemini(genai, mediaUrl);
           if (description) {
             mediaDescriptions.push(`[Image] ${description}`);
+          }
+        } else if (mediaType === 'pdf') {
+          const description = await analyzePdfWithGemini(genai, mediaUrl);
+          if (description) {
+            mediaDescriptions.push(`[PDF Document] ${description}`);
           }
         } else if (mediaType === 'audio') {
           const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
