@@ -149,16 +149,16 @@ const Home = () => {
   }
 
   return (
-    <div className="flex flex-col h-full atmosphere-bg">
+    <div className="flex flex-col h-full">
       {/* Main Content - Scrollable */}
       <div className="flex-1 overflow-y-auto pb-32 scrollbar-thin relative z-10">
-        <div className="px-4 md:px-0 space-y-8 md:space-y-12">
-          {/* Greeting Section - MASSIVE Editorial Typography */}
-          <div className="text-center animate-fade-up">
-            <h1 className="heading-massive text-4xl md:text-5xl lg:text-6xl mb-3 md:mb-6">
+        <div className="px-4 md:px-0 space-y-8 md:space-y-10">
+          {/* Greeting Section - MASSIVE SERIF Typography for Desktop */}
+          <div className="text-center md:text-left animate-fade-up">
+            <h1 className="font-serif font-bold text-4xl md:text-5xl lg:text-6xl xl:text-7xl tracking-tight text-stone-900 mb-3 md:mb-4">
               {t('home:greeting', { name: userName })}
             </h1>
-            <p className="text-lg md:text-2xl text-stone-500 font-light">
+            <p className="text-lg md:text-xl lg:text-2xl text-stone-500 font-light leading-relaxed">
               {t('home:whatsOnMind')}
             </p>
           </div>
@@ -242,19 +242,24 @@ const Home = () => {
           {/* Partner Activity Widget */}
           <PartnerActivityWidget notes={notes} />
 
-          {/* Tabs Widget - CARD AESTHETIC: White surface, heavy shadow, rounded-3xl */}
-          <div className="bg-white rounded-3xl shadow-xl overflow-hidden animate-fade-up stagger-3">
+          {/* Tabs Widget - PREMIUM CARD: Subtle shadow, generous padding */}
+          <div className="bg-white rounded-3xl shadow-xl border border-stone-100/50 overflow-hidden animate-fade-up stagger-3">
             <Tabs defaultValue="priority" className="w-full">
-              {/* Header with tabs and filters - DESKTOP PADDING p-8 */}
-              <div className="bg-stone-50/50 backdrop-blur-sm px-6 md:px-8 py-5 md:py-6 border-b border-stone-100/50">
-                <TabsList className="w-full grid grid-cols-3 bg-white/80 mb-4 h-12 md:h-14 rounded-full p-1 shadow-sm">
-                  <TabsTrigger value="priority" className="text-sm md:text-base font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md">
+              {/* Header with tabs and filters - EDITORIAL STYLE */}
+              <div className="px-6 md:px-10 py-6 md:py-8 border-b border-stone-100">
+                {/* Section Label - UPPERCASE tracking-widest */}
+                <p className="text-xs md:text-sm uppercase tracking-widest font-bold text-stone-500 mb-4 md:mb-6">
+                  {t('home:tabs.sectionLabel', 'Your Tasks')}
+                </p>
+                
+                <TabsList className="w-full grid grid-cols-3 bg-stone-100/80 mb-5 md:mb-6 h-12 md:h-14 rounded-full p-1">
+                  <TabsTrigger value="priority" className="text-sm md:text-base font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
                     {t('home:tabs.priority')}
                   </TabsTrigger>
-                  <TabsTrigger value="daily" className="text-sm md:text-base font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md">
+                  <TabsTrigger value="daily" className="text-sm md:text-base font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
                     {t('home:tabs.daily')}
                   </TabsTrigger>
-                  <TabsTrigger value="recent" className="text-sm md:text-base font-medium rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md">
+                  <TabsTrigger value="recent" className="text-sm md:text-base font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
                     {t('home:tabs.recent')}
                   </TabsTrigger>
                 </TabsList>

@@ -49,9 +49,9 @@ const DesktopSidebar = () => {
   ];
 
   return (
-    <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-72 flex-col bg-sidebar-background border-r border-sidebar-border z-40">
-      {/* Logo - Larger padding */}
-      <div className="p-8 border-b border-sidebar-border">
+    <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-72 flex-col bg-transparent z-40">
+      {/* Logo - Larger padding, blends with stone desk */}
+      <div className="p-8">
         <Link to={getLocalizedPath("/")} className="hover:opacity-80 transition-opacity">
           <OliveLogoWithText size="md" />
         </Link>
@@ -93,8 +93,8 @@ const DesktopSidebar = () => {
         })}
       </nav>
 
-      {/* User Section */}
-      <div className="p-4 border-t border-sidebar-border">
+      {/* User Section - transparent background */}
+      <div className="p-6">
         <SignedOut>
           <div className="space-y-2">
             <Link to={getLocalizedPath("/sign-in")} className="block">

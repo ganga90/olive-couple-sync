@@ -534,10 +534,11 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     <div 
       ref={dropZoneRef}
       className={cn(
-        // RADICAL DESKTOP: min-h-[300px] for premium notepad feel
-        "input-floating overflow-hidden transition-all duration-300 ease-out relative",
-        "md:min-h-[280px] lg:min-h-[320px]",
-        hasContent && "shadow-xl ring-1 ring-primary/10",
+        // HERO INPUT: No card background on desktop - sits directly on paper
+        // Mobile keeps the elevated look
+        "overflow-hidden transition-all duration-300 ease-out relative",
+        "bg-white rounded-[2rem] shadow-lg md:bg-transparent md:shadow-none md:rounded-none",
+        hasContent && "md:bg-white/50",
         isProcessing && "ring-2 ring-primary/20",
         isDragging && "ring-2 ring-primary/40 bg-primary/5"
       )}
@@ -557,183 +558,331 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           </div>
         </div>
       )}
-      {/* RADICAL PADDING: p-8 on tablet, p-10 on desktop */}
-      <form onSubmit={handleSubmit} className="p-6 md:p-10 space-y-5 md:space-y-8">
-        {/* Header with animated brain icon - LARGER on desktop */}
-        <div className="text-center mb-2 md:mb-6">
-          <div className="inline-flex items-center gap-3 md:gap-4 mb-3">
-            <div className={cn(
-              "w-10 h-10 md:w-14 md:h-14 rounded-full flex items-center justify-center transition-all duration-300",
-              isProcessing 
-                ? "bg-[hsl(var(--olive-magic))]/30 animate-pulse" 
-                : hasContent 
-                  ? "bg-primary/15" 
-                  : "bg-muted"
-            )}>
-              <Brain className={cn(
-                "w-5 h-5 md:w-7 md:h-7 transition-colors duration-300",
-                isProcessing ? "text-[hsl(130_22%_29%)]" : hasContent ? "text-primary" : "text-muted-foreground"
-              )} />
-            </div>
-            <h2 className="font-serif font-semibold text-xl md:text-2xl text-foreground">
-              {t('brainDump.title')}
-            </h2>
+      
+      {/* Content - HERO STYLE on desktop */}
+      <form onSubmit={handleSubmit} className="p-6 md:p-0 space-y-5 md:space-y-8">
+        {/* AI Icon in Gutter Position (desktop only) */}
+        <div className="hidden md:flex items-start gap-6">
+          {/* Prominent AI Stars icon - 32x32 */}
+          <div className={cn(
+            "flex-shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300",
+            isProcessing 
+              ? "bg-[hsl(var(--olive-magic))]/30 animate-pulse" 
+              : hasContent 
+                ? "bg-primary/10" 
+                : "bg-stone-100"
+          )}>
+            <Sparkles className={cn(
+              "w-7 h-7 transition-colors duration-300",
+              isProcessing ? "text-[hsl(130_22%_29%)]" : hasContent ? "text-primary" : "text-stone-400"
+            )} />
           </div>
-          <p className="text-base md:text-lg text-muted-foreground">
-            {t('brainDump.subtitle')}
-          </p>
+          
+          {/* Desktop Input Column */}
+          <div className="flex-1 space-y-4">
+            {/* Textarea - HERO TYPOGRAPHY: text-4xl font-serif */}
+            <div className="relative">
+              <Textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onPaste={handlePaste}
+                placeholder={t('brainDump.heroPlaceholder', "What's on your mind?")}
+                className={cn(
+                  // HERO: 180px min-height, text-4xl SERIF - looks like document title
+                  "min-h-[180px] resize-none pr-16 transition-all duration-300 ease-out",
+                  "text-2xl md:text-3xl lg:text-4xl font-serif leading-relaxed",
+                  "bg-transparent border-0 rounded-none",
+                  "focus:ring-0 focus:outline-none",
+                  // Placeholder: Subtle, light - "What's on your mind?" in stone-300
+                  "placeholder:text-stone-300 placeholder:font-light placeholder:text-3xl lg:placeholder:text-4xl"
+                )}
+                disabled={isProcessing || isUploadingMedia}
+              />
+              
+              {/* Controls - Right side */}
+              <div className="absolute top-2 right-2 flex items-center gap-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  accept="image/*,audio/*,application/pdf"
+                  multiple
+                  className="hidden"
+                />
+                
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isProcessing || isUploadingMedia || mediaFiles.length >= 5}
+                  className={cn(
+                    "h-10 w-10 rounded-full transition-all duration-300",
+                    "text-stone-400 hover:text-primary hover:bg-primary/10",
+                    mediaFiles.length > 0 && "text-primary bg-primary/10"
+                  )}
+                >
+                  <Image className="h-5 w-5" />
+                </Button>
+                
+                <VoiceInput 
+                  text={text} 
+                  setText={setText}
+                  interim={interim}
+                  setInterim={setInterim}
+                  disabled={isProcessing || isUploadingMedia}
+                />
+              </div>
+            </div>
+            
+            {/* Media previews */}
+            {mediaPreviews.length > 0 && (
+              <div className="flex flex-wrap gap-3 p-4 bg-stone-50 rounded-2xl animate-fade-in">
+                {mediaPreviews.map((preview, index) => (
+                  <div 
+                    key={index} 
+                    className="relative group animate-scale-in"
+                    style={{ animationDelay: `${index * 50}ms` }}
+                  >
+                    {preview === 'audio' ? (
+                      <div className="w-16 h-16 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
+                        <Mic className="w-6 h-6 text-primary" />
+                      </div>
+                    ) : preview === 'pdf' ? (
+                      <div className="w-16 h-16 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                        <svg className="w-6 h-6 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                    ) : (
+                      <img 
+                        src={preview} 
+                        alt={`Attached ${index + 1}`}
+                        className="w-16 h-16 object-cover rounded-xl"
+                      />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeMedia(index)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110 shadow-md"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {/* Submit row */}
+            <div className="flex items-center justify-between">
+              <p className={cn(
+                "text-sm transition-all duration-300",
+                isProcessing || isUploadingMedia 
+                  ? "text-primary font-medium" 
+                  : "text-stone-400"
+              )}>
+                {isUploadingMedia ? "Uploading..." : isProcessing ? "AI is organizing..." : "AI will organize your note"}
+              </p>
+              
+              <Button
+                type="submit"
+                disabled={isProcessing || isUploadingMedia || !hasContent}
+                className={cn(
+                  "h-12 px-8 rounded-full bg-primary hover:bg-primary-dark text-white font-semibold",
+                  "shadow-lg transition-all duration-300 ease-out",
+                  "hover:shadow-xl hover:scale-105",
+                  !hasContent && "opacity-50",
+                  isProcessing && "animate-pulse"
+                )}
+              >
+                {isProcessing || isUploadingMedia ? (
+                  <Sparkles className="h-5 w-5 animate-spin" />
+                ) : (
+                  <>
+                    <Send className="h-5 w-5 mr-2" />
+                    {t('brainDump.submit', 'Capture')}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
         
-        {/* Media previews with improved styling */}
-        {mediaPreviews.length > 0 && (
-          <div className="flex flex-wrap gap-3 p-3 bg-muted/30 rounded-xl animate-fade-in">
-            {mediaPreviews.map((preview, index) => (
-              <div 
-                key={index} 
-                className="relative group animate-scale-in"
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                {preview === 'audio' ? (
-                  <div className="w-16 h-16 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-sm">
-                    <Mic className="w-6 h-6 text-primary" />
-                  </div>
-                ) : preview === 'pdf' ? (
-                  <div className="w-16 h-16 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20 shadow-sm">
-                    <svg className="w-6 h-6 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                ) : (
-                  <img 
-                    src={preview} 
-                    alt={`Attached ${index + 1}`}
-                    className="w-16 h-16 object-cover rounded-xl shadow-sm"
-                  />
-                )}
-                <button
-                  type="button"
-                  onClick={() => removeMedia(index)}
-                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110 shadow-md"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+        {/* Mobile Layout - Keep original compact design */}
+        <div className="md:hidden">
+          {/* Header with animated brain icon */}
+          <div className="text-center mb-4">
+            <div className="inline-flex items-center gap-3 mb-2">
+              <div className={cn(
+                "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
+                isProcessing 
+                  ? "bg-[hsl(var(--olive-magic))]/30 animate-pulse" 
+                  : hasContent 
+                    ? "bg-primary/15" 
+                    : "bg-muted"
+              )}>
+                <Brain className={cn(
+                  "w-5 h-5 transition-colors duration-300",
+                  isProcessing ? "text-[hsl(130_22%_29%)]" : hasContent ? "text-primary" : "text-muted-foreground"
+                )} />
               </div>
-            ))}
-            <span className="text-xs text-muted-foreground self-end pb-1">
-              {t('brainDump.moreAllowed', { count: 5 - mediaFiles.length })}
-            </span>
+              <h2 className="font-serif font-semibold text-xl text-foreground">
+                {t('brainDump.title')}
+              </h2>
+            </div>
+            <p className="text-base text-muted-foreground">
+              {t('brainDump.subtitle')}
+            </p>
           </div>
-        )}
-        
-        {/* Textarea - RADICAL UPSCALE: 200px min-height, text-2xl/3xl, looks like a HEADING */}
-        <div className="relative group">
-          <Textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onPaste={handlePaste}
-            placeholder={getDynamicPlaceholder()}
-            className={cn(
-              // RADICAL: 200px mobile, 240px desktop - feels like a writing pad
-              "min-h-[160px] md:min-h-[200px] lg:min-h-[240px] resize-none pr-24 transition-all duration-300 ease-out",
-              // RADICAL TYPOGRAPHY: text-2xl on tablet, text-3xl on desktop (30px)
-              "text-lg md:text-2xl lg:text-3xl leading-relaxed md:leading-loose",
-              "bg-muted/30 border-0 rounded-2xl",
-              "focus:ring-2 focus:ring-primary/20 focus:bg-white",
-              // Placeholder also huge - looks like a HEADING
-              "placeholder:text-muted-foreground/50 placeholder:font-light md:placeholder:text-2xl lg:placeholder:text-3xl"
-            )}
-            disabled={isProcessing || isUploadingMedia}
-          />
           
-          {/* Interim transcript with better visibility */}
-          {interim && (
-            <div className="absolute top-4 left-5 right-28 text-base md:text-lg text-primary/70 italic pointer-events-none animate-pulse">
-              {interim}...
+          {/* Media previews */}
+          {mediaPreviews.length > 0 && (
+            <div className="flex flex-wrap gap-3 p-3 bg-muted/30 rounded-xl animate-fade-in">
+              {mediaPreviews.map((preview, index) => (
+                <div 
+                  key={index} 
+                  className="relative group animate-scale-in"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  {preview === 'audio' ? (
+                    <div className="w-16 h-16 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
+                      <Mic className="w-6 h-6 text-primary" />
+                    </div>
+                  ) : preview === 'pdf' ? (
+                    <div className="w-16 h-16 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                      <svg className="w-6 h-6 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                  ) : (
+                    <img 
+                      src={preview} 
+                      alt={`Attached ${index + 1}`}
+                      className="w-16 h-16 object-cover rounded-xl"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeMedia(index)}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110 shadow-md"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+              <span className="text-xs text-muted-foreground self-end pb-1">
+                {t('brainDump.moreAllowed', { count: 5 - mediaFiles.length })}
+              </span>
             </div>
           )}
           
-          {/* Voice and media input controls */}
-          <div className="absolute top-3 right-3 flex items-center gap-1">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileSelect}
-              accept="image/*,audio/*,application/pdf"
-              multiple
-              className="hidden"
-            />
-            
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isProcessing || isUploadingMedia || mediaFiles.length >= 5}
+          {/* Textarea - Mobile version */}
+          <div className="relative group">
+            <Textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onPaste={handlePaste}
+              placeholder={getDynamicPlaceholder()}
               className={cn(
-                "h-9 w-9 rounded-full transition-all duration-300",
-                "text-muted-foreground hover:text-primary hover:bg-primary/10",
-                mediaFiles.length > 0 && "text-primary bg-primary/10"
+                "min-h-[160px] resize-none pr-24 transition-all duration-300 ease-out",
+                "text-lg leading-relaxed",
+                "bg-muted/30 border-0 rounded-2xl",
+                "focus:ring-2 focus:ring-primary/20 focus:bg-white",
+                "placeholder:text-muted-foreground/50 placeholder:font-light"
               )}
-            >
-              <Image className="h-4 w-4" />
-            </Button>
-            
-            <VoiceInput 
-              text={text} 
-              setText={setText}
-              interim={interim}
-              setInterim={setInterim}
               disabled={isProcessing || isUploadingMedia}
             />
+            
+            {/* Interim transcript */}
+            {interim && (
+              <div className="absolute top-4 left-5 right-28 text-base text-primary/70 italic pointer-events-none animate-pulse">
+                {interim}...
+              </div>
+            )}
+            
+            {/* Voice and media input controls */}
+            <div className="absolute top-3 right-3 flex items-center gap-1">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                accept="image/*,audio/*,application/pdf"
+                multiple
+                className="hidden"
+              />
+              
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isProcessing || isUploadingMedia || mediaFiles.length >= 5}
+                className={cn(
+                  "h-9 w-9 rounded-full transition-all duration-300",
+                  "text-muted-foreground hover:text-primary hover:bg-primary/10",
+                  mediaFiles.length > 0 && "text-primary bg-primary/10"
+                )}
+              >
+                <Image className="h-4 w-4" />
+              </Button>
+              
+              <VoiceInput 
+                text={text} 
+                setText={setText}
+                interim={interim}
+                setInterim={setInterim}
+                disabled={isProcessing || isUploadingMedia}
+              />
+            </div>
+            
+            {/* Send button - circular, bottom-right */}
+            <div className={cn(
+              "absolute bottom-3 right-3 transition-all duration-300 ease-out",
+              hasContent ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+            )}>
+              <Button
+                type="submit"
+                size="icon"
+                disabled={isProcessing || isUploadingMedia || !hasContent}
+                className={cn(
+                  "h-10 w-10 rounded-full bg-primary hover:bg-primary-dark text-primary-foreground",
+                  "shadow-lg transition-all duration-300 ease-out",
+                  "hover:shadow-xl hover:scale-105",
+                  isProcessing && "animate-pulse"
+                )}
+              >
+                {isProcessing || isUploadingMedia ? (
+                  <Sparkles className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
           
-          {/* Send button - circular, bottom-right */}
-          <div className={cn(
-            "absolute bottom-3 right-3 transition-all duration-300 ease-out",
-            hasContent ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
-          )}>
-            <Button
-              type="submit"
-              size="icon"
-              disabled={isProcessing || isUploadingMedia || !hasContent}
-              className={cn(
-                "h-10 w-10 rounded-full bg-primary hover:bg-primary-dark text-primary-foreground",
-                "shadow-lg transition-all duration-300 ease-out",
-                "hover:shadow-xl hover:scale-105",
-                isProcessing && "animate-pulse"
-              )}
-            >
-              {isProcessing || isUploadingMedia ? (
-                <Sparkles className="h-4 w-4 animate-spin" />
+          {/* Status text */}
+          <div className="h-5 flex items-center justify-center">
+            <p className={cn(
+              "text-xs text-center transition-all duration-300",
+              isProcessing || isUploadingMedia 
+                ? "text-primary font-medium" 
+                : "text-muted-foreground"
+            )}>
+              {isUploadingMedia ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" />
+                  Uploading media...
+                </span>
+              ) : isProcessing ? (
+                <span className="flex items-center gap-2">
+                  <Sparkles className="w-3 h-3 animate-spin" />
+                  AI is organizing your note...
+                </span>
               ) : (
-                <Send className="h-4 w-4" />
+                "AI will categorize, summarize, and organize your note"
               )}
-            </Button>
+            </p>
           </div>
-        </div>
-        
-        {/* Status text with transitions */}
-        <div className="h-5 flex items-center justify-center">
-          <p className={cn(
-            "text-xs text-center transition-all duration-300",
-            isProcessing || isUploadingMedia 
-              ? "text-primary font-medium" 
-              : "text-muted-foreground"
-          )}>
-            {isUploadingMedia ? (
-              <span className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" />
-                Uploading media...
-              </span>
-            ) : isProcessing ? (
-              <span className="flex items-center gap-2">
-                <Sparkles className="w-3 h-3 animate-spin" />
-                AI is organizing your note...
-              </span>
-            ) : (
-              "AI will categorize, summarize, and organize your note"
-            )}
-          </p>
         </div>
       </form>
       

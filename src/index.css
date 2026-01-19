@@ -18,6 +18,12 @@
     /* ========== Core Brand Colors ========== */
     --background: 48 50% 97%;              /* Warm Beige #FDFDF8 */
     --foreground: 0 0% 10%;                /* Text Black #1A1A1A */
+    
+    /* Desktop "Desk" Background - Darker organic stone */
+    --desk-background: 40 20% 88%;         /* Warm Stone #EAE8E0 */
+    
+    /* Paper Surface - Warm white for "floating sheet" */
+    --paper-surface: 48 60% 99%;           /* Warm White #FDFCF8 */
 
     --card: 0 0% 100%;                     /* Pure White for cards */
     --card-foreground: 0 0% 10%;
