@@ -636,7 +636,8 @@ async function analyzePdfWithGemini(genai: GoogleGenAI, pdfUrl: string): Promise
     
     const pdfBlob = await pdfResponse.blob();
     const arrayBuffer = await pdfBlob.arrayBuffer();
-    const base64Pdf = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    // Use the safe chunked base64 conversion to avoid stack overflow on large PDFs
+    const base64Pdf = arrayBufferToBase64(arrayBuffer);
     
     console.log('[Gemini PDF] PDF downloaded, size:', pdfBlob.size);
     
@@ -836,7 +837,7 @@ serve(async (req) => {
       throw new Error('Supabase configuration is missing');
     }
 
-    const { text, user_id, couple_id, timezone, media, style } = await req.json();
+    const { text, user_id, couple_id, timezone, media, mediaTypes, style } = await req.json();
     
     // Validate required fields - allow empty text if media is present
     if (!user_id) {
@@ -845,6 +846,9 @@ serve(async (req) => {
     
     const hasText = typeof text === 'string' && text.trim().length > 0;
     const hasMediaInput = Array.isArray(media) && media.length > 0;
+    
+    // Store content types for media detection (from WhatsApp webhook)
+    const contentTypes: string[] = Array.isArray(mediaTypes) ? mediaTypes : [];
     
     if (!hasText && !hasMediaInput) {
       throw new Error('Missing required content: provide text or media');
@@ -864,11 +868,14 @@ serve(async (req) => {
     const mediaUrls: string[] = media || [];
     
     if (mediaUrls.length > 0) {
-      console.log('[process-note] Processing', mediaUrls.length, 'media files');
+      console.log('[process-note] Processing', mediaUrls.length, 'media files, content types:', contentTypes);
       
-      for (const mediaUrl of mediaUrls) {
-        const mediaType = getMediaType(mediaUrl);
-        console.log('[process-note] Media type:', mediaType, 'URL:', mediaUrl);
+      for (let i = 0; i < mediaUrls.length; i++) {
+        const mediaUrl = mediaUrls[i];
+        // Use content type from WhatsApp if available, fallback to URL detection
+        const contentType = contentTypes[i] || undefined;
+        const mediaType = getMediaType(mediaUrl, contentType);
+        console.log('[process-note] Media type:', mediaType, 'Content-Type:', contentType, 'URL:', mediaUrl);
         
         if (mediaType === 'image') {
           const description = await analyzeImageWithGemini(genai, mediaUrl);
