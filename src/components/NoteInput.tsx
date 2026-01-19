@@ -557,10 +557,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       )}
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         {/* Header with animated brain icon */}
-        <div className="text-center mb-2">
-          <div className="inline-flex items-center gap-2 mb-2">
+        <div className="text-center mb-2 lg:mb-4">
+          <div className="inline-flex items-center gap-2 lg:gap-3 mb-2">
             <div className={cn(
-              "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300",
+              "w-8 h-8 lg:w-10 lg:h-10 rounded-full flex items-center justify-center transition-all duration-300",
               isProcessing 
                 ? "bg-[hsl(var(--olive-magic))]/30 animate-pulse" 
                 : hasContent 
@@ -568,15 +568,15 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                   : "bg-muted"
             )}>
               <Brain className={cn(
-                "w-4 h-4 transition-colors duration-300",
+                "w-4 h-4 lg:w-5 lg:h-5 transition-colors duration-300",
                 isProcessing ? "text-[hsl(130_22%_29%)]" : hasContent ? "text-primary" : "text-muted-foreground"
               )} />
             </div>
-            <h2 className="font-serif font-semibold text-lg text-foreground">
+            <h2 className="font-serif font-semibold text-lg lg:text-xl text-foreground">
               {t('brainDump.title')}
             </h2>
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm lg:text-base text-muted-foreground">
             {t('brainDump.subtitle')}
           </p>
         </div>
@@ -630,10 +630,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             onPaste={handlePaste}
             placeholder={getDynamicPlaceholder()}
             className={cn(
-              "min-h-[140px] resize-none text-base pr-24 transition-all duration-300 ease-out",
+              "min-h-[140px] lg:min-h-[180px] resize-none text-base lg:text-lg xl:text-xl pr-24 transition-all duration-300 ease-out",
               "bg-muted/30 border-0 rounded-xl",
               "focus:ring-2 focus:ring-primary/20 focus:bg-white",
-              "placeholder:text-muted-foreground/60"
+              "placeholder:text-muted-foreground/60 lg:placeholder:text-lg"
             )}
             disabled={isProcessing || isUploadingMedia}
           />

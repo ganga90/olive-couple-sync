@@ -152,13 +152,13 @@ const Home = () => {
     <div className="flex flex-col h-full atmosphere-bg">
       {/* Main Content - Scrollable */}
       <div className="flex-1 overflow-y-auto pb-32 scrollbar-thin relative z-10">
-        <div className="px-4 pt-8 space-y-8">
+        <div className="px-4 lg:px-0 pt-8 lg:pt-12 space-y-8 lg:space-y-10">
           {/* Greeting Section - Massive Editorial Typography */}
           <div className="text-center animate-fade-up">
-            <h1 className="heading-massive mb-2">
+            <h1 className="heading-massive lg:text-5xl xl:text-6xl mb-2 lg:mb-4">
               {t('home:greeting', { name: userName })}
             </h1>
-            <p className="text-lg text-stone-500 font-light">
+            <p className="text-lg lg:text-xl text-stone-500 font-light">
               {t('home:whatsOnMind')}
             </p>
           </div>

@@ -78,12 +78,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   // Desktop layout: Sidebar + Content
   return (
     <div className="flex min-h-screen">
-      {/* Fixed Left Sidebar */}
+      {/* Fixed Left Sidebar - wider on lg */}
       <DesktopSidebar />
       
       {/* Main Content Area - with left padding to clear sidebar */}
-      <main className="flex-1 ml-64">
-        {children}
+      <main className="flex-1 ml-64 lg:ml-72">
+        {/* Central Focus Container - max-width for readability */}
+        <div className="max-w-5xl mx-auto px-6 lg:px-10">
+          {children}
+        </div>
       </main>
     </div>
   );
