@@ -1042,7 +1042,8 @@ serve(async (req) => {
     
     if (mediaUrls.length > 0) {
       notePayload.media = mediaUrls;
-      console.log('[WhatsApp] Sending', mediaUrls.length, 'media file(s) for AI processing');
+      notePayload.mediaTypes = mediaTypes; // Pass content types for PDF detection
+      console.log('[WhatsApp] Sending', mediaUrls.length, 'media file(s) for AI processing, types:', mediaTypes);
     }
 
     // Process the note with AI
