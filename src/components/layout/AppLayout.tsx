@@ -75,19 +75,28 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     );
   }
 
-  // Desktop layout: Sidebar + Content - RADICAL OVERHAUL
+  // Desktop layout: Sidebar + Floating Sheet on Stone Desk
   return (
-    <div className="flex min-h-screen bg-background">
-      {/* Fixed Left Sidebar - 288px (w-72) */}
+    <div className="flex min-h-screen bg-[hsl(40_20%_88%)]">
+      {/* Fixed Left Sidebar - 280px - blends with stone background */}
       <DesktopSidebar />
       
-      {/* Main Content Area - FOCUSED PAPER LAYOUT */}
-      <main className="flex-1 ml-72">
-        {/* Central Focus Container - NARROW max-w-2xl (672px) like Notion/Linear */}
-        <div className="max-w-2xl mx-auto px-8 pt-12 lg:pt-16">
-          {children}
+      {/* Main Content Area - "FLOATING SHEET OF PAPER" */}
+      <main className="flex-1 ml-72 py-6 pr-6 xl:pr-8">
+        {/* Paper Surface - Floating sheet with shadow, rounded top */}
+        <div className="bg-[hsl(48_60%_99%)] rounded-3xl shadow-2xl min-h-[calc(100vh-3rem)] overflow-hidden">
+          {/* Central Focus Container - max-w-3xl (768px) centered */}
+          <div className="max-w-3xl mx-auto px-8 lg:px-12 pt-12 lg:pt-16 pb-12">
+            {children}
+          </div>
         </div>
       </main>
+      
+      {/* Context Rail - Optional right column for xl screens */}
+      <aside className="hidden xl:block w-80 py-6 pr-6 shrink-0">
+        {/* This space can be used for Partner Status, Mini Calendar, etc. */}
+        {/* Currently empty - transparent on stone background */}
+      </aside>
     </div>
   );
 };

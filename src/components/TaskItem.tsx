@@ -54,14 +54,15 @@ export const TaskItem: React.FC<TaskItemProps> = ({
     <div
       onClick={() => onTaskClick(task)}
       className={cn(
-        // RADICAL DESKTOP: py-6 for breathing room, larger gaps, rounded-2xl
-        "flex items-center gap-4 md:gap-6 py-4 md:py-6 px-5 md:px-8 rounded-xl md:rounded-2xl border bg-card transition-all cursor-pointer",
-        "hover:shadow-[var(--shadow-raised)] active:scale-[0.98]",
-        task.completed && "opacity-60",
+        // EDITORIAL DESKTOP: Large rows with generous padding
+        "flex items-center gap-4 md:gap-6 py-4 md:py-6 px-5 md:px-6 rounded-xl md:rounded-2xl transition-all cursor-pointer",
+        "bg-stone-50/50 hover:bg-stone-100/80 active:scale-[0.98]",
+        "border border-transparent hover:border-stone-200/50",
+        task.completed && "opacity-50",
         isAnimating && "animate-scale-in"
       )}
     >
-      {/* Checkmark Button - LARGER on desktop */}
+      {/* Checkmark Button - Larger on desktop */}
       <button
         onClick={handleCheckClick}
         className={cn(
@@ -72,65 +73,63 @@ export const TaskItem: React.FC<TaskItemProps> = ({
       >
         {task.completed ? (
           <CheckCircle2 
-            className="h-6 w-6 md:h-8 md:w-8 text-primary" 
+            className="h-6 w-6 md:h-7 md:w-7 text-primary" 
             fill="currentColor"
           />
         ) : (
-          <Circle className="h-6 w-6 md:h-8 md:w-8 text-primary hover:text-primary/80" />
+          <Circle className="h-6 w-6 md:h-7 md:w-7 text-stone-400 hover:text-primary transition-colors" />
         )}
       </button>
 
-      {/* Task Content - RADICAL TEXT SIZE */}
+      {/* Task Content - EDITORIAL TYPOGRAPHY */}
       <div className="flex-1 min-w-0">
         <h3 
           className={cn(
-            // DESKTOP: text-xl (20px) for comfortable reading
-            "font-semibold text-base md:text-xl leading-snug mb-1.5 md:mb-2",
-            task.completed ? "line-through text-muted-foreground" : "text-foreground"
+            // DESKTOP: text-xl (20px) font-medium for comfortable reading
+            "font-medium text-base md:text-xl leading-snug mb-1 md:mb-2",
+            task.completed ? "line-through text-stone-400" : "text-stone-800"
           )}
         >
           {task.summary}
         </h3>
         
-        {/* Metadata - DESKTOP: text-base (16px) for readability */}
-        <div className="flex items-center gap-3 md:gap-5 text-sm md:text-base text-muted-foreground">
+        {/* Metadata - DESKTOP: text-sm (14px) muted for hierarchy */}
+        <div className="flex items-center gap-3 md:gap-4 text-xs md:text-sm text-stone-500">
           {task.dueDate && (
             <div className={cn(
-              "flex items-center gap-1.5 md:gap-2",
+              "flex items-center gap-1.5",
               isOverdue && "text-destructive font-medium"
             )}>
-              <Calendar className="h-4 w-4 md:h-5 md:w-5" />
+              <Calendar className="h-3.5 w-3.5 md:h-4 md:w-4" />
               <span>{format(new Date(task.dueDate), 'MMM d')}</span>
             </div>
           )}
           
           {authorName && (
-            <div className="flex items-center gap-1.5 md:gap-2">
-              <User className="h-4 w-4 md:h-5 md:w-5" />
+            <div className="flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5 md:h-4 md:w-4" />
               <span>{authorName}</span>
             </div>
           )}
           
           {showCategory && task.category && (
-            <div className="flex items-center gap-1.5 md:gap-2">
-              <span className="capitalize">{task.category}</span>
-            </div>
+            <span className="capitalize">{task.category}</span>
           )}
           
           {task.category === 'auto' && (
-            <div className="flex items-center gap-1.5 md:gap-2 text-[hsl(var(--ai-accent))]">
-              <Sparkles className="h-4 w-4 md:h-5 md:w-5" />
+            <div className="flex items-center gap-1 text-[hsl(var(--ai-accent))]">
+              <Sparkles className="h-3.5 w-3.5 md:h-4 md:w-4" />
               <span className="font-medium">AI</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Priority Indicator */}
+      {/* Priority Indicator - Taller on desktop */}
       {task.priority && (
         <div 
           className={cn(
-            "w-1 h-12 rounded-full flex-shrink-0",
+            "w-1 h-10 md:h-14 rounded-full flex-shrink-0",
             task.priority === 'high' && "bg-[hsl(var(--priority-high))]",
             task.priority === 'medium' && "bg-[hsl(var(--priority-medium))]",
             task.priority === 'low' && "bg-[hsl(var(--priority-low))]"

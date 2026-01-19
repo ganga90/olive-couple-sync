@@ -37,6 +37,7 @@
     "subtitle": "Sync with Google Calendar"
   },
   "tabs": {
+    "sectionLabel": "Your Tasks",
     "priority": "🔥 Priority",
     "daily": "📅 Daily",
     "recent": "🕐 Recent"
