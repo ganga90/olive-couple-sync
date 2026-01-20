@@ -580,8 +580,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           
           {/* Desktop Input Column - Full border on focus */}
           <div className={cn(
-            "flex-1 space-y-4 p-4 -m-4 rounded-2xl transition-all duration-300",
-            "focus-within:ring-2 focus-within:ring-primary focus-within:bg-white/60"
+            "flex-1 space-y-4 p-4 rounded-2xl transition-all duration-300 relative",
+            "focus-within:bg-white/60",
+            "after:absolute after:inset-0 after:rounded-2xl after:border-2 after:border-primary after:pointer-events-none after:opacity-0 after:transition-opacity after:duration-300 after:z-10",
+            "focus-within:after:opacity-100"
           )}>
             {/* Textarea - HERO TYPOGRAPHY: text-4xl font-serif */}
             <div className="relative">
@@ -595,7 +597,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                   "min-h-[180px] resize-none pr-16 pb-20 transition-all duration-300 ease-out",
                   "text-2xl md:text-3xl lg:text-4xl font-serif leading-relaxed",
                   "bg-transparent border-0 rounded-none",
-                  "focus:ring-0 focus:outline-none",
+                  // Disable shadcn Textarea's focus-visible ring so our wrapper border is the only focus affordance
+                  "focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none",
                   // Placeholder: Better contrast - stone-400 instead of stone-300
                   "placeholder:text-stone-400 placeholder:font-light placeholder:text-3xl lg:placeholder:text-4xl"
                 )}
