@@ -49,7 +49,7 @@ const DesktopSidebar = () => {
   ];
 
   return (
-    <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-72 flex-col bg-transparent z-40">
+    <aside className="hidden md:flex sticky top-0 h-screen w-full flex-col bg-transparent z-40">
       {/* Logo - Larger padding, blends with stone desk */}
       <div className="p-8">
         <Link to={getLocalizedPath("/")} className="hover:opacity-80 transition-opacity">
