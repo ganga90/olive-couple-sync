@@ -56,12 +56,21 @@
   },
   "back": "Volver",
   "oliveTips": {
-    "title": "Consejos de Olive",
-    "generate": "Pide ayuda a Olive",
+    "title": "Olive Insights",
     "refresh": "Actualizar",
-    "thinking": "Olive está pensando...",
+    "ready": "Listo para analizar esta tarea...",
+    "generate": "Generar Consejos",
     "success": "¡Olive encontró algunas sugerencias útiles!",
-    "error": "Error al generar consejo. Por favor, inténtalo de nuevo.",
+    "loading": {
+      "searching": "Buscando en la web...",
+      "analyzing": "Analizando información...",
+      "generating": "Generando ideas...",
+      "estimate": "Esto suele tardar 5-10 segundos..."
+    },
+    "errors": {
+      "failed": "Error al generar consejo. Por favor, inténtalo de nuevo.",
+      "generic": "Algo salió mal. Por favor, inténtalo de nuevo."
+    },
     "callNow": "Llamar Ahora",
     "onboarding": {
       "title": "✨ Pide ayuda a Olive",

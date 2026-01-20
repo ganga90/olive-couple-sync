@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/lib/supabaseClient";
 import { Note, OliveTip } from "@/types/note";
@@ -18,13 +18,25 @@ import {
   Calendar,
   RefreshCw,
   Star,
-  Globe
+  Globe,
+  Search,
+  Brain,
+  Wand2
 } from "lucide-react";
 
 interface OliveTipsSectionProps {
   note: Note;
   onTipGenerated?: (tip: OliveTip) => void;
 }
+
+// Processing stages for loading feedback
+type ProcessingStage = 'searching' | 'analyzing' | 'generating';
+
+const STAGE_DURATIONS = {
+  searching: 3000,  // 3 seconds for web search
+  analyzing: 2000,  // 2 seconds for analysis
+  generating: 2000, // 2 seconds for tip generation
+};
 
 // Icon mapping
 const iconMap: Record<string, React.ReactNode> = {
@@ -219,19 +231,19 @@ function GeneralTipCard({ tip }: { tip: OliveTip }) {
   );
 }
 
-// Loading skeleton
-function TipSkeleton() {
+// Enhanced loading skeleton with shimmer
+function InsightsSkeleton() {
   return (
-    <Card className="p-4 bg-card border-border">
+    <Card className="p-4 bg-card/50 border-border overflow-hidden">
       <div className="flex gap-4">
-        <Skeleton className="w-12 h-12 rounded-full" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-3/4" />
-          <Skeleton className="h-3 w-1/2" />
-          <Skeleton className="h-10 w-full" />
+        <div className="skeleton w-12 h-12 rounded-full flex-shrink-0" />
+        <div className="flex-1 space-y-3">
+          <div className="skeleton h-4 w-3/4 rounded-md" />
+          <div className="skeleton h-3 w-1/2 rounded-md" />
+          <div className="skeleton h-16 w-full rounded-xl" />
           <div className="flex gap-2">
-            <Skeleton className="h-8 w-24" />
-            <Skeleton className="h-8 w-20" />
+            <div className="skeleton h-8 w-24 rounded-full" />
+            <div className="skeleton h-8 w-20 rounded-full" />
           </div>
         </div>
       </div>
@@ -239,9 +251,55 @@ function TipSkeleton() {
   );
 }
 
+// Processing stage indicator component
+function ProcessingStageIndicator({ stage }: { stage: ProcessingStage }) {
+  const { t } = useTranslation('notes');
+  
+  const stageConfig = {
+    searching: {
+      icon: Search,
+      label: t('oliveTips.loading.searching', 'Searching the web...'),
+      color: 'text-blue-500',
+    },
+    analyzing: {
+      icon: Brain,
+      label: t('oliveTips.loading.analyzing', 'Analyzing information...'),
+      color: 'text-purple-500',
+    },
+    generating: {
+      icon: Wand2,
+      label: t('oliveTips.loading.generating', 'Generating insights...'),
+      color: 'text-[hsl(var(--olive-magic))]',
+    },
+  };
+
+  const config = stageConfig[stage];
+  const Icon = config.icon;
+
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <div className={`relative ${config.color}`}>
+        <Icon className="h-5 w-5 animate-pulse" />
+        {/* Animated ring around icon */}
+        <div className="absolute inset-0 -m-1 rounded-full border-2 border-current opacity-30 animate-ping" />
+      </div>
+      <div className="flex-1">
+        <span className="text-sm text-muted-foreground">{config.label}</span>
+        {/* Progress dots */}
+        <div className="flex gap-1 mt-1">
+          <div className={`h-1.5 w-1.5 rounded-full ${stage === 'searching' ? 'bg-current animate-pulse' : 'bg-muted'} ${config.color}`} />
+          <div className={`h-1.5 w-1.5 rounded-full ${stage === 'analyzing' ? 'bg-current animate-pulse' : stage === 'generating' ? 'bg-muted-foreground' : 'bg-muted'} ${stage !== 'searching' ? config.color : ''}`} />
+          <div className={`h-1.5 w-1.5 rounded-full ${stage === 'generating' ? 'bg-current animate-pulse' : 'bg-muted'} ${stage === 'generating' ? config.color : ''}`} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function OliveTipsSection({ note, onTipGenerated }: OliveTipsSectionProps) {
   const { t, ready } = useTranslation('notes');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [processingStage, setProcessingStage] = useState<ProcessingStage>('searching');
   const [tip, setTip] = useState<OliveTip | null>(() => {
     // Check if note already has tips - handle Json type properly
     const existingTips = note.olive_tips as unknown;
@@ -254,10 +312,34 @@ export function OliveTipsSection({ note, onTipGenerated }: OliveTipsSectionProps
   // Onboarding tooltip
   const tipsOnboarding = useOnboardingTooltip('olive_tips_feature');
 
+  // Simulate processing stages for better UX feedback
+  useEffect(() => {
+    if (!isGenerating) {
+      setProcessingStage('searching');
+      return;
+    }
+
+    // Progress through stages
+    const timer1 = setTimeout(() => {
+      setProcessingStage('analyzing');
+    }, STAGE_DURATIONS.searching);
+
+    const timer2 = setTimeout(() => {
+      setProcessingStage('generating');
+    }, STAGE_DURATIONS.searching + STAGE_DURATIONS.analyzing);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
+  }, [isGenerating]);
+
   if (!ready) return null;
 
   const handleGenerate = async () => {
     setIsGenerating(true);
+    setProcessingStage('searching');
+    
     try {
       const { data, error } = await supabase.functions.invoke('generate-olive-tip', {
         body: { note_id: note.id }
@@ -265,18 +347,18 @@ export function OliveTipsSection({ note, onTipGenerated }: OliveTipsSectionProps
 
       if (error) {
         console.error('Generate tip error:', error);
-        toast.error('Failed to generate tip. Please try again.');
+        toast.error(t('oliveTips.errors.failed', 'Failed to generate tip. Please try again.'));
         return;
       }
 
       if (data?.tip) {
         setTip(data.tip);
         onTipGenerated?.(data.tip);
-        toast.success('Olive found some helpful suggestions!');
+        toast.success(t('oliveTips.success', 'Olive found some helpful suggestions!'));
       }
     } catch (e) {
       console.error('Generate tip exception:', e);
-      toast.error('Something went wrong. Please try again.');
+      toast.error(t('oliveTips.errors.generic', 'Something went wrong. Please try again.'));
     } finally {
       setIsGenerating(false);
     }
@@ -308,11 +390,12 @@ export function OliveTipsSection({ note, onTipGenerated }: OliveTipsSectionProps
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
+          <Sparkles className={`h-4 w-4 text-[hsl(var(--olive-magic))] ${isGenerating ? 'animate-pulse' : ''}`} />
           <span className="text-xs font-semibold uppercase tracking-widest text-primary">
-            ✨ Olive Insights
+            {t('oliveTips.title', 'Olive Insights')}
           </span>
         </div>
-        {tip && (
+        {tip && !isGenerating && (
           <Button
             variant="ghost"
             size="sm"
@@ -320,34 +403,42 @@ export function OliveTipsSection({ note, onTipGenerated }: OliveTipsSectionProps
             onClick={handleRegenerate}
             disabled={isGenerating}
           >
-            <RefreshCw className={`h-3 w-3 mr-1 ${isGenerating ? 'animate-spin' : ''}`} />
-            Refresh
+            <RefreshCw className="h-3 w-3 mr-1" />
+            {t('oliveTips.refresh', 'Refresh')}
           </Button>
         )}
       </div>
 
       {isGenerating ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Sparkles className="h-4 w-4 animate-pulse text-[hsl(var(--olive-magic))]" />
-            <span>Olive is thinking...</span>
+        <div className="space-y-4 animate-fade-in">
+          {/* Stage indicator with progress */}
+          <ProcessingStageIndicator stage={processingStage} />
+          
+          {/* Enhanced skeleton with multiple cards for visual interest */}
+          <div className="space-y-3">
+            <InsightsSkeleton />
+            {/* Second skeleton fades in after a delay for visual progression */}
+            <div 
+              className="opacity-0 animate-fade-in"
+              style={{ animationDelay: '1s', animationFillMode: 'forwards' }}
+            >
+              <div className="skeleton h-10 w-2/3 rounded-xl" />
+            </div>
           </div>
-          {/* Shimmer skeleton */}
-          <div className="space-y-3 animate-pulse">
-            <div className="h-4 bg-gradient-to-r from-muted via-muted/50 to-muted rounded-lg w-3/4" 
-                 style={{ backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }} />
-            <div className="h-4 bg-gradient-to-r from-muted via-muted/50 to-muted rounded-lg w-1/2"
-                 style={{ backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite', animationDelay: '0.1s' }} />
-            <div className="h-10 bg-gradient-to-r from-muted via-muted/50 to-muted rounded-xl w-full"
-                 style={{ backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite', animationDelay: '0.2s' }} />
-          </div>
+          
+          {/* Estimated time hint */}
+          <p className="text-xs text-muted-foreground/60 text-center mt-3">
+            {t('oliveTips.loading.estimate', 'This usually takes 5-10 seconds...')}
+          </p>
         </div>
       ) : tip ? (
-        renderTipCard()
+        <div className="animate-fade-in">
+          {renderTipCard()}
+        </div>
       ) : (
         <div className="relative">
           <p className="text-sm text-muted-foreground mb-4">
-            Ready to analyze this task...
+            {t('oliveTips.ready', 'Ready to analyze this task...')}
           </p>
           <Button
             onClick={() => {
@@ -359,7 +450,7 @@ export function OliveTipsSection({ note, onTipGenerated }: OliveTipsSectionProps
             className="btn-pill bg-primary text-primary-foreground gap-2 w-full sm:w-auto"
           >
             <Sparkles className="h-4 w-4" />
-            Generate Tips
+            {t('oliveTips.generate', 'Generate Tips')}
           </Button>
           
           {/* Onboarding Tooltip */}
