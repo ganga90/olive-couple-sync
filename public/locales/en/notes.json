@@ -1,4 +1,25 @@
 {
+  "oliveTips": {
+    "title": "Olive Insights",
+    "refresh": "Refresh",
+    "ready": "Ready to analyze this task...",
+    "generate": "Generate Tips",
+    "success": "Olive found some helpful suggestions!",
+    "loading": {
+      "searching": "Searching the web...",
+      "analyzing": "Analyzing information...",
+      "generating": "Generating insights...",
+      "estimate": "This usually takes 5-10 seconds..."
+    },
+    "errors": {
+      "failed": "Failed to generate tip. Please try again.",
+      "generic": "Something went wrong. Please try again."
+    },
+    "onboarding": {
+      "title": "Olive Insights",
+      "description": "Get smart suggestions and helpful links based on your task content."
+    }
+  },
   "noteNotFound": "Note not found.",
   "dueDate": "Due Date",
   "notSet": "Not set",
@@ -54,18 +75,5 @@
     "priorityUpdated": "Priority updated!",
     "markedComplete": "Marked as complete!"
   },
-  "back": "Back",
-  "oliveTips": {
-    "title": "Tips from Olive",
-    "generate": "Ask Olive for Help",
-    "refresh": "Refresh",
-    "thinking": "Olive is thinking...",
-    "success": "Olive found some helpful suggestions!",
-    "error": "Failed to generate tip. Please try again.",
-    "callNow": "Call Now",
-    "onboarding": {
-      "title": "✨ Ask Olive for Help",
-      "description": "Olive can search the web to find useful links, phone numbers, addresses, and recommendations related to this task!"
-    }
-  }
+  "back": "Back"
 }

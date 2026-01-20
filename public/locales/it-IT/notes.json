@@ -56,12 +56,21 @@
   },
   "back": "Indietro",
   "oliveTips": {
-    "title": "Suggerimenti di Olive",
-    "generate": "Chiedi aiuto a Olive",
+    "title": "Olive Insights",
     "refresh": "Aggiorna",
-    "thinking": "Olive sta pensando...",
+    "ready": "Pronto per analizzare questa attività...",
+    "generate": "Genera Suggerimenti",
     "success": "Olive ha trovato alcuni suggerimenti utili!",
-    "error": "Impossibile generare il suggerimento. Per favore riprova.",
+    "loading": {
+      "searching": "Ricerca sul web...",
+      "analyzing": "Analisi delle informazioni...",
+      "generating": "Generazione di idee...",
+      "estimate": "Di solito ci vogliono 5-10 secondi..."
+    },
+    "errors": {
+      "failed": "Impossibile generare il suggerimento. Per favore riprova.",
+      "generic": "Qualcosa è andato storto. Per favore riprova."
+    },
     "callNow": "Chiama Ora",
     "onboarding": {
       "title": "✨ Chiedi aiuto a Olive",
