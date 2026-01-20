@@ -578,8 +578,11 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             )} />
           </div>
           
-          {/* Desktop Input Column */}
-          <div className="flex-1 space-y-4">
+          {/* Desktop Input Column - Full border on focus */}
+          <div className={cn(
+            "flex-1 space-y-4 p-4 -m-4 rounded-2xl transition-all duration-300",
+            "focus-within:ring-2 focus-within:ring-primary focus-within:bg-white/60"
+          )}>
             {/* Textarea - HERO TYPOGRAPHY: text-4xl font-serif */}
             <div className="relative">
               <Textarea
