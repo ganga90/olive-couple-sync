@@ -1,11 +1,102 @@
 {
   "hero": {
-    "title": "Scrivi quello che pensi. Olive lo trasforma in passi da seguire.",
-    "description": "Scrivi o parla quello che hai in mente—Olive organizza automaticamente in liste, assegna responsabili e date, e vi tiene sincronizzati. Chiedi aiuto a Olive per qualsiasi attività."
+    "eyebrow": "Per coppie impegnate",
+    "headline": "Il Terzo Cervello della Tua Relazione.",
+    "subheadline": "Basta lamentarsi. Basta dimenticare. L'organizzatore condiviso con AI che sincronizza le tue attività, calendari e carico mentale all'istante.",
+    "cta": "Inizia a Organizzarvi – Gratis",
+    "trustSignal": "Scelto da oltre 2.000 coppie"
   },
-  "cta": {
-    "getStarted": "Inizia",
-    "seeHowItWorks": "Vedi Come Funziona",
-    "tryDemo": "Prova Demo"
+  "problems": {
+    "headline": "Perché è così difficile essere sulla stessa pagina?",
+    "nagging": {
+      "title": "Il Loop delle Lamentele",
+      "description": "Chiedere 'Hai chiamato l'idraulico?' per la quinta volta crea tensione, non collaborazione."
+    },
+    "scattered": {
+      "title": "Il Caos Disperso",
+      "description": "Screenshot su WhatsApp, note su Apple Notes, eventi su G-Cal. Sei ovunque e da nessuna parte."
+    },
+    "mentalLoad": {
+      "title": "Il Carico Mentale",
+      "description": "Una persona finisce sempre per portare il peso di ricordare tutto. È estenuante."
+    }
+  },
+  "valueStack": {
+    "headline": "La Soluzione",
+    "subheadline": "Olive prende il caos e lo trasforma in chiarezza.",
+    "brainDump": {
+      "title": "Dillo e basta. Olive organizza.",
+      "description": "Non compilare moduli. Scarica i tuoi pensieri grezzi, e l'AI di Olive estrae data, ora e argomento automaticamente."
+    },
+    "whatsapp": {
+      "title": "WhatsApp è il Tuo Centro di Comando.",
+      "description": "Scrivi a Olive mentre sei fuori. Aggiorna istantaneamente la lista condivisa. Senza aprire l'app."
+    },
+    "sharedReality": {
+      "title": "Una Realtà Condivisa.",
+      "description": "Il tuo calendario e le tue attività in un'unica vista. Vedi esattamente cosa sta facendo il tuo partner (e quando è impegnato)."
+    }
+  },
+  "socialProof": {
+    "headline": "Muro dell'Amore",
+    "subheadline": "Scopri cosa dicono le coppie su Olive.",
+    "testimonials": [
+      {
+        "quote": "Finalmente abbiamo smesso di litigare per la spesa.",
+        "author": "Sara & Marco"
+      },
+      {
+        "quote": "È come aver assunto un assistente personale.",
+        "author": "Davide L."
+      },
+      {
+        "quote": "L'integrazione WhatsApp è rivoluzionaria.",
+        "author": "Elena R."
+      },
+      {
+        "quote": "Ora siamo davvero sulla stessa pagina. Letteralmente.",
+        "author": "Giacomo & Priya"
+      },
+      {
+        "quote": "La migliore decisione per la nostra relazione quest'anno.",
+        "author": "Michela T."
+      },
+      {
+        "quote": "Niente più momenti 'Pensavo lo facessi tu'.",
+        "author": "Carlo & Anna"
+      }
+    ]
+  },
+  "transformation": {
+    "headline": "La Vita Prima e Dopo Olive",
+    "toggleBefore": "Senza Olive",
+    "toggleAfter": "Con Olive",
+    "before": {
+      "item1": "Messaggi sepolti in chat infinite",
+      "item2": "Hai dimenticato l'anniversario (di nuovo)",
+      "item3": "'Pensavo lo facessi tu?'",
+      "item4": "Una persona porta tutto il carico mentale"
+    },
+    "after": {
+      "item1": "Una lista condivisa, sempre sincronizzata",
+      "item2": "Promemoria automatici prima di ogni data importante",
+      "item3": "'Già fatto.' 😎",
+      "item4": "Visibilità e responsabilità equamente distribuite"
+    },
+    "tagBefore": "Caotico e Stressante",
+    "tagAfter": "Calmo e Connesso"
+  },
+  "secondaryCta": {
+    "headline": "Pronti ad alleggerire il carico?",
+    "description": "Unisciti a migliaia di coppie che hanno scambiato il caos per la chiarezza.",
+    "cta": "Crea il Vostro Spazio Condiviso",
+    "riskReversal": "Gratis per sempre per le funzioni base. Nessuna carta di credito richiesta."
+  },
+  "footer": {
+    "login": "Accedi",
+    "privacy": "Privacy Policy",
+    "terms": "Termini di Servizio",
+    "copyright": "© 2026 Olive. Tutti i diritti riservati.",
+    "madeWith": "Fatto con ❤️ a Miami"
   }
 }

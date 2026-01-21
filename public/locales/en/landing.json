@@ -1,11 +1,102 @@
 {
   "hero": {
-    "title": "Drop a brain-dump. Olive turns it into next steps.",
-    "description": "Type or speak whatever's on your mind—Olive auto-categorizes into lists, assigns owners & dates, and keeps you both in sync. Ask Olive to help with any task."
+    "eyebrow": "For busy couples",
+    "headline": "Your Relationship's Third Brain.",
+    "subheadline": "Stop nagging. Stop forgetting. The AI-powered shared organizer that syncs your tasks, calendars, and mental load instantly.",
+    "cta": "Start Organizing Together – Free",
+    "trustSignal": "Trusted by 2,000+ couples"
   },
-  "cta": {
-    "getStarted": "Get Started",
-    "seeHowItWorks": "See How It Works",
-    "tryDemo": "Try Demo"
+  "problems": {
+    "headline": "Why is it so hard to stay on the same page?",
+    "nagging": {
+      "title": "The Nagging Loop",
+      "description": "Asking 'Did you call the plumber?' for the 5th time creates tension, not teamwork."
+    },
+    "scattered": {
+      "title": "The Scattered Mess",
+      "description": "Screenshots in WhatsApp, notes in Apple Notes, events in G-Cal. You're everywhere and nowhere."
+    },
+    "mentalLoad": {
+      "title": "The Mental Load",
+      "description": "One person always ends up carrying the burden of remembering. It's exhausting."
+    }
+  },
+  "valueStack": {
+    "headline": "The Solution",
+    "subheadline": "Olive takes the chaos and turns it into clarity.",
+    "brainDump": {
+      "title": "Just Say It. Olive Sorts It.",
+      "description": "Don't fill out forms. Just dump your raw thoughts, and Olive's AI extracts the date, time, and topic automatically."
+    },
+    "whatsapp": {
+      "title": "WhatsApp is Your Command Center.",
+      "description": "Text Olive while you're out. It instantly updates your shared list. No app opening required."
+    },
+    "sharedReality": {
+      "title": "One Shared Reality.",
+      "description": "Your calendar and to-dos in one view. See exactly what your partner is up to (and when they're busy)."
+    }
+  },
+  "socialProof": {
+    "headline": "Wall of Love",
+    "subheadline": "See what couples are saying about Olive.",
+    "testimonials": [
+      {
+        "quote": "Finally stopped fighting about groceries.",
+        "author": "Sarah & Mike"
+      },
+      {
+        "quote": "It feels like we hired a personal assistant.",
+        "author": "David L."
+      },
+      {
+        "quote": "The WhatsApp integration is a game changer.",
+        "author": "Elena R."
+      },
+      {
+        "quote": "We're actually on the same page now. Literally.",
+        "author": "James & Priya"
+      },
+      {
+        "quote": "Best decision we made for our relationship this year.",
+        "author": "Michelle T."
+      },
+      {
+        "quote": "No more 'I thought you were doing that' moments.",
+        "author": "Carlos & Ana"
+      }
+    ]
+  },
+  "transformation": {
+    "headline": "Life Before and After Olive",
+    "toggleBefore": "Without Olive",
+    "toggleAfter": "With Olive",
+    "before": {
+      "item1": "Text messages buried in endless chats",
+      "item2": "Forgot your anniversary (again)",
+      "item3": "'I thought you were doing that?'",
+      "item4": "One person carries all the mental load"
+    },
+    "after": {
+      "item1": "One shared list, always in sync",
+      "item2": "Automated reminders before every important date",
+      "item3": "'Already done.' 😎",
+      "item4": "Equal visibility and ownership of tasks"
+    },
+    "tagBefore": "Chaotic & Stressful",
+    "tagAfter": "Calm & Connected"
+  },
+  "secondaryCta": {
+    "headline": "Ready to lighten the load?",
+    "description": "Join thousands of couples who've traded chaos for clarity.",
+    "cta": "Create Your Shared Space",
+    "riskReversal": "Free forever for core features. No credit card required."
+  },
+  "footer": {
+    "login": "Login",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "copyright": "© 2026 Olive. All rights reserved.",
+    "madeWith": "Made with ❤️ in Miami"
   }
 }
