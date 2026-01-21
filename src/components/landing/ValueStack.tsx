@@ -1,25 +1,27 @@
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { BrainDumpDemo } from "./BrainDumpDemo";
+import whatsappMockup from "@/assets/whatsapp-mockup.png";
+import dashboardMockup from "@/assets/dashboard-mockup.png";
 
 const features = [
   {
     titleKey: "valueStack.brainDump.title",
     descKey: "valueStack.brainDump.description",
     imageAlt: "Brain Dump Input Screenshot",
-    showDemo: true, // Show animated demo instead of placeholder
+    showDemo: true,
   },
   {
     titleKey: "valueStack.whatsapp.title",
     descKey: "valueStack.whatsapp.description",
     imageAlt: "WhatsApp Integration Screenshot",
-    imagePlaceholder: "[SCREENSHOT OF WHATSAPP CHAT]",
+    image: whatsappMockup,
   },
   {
     titleKey: "valueStack.sharedReality.title",
     descKey: "valueStack.sharedReality.description",
     imageAlt: "Dashboard Screenshot",
-    imagePlaceholder: "[SCREENSHOT OF DASHBOARD]",
+    image: dashboardMockup,
   },
 ];
 
@@ -71,15 +73,20 @@ export const ValueStack = () => {
                 <div className="flex-1 w-full">
                   {feature.showDemo ? (
                     <BrainDumpDemo />
-                  ) : (
-                    <div className="bg-white rounded-2xl shadow-xl border border-stone-200 p-6">
-                      <div className="bg-stone-100 rounded-xl h-56 md:h-72 flex items-center justify-center">
-                        <p className="text-stone-400 text-sm font-medium text-center px-4">
-                          {feature.imagePlaceholder}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                  ) : feature.image ? (
+                    <motion.div 
+                      className="bg-white rounded-2xl shadow-xl border border-stone-200 p-4 md:p-6 overflow-hidden"
+                      whileHover={{ scale: 1.02 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <img 
+                        src={feature.image} 
+                        alt={feature.imageAlt}
+                        className="w-full h-auto rounded-xl object-cover"
+                        loading="lazy"
+                      />
+                    </motion.div>
+                  ) : null}
                 </div>
               </motion.div>
             );
