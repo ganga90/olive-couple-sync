@@ -1,12 +1,13 @@
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
+import { BrainDumpDemo } from "./BrainDumpDemo";
 
 const features = [
   {
     titleKey: "valueStack.brainDump.title",
     descKey: "valueStack.brainDump.description",
     imageAlt: "Brain Dump Input Screenshot",
-    imagePlaceholder: "[SCREENSHOT OF BRAIN DUMP INPUT]",
+    showDemo: true, // Show animated demo instead of placeholder
   },
   {
     titleKey: "valueStack.whatsapp.title",
@@ -26,7 +27,7 @@ export const ValueStack = () => {
   const { t } = useTranslation('landing');
 
   return (
-    <section className="bg-[#EAE8E0] py-20 md:py-28 px-4">
+    <section id="features" className="bg-[#EAE8E0] py-20 md:py-28 px-4">
       <div className="max-w-6xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
@@ -66,15 +67,19 @@ export const ValueStack = () => {
                   </p>
                 </div>
 
-                {/* Image Placeholder */}
+                {/* Image / Demo */}
                 <div className="flex-1 w-full">
-                  <div className="bg-white rounded-2xl shadow-xl border border-stone-200 p-6">
-                    <div className="bg-stone-100 rounded-xl h-56 md:h-72 flex items-center justify-center">
-                      <p className="text-stone-400 text-sm font-medium text-center px-4">
-                        {feature.imagePlaceholder}
-                      </p>
+                  {feature.showDemo ? (
+                    <BrainDumpDemo />
+                  ) : (
+                    <div className="bg-white rounded-2xl shadow-xl border border-stone-200 p-6">
+                      <div className="bg-stone-100 rounded-xl h-56 md:h-72 flex items-center justify-center">
+                        <p className="text-stone-400 text-sm font-medium text-center px-4">
+                          {feature.imagePlaceholder}
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </motion.div>
             );

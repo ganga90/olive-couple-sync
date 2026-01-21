@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useSEO } from "@/hooks/useSEO";
+import { LandingStickyHeader } from "@/components/landing/LandingStickyHeader";
 import { LandingHero } from "@/components/landing/LandingHero";
 import { ProblemAgitate } from "@/components/landing/ProblemAgitate";
 import { ValueStack } from "@/components/landing/ValueStack";
@@ -17,15 +18,18 @@ const Landing = () => {
   });
 
   return (
-    <main className="min-h-screen bg-[#EAE8E0]">
-      <LandingHero />
-      <ProblemAgitate />
-      <ValueStack />
-      <SocialProof />
-      <Transformation />
-      <SecondaryCTA />
-      <LandingFooter />
-    </main>
+    <>
+      <LandingStickyHeader />
+      <main className="min-h-screen bg-[#EAE8E0]">
+        <LandingHero />
+        <ProblemAgitate />
+        <ValueStack />
+        <SocialProof />
+        <Transformation />
+        <SecondaryCTA />
+        <LandingFooter />
+      </main>
+    </>
   );
 };
 
