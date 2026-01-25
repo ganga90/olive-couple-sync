@@ -56,6 +56,8 @@ export function MemoryPersonalization() {
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [activeTab, setActiveTab] = useState<'view' | 'add'>('view');
+  const [showAllMemories, setShowAllMemories] = useState(false);
+  const INITIAL_DISPLAY_COUNT = 3;
   
   // Search and filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -107,6 +109,16 @@ export function MemoryPersonalization() {
       return matchesSearch && matchesCategory;
     });
   }, [memories, searchQuery, selectedCategory]);
+
+  // Displayed memories (limited or all)
+  const displayedMemories = useMemo(() => {
+    if (showAllMemories || searchQuery || selectedCategory !== 'all') {
+      return filteredMemories;
+    }
+    return filteredMemories.slice(0, INITIAL_DISPLAY_COUNT);
+  }, [filteredMemories, showAllMemories, searchQuery, selectedCategory]);
+
+  const hasMoreMemories = filteredMemories.length > INITIAL_DISPLAY_COUNT && !showAllMemories && !searchQuery && selectedCategory === 'all';
 
   // Category counts
   const categoryCounts = useMemo(() => {
@@ -348,7 +360,7 @@ export function MemoryPersonalization() {
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredMemories.map((memory, index) => {
+              {displayedMemories.map((memory, index) => {
                 const categoryInfo = getCategoryInfo(memory.category);
                 
                 return (
@@ -473,6 +485,27 @@ export function MemoryPersonalization() {
                   </Card>
                 );
               })}
+              
+              {/* Show All / Show Less Button */}
+              {hasMoreMemories && (
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowAllMemories(true)}
+                  className="w-full h-11 text-primary hover:text-primary hover:bg-primary/5 gap-2"
+                >
+                  {t('memory.showAll', 'Show All')} ({filteredMemories.length - INITIAL_DISPLAY_COUNT} {t('memory.more', 'more')})
+                </Button>
+              )}
+              
+              {showAllMemories && filteredMemories.length > INITIAL_DISPLAY_COUNT && !searchQuery && selectedCategory === 'all' && (
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowAllMemories(false)}
+                  className="w-full h-11 text-muted-foreground hover:text-foreground hover:bg-muted/50 gap-2"
+                >
+                  {t('memory.showLess', 'Show Less')}
+                </Button>
+              )}
             </div>
           )}
         </TabsContent>
