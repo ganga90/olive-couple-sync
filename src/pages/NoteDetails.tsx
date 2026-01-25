@@ -23,7 +23,7 @@ import {
   Clock, AlertTriangle, ChevronRight, Sparkles, MessageSquare, ExternalLink,
   Phone, MapPin, FileText, DollarSign, Info, Link2
 } from "lucide-react";
-import { format, isPast, parseISO } from "date-fns";
+import { format, isPast, parseISO, parse, isValid } from "date-fns";
 import { assistWithNote, clearNoteConversation } from "@/utils/oliveAssistant";
 import { OliveLogo } from "@/components/OliveLogo";
 import ReactMarkdown from 'react-markdown';
@@ -32,6 +32,7 @@ import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
 import { NoteMediaSection } from "@/components/NoteMediaSection";
 import { AddToCalendarButton } from "@/components/AddToCalendarButton";
 import { OliveTipsSection } from "@/components/OliveTipsSection";
+import { DueDateChip } from "@/components/DueDateChip";
 import { useOnboardingTooltip } from "@/hooks/useOnboardingTooltip";
 import { OnboardingTooltip } from "@/components/OnboardingTooltip";
 
@@ -59,13 +60,26 @@ const NoteDetails = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [showReminderDialog, setShowReminderDialog] = useState(false);
   
+  // Helper to safely format dates without timezone shift
+  const formatDateSafely = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return '';
+    const dateOnly = dateStr.split('T')[0];
+    return dateOnly; // Returns YYYY-MM-DD
+  };
+
+  // Helper to convert YYYY-MM-DD to storage format (noon UTC to avoid shifts)
+  const toStorageFormat = (dateStr: string): string => {
+    if (!dateStr) return '';
+    return `${dateStr}T12:00:00.000Z`;
+  };
+  
   const [editedNote, setEditedNote] = useState({
     summary: note?.summary || "",
     category: note?.category || "task",
     priority: note?.priority || "medium",
     tags: note?.tags ? note.tags.join(", ") : "",
     items: note?.items ? note.items.join("\n") : "",
-    dueDate: note?.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
+    dueDate: formatDateSafely(note?.dueDate),
     taskOwner: note?.task_owner || ""
   });
 
@@ -77,7 +91,7 @@ const NoteDetails = () => {
         priority: note.priority || "medium",
         tags: note.tags ? note.tags.join(", ") : "",
         items: note.items ? note.items.join("\n") : "",
-        dueDate: note.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
+        dueDate: formatDateSafely(note.dueDate),
         taskOwner: note.task_owner || ""
       });
     }
@@ -157,7 +171,7 @@ const NoteDetails = () => {
         priority: editedNote.priority,
         tags: editedNote.tags.split(",").map(tag => tag.trim()).filter(Boolean),
         items: editedNote.items.split("\n").map(item => item.trim()).filter(Boolean),
-        dueDate: editedNote.dueDate ? new Date(editedNote.dueDate).toISOString() : null,
+        dueDate: editedNote.dueDate ? toStorageFormat(editedNote.dueDate) : null,
         task_owner: editedNote.taskOwner.trim() || null
       };
 
@@ -179,7 +193,7 @@ const NoteDetails = () => {
       priority: note?.priority || "medium",
       tags: note?.tags ? note.tags.join(", ") : "",
       items: note?.items ? note.items.join("\n") : "",
-      dueDate: note?.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : "",
+      dueDate: formatDateSafely(note?.dueDate),
       taskOwner: note?.task_owner || ""
     });
     setIsEditing(false);
@@ -384,44 +398,14 @@ const NoteDetails = () => {
                 </Popover>
 
                 {/* Due Date Chip */}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button className={cn(
-                      "meta-chip whitespace-nowrap hover:bg-stone-100 transition-colors",
-                      isOverdue && "bg-[hsl(var(--priority-high))]/10 text-[hsl(var(--priority-high))]"
-                    )}>
-                      📅 {note.dueDate ? format(new Date(note.dueDate), "MMM d") : "No date"}
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-3" align="start">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">Set Due Date</p>
-                      <input
-                        type="date"
-                        value={note.dueDate ? format(new Date(note.dueDate), "yyyy-MM-dd") : ""}
-                        onChange={async (e) => {
-                          const newDate = e.target.value ? new Date(e.target.value).toISOString() : null;
-                          await updateNote(note.id, { dueDate: newDate });
-                          toast.success("Due date updated!");
-                        }}
-                        className="w-full px-3 py-2 text-sm border rounded-lg border-stone-200 bg-white"
-                      />
-                      {note.dueDate && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="w-full text-stone-400"
-                          onClick={async () => {
-                            await updateNote(note.id, { dueDate: null });
-                            toast.success("Due date cleared!");
-                          }}
-                        >
-                          Clear date
-                        </Button>
-                      )}
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                <DueDateChip 
+                  dueDate={note.dueDate}
+                  isOverdue={!!isOverdue}
+                  onUpdate={async (newDate) => {
+                    await updateNote(note.id, { dueDate: newDate });
+                    toast.success(newDate ? "Due date updated!" : "Due date cleared!");
+                  }}
+                />
 
                 {/* Owner Chip */}
                 <Popover>

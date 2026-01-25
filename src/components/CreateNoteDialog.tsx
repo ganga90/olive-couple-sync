@@ -16,6 +16,7 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Plus, CheckSquare, ShoppingCart, Home, Plane, Heart, ShoppingBag, Activity, DollarSign, Briefcase, User, Gift, ChefHat, Film, BookOpen, Utensils } from "lucide-react";
 import { format } from "date-fns";
+import { formatDateForStorage } from "@/utils/dateUtils";
 import { cn } from "@/lib/utils";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
@@ -75,7 +76,7 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
         summary: summary.trim(),
         category: category || "General",
         priority: priority || undefined,
-        dueDate: dueDate?.toISOString() || null,
+        dueDate: dueDate ? formatDateForStorage(dueDate) : null,
         completed: false,
         list_id: selectedListId || undefined,
         tags: [],

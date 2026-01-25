@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CheckCircle, Calendar, User, Tag, List, Sparkles, Pencil, Check, X, Plus, Clock, AlertTriangle } from "lucide-react";
 import { format, isPast, isToday } from "date-fns";
+import { dateStringToStorage, extractDateOnly } from "@/utils/dateUtils";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
@@ -38,15 +39,10 @@ interface NoteRecapProps {
 export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdated }) => {
   const [isEditing, setIsEditing] = useState(false);
   
-  const formatDateSafely = (dateValue: string | null | undefined): string => {
+  const formatDateForEdit = (dateValue: string | null | undefined): string => {
     if (!dateValue) return "";
-    try {
-      const date = new Date(dateValue);
-      if (isNaN(date.getTime())) return "";
-      return format(date, "yyyy-MM-dd");
-    } catch {
-      return "";
-    }
+    // Extract just the date part to avoid timezone shifts
+    return extractDateOnly(dateValue);
   };
   
   // Support both snake_case and camelCase formats
@@ -59,7 +55,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
     priority: note.priority || "medium",
     tags: note.tags ? note.tags.join(", ") : "",
     items: note.items ? note.items.join("\n") : "",
-    dueDate: formatDateSafely(note.dueDate),
+    dueDate: formatDateForEdit(note.dueDate),
     taskOwner: noteTaskOwner,
     listId: noteListId
   });
@@ -193,7 +189,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
       priority: editedNote.priority,
       tags: editedNote.tags.split(",").map(tag => tag.trim()).filter(Boolean),
       items: editedNote.items.split("\n").map(item => item.trim()).filter(Boolean),
-      dueDate: editedNote.dueDate ? new Date(editedNote.dueDate).toISOString() : null,
+      dueDate: dateStringToStorage(editedNote.dueDate),
       task_owner: editedNote.taskOwner.trim() || null,
       taskOwner: editedNote.taskOwner.trim() || null, // Include both formats for compatibility
       list_id: finalListId || null,
@@ -242,7 +238,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
       priority: note.priority || "medium",
       tags: note.tags ? note.tags.join(", ") : "",
       items: note.items ? note.items.join("\n") : "",
-      dueDate: formatDateSafely(note.dueDate),
+      dueDate: formatDateForEdit(note.dueDate),
       taskOwner: noteTaskOwner,
       listId: noteListId
     });
