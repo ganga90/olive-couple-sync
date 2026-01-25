@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useCallback } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
@@ -19,12 +19,29 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   delay = 0,
 }) => {
   const [isOpen, setIsOpen] = React.useState(defaultOpen);
+  const sectionRef = useRef<HTMLDivElement>(null);
+
+  const handleOpenChange = useCallback((open: boolean) => {
+    setIsOpen(open);
+    
+    // Smooth scroll to section when expanding
+    if (open && sectionRef.current) {
+      // Small delay to allow the accordion animation to start
+      setTimeout(() => {
+        sectionRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }, 50);
+    }
+  }, []);
 
   return (
     <Collapsible 
+      ref={sectionRef}
       open={isOpen} 
-      onOpenChange={setIsOpen}
-      className="animate-fade-up"
+      onOpenChange={handleOpenChange}
+      className="animate-fade-up scroll-mt-4"
       style={{ animationDelay: `${delay}ms` }}
     >
       <CollapsibleTrigger className="w-full group">
