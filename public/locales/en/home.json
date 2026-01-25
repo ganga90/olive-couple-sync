@@ -94,5 +94,14 @@
     "calendar": "Calendar",
     "upcoming": "Upcoming",
     "noEvents": "No upcoming events"
+  },
+  "insights": {
+    "header": "Olive noticed something...",
+    "approve": "Yes, remember this",
+    "reject": "No, incorrect",
+    "memorySaved": "Memory saved. I'll use this context to help you in the future.",
+    "thanksForCorrection": "Thanks for the correction.",
+    "confidence": "confidence",
+    "error": "Failed to save memory"
   }
 }

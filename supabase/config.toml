@@ -44,3 +44,6 @@ verify_jwt = false
 
 [functions.get-signed-url]
 verify_jwt = false
+
+[functions.analyze-notes]
+verify_jwt = false

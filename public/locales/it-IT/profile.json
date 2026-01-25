@@ -103,7 +103,12 @@
     "memoryDeleted": "Ricordo eliminato",
     "loadingMemories": "Caricamento ricordi...",
     "autoLearned": "Appreso automaticamente",
-    "error": "Impossibile salvare il ricordo"
+    "error": "Impossibile salvare il ricordo",
+    "analyzeButton": "✨ Analizza le Mie Note Recenti",
+    "analyzing": "Analizzando le tue note...",
+    "patternDetected": "Pattern rilevato! Controlla la schermata principale.",
+    "noPatterns": "Nessun pattern forte rilevato nelle tue note recenti.",
+    "analyzeError": "Impossibile analizzare le note"
   },
   "noteProcessingStyle": "Stile di Elaborazione Note",
   "memoryPersonalization": {
