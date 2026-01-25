@@ -617,6 +617,36 @@ export type Database = {
         }
         Relationships: []
       }
+      memory_insights: {
+        Row: {
+          confidence_score: number | null
+          created_at: string | null
+          id: string
+          source: string | null
+          status: string
+          suggested_content: string
+          user_id: string
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          source?: string | null
+          status?: string
+          suggested_content: string
+          user_id: string
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          source?: string | null
+          status?: string
+          suggested_content?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       notes: {
         Row: {
           author_id: string | null

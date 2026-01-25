@@ -20,6 +20,7 @@ import { OptimizationReviewModal } from "@/components/OptimizationReviewModal";
 import { useOnboardingTooltip } from "@/hooks/useOnboardingTooltip";
 import { OnboardingTooltip } from "@/components/OnboardingTooltip";
 import { PartnerActivityWidget } from "@/components/PartnerActivityWidget";
+import { InsightDiscoveryCard } from "@/components/InsightDiscoveryCard";
 
 const Home = () => {
   const { t } = useTranslation(['home', 'common']);
@@ -239,6 +240,9 @@ const Home = () => {
             />
           </div>
           )}
+
+          {/* Insight Discovery Card - Shows AI-discovered patterns */}
+          <InsightDiscoveryCard />
 
           {/* Partner Activity Widget - Only show on mobile/tablet (moved to Context Rail on xl) */}
           <div className="xl:hidden">

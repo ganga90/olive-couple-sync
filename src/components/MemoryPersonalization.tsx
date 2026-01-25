@@ -6,8 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, Plus, Edit2, Check, X, Star, Loader2, Sparkles, Search, Filter } from 'lucide-react';
+import { Trash2, Plus, Edit2, Check, X, Star, Loader2, Sparkles, Search, Filter, Wand2 } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
+import { useNavigate } from 'react-router-dom';
+import { useLanguage } from '@/providers/LanguageProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -46,10 +48,13 @@ const getCategoryInfo = (value: string) => {
 export function MemoryPersonalization() {
   const { t } = useTranslation('profile');
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { getLocalizedPath } = useLanguage();
   const userId = user?.id;
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [activeTab, setActiveTab] = useState<'view' | 'add'>('view');
   
   // Search and filter
@@ -64,6 +69,33 @@ export function MemoryPersonalization() {
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+
+  // Analyze notes function
+  async function analyzeNotes() {
+    if (!userId || analyzing) return;
+    
+    try {
+      setAnalyzing(true);
+      const { data, error } = await supabase.functions.invoke('analyze-notes', {
+        body: { user_id: userId }
+      });
+
+      if (error) throw error;
+      
+      if (data?.insight_created) {
+        toast.success(data.message || t('memory.patternDetected', 'Pattern detected! Check your home screen.'));
+        // Navigate to home to see the insight card
+        navigate(getLocalizedPath('/home'));
+      } else {
+        toast.info(data?.message || t('memory.noPatterns', 'No strong patterns detected.'));
+      }
+    } catch (error) {
+      console.error('Failed to analyze notes:', error);
+      toast.error(t('memory.analyzeError', 'Failed to analyze notes'));
+    } finally {
+      setAnalyzing(false);
+    }
+  }
 
   // Filtered memories
   const filteredMemories = useMemo(() => {
@@ -213,6 +245,25 @@ export function MemoryPersonalization() {
 
   return (
     <div className="space-y-4">
+      {/* Analyze Notes Button */}
+      <Button
+        onClick={analyzeNotes}
+        disabled={analyzing}
+        variant="outline"
+        className="w-full gap-2 h-12 bg-gradient-to-r from-primary/5 to-transparent border-primary/20 hover:border-primary/40 hover:bg-primary/10"
+      >
+        {analyzing ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Wand2 className="h-4 w-4 text-primary" />
+        )}
+        <span className="font-medium">
+          {analyzing 
+            ? t('memory.analyzing', 'Analyzing your notes...') 
+            : t('memory.analyzeButton', '✨ Analyze My Recent Notes')}
+        </span>
+      </Button>
+
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'view' | 'add')}>
         <TabsList className="grid w-full grid-cols-2 h-11">
           <TabsTrigger value="view" className="gap-2">

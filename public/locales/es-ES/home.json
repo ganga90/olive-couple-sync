@@ -93,5 +93,14 @@
     "calendar": "Calendario",
     "upcoming": "Próximos",
     "noEvents": "Sin eventos próximos"
+  },
+  "insights": {
+    "header": "Olive notó algo...",
+    "approve": "Sí, recuerda esto",
+    "reject": "No, es incorrecto",
+    "memorySaved": "Memoria guardada. Usaré este contexto para ayudarte en el futuro.",
+    "thanksForCorrection": "Gracias por la corrección.",
+    "confidence": "confianza",
+    "error": "Error al guardar memoria"
   }
 }
