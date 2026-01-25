@@ -6,6 +6,30 @@
   "timezone": "Zona Horaria",
   "whatsappNotifications": "Notificaciones de WhatsApp",
   "whatsappAssistant": "Asistente IA de WhatsApp",
+  "sections": {
+    "identity": "Mi Perfil y Hogar",
+    "intelligence": "Inteligencia de Olive",
+    "integrations": "Aplicaciones Conectadas",
+    "system": "Sistema"
+  },
+  "regional": {
+    "title": "Formato Regional",
+    "subtitle": "Ajustes de idioma y zona horaria",
+    "description": "Configura tu idioma y zona horaria para personalizar cómo se muestran las fechas y el contenido."
+  },
+  "whatsapp": {
+    "title": "Conexión WhatsApp",
+    "subtitle": "Notificaciones y chat IA",
+    "unifiedDescription": "Conecta tu WhatsApp para recibir notificaciones y chatear directamente con Olive IA.",
+    "connected": "Conectado",
+    "phoneTitle": "Número de Notificaciones",
+    "phoneDescription": "Recibe recordatorios de tareas y actualizaciones en este número.",
+    "aiTitle": "Enlace de Chat IA"
+  },
+  "appPreferences": {
+    "title": "Preferencias de la App",
+    "subtitle": "Notificaciones, privacidad y más"
+  },
   "googleCalendar": {
     "title": "Google Calendar",
     "subtitle": "Sincroniza tu calendario y crea eventos desde notas",

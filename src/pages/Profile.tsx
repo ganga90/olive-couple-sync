@@ -3,16 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { PartnerInfo } from "@/components/PartnerInfo";
-import { PhoneNumberField } from "@/components/PhoneNumberField";
-import { TimezoneField } from "@/components/TimezoneField";
-import { WhatsAppLink } from "@/components/WhatsAppLink";
 import { NoteStyleField } from "@/components/NoteStyleField";
 import { MemoryPersonalization } from "@/components/MemoryPersonalization";
 import { GoogleCalendarConnect } from "@/components/GoogleCalendarConnect";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { DataExport } from "@/components/DataExport";
-import { CookieSettings } from "@/components/CookieSettings";
-import { User, LogOut, Bell, Shield, HelpCircle, Brain, Sparkles, Calendar, ChevronRight, Globe, MessageSquare, Clock, Users, Download, FileText, Scale, Cookie } from "lucide-react";
+import { RegionalFormatCard } from "@/components/settings/RegionalFormatCard";
+import { WhatsAppUnifiedCard } from "@/components/settings/WhatsAppUnifiedCard";
+import { AppPreferencesCard } from "@/components/settings/AppPreferencesCard";
+import { SettingsSectionHeader } from "@/components/settings/SettingsSectionHeader";
+import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
 import { useLanguage } from "@/providers/LanguageProvider";
@@ -105,14 +104,13 @@ const Profile = () => {
 
   return (
     <div className="h-full overflow-y-auto bg-background atmosphere-bg">
-      <div className="px-4 py-8 space-y-5 max-w-2xl mx-auto relative z-10 pb-32">
-        {/* Profile Header - Glassmorphic */}
-        <div className="card-elevated p-8 text-center animate-fade-up">
+      <div className="px-4 py-8 max-w-2xl mx-auto relative z-10 pb-32">
+        {/* Profile Header */}
+        <div className="card-elevated p-8 text-center animate-fade-up mb-10">
           <div className="relative inline-block mb-4">
             <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 via-[hsl(var(--magic-accent))]/20 to-primary/10 flex items-center justify-center shadow-lg">
               <User className="h-12 w-12 text-primary" />
             </div>
-            {/* Status indicator */}
             <div className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-[hsl(var(--success))] border-2 border-white shadow-md" />
           </div>
           <h1 className="text-2xl font-serif font-bold text-[#2A3C24] mb-1">
@@ -123,172 +121,162 @@ const Profile = () => {
           </p>
         </div>
 
-        {/* Partner Connection */}
-        <SettingsCard
-          icon={<Users className="h-5 w-5 text-primary" />}
-          iconBg="bg-primary/10"
-          title={t('profile:partnerConnection')}
-          delay={50}
-        >
-          <PartnerInfo />
-        </SettingsCard>
-
-        {/* Language */}
-        <SettingsCard
-          icon={<Globe className="h-5 w-5 text-blue-500" />}
-          iconBg="bg-blue-500/10"
-          title={t('common:language.title')}
-          delay={75}
-        >
-          <LanguageSwitcher />
-        </SettingsCard>
-
-        {/* Timezone */}
-        <SettingsCard
-          icon={<Clock className="h-5 w-5 text-amber-600" />}
-          iconBg="bg-amber-500/10"
-          title={t('profile:timezone')}
-          delay={100}
-        >
-          <TimezoneField />
-        </SettingsCard>
-
-        {/* Phone Number */}
-        <SettingsCard
-          icon={<span className="text-lg">📱</span>}
-          iconBg="bg-[hsl(var(--success))]/10"
-          title={t('profile:whatsappNotifications')}
-          delay={150}
-        >
-          <PhoneNumberField />
-        </SettingsCard>
-
-        {/* WhatsApp AI Link */}
-        <SettingsCard
-          icon={<MessageSquare className="h-5 w-5 text-[hsl(var(--success))]" />}
-          iconBg="bg-[hsl(var(--success))]/10"
-          title={t('profile:whatsappAssistant')}
-          delay={200}
-        >
-          <WhatsAppLink />
-        </SettingsCard>
-
-        {/* Google Calendar */}
-        <SettingsCard
-          icon={<Calendar className="h-5 w-5 text-[hsl(var(--accent))]" />}
-          iconBg="bg-[hsl(var(--accent))]/10"
-          title={t('profile:googleCalendar.title')}
-          subtitle={t('profile:googleCalendar.subtitle')}
-          delay={250}
-        >
-          <GoogleCalendarConnect />
-        </SettingsCard>
-
-        {/* Note Processing Style */}
-        <SettingsCard
-          icon={<Brain className="h-5 w-5 text-primary" />}
-          iconBg="bg-primary/10"
-          title={t('profile:noteProcessingStyle')}
-          delay={300}
-        >
-          <NoteStyleField />
-        </SettingsCard>
-
-        {/* Memory & Personalization */}
-        <SettingsCard
-          icon={<Sparkles className="h-5 w-5 text-[hsl(var(--magic-accent))]" />}
-          iconBg="bg-[hsl(var(--magic-accent))]/10"
-          title={t('profile:memoryPersonalization.title')}
-          subtitle={t('profile:memoryPersonalization.subtitle')}
-          delay={350}
-        >
-          <MemoryPersonalization />
-        </SettingsCard>
-
-        {/* Cookie Settings */}
-        <SettingsCard
-          icon={<Cookie className="h-5 w-5 text-amber-600" />}
-          iconBg="bg-amber-500/10"
-          title={t('profile:cookieSettings.title')}
-          subtitle={t('profile:cookieSettings.subtitle')}
-          delay={375}
-        >
-          <CookieSettings />
-        </SettingsCard>
-
-        {/* Data Export */}
-        <SettingsCard
-          icon={<Download className="h-5 w-5 text-blue-600" />}
-          iconBg="bg-blue-500/10"
-          title={t('profile:export.title')}
-          subtitle={t('profile:export.subtitle')}
-          delay={400}
-        >
-          <DataExport />
-        </SettingsCard>
-
-        {/* Settings Menu */}
-        <div className="card-glass overflow-hidden animate-fade-up" style={{ animationDelay: '400ms' }}>
-          <div className="px-5 pt-5 pb-2">
-            <h3 className="font-serif font-semibold text-[#2A3C24] text-lg">{t('profile:settings.title')}</h3>
+        {/* ============================================ */}
+        {/* SECTION 1: Identity & Family */}
+        {/* ============================================ */}
+        <section className="mb-12">
+          <SettingsSectionHeader title={t('profile:sections.identity', 'My Profile & Household')} />
+          <div className="space-y-4">
+            {/* Partner Connection */}
+            <SettingsCard
+              icon={<Users className="h-5 w-5 text-primary" />}
+              iconBg="bg-primary/10"
+              title={t('profile:partnerConnection')}
+              delay={50}
+            >
+              <PartnerInfo />
+            </SettingsCard>
           </div>
-          <div className="px-2 pb-2">
-            <SettingsRow
-              icon={<Bell className="h-5 w-5 text-stone-500" />}
-              title={t('profile:settings.notifications.title')}
-              subtitle={t('profile:settings.notifications.subtitle')}
-            />
-            <SettingsRow
-              icon={<Shield className="h-5 w-5 text-stone-500" />}
-              title={t('profile:settings.privacy.title')}
-              subtitle={t('profile:settings.privacy.subtitle')}
-            />
-            <SettingsRow
-              icon={<HelpCircle className="h-5 w-5 text-stone-500" />}
-              title={t('profile:settings.help.title')}
-              subtitle={t('profile:settings.help.subtitle')}
-            />
-          </div>
-        </div>
+        </section>
 
-        {/* Legal & Support Section */}
-        <div className="card-glass overflow-hidden animate-fade-up" style={{ animationDelay: '425ms' }}>
-          <div className="px-5 pt-5 pb-2">
-            <h3 className="font-serif font-semibold text-[#2A3C24] text-lg">{t('profile:legal.title', 'Legal & Support')}</h3>
-          </div>
-          <div className="px-2 pb-2">
-            <SettingsRow
-              icon={<FileText className="h-5 w-5 text-stone-500" />}
-              title={t('profile:legal.terms', 'Terms of Service')}
-              subtitle={t('profile:legal.termsSubtitle', 'Read our terms and conditions')}
-              onClick={() => navigate(getLocalizedPath('/legal/terms'))}
-            />
-            <SettingsRow
-              icon={<Shield className="h-5 w-5 text-stone-500" />}
-              title={t('profile:legal.privacy', 'Privacy Policy')}
-              subtitle={t('profile:legal.privacySubtitle', 'How we handle your data')}
-              onClick={() => navigate(getLocalizedPath('/legal/privacy'))}
-            />
-            <SettingsRow
-              icon={<Scale className="h-5 w-5 text-stone-500" />}
-              title={t('profile:legal.licenses', 'Third-Party Licenses')}
-              subtitle={t('profile:legal.licensesSubtitle', 'Open source attributions')}
-            />
-          </div>
-        </div>
+        {/* ============================================ */}
+        {/* SECTION 2: Brain & Intelligence */}
+        {/* ============================================ */}
+        <section className="mb-12">
+          <SettingsSectionHeader title={t('profile:sections.intelligence', "Olive's Intelligence")} />
+          <div className="space-y-4">
+            {/* Memory & Personalization */}
+            <SettingsCard
+              icon={<Sparkles className="h-5 w-5 text-[hsl(var(--magic-accent))]" />}
+              iconBg="bg-[hsl(var(--magic-accent))]/10"
+              title={t('profile:memoryPersonalization.title')}
+              subtitle={t('profile:memoryPersonalization.subtitle')}
+              delay={100}
+            >
+              <MemoryPersonalization />
+            </SettingsCard>
 
-        {/* Sign Out Button */}
-        <div className="animate-fade-up" style={{ animationDelay: '450ms' }}>
-          <Button
-            variant="outline"
-            className="w-full rounded-2xl h-14 border-[hsl(var(--priority-high))]/20 text-[hsl(var(--priority-high))] hover:bg-[hsl(var(--priority-high))]/5 hover:border-[hsl(var(--priority-high))]/40 transition-all duration-300"
-            size="lg"
-            onClick={handleSignOut}
-          >
-            <LogOut className="mr-2 h-5 w-5" />
-            {t('common:buttons.signOut')}
-          </Button>
-        </div>
+            {/* Note Processing Style */}
+            <SettingsCard
+              icon={<Brain className="h-5 w-5 text-primary" />}
+              iconBg="bg-primary/10"
+              title={t('profile:noteProcessingStyle')}
+              delay={150}
+            >
+              <NoteStyleField />
+            </SettingsCard>
+
+            {/* Regional Format (Language + Timezone) */}
+            <SettingsCard
+              icon={<span className="text-lg">🌍</span>}
+              iconBg="bg-blue-500/10"
+              title={t('profile:regional.title', 'Regional Format')}
+              subtitle={t('profile:regional.subtitle', 'Language & timezone settings')}
+              delay={200}
+            >
+              <RegionalFormatCard />
+            </SettingsCard>
+          </div>
+        </section>
+
+        {/* ============================================ */}
+        {/* SECTION 3: Integrations */}
+        {/* ============================================ */}
+        <section className="mb-12">
+          <SettingsSectionHeader title={t('profile:sections.integrations', 'Connected Apps')} />
+          <div className="space-y-4">
+            {/* WhatsApp Unified Card */}
+            <SettingsCard
+              icon={<MessageSquare className="h-5 w-5 text-[hsl(var(--success))]" />}
+              iconBg="bg-[hsl(var(--success))]/10"
+              title={t('profile:whatsapp.title', 'WhatsApp Connection')}
+              subtitle={t('profile:whatsapp.subtitle', 'Notifications & AI chat')}
+              delay={250}
+            >
+              <WhatsAppUnifiedCard />
+            </SettingsCard>
+
+            {/* Google Calendar */}
+            <SettingsCard
+              icon={<Calendar className="h-5 w-5 text-[hsl(var(--accent))]" />}
+              iconBg="bg-[hsl(var(--accent))]/10"
+              title={t('profile:googleCalendar.title')}
+              subtitle={t('profile:googleCalendar.subtitle')}
+              delay={300}
+            >
+              <GoogleCalendarConnect />
+            </SettingsCard>
+
+            {/* Data Export */}
+            <SettingsCard
+              icon={<Download className="h-5 w-5 text-blue-600" />}
+              iconBg="bg-blue-500/10"
+              title={t('profile:export.title')}
+              subtitle={t('profile:export.subtitle')}
+              delay={350}
+            >
+              <DataExport />
+            </SettingsCard>
+          </div>
+        </section>
+
+        {/* ============================================ */}
+        {/* SECTION 4: System & Legal */}
+        {/* ============================================ */}
+        <section className="mb-8">
+          <SettingsSectionHeader title={t('profile:sections.system', 'System')} />
+          <div className="space-y-4">
+            {/* App Preferences */}
+            <SettingsCard
+              icon={<Settings className="h-5 w-5 text-stone-500" />}
+              iconBg="bg-stone-100"
+              title={t('profile:appPreferences.title', 'App Preferences')}
+              subtitle={t('profile:appPreferences.subtitle', 'Notifications, privacy & more')}
+              delay={400}
+            >
+              <AppPreferencesCard />
+            </SettingsCard>
+
+            {/* Legal & Support */}
+            <div className="card-glass overflow-hidden animate-fade-up" style={{ animationDelay: '450ms' }}>
+              <div className="px-5 pt-5 pb-2">
+                <h3 className="font-serif font-semibold text-[#2A3C24] text-lg">{t('profile:legal.title', 'Legal & Support')}</h3>
+              </div>
+              <div className="px-2 pb-2">
+                <SettingsRow
+                  icon={<FileText className="h-5 w-5 text-stone-500" />}
+                  title={t('profile:legal.terms', 'Terms of Service')}
+                  subtitle={t('profile:legal.termsSubtitle', 'Read our terms and conditions')}
+                  onClick={() => navigate(getLocalizedPath('/legal/terms'))}
+                />
+                <SettingsRow
+                  icon={<Shield className="h-5 w-5 text-stone-500" />}
+                  title={t('profile:legal.privacy', 'Privacy Policy')}
+                  subtitle={t('profile:legal.privacySubtitle', 'How we handle your data')}
+                  onClick={() => navigate(getLocalizedPath('/legal/privacy'))}
+                />
+                <SettingsRow
+                  icon={<Scale className="h-5 w-5 text-stone-500" />}
+                  title={t('profile:legal.licenses', 'Third-Party Licenses')}
+                  subtitle={t('profile:legal.licensesSubtitle', 'Open source attributions')}
+                />
+              </div>
+            </div>
+
+            {/* Sign Out Button */}
+            <div className="animate-fade-up pt-4" style={{ animationDelay: '500ms' }}>
+              <Button
+                variant="outline"
+                className="w-full rounded-2xl h-14 border-[hsl(var(--priority-high))]/20 text-[hsl(var(--priority-high))] hover:bg-[hsl(var(--priority-high))]/5 hover:border-[hsl(var(--priority-high))]/40 transition-all duration-300"
+                size="lg"
+                onClick={handleSignOut}
+              >
+                <LogOut className="mr-2 h-5 w-5" />
+                {t('common:buttons.signOut')}
+              </Button>
+            </div>
+          </div>
+        </section>
 
         {/* Version Info */}
         <div className="text-center pb-4">
