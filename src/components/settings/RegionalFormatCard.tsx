@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/providers/AuthProvider';
 import { useLanguage } from '@/providers/LanguageProvider';
@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Globe, Clock } from 'lucide-react';
+import { Loader2, Globe, Clock, MapPin } from 'lucide-react';
 import { LANGUAGES } from '@/lib/i18n/languages';
 
 const TIMEZONES = [
@@ -79,6 +79,36 @@ export const RegionalFormatCard: React.FC = () => {
 
     fetchTimezone();
   }, [user?.id]);
+
+  const handleAutoDetect = useCallback(() => {
+    const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (detectedTimezone) {
+      // Check if it's in our list
+      const isKnownTimezone = TIMEZONES.some(tz => tz.value === detectedTimezone);
+      if (isKnownTimezone) {
+        setTimezone(detectedTimezone);
+        setHasTimezoneChanged(true);
+        toast({
+          title: t('profile:timezoneField.detected'),
+          description: t('profile:timezoneField.detectedDescription', { timezone: detectedTimezone }),
+        });
+      } else {
+        // Use the detected timezone anyway but warn user
+        setTimezone(detectedTimezone);
+        setHasTimezoneChanged(true);
+        toast({
+          title: t('profile:timezoneField.detected'),
+          description: t('profile:timezoneField.detectedUnknown', { timezone: detectedTimezone }),
+        });
+      }
+    } else {
+      toast({
+        title: t('common:errors.somethingWentWrong'),
+        description: t('profile:timezoneField.detectError'),
+        variant: "destructive",
+      });
+    }
+  }, [t, toast]);
 
   const handleSaveTimezone = async () => {
     if (!user?.id) return;
@@ -161,10 +191,21 @@ export const RegionalFormatCard: React.FC = () => {
 
       {/* Timezone Row */}
       <div className="space-y-2">
-        <Label className="text-sm font-medium flex items-center gap-2">
-          <Clock className="h-4 w-4 text-amber-600" />
-          {t('profile:timezoneField.title')}
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-medium flex items-center gap-2">
+            <Clock className="h-4 w-4 text-amber-600" />
+            {t('profile:timezoneField.title')}
+          </Label>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleAutoDetect}
+            className="h-7 text-xs text-primary hover:text-primary/80"
+          >
+            <MapPin className="h-3 w-3 mr-1" />
+            {t('profile:timezoneField.autoDetect')}
+          </Button>
+        </div>
         <p className="text-xs text-muted-foreground mb-2">
           {t('profile:timezoneField.description')}
         </p>

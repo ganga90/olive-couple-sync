@@ -211,7 +211,12 @@
     "updatedDescription": "Your timezone preference has been saved.",
     "error": "Failed to update timezone. Please try again.",
     "save": "Save Timezone",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "autoDetect": "Auto-detect",
+    "detected": "Timezone detected",
+    "detectedDescription": "Detected {{timezone}} from your device",
+    "detectedUnknown": "Detected {{timezone}} (not in common list, but will be saved)",
+    "detectError": "Could not detect your timezone. Please select manually."
   },
   "phoneField": {
     "title": "WhatsApp Integration",
