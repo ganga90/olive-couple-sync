@@ -183,7 +183,12 @@
     "updatedDescription": "Tu preferencia de zona horaria ha sido guardada.",
     "error": "Error al actualizar la zona horaria. Inténtalo de nuevo.",
     "save": "Guardar Zona Horaria",
-    "saving": "Guardando..."
+    "saving": "Guardando...",
+    "autoDetect": "Auto-detectar",
+    "detected": "Zona horaria detectada",
+    "detectedDescription": "Se detectó {{timezone}} de tu dispositivo",
+    "detectedUnknown": "Se detectó {{timezone}} (no está en la lista común, pero se guardará)",
+    "detectError": "No se pudo detectar tu zona horaria. Por favor selecciona manualmente."
   },
   "phoneField": {
     "title": "Integración de WhatsApp",

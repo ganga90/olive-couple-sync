@@ -183,7 +183,12 @@
     "updatedDescription": "La tua preferenza sul fuso orario è stata salvata.",
     "error": "Impossibile aggiornare il fuso orario. Riprova.",
     "save": "Salva Fuso Orario",
-    "saving": "Salvataggio..."
+    "saving": "Salvataggio...",
+    "autoDetect": "Rileva automaticamente",
+    "detected": "Fuso orario rilevato",
+    "detectedDescription": "Rilevato {{timezone}} dal tuo dispositivo",
+    "detectedUnknown": "Rilevato {{timezone}} (non nell'elenco comune, ma verrà salvato)",
+    "detectError": "Impossibile rilevare il fuso orario. Seleziona manualmente."
   },
   "phoneField": {
     "title": "Integrazione WhatsApp",
