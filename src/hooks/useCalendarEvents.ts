@@ -41,9 +41,10 @@ export function useCalendarEvents() {
     if (!userId) return null;
     
     try {
+      // Only select non-sensitive columns - exclude access_token, refresh_token, token_expiry
       const { data, error } = await supabase
         .from('calendar_connections')
-        .select('*')
+        .select('id, user_id, google_user_id, google_email, calendar_name, calendar_type, sync_direction, error_message, auto_add_to_calendar, show_google_events, updated_at, created_at, is_active, last_sync_time, auto_create_events, sync_enabled, couple_id, primary_calendar_id')
         .eq('user_id', userId)
         .eq('is_active', true)
         .maybeSingle();
