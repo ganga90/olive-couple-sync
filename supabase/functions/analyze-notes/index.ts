@@ -8,7 +8,7 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API")!;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -117,28 +117,33 @@ Examples:
 Constraint: If no strong pattern is found, return null. Do not force a result.
 Return ONLY the JSON object or null, no additional text.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: `Analyze this user's task history for enduring patterns:\n\n${formattedNotes}`,
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: systemPrompt },
+                { text: `Analyze this user's task history for enduring patterns:\n\n${formattedNotes}` },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.3,
           },
-        ],
-        temperature: 0.3,
-      }),
-    });
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("[analyze-notes] AI API error:", response.status, errorText);
+      console.error("[analyze-notes] Gemini API error:", response.status, errorText);
       
       if (response.status === 429) {
         return new Response(
@@ -147,11 +152,13 @@ Return ONLY the JSON object or null, no additional text.`;
         );
       }
       
-      throw new Error(`AI API error: ${response.status}`);
+      throw new Error(`Gemini API error: ${response.status}`);
     }
 
     const aiResponse = await response.json();
-    const content = aiResponse.choices?.[0]?.message?.content?.trim();
+    const content = aiResponse.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+    console.log("[analyze-notes] Gemini response:", content);
 
     console.log("[analyze-notes] AI response:", content);
 
