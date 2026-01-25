@@ -7,6 +7,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarIcon, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatDateForStorage } from '@/utils/dateUtils';
 import type { Note } from '@/types/note';
 import { cn } from '@/lib/utils';
 import { useLocalizedNavigate } from '@/hooks/useLocalizedNavigate';
@@ -51,7 +52,7 @@ export const QuickEditBottomSheet: React.FC<QuickEditBottomSheetProps> = ({
     try {
       await onSave(note.id, {
         summary: title,
-        dueDate: dueDate?.toISOString() || null,
+        dueDate: dueDate ? formatDateForStorage(dueDate) : null,
         task_owner: owner
       });
       onClose();
