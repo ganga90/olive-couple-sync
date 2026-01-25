@@ -132,7 +132,10 @@
     "analyzing": "Analyzing your notes...",
     "patternDetected": "Pattern detected! Check your home screen.",
     "noPatterns": "No strong patterns detected in your recent notes.",
-    "analyzeError": "Failed to analyze notes"
+    "analyzeError": "Failed to analyze notes",
+    "showAll": "Show All",
+    "showLess": "Show Less",
+    "more": "more"
   },
   "noteProcessingStyle": "Note Processing Style",
   "memoryPersonalization": {
