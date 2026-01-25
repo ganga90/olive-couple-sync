@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { OliveLogoWithText } from "@/components/OliveLogo";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 import { motion } from "framer-motion";
+import heroMockup from "@/assets/hero-mockup.png";
 
 export const LandingHero = () => {
   const { t } = useTranslation('landing');
@@ -93,17 +94,19 @@ export const LandingHero = () => {
         </motion.div>
       </motion.div>
 
-      {/* Device Mockup Placeholder */}
+      {/* Device Mockup */}
       <motion.div
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.8, duration: 0.8 }}
-        className="mt-16 w-full max-w-4xl mx-auto"
+        className="mt-16 w-full max-w-5xl mx-auto"
       >
-        <div className="bg-white rounded-3xl shadow-2xl border border-stone-200 p-8 md:p-12">
-          <div className="bg-stone-100 rounded-2xl h-64 md:h-96 flex items-center justify-center">
-            <p className="text-stone-400 text-sm font-medium">[SCREENSHOT OF DASHBOARD HERE]</p>
-          </div>
+        <div className="bg-white rounded-3xl shadow-2xl border border-stone-200 p-4 md:p-6 overflow-hidden">
+          <img 
+            src={heroMockup} 
+            alt="Olive Dashboard Preview" 
+            className="w-full h-auto rounded-2xl"
+          />
         </div>
       </motion.div>
     </section>
