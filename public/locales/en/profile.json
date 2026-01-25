@@ -158,6 +158,31 @@
       "subtitle": "Change the app language"
     }
   },
+  "notifications": {
+    "push": "Push Notifications",
+    "pushDesc": "Get notified on your device",
+    "email": "Email Notifications",
+    "emailDesc": "Receive updates via email",
+    "reminders": "Task Reminders",
+    "remindersDesc": "Get reminded about upcoming tasks",
+    "partner": "Partner Activity",
+    "partnerDesc": "Know when your partner adds or completes tasks"
+  },
+  "privacy": {
+    "analytics": "Share Usage Analytics",
+    "analyticsDesc": "Help us improve Olive with anonymous data",
+    "activity": "Show Activity Status",
+    "activityDesc": "Let your partner see when you are active",
+    "dataNote": "Your data is encrypted and stored securely. We never sell your personal information."
+  },
+  "help": {
+    "faq": "Frequently Asked Questions",
+    "faqDesc": "Find answers to common questions about Olive.",
+    "contact": "Contact Support",
+    "contactDesc": "Need help? Reach out to our support team.",
+    "feedback": "Send Feedback",
+    "feedbackDesc": "We love hearing from you! Share your ideas."
+  },
   "export": {
     "title": "Export Your Data",
     "subtitle": "Download your notes and memories as CSV files",
