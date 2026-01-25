@@ -75,5 +75,50 @@
     "processing": "Organizando...",
     "submit": "Enviar a Olive",
     "skipToHome": "Saltar e ir al inicio"
+  },
+  "quiz": {
+    "step": "Paso {{current}} de {{total}}",
+    "scope": {
+      "question": "¿Para quién estás organizando?",
+      "justMe": "Solo yo",
+      "justMeDesc": "Enfoque personal",
+      "partner": "Mi pareja y yo",
+      "partnerDesc": "Enfoque en pareja",
+      "family": "Mi familia",
+      "familyDesc": "Enfoque del hogar"
+    },
+    "mentalLoad": {
+      "question": "¿Qué ocupa más tu carga mental?",
+      "home": "Hogar y recados",
+      "homeDesc": "Compras, mantenimiento",
+      "work": "Trabajo y carrera",
+      "workDesc": "Reuniones, tareas",
+      "studies": "Estudios",
+      "studiesDesc": "Exámenes, trabajos",
+      "health": "Salud y fitness",
+      "healthDesc": "Preparar comida, ejercicio"
+    },
+    "household": {
+      "question": "¿Quién más vive en tu hogar?",
+      "subtitle": "Esto ayuda a Olive a entender mejor tus tareas",
+      "dogs": "Perros 🐶",
+      "cats": "Gatos 🐱",
+      "kids": "Niños 👶",
+      "plants": "Plantas 🌿"
+    },
+    "diet": {
+      "question": "¿Alguna preferencia dietética?",
+      "subtitle": "Ayuda con la categorización de compras",
+      "anything": "De todo",
+      "vegetarian": "Vegetariano",
+      "vegan": "Vegano",
+      "keto": "Keto / Bajo en carbos",
+      "glutenFree": "Sin gluten"
+    },
+    "back": "Atrás",
+    "next": "Siguiente",
+    "finish": "Terminar",
+    "skipQuiz": "Saltar personalización",
+    "personalizing": "Personalizando Olive según tu perfil..."
   }
 }

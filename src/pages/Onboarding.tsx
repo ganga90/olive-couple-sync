@@ -28,12 +28,24 @@ import {
   Loader2,
   Share2,
   Check,
-  ExternalLink
+  ExternalLink,
+  Home,
+  Briefcase,
+  GraduationCap,
+  Heart,
+  Dog,
+  Cat,
+  Baby,
+  Leaf,
+  User,
+  Users2,
+  House
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Onboarding step types
+// Onboarding step types - quiz is now the first step
 type OnboardingStep = 
+  | "quiz"
   | "couple" 
   | "whatsapp" 
   | "calendar" 
@@ -42,6 +54,14 @@ type OnboardingStep =
   | "demo";
 
 type NoteStyle = 'auto' | 'succinct' | 'conversational';
+
+// Quiz state types
+interface QuizAnswers {
+  scope: string | null;
+  mentalLoad: string[];
+  household: string[];
+  diet: string | null;
+}
 
 // Local storage key for onboarding state
 const ONBOARDING_STATE_KEY = 'olive_onboarding_state';
@@ -53,18 +73,30 @@ interface OnboardingState {
   userName: string;
   noteStyle: NoteStyle;
   completedSteps: OnboardingStep[];
+  quizStep: number;
+  quizAnswers: QuizAnswers;
 }
 
+const defaultQuizAnswers: QuizAnswers = {
+  scope: null,
+  mentalLoad: [],
+  household: [],
+  diet: null,
+};
+
 const defaultState: OnboardingState = {
-  currentStep: 'couple',
+  currentStep: 'quiz',
   coupleSetup: null,
   partnerName: '',
   userName: '',
   noteStyle: 'auto',
   completedSteps: [],
+  quizStep: 0,
+  quizAnswers: defaultQuizAnswers,
 };
 
-const STEPS_ORDER: OnboardingStep[] = ['couple', 'whatsapp', 'calendar', 'style', 'notifications', 'demo'];
+const STEPS_ORDER: OnboardingStep[] = ['quiz', 'couple', 'whatsapp', 'calendar', 'style', 'notifications', 'demo'];
+const QUIZ_TOTAL_STEPS = 4;
 
 const Onboarding = () => {
   const { t } = useTranslation('onboarding');
@@ -79,7 +111,7 @@ const Onboarding = () => {
       const saved = localStorage.getItem(ONBOARDING_STATE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        return { ...defaultState, ...parsed };
+        return { ...defaultState, ...parsed, quizAnswers: { ...defaultQuizAnswers, ...parsed.quizAnswers } };
       }
     } catch {}
     return defaultState;
@@ -90,6 +122,7 @@ const Onboarding = () => {
   const [inviteUrl, setInviteUrl] = useState('');
   const [demoText, setDemoText] = useState('');
   const [isProcessingDemo, setIsProcessingDemo] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   
   useSEO({ 
     title: "Get Started — Olive", 
@@ -103,7 +136,12 @@ const Onboarding = () => {
 
   // Step navigation helpers
   const currentStepIndex = STEPS_ORDER.indexOf(state.currentStep);
-  const progress = ((currentStepIndex + 1) / STEPS_ORDER.length) * 100;
+  const totalSteps = STEPS_ORDER.length;
+  
+  // For the quiz, progress is based on quiz substeps; for other steps, use main step index
+  const progress = state.currentStep === 'quiz' 
+    ? ((state.quizStep + 1) / (QUIZ_TOTAL_STEPS + totalSteps - 1)) * 100
+    : ((QUIZ_TOTAL_STEPS + currentStepIndex) / (QUIZ_TOTAL_STEPS + totalSteps - 1)) * 100;
 
   const goToStep = (step: OnboardingStep) => {
     setIsAnimating(true);
@@ -125,9 +163,145 @@ const Onboarding = () => {
   };
 
   const goToPrevStep = () => {
+    // If in quiz and not on first quiz step, go back in quiz
+    if (state.currentStep === 'quiz' && state.quizStep > 0) {
+      setState(prev => ({ ...prev, quizStep: prev.quizStep - 1 }));
+      return;
+    }
+    
     const prevIndex = currentStepIndex - 1;
     if (prevIndex >= 0) {
       goToStep(STEPS_ORDER[prevIndex]);
+    }
+  };
+
+  // Quiz navigation
+  const goToNextQuizStep = () => {
+    if (state.quizStep < QUIZ_TOTAL_STEPS - 1) {
+      setIsAnimating(true);
+      setTimeout(() => {
+        setState(prev => ({ ...prev, quizStep: prev.quizStep + 1 }));
+        setIsAnimating(false);
+      }, 150);
+    } else {
+      // Finish quiz - synthesize and save memory
+      handleQuizComplete();
+    }
+  };
+
+  const goToPrevQuizStep = () => {
+    if (state.quizStep > 0) {
+      setIsAnimating(true);
+      setTimeout(() => {
+        setState(prev => ({ ...prev, quizStep: prev.quizStep - 1 }));
+        setIsAnimating(false);
+      }, 150);
+    }
+  };
+
+  // Quiz answer handlers
+  const setQuizAnswer = (key: keyof QuizAnswers, value: string | string[] | null) => {
+    setState(prev => ({
+      ...prev,
+      quizAnswers: { ...prev.quizAnswers, [key]: value }
+    }));
+  };
+
+  const toggleMultiSelect = (key: 'mentalLoad' | 'household', value: string) => {
+    setState(prev => {
+      const current = prev.quizAnswers[key];
+      const updated = current.includes(value)
+        ? current.filter(v => v !== value)
+        : [...current, value];
+      return {
+        ...prev,
+        quizAnswers: { ...prev.quizAnswers, [key]: updated }
+      };
+    });
+  };
+
+  // Memory synthesis function
+  const synthesizeProfileMemory = (answers: QuizAnswers): string => {
+    const parts: string[] = [];
+
+    // Scope
+    if (answers.scope) {
+      parts.push(`The user is organizing for ${answers.scope}.`);
+    }
+
+    // Mental load
+    if (answers.mentalLoad.length > 0) {
+      parts.push(`Their primary focus areas are ${answers.mentalLoad.join(', ')}.`);
+    }
+
+    // Household entities
+    if (answers.household.length > 0) {
+      parts.push(`The household includes ${answers.household.join(', ')}.`);
+    }
+
+    // Diet
+    if (answers.diet && answers.diet !== 'Anything goes') {
+      parts.push(`The user follows a ${answers.diet} diet.`);
+    }
+
+    return parts.join(' ');
+  };
+
+  // Handle quiz completion
+  const handleQuizComplete = async () => {
+    if (!user?.id) {
+      goToNextStep();
+      return;
+    }
+
+    setIsSavingProfile(true);
+    
+    try {
+      const synthesizedText = synthesizeProfileMemory(state.quizAnswers);
+      
+      if (synthesizedText.trim()) {
+        // Save to user_memories table with category 'core_profile'
+        const { error } = await supabase
+          .from('user_memories')
+          .insert({
+            user_id: user.id,
+            title: 'Core Profile',
+            content: synthesizedText,
+            category: 'core_profile',
+            is_active: true,
+            importance: 5, // High importance for core profile
+          });
+
+        if (error) {
+          console.error('Failed to save profile memory:', error);
+          // Continue anyway - don't block onboarding
+        }
+      }
+
+      // Wait for the feedback animation
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      goToNextStep();
+    } catch (error) {
+      console.error('Failed to synthesize profile:', error);
+      goToNextStep();
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleSkipQuiz = () => {
+    goToNextStep();
+  };
+
+  // Check if current quiz step can proceed
+  const canProceedQuiz = () => {
+    switch (state.quizStep) {
+      case 0: return !!state.quizAnswers.scope;
+      case 1: return true; // Multi-select, allow skip
+      case 2: return true; // Multi-select, allow skip
+      case 3: return !!state.quizAnswers.diet;
+      default: return true;
     }
   };
 
@@ -323,12 +497,347 @@ const Onboarding = () => {
     t('demo.chip3', { defaultValue: "Dinner with Sarah next Friday at 7pm" }),
   ];
 
+  // Quiz option configurations
+  const scopeOptions = [
+    { 
+      value: 'Just Me', 
+      label: t('quiz.scope.justMe', { defaultValue: 'Just Me' }),
+      desc: t('quiz.scope.justMeDesc', { defaultValue: 'Personal focus' }),
+      icon: User 
+    },
+    { 
+      value: 'Me & My Partner', 
+      label: t('quiz.scope.partner', { defaultValue: 'Me & My Partner' }),
+      desc: t('quiz.scope.partnerDesc', { defaultValue: 'Couple focus' }),
+      icon: Users2 
+    },
+    { 
+      value: 'My Family', 
+      label: t('quiz.scope.family', { defaultValue: 'My Family' }),
+      desc: t('quiz.scope.familyDesc', { defaultValue: 'Household focus' }),
+      icon: House 
+    },
+  ];
+
+  const mentalLoadOptions = [
+    { 
+      value: 'Home & Errands', 
+      label: t('quiz.mentalLoad.home', { defaultValue: 'Home & Errands' }),
+      desc: t('quiz.mentalLoad.homeDesc', { defaultValue: 'Groceries, maintenance' }),
+      icon: Home 
+    },
+    { 
+      value: 'Work & Career', 
+      label: t('quiz.mentalLoad.work', { defaultValue: 'Work & Career' }),
+      desc: t('quiz.mentalLoad.workDesc', { defaultValue: 'Meetings, tasks' }),
+      icon: Briefcase 
+    },
+    { 
+      value: 'Studies', 
+      label: t('quiz.mentalLoad.studies', { defaultValue: 'Studies' }),
+      desc: t('quiz.mentalLoad.studiesDesc', { defaultValue: 'Exams, assignments' }),
+      icon: GraduationCap 
+    },
+    { 
+      value: 'Health & Fitness', 
+      label: t('quiz.mentalLoad.health', { defaultValue: 'Health & Fitness' }),
+      desc: t('quiz.mentalLoad.healthDesc', { defaultValue: 'Meal prep, workouts' }),
+      icon: Heart 
+    },
+  ];
+
+  const householdOptions = [
+    { value: 'Dogs', label: t('quiz.household.dogs', { defaultValue: 'Dogs 🐶' }), icon: Dog },
+    { value: 'Cats', label: t('quiz.household.cats', { defaultValue: 'Cats 🐱' }), icon: Cat },
+    { value: 'Kids', label: t('quiz.household.kids', { defaultValue: 'Kids 👶' }), icon: Baby },
+    { value: 'Plants', label: t('quiz.household.plants', { defaultValue: 'Plants 🌿' }), icon: Leaf },
+  ];
+
+  const dietOptions = [
+    { value: 'Anything goes', label: t('quiz.diet.anything', { defaultValue: 'Anything goes' }) },
+    { value: 'Vegetarian', label: t('quiz.diet.vegetarian', { defaultValue: 'Vegetarian' }) },
+    { value: 'Vegan', label: t('quiz.diet.vegan', { defaultValue: 'Vegan' }) },
+    { value: 'Keto / Low Carb', label: t('quiz.diet.keto', { defaultValue: 'Keto / Low Carb' }) },
+    { value: 'Gluten-Free', label: t('quiz.diet.glutenFree', { defaultValue: 'Gluten-Free' }) },
+  ];
+
+  // Render quiz step content
+  const renderQuizStep = () => {
+    if (isSavingProfile) {
+      return (
+        <div className="w-full max-w-md animate-fade-up space-y-8 text-center">
+          <div className="flex justify-center">
+            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center animate-pulse">
+              <Sparkles className="w-10 h-10 text-primary animate-spin" />
+            </div>
+          </div>
+          <p className="text-lg text-foreground font-medium">
+            {t('quiz.personalizing', { defaultValue: "Personalizing Olive based on your profile..." })}
+          </p>
+        </div>
+      );
+    }
+
+    switch (state.quizStep) {
+      case 0:
+        return (
+          <div className="w-full max-w-md animate-fade-up space-y-6">
+            {/* Logo */}
+            <div className="flex justify-center mb-2">
+              <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 shadow-card border border-primary/20">
+                <OliveLogo size={32} />
+              </div>
+            </div>
+            
+            <div className="text-center space-y-2">
+              <h1 className="text-2xl font-bold text-foreground font-serif">
+                {t('quiz.scope.question', { defaultValue: "Who are you organizing for?" })}
+              </h1>
+            </div>
+
+            <div className="space-y-3">
+              {scopeOptions.map((option) => {
+                const Icon = option.icon;
+                const isSelected = state.quizAnswers.scope === option.value;
+                return (
+                  <Card
+                    key={option.value}
+                    className={cn(
+                      "p-4 cursor-pointer transition-all border-2",
+                      isSelected 
+                        ? "border-primary bg-primary/5" 
+                        : "border-border hover:border-primary/50"
+                    )}
+                    onClick={() => setQuizAnswer('scope', option.value)}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={cn(
+                        "w-12 h-12 rounded-xl flex items-center justify-center transition-colors",
+                        isSelected ? "bg-primary/20" : "bg-muted"
+                      )}>
+                        <Icon className={cn(
+                          "w-6 h-6",
+                          isSelected ? "text-primary" : "text-muted-foreground"
+                        )} />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-foreground">{option.label}</p>
+                        <p className="text-sm text-muted-foreground">{option.desc}</p>
+                      </div>
+                      {isSelected && (
+                        <Check className="w-5 h-5 text-primary" />
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                onClick={goToNextQuizStep}
+                className="flex-1 h-12 text-base group"
+                disabled={!canProceedQuiz()}
+              >
+                {t('quiz.next', { defaultValue: "Next" })}
+                <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
+              </Button>
+            </div>
+
+            <button 
+              onClick={handleSkipQuiz}
+              className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {t('quiz.skipQuiz', { defaultValue: "Skip personalization" })}
+            </button>
+          </div>
+        );
+
+      case 1:
+        return (
+          <div className="w-full max-w-md animate-fade-up space-y-6">
+            <div className="text-center space-y-2">
+              <h1 className="text-2xl font-bold text-foreground font-serif">
+                {t('quiz.mentalLoad.question', { defaultValue: "What takes up most of your mental load?" })}
+              </h1>
+              <p className="text-muted-foreground text-sm">
+                {t('quiz.selectMultiple', { defaultValue: "Select all that apply" })}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {mentalLoadOptions.map((option) => {
+                const Icon = option.icon;
+                const isSelected = state.quizAnswers.mentalLoad.includes(option.value);
+                return (
+                  <Card
+                    key={option.value}
+                    className={cn(
+                      "p-4 cursor-pointer transition-all border-2 text-center",
+                      isSelected 
+                        ? "border-primary bg-primary/5" 
+                        : "border-border hover:border-primary/50"
+                    )}
+                    onClick={() => toggleMultiSelect('mentalLoad', option.value)}
+                  >
+                    <div className={cn(
+                      "w-10 h-10 rounded-xl flex items-center justify-center mx-auto mb-2 transition-colors",
+                      isSelected ? "bg-primary/20" : "bg-muted"
+                    )}>
+                      <Icon className={cn(
+                        "w-5 h-5",
+                        isSelected ? "text-primary" : "text-muted-foreground"
+                      )} />
+                    </div>
+                    <p className="font-medium text-foreground text-sm">{option.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{option.desc}</p>
+                  </Card>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="ghost"
+                onClick={goToPrevQuizStep}
+                className="h-12"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                {t('quiz.back', { defaultValue: "Back" })}
+              </Button>
+              <Button
+                onClick={goToNextQuizStep}
+                className="flex-1 h-12 text-base group"
+              >
+                {t('quiz.next', { defaultValue: "Next" })}
+                <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
+              </Button>
+            </div>
+          </div>
+        );
+
+      case 2:
+        return (
+          <div className="w-full max-w-md animate-fade-up space-y-6">
+            <div className="text-center space-y-2">
+              <h1 className="text-2xl font-bold text-foreground font-serif">
+                {t('quiz.household.question', { defaultValue: "Who else lives in your home?" })}
+              </h1>
+              <p className="text-muted-foreground text-sm">
+                {t('quiz.household.subtitle', { defaultValue: "This helps Olive understand your tasks better" })}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {householdOptions.map((option) => {
+                const isSelected = state.quizAnswers.household.includes(option.value);
+                return (
+                  <Card
+                    key={option.value}
+                    className={cn(
+                      "p-5 cursor-pointer transition-all border-2 text-center",
+                      isSelected 
+                        ? "border-primary bg-primary/5" 
+                        : "border-border hover:border-primary/50"
+                    )}
+                    onClick={() => toggleMultiSelect('household', option.value)}
+                  >
+                    <p className="text-2xl mb-2">{option.label.split(' ')[1]}</p>
+                    <p className="font-medium text-foreground text-sm">{option.label.split(' ')[0]}</p>
+                  </Card>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="ghost"
+                onClick={goToPrevQuizStep}
+                className="h-12"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                {t('quiz.back', { defaultValue: "Back" })}
+              </Button>
+              <Button
+                onClick={goToNextQuizStep}
+                className="flex-1 h-12 text-base group"
+              >
+                {t('quiz.next', { defaultValue: "Next" })}
+                <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
+              </Button>
+            </div>
+          </div>
+        );
+
+      case 3:
+        return (
+          <div className="w-full max-w-md animate-fade-up space-y-6">
+            <div className="text-center space-y-2">
+              <h1 className="text-2xl font-bold text-foreground font-serif">
+                {t('quiz.diet.question', { defaultValue: "Any dietary preferences?" })}
+              </h1>
+              <p className="text-muted-foreground text-sm">
+                {t('quiz.diet.subtitle', { defaultValue: "Helps with grocery categorization" })}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              {dietOptions.map((option) => {
+                const isSelected = state.quizAnswers.diet === option.value;
+                return (
+                  <Card
+                    key={option.value}
+                    className={cn(
+                      "p-4 cursor-pointer transition-all border-2",
+                      isSelected 
+                        ? "border-primary bg-primary/5" 
+                        : "border-border hover:border-primary/50"
+                    )}
+                    onClick={() => setQuizAnswer('diet', option.value)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-foreground">{option.label}</p>
+                      {isSelected && (
+                        <Check className="w-5 h-5 text-primary" />
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="ghost"
+                onClick={goToPrevQuizStep}
+                className="h-12"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                {t('quiz.back', { defaultValue: "Back" })}
+              </Button>
+              <Button
+                onClick={goToNextQuizStep}
+                className="flex-1 h-12 text-base group"
+                disabled={!canProceedQuiz()}
+              >
+                {t('quiz.finish', { defaultValue: "Finish" })}
+                <Sparkles className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   return (
     <main className="min-h-screen bg-gradient-hero flex flex-col">
       {/* Header */}
       <header className="px-6 py-4 flex items-center justify-between">
-        {currentStepIndex > 0 ? (
-          <Button variant="ghost" size="icon" onClick={goToPrevStep} disabled={isAnimating}>
+        {(currentStepIndex > 0 || (state.currentStep === 'quiz' && state.quizStep > 0)) ? (
+          <Button variant="ghost" size="icon" onClick={goToPrevStep} disabled={isAnimating || isSavingProfile}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
         ) : (
@@ -344,7 +853,10 @@ const Onboarding = () => {
             />
           </div>
           <p className="text-xs text-muted-foreground text-center mt-1">
-            {currentStepIndex + 1} / {STEPS_ORDER.length}
+            {state.currentStep === 'quiz' 
+              ? t('quiz.step', { current: state.quizStep + 1, total: QUIZ_TOTAL_STEPS, defaultValue: `Step ${state.quizStep + 1} of ${QUIZ_TOTAL_STEPS}` })
+              : `${currentStepIndex + QUIZ_TOTAL_STEPS} / ${totalSteps + QUIZ_TOTAL_STEPS - 1}`
+            }
           </p>
         </div>
         
@@ -356,6 +868,9 @@ const Onboarding = () => {
         "flex-1 flex flex-col items-center justify-center px-6 py-8 transition-all duration-300",
         isAnimating ? "opacity-0 translate-x-8" : "opacity-100 translate-x-0"
       )}>
+        {/* Quiz Steps */}
+        {state.currentStep === 'quiz' && renderQuizStep()}
+
         {/* Step 1: Couple Space Setup */}
         {state.currentStep === 'couple' && (
           <div className="w-full max-w-md animate-fade-up space-y-6">

@@ -75,5 +75,50 @@
     "processing": "Organizing...",
     "submit": "Send to Olive",
     "skipToHome": "Skip and go to Home"
+  },
+  "quiz": {
+    "step": "Step {{current}} of {{total}}",
+    "scope": {
+      "question": "Who are you organizing for?",
+      "justMe": "Just Me",
+      "justMeDesc": "Personal focus",
+      "partner": "Me & My Partner",
+      "partnerDesc": "Couple focus",
+      "family": "My Family",
+      "familyDesc": "Household focus"
+    },
+    "mentalLoad": {
+      "question": "What takes up most of your mental load?",
+      "home": "Home & Errands",
+      "homeDesc": "Groceries, maintenance",
+      "work": "Work & Career",
+      "workDesc": "Meetings, tasks",
+      "studies": "Studies",
+      "studiesDesc": "Exams, assignments",
+      "health": "Health & Fitness",
+      "healthDesc": "Meal prep, workouts"
+    },
+    "household": {
+      "question": "Who else lives in your home?",
+      "subtitle": "This helps Olive understand your tasks better",
+      "dogs": "Dogs 🐶",
+      "cats": "Cats 🐱",
+      "kids": "Kids 👶",
+      "plants": "Plants 🌿"
+    },
+    "diet": {
+      "question": "Any dietary preferences?",
+      "subtitle": "Helps with grocery categorization",
+      "anything": "Anything goes",
+      "vegetarian": "Vegetarian",
+      "vegan": "Vegan",
+      "keto": "Keto / Low Carb",
+      "glutenFree": "Gluten-Free"
+    },
+    "back": "Back",
+    "next": "Next",
+    "finish": "Finish",
+    "skipQuiz": "Skip personalization",
+    "personalizing": "Personalizing Olive based on your profile..."
   }
 }
