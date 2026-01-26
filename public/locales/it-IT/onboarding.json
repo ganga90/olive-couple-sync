@@ -26,6 +26,15 @@
   "dataSecure": "I tuoi dati sono crittografati e sicuri",
   "skip": "Salta per ora",
   "maybeLater": "Forse più tardi",
+  "regional": {
+    "header": "Abbiamo rilevato le tue impostazioni",
+    "subtext": "Conferma il fuso orario e la lingua per permettere a Olive di ricordarti al momento giusto.",
+    "autoDetected": "Rilevato automaticamente dal tuo dispositivo",
+    "timezone": "Fuso orario",
+    "language": "Lingua",
+    "confirm": "Perfetto!",
+    "saved": "Impostazioni salvate!"
+  },
   "couple": {
     "header": "Due è meglio di uno.",
     "subtext": "Olive funziona meglio quando gestite la casa insieme. Invita il tuo partner a condividere liste, calendari e attività.",

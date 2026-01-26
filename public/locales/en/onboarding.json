@@ -26,6 +26,15 @@
   "dataSecure": "Your data is encrypted and secure",
   "skip": "Skip for now",
   "maybeLater": "Maybe later",
+  "regional": {
+    "header": "We detected your settings",
+    "subtext": "Confirm your timezone and language so Olive can remind you at the right time.",
+    "autoDetected": "Auto-detected from your device",
+    "timezone": "Timezone",
+    "language": "Language",
+    "confirm": "Looks good!",
+    "saved": "Settings saved!"
+  },
   "couple": {
     "header": "Two is better than one.",
     "subtext": "Olive works best when you manage your household together. Invite your partner to share lists, calendars, and tasks.",
