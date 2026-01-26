@@ -39,13 +39,18 @@ import {
   Leaf,
   User,
   Users2,
-  House
+  House,
+  Globe,
+  Languages,
+  MapPin
 } from "lucide-react";
+import { LANGUAGES } from "@/lib/i18n/languages";
 import { cn } from "@/lib/utils";
 
 // Onboarding step types - quiz is now the first step
 type OnboardingStep = 
   | "quiz"
+  | "regional"
   | "couple" 
   | "whatsapp" 
   | "calendar" 
@@ -95,11 +100,32 @@ const defaultState: OnboardingState = {
   quizAnswers: defaultQuizAnswers,
 };
 
-const STEPS_ORDER: OnboardingStep[] = ['quiz', 'couple', 'whatsapp', 'calendar', 'style', 'notifications', 'demo'];
+const STEPS_ORDER: OnboardingStep[] = ['quiz', 'regional', 'couple', 'whatsapp', 'calendar', 'style', 'notifications', 'demo'];
+
+// Common timezones for selection
+const TIMEZONES = [
+  { value: 'America/New_York', label: 'Eastern Time (ET)' },
+  { value: 'America/Chicago', label: 'Central Time (CT)' },
+  { value: 'America/Denver', label: 'Mountain Time (MT)' },
+  { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
+  { value: 'America/Anchorage', label: 'Alaska Time (AKT)' },
+  { value: 'Pacific/Honolulu', label: 'Hawaii Time (HT)' },
+  { value: 'Europe/London', label: 'London (GMT/BST)' },
+  { value: 'Europe/Paris', label: 'Paris (CET/CEST)' },
+  { value: 'Europe/Berlin', label: 'Berlin (CET/CEST)' },
+  { value: 'Europe/Rome', label: 'Rome (CET/CEST)' },
+  { value: 'Europe/Madrid', label: 'Madrid (CET/CEST)' },
+  { value: 'Asia/Dubai', label: 'Dubai (GST)' },
+  { value: 'Asia/Kolkata', label: 'India (IST)' },
+  { value: 'Asia/Singapore', label: 'Singapore (SGT)' },
+  { value: 'Asia/Tokyo', label: 'Tokyo (JST)' },
+  { value: 'Australia/Sydney', label: 'Sydney (AEDT/AEST)' },
+  { value: 'UTC', label: 'UTC (Coordinated Universal Time)' },
+];
 const QUIZ_TOTAL_STEPS = 4;
 
 const Onboarding = () => {
-  const { t } = useTranslation('onboarding');
+  const { t, i18n } = useTranslation('onboarding');
   const getLocalizedPath = useLocalizedHref();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -123,6 +149,41 @@ const Onboarding = () => {
   const [demoText, setDemoText] = useState('');
   const [isProcessingDemo, setIsProcessingDemo] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  
+  // Regional settings state - auto-detect on mount
+  const [detectedTimezone, setDetectedTimezone] = useState<string>('');
+  const [detectedLanguage, setDetectedLanguage] = useState<string>('');
+  const [selectedTimezone, setSelectedTimezone] = useState<string>('');
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('');
+  const [hasAutoDetected, setHasAutoDetected] = useState(false);
+  
+  // Auto-detect timezone and language on mount
+  useEffect(() => {
+    if (hasAutoDetected) return;
+    
+    // Detect timezone
+    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const matchedTimezone = TIMEZONES.find(tz => tz.value === browserTimezone);
+    const tzToUse = matchedTimezone ? browserTimezone : 'America/New_York';
+    setDetectedTimezone(tzToUse);
+    setSelectedTimezone(tzToUse);
+    
+    // Detect language from browser
+    const browserLang = navigator.language || 'en';
+    let detectedLang = 'en';
+    
+    if (browserLang.startsWith('es')) {
+      detectedLang = 'es-ES';
+    } else if (browserLang.startsWith('it')) {
+      detectedLang = 'it-IT';
+    } else {
+      detectedLang = 'en';
+    }
+    
+    setDetectedLanguage(detectedLang);
+    setSelectedLanguage(detectedLang);
+    setHasAutoDetected(true);
+  }, [hasAutoDetected]);
   
   useSEO({ 
     title: "Get Started — Olive", 
@@ -369,6 +430,37 @@ const Onboarding = () => {
       goToNextStep();
     } catch (error) {
       console.error('Failed to create space:', error);
+      goToNextStep(); // Continue anyway
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegionalConfirm = async () => {
+    setLoading(true);
+    try {
+      // Update i18n language
+      if (selectedLanguage !== i18n.language) {
+        await i18n.changeLanguage(selectedLanguage);
+        localStorage.setItem('i18nextLng', selectedLanguage);
+      }
+      
+      // Save timezone to profile if user is logged in
+      if (user?.id) {
+        await supabase
+          .from('clerk_profiles')
+          .upsert({
+            id: user.id,
+            timezone: selectedTimezone,
+            language_preference: selectedLanguage,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
+      }
+      
+      toast.success(t('regional.saved', { defaultValue: 'Settings saved!' }));
+      goToNextStep();
+    } catch (error) {
+      console.error('Failed to save regional settings:', error);
       goToNextStep(); // Continue anyway
     } finally {
       setLoading(false);
@@ -870,6 +962,122 @@ const Onboarding = () => {
       )}>
         {/* Quiz Steps */}
         {state.currentStep === 'quiz' && renderQuizStep()}
+
+        {/* Regional Settings Step */}
+        {state.currentStep === 'regional' && (
+          <div className="w-full max-w-md animate-fade-up space-y-6">
+            {/* Header */}
+            <div className="flex justify-center mb-2">
+              <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 shadow-card border border-primary/20">
+                <Globe className="w-8 h-8 text-primary" />
+              </div>
+            </div>
+            
+            <div className="text-center space-y-2">
+              <h1 className="text-2xl font-bold text-foreground font-serif">
+                {t('regional.header', { defaultValue: "We detected your settings" })}
+              </h1>
+              <p className="text-muted-foreground">
+                {t('regional.subtext', { defaultValue: "Confirm your timezone and language so Olive can remind you at the right time." })}
+              </p>
+            </div>
+
+            {/* Auto-detected indicator */}
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <MapPin className="w-4 h-4" />
+              <span>{t('regional.autoDetected', { defaultValue: "Auto-detected from your device" })}</span>
+            </div>
+
+            {/* Settings Card */}
+            <Card className="p-5 bg-card/80 border-border/50 shadow-card space-y-5">
+              {/* Timezone Selection */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-muted-foreground" />
+                  <Label className="text-foreground font-medium">
+                    {t('regional.timezone', { defaultValue: "Timezone" })}
+                  </Label>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  {TIMEZONES.filter(tz => 
+                    tz.value === selectedTimezone || 
+                    tz.value === detectedTimezone ||
+                    ['America/New_York', 'Europe/London', 'Europe/Rome', 'Europe/Madrid', 'Asia/Tokyo'].includes(tz.value)
+                  ).map((tz) => (
+                    <div
+                      key={tz.value}
+                      className={cn(
+                        "p-3 rounded-lg border-2 cursor-pointer transition-all",
+                        selectedTimezone === tz.value 
+                          ? "border-primary bg-primary/5" 
+                          : "border-border hover:border-primary/50"
+                      )}
+                      onClick={() => setSelectedTimezone(tz.value)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-foreground">{tz.label}</span>
+                        {selectedTimezone === tz.value && (
+                          <Check className="w-4 h-4 text-primary" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Language Selection */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Languages className="w-4 h-4 text-muted-foreground" />
+                  <Label className="text-foreground font-medium">
+                    {t('regional.language', { defaultValue: "Language" })}
+                  </Label>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  {Object.values(LANGUAGES).map((lang) => (
+                    <div
+                      key={lang.code}
+                      className={cn(
+                        "p-3 rounded-lg border-2 cursor-pointer transition-all",
+                        selectedLanguage === lang.code 
+                          ? "border-primary bg-primary/5" 
+                          : "border-border hover:border-primary/50"
+                      )}
+                      onClick={() => setSelectedLanguage(lang.code)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{lang.flag}</span>
+                          <span className="text-sm font-medium text-foreground">{lang.nativeName}</span>
+                        </div>
+                        {selectedLanguage === lang.code && (
+                          <Check className="w-4 h-4 text-primary" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
+
+            {/* Actions */}
+            <div className="space-y-3">
+              <Button 
+                onClick={handleRegionalConfirm}
+                className="w-full h-12 text-base group"
+                disabled={loading}
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4 mr-2" />
+                )}
+                {t('regional.confirm', { defaultValue: "Looks good!" })}
+                <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Step 1: Couple Space Setup */}
         {state.currentStep === 'couple' && (
