@@ -16,7 +16,9 @@ const corsHeaders = {
 
 type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE'; isUrgent?: boolean; cleanMessage?: string };
 
-function determineIntent(message: string, hasMedia: boolean): IntentResult {
+type QueryType = 'urgent' | 'today' | 'recent' | 'overdue' | 'general' | null;
+
+function determineIntent(message: string, hasMedia: boolean): IntentResult & { queryType?: QueryType } {
   const trimmed = message.trim();
   const lower = trimmed.toLowerCase();
   
@@ -47,28 +49,59 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult {
     return { intent: 'MERGE' };
   }
   
-  // SEARCH: specific patterns
-  const searchStarters = ['show', 'find', 'list', 'search', 'get', 'what'];
-  if (searchStarters.some(s => lower.startsWith(s))) {
-    // "what's in my" or "what do i have" patterns
-    if (lower.startsWith('what')) {
-      if (/what'?s\s+(in|on|due|urgent|pending)/i.test(lower) || 
-          /what\s+(do\s+i|tasks?|items?)/i.test(lower)) {
-        return { intent: 'SEARCH' };
-      }
-    } else {
-      return { intent: 'SEARCH' };
-    }
+  // ============================================================================
+  // CONTEXTUAL SEARCH PATTERNS - "what's urgent", "what's on my day", etc.
+  // ============================================================================
+  
+  // Match "what's urgent", "whats urgent", "what is urgent"
+  if (/what['']?s?\s+(is\s+)?urgent/i.test(lower) || /urgent\s+tasks?/i.test(lower)) {
+    return { intent: 'SEARCH', queryType: 'urgent' };
+  }
+  
+  // Match "what's on my day", "what's due today", "today's tasks"
+  if (/what['']?s?\s+(on\s+my\s+day|due\s+today|for\s+today)/i.test(lower) || 
+      /today['']?s?\s+tasks?/i.test(lower) ||
+      /due\s+today/i.test(lower)) {
+    return { intent: 'SEARCH', queryType: 'today' };
+  }
+  
+  // Match "what's recent", "recent tasks", "latest tasks"
+  if (/what['']?s?\s+recent/i.test(lower) || 
+      /recent\s+tasks?/i.test(lower) || 
+      /latest\s+tasks?/i.test(lower) ||
+      /what\s+did\s+i\s+(add|save)/i.test(lower)) {
+    return { intent: 'SEARCH', queryType: 'recent' };
+  }
+  
+  // Match "what's overdue", "overdue tasks"
+  if (/what['']?s?\s+overdue/i.test(lower) || /overdue\s+tasks?/i.test(lower)) {
+    return { intent: 'SEARCH', queryType: 'overdue' };
+  }
+  
+  // Match "what's pending", "pending tasks"
+  if (/what['']?s?\s+pending/i.test(lower) || /pending\s+tasks?/i.test(lower)) {
+    return { intent: 'SEARCH', queryType: 'general' };
+  }
+  
+  // Generic "what do I have" patterns
+  if (/what\s+(do\s+i\s+have|are\s+my\s+tasks?|tasks?\s+do\s+i)/i.test(lower)) {
+    return { intent: 'SEARCH', queryType: 'general' };
+  }
+  
+  // SEARCH: specific starters - show, find, list, search, get
+  const searchStarters = ['show', 'find', 'list', 'search', 'get'];
+  if (searchStarters.some(s => lower.startsWith(s + ' ') || lower === s)) {
+    return { intent: 'SEARCH', queryType: 'general' };
   }
   
   // SEARCH: contains "my tasks", "my list", "my reminders" etc.
   if (/\bmy\s+(tasks?|list|lists?|reminders?|items?|to-?do)\b/i.test(lower)) {
-    return { intent: 'SEARCH' };
+    return { intent: 'SEARCH', queryType: 'general' };
   }
   
   // SEARCH: asking questions about existing content
   if (/^(how many|do i have|check my|see my)/i.test(lower)) {
-    return { intent: 'SEARCH' };
+    return { intent: 'SEARCH', queryType: 'general' };
   }
   
   // CREATE: default for everything else
@@ -928,16 +961,19 @@ serve(async (req) => {
     }
 
     // ========================================================================
-    // SEARCH INTENT - Consultation
+    // SEARCH INTENT - Consultation with Context-Aware Responses
     // ========================================================================
     if (intent === 'SEARCH') {
+      // Get queryType from intent result for contextual responses
+      const queryType = (intentResult as any).queryType as QueryType;
+      
       // Fetch user's tasks and lists
       const { data: tasks } = await supabase
         .from('clerk_notes')
-        .select('id, summary, due_date, completed, priority, category, list_id, items, task_owner')
+        .select('id, summary, due_date, completed, priority, category, list_id, items, task_owner, created_at')
         .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(100);
 
       const { data: lists } = await supabase
         .from('clerk_lists')
@@ -990,19 +1026,137 @@ serve(async (req) => {
         );
       }
 
-      const urgentTasks = tasks.filter(t => t.priority === 'high' && !t.completed);
       const activeTasks = tasks.filter(t => !t.completed);
+      const urgentTasks = activeTasks.filter(t => t.priority === 'high');
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+      
       const dueTodayTasks = activeTasks.filter(t => {
         if (!t.due_date) return false;
         const dueDate = new Date(t.due_date);
-        const today = new Date();
-        return dueDate.toDateString() === today.toDateString();
+        return dueDate >= today && dueDate < tomorrow;
       });
+      
+      const overdueTasks = activeTasks.filter(t => {
+        if (!t.due_date) return false;
+        const dueDate = new Date(t.due_date);
+        return dueDate < today;
+      });
+      
+      // Get recent tasks (last 24 hours)
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const recentTasks = activeTasks.filter(t => new Date(t.created_at) >= oneDayAgo);
 
+      // ================================================================
+      // CONTEXTUAL QUERY RESPONSES
+      // ================================================================
+      
+      // Handle "what's urgent" query
+      if (queryType === 'urgent') {
+        if (urgentTasks.length === 0) {
+          return new Response(
+            createTwimlResponse('🎉 Great news! You have no urgent tasks right now.\n\n💡 Use "!" prefix to mark tasks as urgent (e.g., "!call mom")'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        const urgentList = urgentTasks.slice(0, 8).map((t, i) => {
+          const dueInfo = t.due_date ? ` (Due: ${new Date(t.due_date).toLocaleDateString()})` : '';
+          return `${i + 1}. ${t.summary}${dueInfo}`;
+        }).join('\n');
+        
+        const moreText = urgentTasks.length > 8 ? `\n\n...and ${urgentTasks.length - 8} more urgent tasks` : '';
+        
+        return new Response(
+          createTwimlResponse(`🔥 ${urgentTasks.length} Urgent Task${urgentTasks.length === 1 ? '' : 's'}:\n\n${urgentList}${moreText}\n\n🔗 Manage: https://witholive.app`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+      
+      // Handle "what's due today" query
+      if (queryType === 'today') {
+        if (dueTodayTasks.length === 0) {
+          return new Response(
+            createTwimlResponse('📅 Nothing due today! You\'re all caught up.\n\n💡 Try "what\'s urgent" to see high-priority tasks'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        const todayList = dueTodayTasks.slice(0, 8).map((t, i) => {
+          const priority = t.priority === 'high' ? ' 🔥' : '';
+          return `${i + 1}. ${t.summary}${priority}`;
+        }).join('\n');
+        
+        const moreText = dueTodayTasks.length > 8 ? `\n\n...and ${dueTodayTasks.length - 8} more` : '';
+        
+        return new Response(
+          createTwimlResponse(`📅 ${dueTodayTasks.length} Task${dueTodayTasks.length === 1 ? '' : 's'} Due Today:\n\n${todayList}${moreText}\n\n🔗 Manage: https://witholive.app`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+      
+      // Handle "what's recent" query
+      if (queryType === 'recent') {
+        if (recentTasks.length === 0) {
+          // Fallback to showing last 5 active tasks regardless of creation time
+          const lastFive = activeTasks.slice(0, 5);
+          if (lastFive.length === 0) {
+            return new Response(
+              createTwimlResponse('No recent tasks found. Send me something to save!'),
+              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+            );
+          }
+          
+          const recentList = lastFive.map((t, i) => `${i + 1}. ${t.summary}`).join('\n');
+          return new Response(
+            createTwimlResponse(`📝 Your Latest Tasks:\n\n${recentList}\n\n🔗 Manage: https://witholive.app`),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        const recentList = recentTasks.slice(0, 8).map((t, i) => {
+          const priority = t.priority === 'high' ? ' 🔥' : '';
+          return `${i + 1}. ${t.summary}${priority}`;
+        }).join('\n');
+        
+        const moreText = recentTasks.length > 8 ? `\n\n...and ${recentTasks.length - 8} more` : '';
+        
+        return new Response(
+          createTwimlResponse(`🕐 ${recentTasks.length} Task${recentTasks.length === 1 ? '' : 's'} Added Recently:\n\n${recentList}${moreText}\n\n🔗 Manage: https://witholive.app`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+      
+      // Handle "what's overdue" query
+      if (queryType === 'overdue') {
+        if (overdueTasks.length === 0) {
+          return new Response(
+            createTwimlResponse('✅ No overdue tasks! You\'re on track.\n\n💡 Try "what\'s due today" to see today\'s tasks'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        const overdueList = overdueTasks.slice(0, 8).map((t, i) => {
+          const dueDate = new Date(t.due_date!);
+          const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000));
+          return `${i + 1}. ${t.summary} (${daysOverdue}d overdue)`;
+        }).join('\n');
+        
+        const moreText = overdueTasks.length > 8 ? `\n\n...and ${overdueTasks.length - 8} more` : '';
+        
+        return new Response(
+          createTwimlResponse(`⚠️ ${overdueTasks.length} Overdue Task${overdueTasks.length === 1 ? '' : 's'}:\n\n${overdueList}${moreText}\n\n🔗 Manage: https://witholive.app`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+
+      // Default: General task summary
       let summary = `📊 Your Tasks:\n`;
       summary += `• Active: ${activeTasks.length}\n`;
       if (urgentTasks.length > 0) summary += `• Urgent: ${urgentTasks.length} 🔥\n`;
       if (dueTodayTasks.length > 0) summary += `• Due today: ${dueTodayTasks.length}\n`;
+      if (overdueTasks.length > 0) summary += `• Overdue: ${overdueTasks.length} ⚠️\n`;
 
       if (urgentTasks.length > 0) {
         summary += `\n⚡ Urgent:\n`;
@@ -1012,7 +1166,7 @@ serve(async (req) => {
         summary += activeTasks.slice(0, 5).map((t, i) => `${i + 1}. ${t.summary}`).join('\n');
       }
 
-      summary += '\n\n💡 Try: "Show my groceries list" or send a new task!';
+      summary += '\n\n💡 Try: "what\'s urgent", "what\'s due today", or "show my groceries list"';
 
       return new Response(
         createTwimlResponse(summary),

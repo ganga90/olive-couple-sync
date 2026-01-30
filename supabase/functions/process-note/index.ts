@@ -1154,26 +1154,75 @@ Process this note:
     const findOrCreateList = async (category: string, tags: string[] = [], targetList?: string, summary?: string) => {
       console.log('[findOrCreateList] Input - category:', category, 'targetList:', targetList, 'summary:', summary?.substring(0, 50));
       
-      // PRIORITY 1: Use AI-suggested target_list if it matches an existing list
-      if (targetList && existingLists && existingLists.length > 0) {
-        const targetLower = targetList.toLowerCase().trim();
-        const exactMatch = existingLists.find((l: any) => 
-          l.name.toLowerCase() === targetLower ||
-          l.name.toLowerCase().includes(targetLower) ||
-          targetLower.includes(l.name.toLowerCase())
-        );
+      // Helper to normalize list names for comparison
+      const normalizeName = (name: string): string => {
+        return name.toLowerCase().trim().replace(/[_\-\s]+/g, ' ');
+      };
+      
+      // ================================================================
+      // PRIORITY 1: Exact or near-exact match by category name
+      // This handles "books" -> "Books" case
+      // ================================================================
+      if (existingLists && existingLists.length > 0) {
+        const categoryNorm = normalizeName(category);
+        
+        // First check: exact match (case-insensitive)
+        const exactMatch = existingLists.find((l: any) => normalizeName(l.name) === categoryNorm);
         if (exactMatch) {
-          console.log('[findOrCreateList] Using AI target_list match:', exactMatch.name);
+          console.log('[findOrCreateList] Exact category match found:', exactMatch.name);
           return exactMatch.id;
+        }
+        
+        // Second check: singular/plural variations (books/book, movies/movie)
+        const singularCategory = categoryNorm.replace(/s$/, '');
+        const pluralCategory = categoryNorm + 's';
+        
+        const singularPluralMatch = existingLists.find((l: any) => {
+          const listNorm = normalizeName(l.name);
+          const listSingular = listNorm.replace(/s$/, '');
+          return listNorm === singularCategory || 
+                 listNorm === pluralCategory || 
+                 listSingular === singularCategory;
+        });
+        
+        if (singularPluralMatch) {
+          console.log('[findOrCreateList] Singular/plural match found:', singularPluralMatch.name);
+          return singularPluralMatch.id;
+        }
+      }
+      
+      // ================================================================
+      // PRIORITY 2: Use AI-suggested target_list if it matches an existing list
+      // ================================================================
+      if (targetList && existingLists && existingLists.length > 0) {
+        const targetNorm = normalizeName(targetList);
+        
+        // Exact match first
+        const exactMatch = existingLists.find((l: any) => normalizeName(l.name) === targetNorm);
+        if (exactMatch) {
+          console.log('[findOrCreateList] AI target_list exact match:', exactMatch.name);
+          return exactMatch.id;
+        }
+        
+        // Partial match
+        const partialMatch = existingLists.find((l: any) => {
+          const listNorm = normalizeName(l.name);
+          return listNorm.includes(targetNorm) || targetNorm.includes(listNorm);
+        });
+        if (partialMatch) {
+          console.log('[findOrCreateList] AI target_list partial match:', partialMatch.name);
+          return partialMatch.id;
         }
       }
 
-      // PRIORITY 2: Content-based matching - check if summary contains keywords that match a list
+      // ================================================================
+      // PRIORITY 3: Content-based matching - check if summary contains keywords that match a list
+      // ================================================================
       if (summary && existingLists && existingLists.length > 0) {
         const summaryLower = summary.toLowerCase();
         
         for (const list of existingLists) {
-          const listNameLower = list.name.toLowerCase();
+          const listNameLower = normalizeName(list.name);
           
           // Check if list name is a content keyword category
           for (const [keywordCategory, keywords] of Object.entries(contentKeywords)) {
@@ -1194,39 +1243,45 @@ Process this note:
 
       if (!category) return null;
 
-      // PRIORITY 3: Category-based matching
+      // ================================================================
+      // PRIORITY 4: Category-based scoring with synonym matching
+      // ================================================================
       let bestMatch = null;
       let highestScore = 0;
       
       if (existingLists && existingLists.length > 0) {
+        const categoryNorm = normalizeName(category);
+        
         for (const list of existingLists) {
           let score = 0;
-          const listNameLower = list.name.toLowerCase();
-          const categoryLower = category.toLowerCase().replace(/_/g, ' ');
+          const listNameNorm = normalizeName(list.name);
           
-          // Exact match gets highest score
-          if (listNameLower === categoryLower) score += 10;
+          // Exact match gets highest score (should already be caught above, but safety check)
+          if (listNameNorm === categoryNorm) score += 15;
           
           // Check categoryMap synonyms
           Object.entries(categoryMap).forEach(([canonical, synonyms]) => {
-            const categoryMatchesSynonyms = synonyms.includes(categoryLower) || synonyms.includes(category.toLowerCase());
-            const listMatchesSynonyms = synonyms.some(s => listNameLower.includes(s) || s.includes(listNameLower));
+            const normalizedSynonyms = synonyms.map(s => normalizeName(s));
+            const categoryMatchesSynonyms = normalizedSynonyms.includes(categoryNorm) || 
+                                            normalizedSynonyms.some(s => categoryNorm.includes(s));
+            const listMatchesSynonyms = normalizedSynonyms.some(s => listNameNorm.includes(s) || s.includes(listNameNorm));
             
             if (categoryMatchesSynonyms && listMatchesSynonyms) {
-              score += 8;
+              score += 10;
             }
           });
           
-          // Partial match
-          if (listNameLower.includes(categoryLower) || categoryLower.includes(listNameLower)) {
-            score += 5;
+          // Partial match - one contains the other
+          if (listNameNorm.includes(categoryNorm) || categoryNorm.includes(listNameNorm)) {
+            score += 6;
           }
 
           // Tag-based bonus
           if (tags && tags.length > 0) {
             for (const tag of tags) {
-              if (listNameLower.includes(tag.toLowerCase())) {
-                score += 3;
+              const tagNorm = normalizeName(tag);
+              if (listNameNorm.includes(tagNorm)) {
+                score += 4;
               }
             }
           }
@@ -1238,19 +1293,33 @@ Process this note:
         }
       }
       
-      if (bestMatch && highestScore >= 5) {
+      // Lower threshold for matching (3 instead of 5) to catch more cases
+      if (bestMatch && highestScore >= 3) {
         console.log('[findOrCreateList] Category match found:', bestMatch.name, 'score:', highestScore);
         return bestMatch.id;
       }
       
-      // Create new list only if no match found
+      // ================================================================
+      // PRIORITY 5: Create new list only if no match found
+      // ================================================================
       const listName = category
         .replace(/_/g, ' ')
         .split(' ')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
       
-      console.log('[findOrCreateList] No match, creating new list:', listName);
+      // FINAL SAFETY CHECK: Double-check we're not creating a duplicate
+      if (existingLists && existingLists.length > 0) {
+        const finalCheck = existingLists.find((l: any) => 
+          normalizeName(l.name) === normalizeName(listName)
+        );
+        if (finalCheck) {
+          console.log('[findOrCreateList] Final safety check caught duplicate, using:', finalCheck.name);
+          return finalCheck.id;
+        }
+      }
+      
+      console.log('[findOrCreateList] No match found, creating new list:', listName);
       
       try {
         const { data: newList, error: createError } = await supabase
@@ -1268,6 +1337,11 @@ Process this note:
         if (createError) {
           console.error('Error creating list:', createError);
           return null;
+        }
+        
+        // Add to existingLists cache so subsequent notes in the same batch don't create duplicates
+        if (existingLists) {
+          existingLists.push(newList);
         }
         
         return newList.id;
