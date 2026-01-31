@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,8 @@ import { toast as sonnerToast } from 'sonner';
 
 export const WhatsAppUnifiedCard: React.FC = () => {
   const { t } = useTranslation(['profile', 'common']);
-  const { userId } = useAuth();
+  const { user } = useAuth();
+  const userId = user?.id;
   const { toast } = useToast();
   
   // Phone number state
