@@ -275,6 +275,24 @@
       "general": "Generale"
     }
   },
+  "skills": {
+    "title": "Abilità di Olive",
+    "subtitle": "Abilita capacità specializzate per migliorare le risposte di Olive",
+    "enabled": "Abilità attivata",
+    "disabled": "Abilità disattivata",
+    "errorLoading": "Impossibile caricare le abilità",
+    "errorToggle": "Impossibile modificare l'abilità",
+    "signInRequired": "Accedi per gestire le abilità di Olive",
+    "enabledCount": "{{count}} abilità attivate",
+    "categories": {
+      "household": "Casa",
+      "shopping": "Shopping",
+      "food": "Cibo e Pasti",
+      "personal": "Personale",
+      "finance": "Finanze",
+      "general": "Generale"
+    }
+  },
   "legal": {
     "title": "Legale e Supporto",
     "terms": "Termini di Servizio",
