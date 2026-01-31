@@ -10,8 +10,9 @@ import { DataExport } from "@/components/DataExport";
 import { RegionalFormatCard } from "@/components/settings/RegionalFormatCard";
 import { WhatsAppUnifiedCard } from "@/components/settings/WhatsAppUnifiedCard";
 import { AppPreferencesModals } from "@/components/settings/AppPreferencesModals";
+import { OliveProactivePreferences } from "@/components/settings/OliveProactivePreferences";
 import { CollapsibleSection } from "@/components/settings/CollapsibleSection";
-import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2 } from "lucide-react";
+import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
 import { useLanguage } from "@/providers/LanguageProvider";
@@ -170,6 +171,15 @@ const Profile = () => {
             subtitle={t('profile:regional.subtitle', 'Language & timezone settings')}
           >
             <RegionalFormatCard />
+          </SettingsCard>
+
+          <SettingsCard
+            icon={<BellRing className="h-5 w-5 text-[hsl(var(--magic-accent))]" />}
+            iconBg="bg-[hsl(var(--magic-accent))]/10"
+            title={t('profile:olivePreferences.title', 'Olive Proactive Settings')}
+            subtitle={t('profile:olivePreferences.subtitle', 'Configure when and how Olive reaches out')}
+          >
+            <OliveProactivePreferences />
           </SettingsCard>
         </CollapsibleSection>
 
