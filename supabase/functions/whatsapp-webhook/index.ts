@@ -2150,8 +2150,8 @@ Guidelines:
               .update({ embedding: JSON.stringify(embedding) })
               .eq('id', insertedNoteId);
 
-            // Search for similar existing notes
-            const similarNote = await findSimilarNotes(supabase, userId, coupleId, embedding, insertedNoteId);
+            // Search for similar existing notes (only if coupleId is available)
+            const similarNote = coupleId ? await findSimilarNotes(supabase, userId, coupleId, embedding, insertedNoteId) : null;
             
             if (similarNote) {
               duplicateWarning = {

@@ -324,7 +324,7 @@ serve(async (req) => {
         }
 
         const skills = await getUserSkills(supabase, body.user_id);
-        const installedSkills = skills.filter((s) => s.enabled);
+        const installedSkills = skills.filter((s) => s.is_active);
 
         return new Response(
           JSON.stringify({ success: true, skills: installedSkills }),

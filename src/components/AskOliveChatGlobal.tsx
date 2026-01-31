@@ -37,7 +37,7 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
     const greeting: Message = {
       id: "greeting",
       role: "assistant",
-      content: t("askOlive.greeting", `Hi${you ? ` ${you}` : ""}! 👋 How can I help you today? I can help with tasks, planning, reminders, or just chat about anything.`),
+      content: t("askOlive.greeting", { name: you || "", defaultValue: `Hi${you ? ` ${you}` : ""}! 👋 How can I help you today? I can help with tasks, planning, reminders, or just chat about anything.` }),
       timestamp: new Date(),
     };
     setMessages([greeting]);
