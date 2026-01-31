@@ -752,7 +752,7 @@ Return empty array if no personal facts found.`;
       }
     });
 
-    const responseText = response.text;
+    const responseText = response.text || '';
     const parsed = JSON.parse(responseText);
     
     if (!parsed.memories || parsed.memories.length === 0) {
@@ -1072,7 +1072,7 @@ Process this note:
         }
       });
 
-      const responseText = response.text;
+      const responseText = response.text || '';
       console.log('[GenAI SDK] Raw response:', responseText);
 
       try {

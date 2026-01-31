@@ -2,9 +2,12 @@
  * Gemini AI Service for Olive
  * Handles brain dump processing and Ask Olive assistant
  * Integrates with Olive Memory System for persistent context
+ * 
+ * Note: All AI operations are routed through Supabase edge functions
+ * using the Lovable AI Gateway. No direct API calls are made from the client.
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { supabase } from '@/lib/supabaseClient';
 import type { MemoryContext, PatternType, ExtractedFact, DetectedPattern } from '@/types/memory';
 
 export interface BrainDumpInput {
@@ -54,40 +57,59 @@ export interface AskOliveResponse {
   relatedData?: any[];
 }
 
+/**
+ * GeminiAIService - Wrapper for AI operations
+ * 
+ * This class provides a consistent interface for AI operations.
+ * All AI calls go through edge functions using the Lovable AI Gateway.
+ */
 export class GeminiAIService {
-  private genAI: GoogleGenerativeAI;
-  private model: any;
+  private initialized = false;
 
   constructor() {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn('[Gemini] API key not found - AI features will not work');
-    }
-
-    this.genAI = new GoogleGenerativeAI(apiKey || '');
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-pro' });
+    this.initialized = true;
+    console.log('[GeminiAIService] Initialized (operations routed to edge functions)');
   }
 
   /**
-   * Process brain dump input with Gemini
+   * Process brain dump input via edge function
    * Determines what type of item it is and extracts relevant data
    */
   async processBrainDump(input: BrainDumpInput): Promise<ProcessedBrainDump> {
-    console.log('[Gemini] Processing brain dump:', input.text);
-
-    const prompt = this.buildBrainDumpPrompt(input);
+    console.log('[Gemini] Processing brain dump via edge function:', input.text);
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const { data, error } = await supabase.functions.invoke('process-note', {
+        body: {
+          text: input.text,
+          source: input.source,
+          userId: input.userId,
+          coupleId: input.coupleId,
+        },
+      });
 
-      // Parse the JSON response from Gemini
-      const parsed = this.parseBrainDumpResponse(text);
+      if (error) {
+        throw new Error(error.message);
+      }
 
-      console.log('[Gemini] Brain dump processed:', parsed.type);
+      // Map edge function response to ProcessedBrainDump format
+      if (data && data.notes && data.notes.length > 0) {
+        const note = data.notes[0];
+        return {
+          type: 'task',
+          title: note.summary,
+          content: note.summary,
+          category: note.category,
+          priority: note.priority,
+          dueDate: note.due_date ? new Date(note.due_date) : undefined,
+        };
+      }
 
-      return parsed;
+      return {
+        type: 'note',
+        content: input.text,
+        category: 'general',
+      };
     } catch (error) {
       console.error('[Gemini] Brain dump processing failed:', error);
 
@@ -101,150 +123,42 @@ export class GeminiAIService {
   }
 
   /**
-   * Build prompt for brain dump processing
-   * Uses memory context for better categorization and personalization
-   */
-  private buildBrainDumpPrompt(input: BrainDumpInput): string {
-    // Build memory context for smarter categorization
-    const memorySection = this.buildMemorySection(input.memoryContext);
-
-    return `You are Olive, an AI assistant for couples. Analyze the following input and determine what it is.
-
-${memorySection}
-## Input to Process
-Text: "${input.text}"
-Source: ${input.source}
-${input.context ? `Additional context: ${input.context}` : ''}
-
-## Classification Rules
-Classify this input as one of:
-- note: A thought, memory, or piece of information to remember
-- task: Something that needs to be done
-- event: A calendar event or appointment
-- reminder: A one-time or recurring reminder
-- question: A question for the AI assistant
-
-## Extraction Guidelines
-Extract relevant information:
-- If it's a task: extract due date, priority, category
-- If it's an event: extract date, time, location, attendees
-- If it's a reminder: extract when to remind
-- If it contains money: extract amount
-- If it mentions people: extract names
-- Determine if it's private or should be shared with partner
-- Use the user's patterns (if available) to inform categorization and priority
-
-Respond ONLY with valid JSON in this format:
-{
-  "type": "note|task|event|reminder|question",
-  "title": "short title (optional)",
-  "content": "cleaned up content",
-  "category": "general|shopping|health|work|home|etc",
-  "priority": "low|medium|high (for tasks)",
-  "dueDate": "ISO date string (if applicable)",
-  "isPrivate": boolean (true if personal/sensitive),
-  "extractedData": {
-    "date": "extracted date",
-    "time": "extracted time",
-    "location": "extracted location",
-    "people": ["person1", "person2"],
-    "amount": number
-  },
-  "suggestedAction": "what the user should do next"
-}`;
-  }
-
-  /**
-   * Parse Gemini response for brain dump
-   */
-  private parseBrainDumpResponse(responseText: string): ProcessedBrainDump {
-    try {
-      // Extract JSON from response (Gemini sometimes wraps it in markdown)
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
-      }
-
-      const parsed = JSON.parse(jsonMatch[0]);
-
-      return {
-        type: parsed.type || 'note',
-        title: parsed.title,
-        content: parsed.content,
-        category: parsed.category,
-        priority: parsed.priority,
-        dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
-        isPrivate: parsed.isPrivate ?? false,
-        extractedData: parsed.extractedData,
-        suggestedAction: parsed.suggestedAction,
-      };
-    } catch (error) {
-      console.error('[Gemini] Failed to parse response:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Ask Olive - conversational AI assistant
+   * Ask Olive - conversational AI assistant via edge function
    */
   async askOlive(request: AskOliveRequest): Promise<AskOliveResponse> {
-    console.log('[Gemini] Ask Olive:', request.question);
-
-    const prompt = this.buildAskOlivePrompt(request);
+    console.log('[Gemini] Ask Olive via edge function:', request.question);
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const { data, error } = await supabase.functions.invoke('ask-olive', {
+        body: {
+          userMessage: request.question,
+          noteContent: request.conversationHistory?.map(m => m.content).join('\n') || '',
+          noteCategory: 'general',
+          user_id: request.userId,
+        },
+      });
 
-      console.log('[Gemini] Ask Olive response generated');
+      if (error) {
+        throw new Error(error.message);
+      }
 
       return {
-        answer: text,
-        suggestions: this.extractSuggestions(text),
+        answer: data.reply || 'I couldn\'t process your request.',
+        suggestions: this.extractSuggestions(data.reply || ''),
       };
     } catch (error) {
       console.error('[Gemini] Ask Olive failed:', error);
-      throw error;
+      return {
+        answer: 'I\'m having trouble processing your request right now. Please try again.',
+        suggestions: [],
+      };
     }
   }
 
   /**
-   * Build prompt for Ask Olive
-   * Includes memory context for personalized responses
+   * Build memory context section for prompts (utility method)
    */
-  private buildAskOlivePrompt(request: AskOliveRequest): string {
-    const historyContext = request.conversationHistory
-      ?.map((msg) => `${msg.role === 'user' ? 'User' : 'Olive'}: ${msg.content}`)
-      .join('\n');
-
-    // Build memory context section
-    const memorySection = this.buildMemorySection(request.memoryContext);
-
-    return `You are Olive, a helpful AI assistant for couples. You help partners stay organized and connected.
-
-${memorySection}
-${historyContext ? `## Recent Conversation\n${historyContext}\n\n` : ''}
-## Current Request
-User question: ${request.question}
-
-## Response Guidelines
-Provide a helpful, concise answer. If the question relates to:
-- Tasks: Suggest how to organize or prioritize
-- Calendar: Help schedule or find conflicts
-- Notes: Suggest categories or organization
-- Relationship: Give thoughtful, supportive advice
-- General: Answer directly and helpfully
-
-Be warm, supportive, and practical. Keep responses under 150 words unless more detail is needed.
-Use your knowledge of the user from the memory context to personalize your response.
-Reference specific patterns or past interactions when relevant.`;
-  }
-
-  /**
-   * Build memory context section for prompts
-   */
-  private buildMemorySection(memoryContext?: MemoryContext): string {
+  buildMemorySection(memoryContext?: MemoryContext): string {
     if (!memoryContext) {
       return '';
     }
@@ -284,7 +198,7 @@ Reference specific patterns or past interactions when relevant.`;
   /**
    * Convert pattern data to human-readable description
    */
-  private describePattern(
+  describePattern(
     type: PatternType,
     data: Record<string, any>,
     confidence: number
@@ -329,7 +243,7 @@ Reference specific patterns or past interactions when relevant.`;
   }
 
   /**
-   * Analyze note and suggest organization
+   * Analyze note and suggest organization via edge function
    */
   async suggestOrganization(noteContent: string, userId: string): Promise<{
     suggestedList?: string;
@@ -337,48 +251,32 @@ Reference specific patterns or past interactions when relevant.`;
     suggestedDueDate?: Date;
     reasoning?: string;
   }> {
-    const prompt = `Analyze this note and suggest how to organize it:
-
-"${noteContent}"
-
-Suggest:
-1. Which list it should go in (Shopping, Work, Home, Health, etc.)
-2. Relevant tags
-3. Due date if applicable
-4. Brief reasoning
-
-Respond in JSON format:
-{
-  "suggestedList": "list name",
-  "suggestedTags": ["tag1", "tag2"],
-  "suggestedDueDate": "ISO date string or null",
-  "reasoning": "why these suggestions"
-}`;
-
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const { data, error } = await supabase.functions.invoke('analyze-organization', {
+        body: {
+          scope: 'all',
+          text: noteContent,
+        },
+      });
 
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          suggestedList: parsed.suggestedList,
-          suggestedTags: parsed.suggestedTags,
-          suggestedDueDate: parsed.suggestedDueDate ? new Date(parsed.suggestedDueDate) : undefined,
-          reasoning: parsed.reasoning,
-        };
+      if (error) {
+        console.error('[Gemini] Organization suggestion failed:', error);
+        return {};
       }
+
+      return {
+        suggestedList: data?.target_list,
+        suggestedTags: data?.suggested_tags || [],
+        reasoning: data?.reasoning,
+      };
     } catch (error) {
       console.error('[Gemini] Organization suggestion failed:', error);
+      return {};
     }
-
-    return {};
   }
 
   /**
-   * Check for conflicts in calendar
+   * Check for conflicts in calendar (local implementation)
    */
   async checkEventConflicts(
     newEvent: { date: Date; title: string },
@@ -388,96 +286,45 @@ Respond in JSON format:
     conflictingEvents?: Array<{ date: Date; title: string }>;
     suggestion?: string;
   }> {
-    const prompt = `Check for conflicts:
+    // Simple local conflict check - no AI needed
+    const newEventDate = newEvent.date.toDateString();
+    const conflicting = existingEvents.filter(
+      e => e.date.toDateString() === newEventDate
+    );
 
-New event: ${newEvent.title} on ${newEvent.date.toISOString()}
-
-Existing events:
-${existingEvents.map((e) => `- ${e.title} on ${e.date.toISOString()}`).join('\n')}
-
-Are there any conflicts? Suggest alternative times if needed.
-
-Respond in JSON:
-{
-  "hasConflict": boolean,
-  "conflictingEvents": [indexes of conflicting events],
-  "suggestion": "alternative times or resolution"
-}`;
-
-    try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          hasConflict: parsed.hasConflict,
-          conflictingEvents: parsed.conflictingEvents?.map((i: number) => existingEvents[i]),
-          suggestion: parsed.suggestion,
-        };
-      }
-    } catch (error) {
-      console.error('[Gemini] Conflict check failed:', error);
-    }
-
-    return { hasConflict: false };
+    return {
+      hasConflict: conflicting.length > 0,
+      conflictingEvents: conflicting.length > 0 ? conflicting : undefined,
+      suggestion: conflicting.length > 0
+        ? `There are ${conflicting.length} events on the same day. Consider a different time.`
+        : undefined,
+    };
   }
 
   /**
    * Extract facts from a conversation for memory storage
-   * Used during context flush operations
+   * Uses olive-memory edge function
    */
   async extractFactsFromConversation(conversation: string): Promise<ExtractedFact[]> {
-    const prompt = `Analyze this conversation and extract important facts about the user(s) that should be remembered for future interactions.
-
-## Conversation
-${conversation}
-
-## Extraction Guidelines
-Extract facts that are:
-- Personal preferences (food, activities, schedules)
-- Important dates (birthdays, anniversaries, appointments)
-- Relationships and people mentioned
-- Work-related information
-- Health information
-- Household information
-- Recurring patterns or habits
-- Decisions made
-
-Do NOT extract:
-- Trivial conversation filler
-- Temporary states ("I'm hungry right now")
-- Information already known from context
-
-Respond ONLY with valid JSON in this format:
-{
-  "facts": [
-    {
-      "content": "the fact to remember",
-      "type": "preference|date|relationship|work|health|household|pattern|decision",
-      "importance": 1-5 (5 being most important),
-      "entities": ["person", "place", or other entities mentioned"]
-    }
-  ]
-}`;
-
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const { data, error } = await supabase.functions.invoke('olive-memory', {
+        body: {
+          action: 'flush_context',
+          conversation,
+          source: 'conversation',
+        },
+      });
 
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return parsed.facts || [];
+      if (error) {
+        console.error('[Gemini] Fact extraction failed:', error);
+        return [];
       }
+
+      return data.facts || [];
     } catch (error) {
       console.error('[Gemini] Fact extraction failed:', error);
+      return [];
     }
-
-    return [];
   }
 
   /**
@@ -488,77 +335,37 @@ Respond ONLY with valid JSON in this format:
       return '';
     }
 
-    const prompt = `Summarize these activities into a concise daily log entry:
-
-Activities:
-${activities.map((a, i) => `${i + 1}. ${a}`).join('\n')}
-
-Create a brief, natural summary (2-4 sentences) that captures the key activities and any patterns observed. Focus on what was accomplished and any notable items.`;
-
-    try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
-    } catch (error) {
-      console.error('[Gemini] Activity summary failed:', error);
-      return activities.join('; ');
-    }
+    // Simple local summary
+    return activities.slice(0, 5).join('; ');
   }
 
   /**
    * Detect patterns from historical data
+   * Uses olive-memory edge function
    */
   async detectPatterns(data: {
     activities: string[];
     tasks: Array<{ title: string; completedAt?: Date; category?: string }>;
     interactions: Array<{ type: string; timestamp: Date }>;
   }): Promise<DetectedPattern[]> {
-    const prompt = `Analyze this user data and identify behavioral patterns:
-
-## Recent Activities
-${data.activities.slice(0, 20).join('\n')}
-
-## Task History
-${data.tasks.slice(0, 30).map(t => `- ${t.title} (${t.category || 'general'})${t.completedAt ? ' ✓' : ''}`).join('\n')}
-
-## Interaction Types
-${data.interactions.slice(0, 50).map(i => `- ${i.type} at ${i.timestamp}`).join('\n')}
-
-## Pattern Detection Guidelines
-Look for:
-- Time-of-day preferences
-- Day-of-week patterns
-- Category preferences
-- Completion patterns
-- Communication patterns
-
-Respond ONLY with valid JSON:
-{
-  "patterns": [
-    {
-      "type": "grocery_day|reminder_preference|task_assignment|communication_style|schedule_preference|completion_time|shopping_frequency",
-      "data": { "key observation data" },
-      "confidence": 0.0-1.0,
-      "evidence": "brief explanation"
-    }
-  ]
-}`;
-
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const { data: result, error } = await supabase.functions.invoke('olive-memory', {
+        body: {
+          action: 'get_patterns',
+          min_confidence: 0.3,
+        },
+      });
 
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return parsed.patterns || [];
+      if (error) {
+        console.error('[Gemini] Pattern detection failed:', error);
+        return [];
       }
+
+      return result.patterns || [];
     } catch (error) {
       console.error('[Gemini] Pattern detection failed:', error);
+      return [];
     }
-
-    return [];
   }
 }
 
