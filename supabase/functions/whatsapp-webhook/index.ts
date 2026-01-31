@@ -20,6 +20,7 @@ type QueryType = 'urgent' | 'today' | 'recent' | 'overdue' | 'general' | null;
 
 // Chat subtypes for specialized AI handling
 type ChatType = 
+  | 'briefing'            // "good morning olive", "morning briefing", "start my day"
   | 'weekly_summary'      // "summarize my week", "how was my week"
   | 'daily_focus'         // "what should I focus on", "prioritize my day"
   | 'productivity_tips'   // "give me tips", "help me be productive"
@@ -47,6 +48,19 @@ function normalizeText(text: string): string {
 // ============================================================================
 function detectChatType(message: string): ChatType {
   const lower = message.toLowerCase();
+  
+  // Briefing patterns - comprehensive morning overview
+  if (/\b(morning\s+)?briefing\b/i.test(lower) ||
+      /\bstart\s+my\s+day\b/i.test(lower) ||
+      /\bmy\s+day\s+ahead\b/i.test(lower) ||
+      /\bgive\s+me\s+(a\s+)?rundown\b/i.test(lower) ||
+      /\b(what'?s|whats)\s+(on\s+)?(my\s+)?(schedule|agenda|calendar)\s*(today|for today)?\b/i.test(lower) ||
+      /\bgood\s+morning\s+olive\b/i.test(lower) ||
+      /\bmorning\s+olive\b/i.test(lower) ||
+      /\bbrief\s+me\b/i.test(lower) ||
+      /\bdaily\s+briefing\b/i.test(lower)) {
+    return 'briefing';
+  }
   
   // Weekly summary patterns
   if (/\b(summarize|recap|review)\s+(my\s+)?(week|weekly|past\s+7|last\s+7)/i.test(lower) ||
@@ -223,12 +237,17 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
   
   // Check for non-question chat patterns (statements that should trigger chat)
   const statementChatPatterns = [
-    /^(hi|hello|hey|good\s*(morning|afternoon|evening))\b/i,
+    /^(hi|hello|hey)\b/i,
+    /^good\s*(morning|afternoon|evening)(\s+olive)?\b/i,
+    /^morning\s+olive\b/i,
+    /^briefing\b/i,
+    /^start\s+my\s+day\b/i,
     /^(motivate|encourage|inspire)\s+me/i,
     /\bi'?m\s+(stressed|overwhelmed|anxious)/i,
     /^(summarize|recap)\s+(my\s+)?week/i,
     /^plan\s+(my|the)\s+(day|week)/i,
-    /^(prioritize|focus)\s+(my\s+)?/i
+    /^(prioritize|focus)\s+(my\s+)?/i,
+    /^brief\s+me\b/i
   ];
   
   if (statementChatPatterns.some(p => p.test(lower)) && !hasMedia) {
@@ -1356,6 +1375,146 @@ serve(async (req) => {
       const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
       
       // ================================================================
+      // PARTNER CONTEXT - Fetch partner data when in a couple
+      // ================================================================
+      let partnerContext = '';
+      let partnerName = '';
+      
+      if (coupleId) {
+        try {
+          // Get couple info and partner name
+          const { data: coupleData } = await supabase
+            .from('clerk_couples')
+            .select('you_name, partner_name, created_by')
+            .eq('id', coupleId)
+            .single();
+          
+          if (coupleData) {
+            // Determine which name belongs to partner based on who created the couple
+            const isCreator = coupleData.created_by === userId;
+            partnerName = isCreator ? (coupleData.partner_name || 'Partner') : (coupleData.you_name || 'Partner');
+            
+            // Get partner's user_id
+            const { data: partnerMember } = await supabase
+              .from('clerk_couple_members')
+              .select('user_id')
+              .eq('couple_id', coupleId)
+              .neq('user_id', userId)
+              .limit(1)
+              .single();
+            
+            if (partnerMember?.user_id) {
+              // Fetch partner's recent activity (last 48 hours)
+              const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+              
+              // Tasks partner added recently
+              const { data: partnerRecentTasks } = await supabase
+                .from('clerk_notes')
+                .select('summary, created_at, priority')
+                .eq('author_id', partnerMember.user_id)
+                .eq('couple_id', coupleId)
+                .gte('created_at', twoDaysAgo.toISOString())
+                .order('created_at', { ascending: false })
+                .limit(5);
+              
+              // Tasks assigned to current user by partner
+              const { data: assignedByPartner } = await supabase
+                .from('clerk_notes')
+                .select('summary, due_date, priority')
+                .eq('couple_id', coupleId)
+                .eq('author_id', partnerMember.user_id)
+                .eq('task_owner', userId)
+                .eq('completed', false)
+                .limit(3);
+              
+              // Tasks you assigned to partner
+              const { data: assignedToPartner } = await supabase
+                .from('clerk_notes')
+                .select('summary, due_date, priority, completed')
+                .eq('couple_id', coupleId)
+                .eq('author_id', userId)
+                .eq('task_owner', partnerMember.user_id)
+                .eq('completed', false)
+                .limit(3);
+              
+              // Build partner context string
+              const partnerRecentSummaries = partnerRecentTasks?.slice(0, 3).map(t => t.summary) || [];
+              const assignedToMe = assignedByPartner?.map(t => t.summary) || [];
+              const myAssignments = assignedToPartner?.map(t => t.summary) || [];
+              
+              if (partnerRecentSummaries.length > 0 || assignedToMe.length > 0 || myAssignments.length > 0) {
+                partnerContext = `
+## Partner Activity (${partnerName}):
+${partnerRecentSummaries.length > 0 ? `- Recently added: ${partnerRecentSummaries.join(', ')}` : ''}
+${assignedToMe.length > 0 ? `- Assigned to you: ${assignedToMe.join(', ')}` : ''}
+${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.join(', ')}` : ''}
+`;
+              }
+            }
+          }
+        } catch (partnerErr) {
+          console.error('[WhatsApp Chat] Partner context fetch error (non-blocking):', partnerErr);
+        }
+      }
+      
+      // ================================================================
+      // CALENDAR EVENTS - Fetch for briefing context
+      // ================================================================
+      let calendarContext = '';
+      let todayEvents: Array<{ title: string; start_time: string; all_day: boolean }> = [];
+      
+      if (chatType === 'briefing') {
+        try {
+          // Get user's calendar connection
+          const { data: calConnection } = await supabase
+            .from('calendar_connections')
+            .select('id, calendar_name')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .limit(1)
+            .single();
+          
+          if (calConnection) {
+            // Fetch today's events
+            const todayStart = today.toISOString();
+            const todayEnd = tomorrow.toISOString();
+            
+            const { data: events } = await supabase
+              .from('calendar_events')
+              .select('title, start_time, end_time, all_day, location')
+              .eq('connection_id', calConnection.id)
+              .gte('start_time', todayStart)
+              .lt('start_time', todayEnd)
+              .order('start_time', { ascending: true })
+              .limit(10);
+            
+            todayEvents = events || [];
+            
+            if (todayEvents.length > 0) {
+              const eventsList = todayEvents.map(e => {
+                if (e.all_day) return `• ${e.title} (all day)`;
+                const time = new Date(e.start_time).toLocaleTimeString('en-US', { 
+                  hour: 'numeric', 
+                  minute: '2-digit',
+                  hour12: true 
+                });
+                return `• ${time}: ${e.title}`;
+              }).join('\n');
+              
+              calendarContext = `
+## Today's Calendar (${todayEvents.length} events):
+${eventsList}
+`;
+            } else {
+              calendarContext = '\n## Today\'s Calendar:\nNo events scheduled today - clear schedule!\n';
+            }
+          }
+        } catch (calErr) {
+          console.error('[WhatsApp Chat] Calendar fetch error (non-blocking):', calErr);
+        }
+      }
+      
+      // ================================================================
       // TASK ANALYTICS - Compute insights from task data
       // ================================================================
       const activeTasks = allTasks?.filter(t => !t.completed) || [];
@@ -1458,7 +1617,7 @@ ${memoryContext}
 
 ## Behavioral Patterns:
 ${patternContext}
-
+${partnerContext}
 ## Current Priorities:
 - Urgent tasks: ${topUrgentTasks.join(', ') || 'None'}
 - Overdue tasks: ${topOverdueTasks.join(', ') || 'None'}
@@ -1466,6 +1625,31 @@ ${patternContext}
 `;
       
       switch (chatType) {
+        case 'briefing':
+          // Comprehensive morning briefing with schedule, focus, and partner context
+          const briefingCalendar = calendarContext || '\n## Today\'s Calendar:\nNo calendar connected - connect in settings to see events!\n';
+          const briefingPartner = partnerContext || (coupleId ? '' : '');
+          
+          systemPrompt = `You are Olive, providing a comprehensive morning briefing to help the user start their day.
+
+${baseContext}
+${briefingCalendar}
+${briefingPartner}
+Your task: Deliver a complete but concise morning briefing (under 600 chars for WhatsApp).
+
+Structure your response:
+🌅 **Morning Briefing**
+
+1. **Schedule Snapshot**: Mention key calendar events (if any) or note a clear schedule
+2. **Today's Focus**: Top 2-3 priorities (overdue first, then urgent, then due today)
+3. **Quick Stats**: ${taskContext.total_active} active tasks, ${taskContext.urgent} urgent, ${taskContext.overdue} overdue
+${partnerName ? `4. **${partnerName} Update**: Brief note on partner's recent activity or assignments (if any)` : ''}
+5. **Encouragement**: One motivating line personalized to their situation
+
+Be warm, organized, and actionable. Use emojis thoughtfully.`;
+          userPromptEnhancement = `\n\nGive me my complete morning briefing for today.`;
+          break;
+          
         case 'weekly_summary':
           systemPrompt = `You are Olive, a warm AI assistant providing a personalized weekly summary. 
           
@@ -1615,6 +1799,21 @@ Guidelines:
         // Fallback responses by type
         let fallbackMessage: string;
         switch (chatType) {
+          case 'briefing':
+            // Rich fallback briefing without AI
+            const calEventCount = todayEvents.length;
+            const calSummary = calEventCount > 0 
+              ? `📅 ${calEventCount} event${calEventCount > 1 ? 's' : ''} today`
+              : '📅 Clear calendar';
+            const focusList = [
+              ...topOverdueTasks.slice(0, 1).map(t => `⚠️ Overdue: ${t}`),
+              ...topUrgentTasks.slice(0, 1).map(t => `🔥 Urgent: ${t}`),
+              ...topTodayTasks.slice(0, 1).map(t => `📌 Due today: ${t}`)
+            ].slice(0, 3);
+            const partnerNote = partnerName ? `\n👥 ${partnerName}'s activity in the app` : '';
+            
+            fallbackMessage = `🌅 Morning Briefing\n\n${calSummary}\n\n🎯 Focus:\n${focusList.length > 0 ? focusList.join('\n') : '• No urgent items!'}\n\n📊 ${taskContext.total_active} active | ${taskContext.urgent} urgent | ${taskContext.overdue} overdue${partnerNote}\n\n✨ Have a great day!`;
+            break;
           case 'weekly_summary':
             fallbackMessage = `📊 Your Week:\n• Created: ${taskContext.created_this_week} tasks\n• Completed: ${taskContext.completed_this_week}\n• Active: ${taskContext.total_active} (${taskContext.urgent} urgent)\n\n💡 Try "what's urgent?" for priorities`;
             break;
@@ -1631,7 +1830,7 @@ Guidelines:
             fallbackMessage = `💚 You're doing great! ${taskContext.completed_this_week} tasks done this week.\n\nOne step at a time. Start with just one small task - momentum builds! 🫒`;
             break;
           default:
-            fallbackMessage = '🫒 Hi! I\'m Olive.\n\nTry:\n• "Summarize my week"\n• "What should I focus on?"\n• "What\'s urgent?"\n\nOr just tell me what\'s on your mind!';
+            fallbackMessage = '🫒 Hi! I\'m Olive.\n\nTry:\n• "Morning briefing"\n• "Summarize my week"\n• "What should I focus on?"\n• "What\'s urgent?"\n\nOr just tell me what\'s on your mind!';
         }
         
         return new Response(
