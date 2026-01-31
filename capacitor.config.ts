@@ -1,18 +1,25 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.fe28fe116f80433faa49de1399a1110c',
-  appName: 'olive-couple-sync',
+  appId: 'app.olive.couple',
+  appName: 'Olive',
   webDir: 'dist',
-  server: {
-    url: "https://fe28fe11-6f80-433f-aa49-de1399a1110c.lovableproject.com?forceHideBadge=true",
-    cleartext: true
-  },
+  // Remove server.url to load from local dist folder instead of remote URL
   plugins: {
     CapacitorHttp: {
       enabled: true,
     },
-  }
+    SplashScreen: {
+      launchShowDuration: 2000,
+      backgroundColor: "#FAF8F5",
+      showSpinner: false,
+    },
+  },
+  ios: {
+    contentInset: 'automatic',
+    allowsLinkPreview: true,
+    scrollEnabled: true,
+  },
 };
 
 export default config;
