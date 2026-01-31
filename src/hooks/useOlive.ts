@@ -58,7 +58,7 @@ interface UseOliveReturn {
   memoryContext: MemoryContext | null;
   refreshMemory: () => Promise<void>;
   updateProfile: (content: string) => Promise<void>;
-  appendToDaily: (content: string) => Promise<void>;
+  appendToDaily: (content: string, source?: string) => Promise<void>;
 
   // AI Interaction
   ask: (question: string, conversationHistory?: string[]) => Promise<OliveResponse>;
@@ -256,7 +256,7 @@ export function useOlive(): UseOliveReturn {
     memoryContext: memory.context,
     refreshMemory: memory.refreshContext,
     updateProfile,
-    appendToDaily: memory.appendToDaily,
+    appendToDaily: async (content: string, source?: string) => { await memory.appendToDaily(content, source); },
 
     // AI Interaction
     ask,

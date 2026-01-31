@@ -58,13 +58,13 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" } 
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('[calendar-auth-url] Error:', error);
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error.message 
-      }), 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

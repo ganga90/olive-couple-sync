@@ -490,7 +490,7 @@ async function searchTaskByKeywords(
 async function findSimilarNotes(
   supabase: any,
   userId: string,
-  coupleId: string | null,
+  coupleId: string | null | undefined,
   embedding: number[],
   excludeId: string
 ): Promise<{ id: string; summary: string; similarity: number } | null> {

@@ -155,9 +155,9 @@ serve(async (req) => {
         Location: `${origin}/profile?calendar=connected`,
       },
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("[calendar-callback] Error:", error);
-    return errorRedirect(error.message);
+    return errorRedirect(error instanceof Error ? error.message : 'Unknown error');
   }
 });
 

@@ -111,7 +111,7 @@ serve(async (req) => {
       return acc;
     }, {} as Record<string, typeof dueNotes>);
 
-    for (const [authorId, notes] of Object.entries(notesByAuthor)) {
+    for (const [authorId, notes] of Object.entries(notesByAuthor) as [string, typeof dueNotes][]) {
       // Get user's phone number
       const { data: profile, error: profileError } = await supabase
         .from('clerk_profiles')
@@ -127,8 +127,8 @@ serve(async (req) => {
 
       // Prepare reminder message with due date context
       const reminderText = notes.length === 1
-        ? `⏰ ${notes[0].reminder_type ? `Reminder: "${notes[0].summary}" is due ${notes[0].reminder_message}` : `Here's your reminder: "${notes[0].summary}"`}\n\nLet me know if you have completed it or if you want me to remind you later! 🙂`
-        : `⏰ You have ${notes.length} reminders:\n\n${notes.map((n, i) => `${i + 1}. ${n.summary}${n.reminder_type ? ` (due ${n.reminder_message})` : ''}`).join('\n')}\n\nLet me know which ones you've completed or if you want me to remind you later! 🙂`;
+        ? `⏰ ${(notes[0] as any).reminder_type ? `Reminder: "${notes[0].summary}" is due ${(notes[0] as any).reminder_message}` : `Here's your reminder: "${notes[0].summary}"`}\n\nLet me know if you have completed it or if you want me to remind you later! 🙂`
+        : `⏰ You have ${notes.length} reminders:\n\n${notes.map((n: any, i: number) => `${i + 1}. ${n.summary}${n.reminder_type ? ` (due ${n.reminder_message})` : ''}`).join('\n')}\n\nLet me know which ones you've completed or if you want me to remind you later! 🙂`;
 
       // Send WhatsApp message via Twilio
       try {
@@ -160,7 +160,7 @@ serve(async (req) => {
         sentCount++;
 
         // Handle recurring reminders and mark as reminded
-        for (const note of notes) {
+        for (const note of notes as any[]) {
           const updateData: any = {
             last_reminded_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
@@ -206,9 +206,9 @@ serve(async (req) => {
             .eq('id', note.id);
         }
 
-      } catch (error) {
+      } catch (error: unknown) {
         console.error(`Error sending reminder to ${authorId}:`, error);
-        errors.push(`User ${authorId}: ${error.message}`);
+        errors.push(`User ${authorId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 
@@ -222,10 +222,10 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error in send-reminders function:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }

@@ -47,3 +47,18 @@ verify_jwt = false
 
 [functions.analyze-notes]
 verify_jwt = false
+
+[functions.olive-memory]
+verify_jwt = false
+
+[functions.whatsapp-gateway]
+verify_jwt = false
+
+[functions.olive-heartbeat]
+verify_jwt = false
+
+[functions.olive-skills]
+verify_jwt = false
+
+[functions.olive-search]
+verify_jwt = false
