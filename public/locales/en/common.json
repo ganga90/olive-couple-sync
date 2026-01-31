@@ -1,4 +1,15 @@
 {
+  "speedDial": {
+    "askOlive": "Ask Olive",
+    "brainDump": "Brain-dump"
+  },
+  "askOlive": {
+    "greeting": "Hi{{name}}! 👋 How can I help you today? I can help with tasks, planning, reminders, or just chat about anything.",
+    "placeholder": "Ask me anything...",
+    "thinking": "Thinking...",
+    "error": "I'm having trouble responding right now. Please try again.",
+    "connectionError": "Sorry, I'm having trouble connecting right now. Please try again."
+  },
   "nav": {
     "home": "Home",
     "lists": "Lists",
