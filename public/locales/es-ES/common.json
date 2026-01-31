@@ -1,4 +1,15 @@
 {
+  "speedDial": {
+    "askOlive": "Preguntar a Olive",
+    "brainDump": "Volcado mental"
+  },
+  "askOlive": {
+    "greeting": "¡Hola{{name}}! 👋 ¿En qué puedo ayudarte hoy? Puedo ayudarte con tareas, planificación, recordatorios o simplemente charlar.",
+    "placeholder": "Pregúntame lo que quieras...",
+    "thinking": "Pensando...",
+    "error": "Tengo problemas para responder ahora. Por favor, inténtalo de nuevo.",
+    "connectionError": "Lo siento, tengo problemas de conexión. Por favor, inténtalo de nuevo."
+  },
   "nav": {
     "home": "Inicio",
     "lists": "Listas",

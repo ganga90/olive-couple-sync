@@ -4,6 +4,7 @@ import { MobileHeader } from '../MobileHeader';
 import MobileTabBar from '../MobileTabBar';
 import DesktopSidebar from './DesktopSidebar';
 import ContextRail from './ContextRail';
+import { FloatingSpeedDial } from '../FloatingSpeedDial';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useLanguage } from '@/providers/LanguageProvider';
 
@@ -70,6 +71,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           {children}
         </main>
         
+        {/* Floating Speed Dial */}
+        <FloatingSpeedDial />
+        
         {/* Fixed Bottom Tab Bar with safe area padding */}
         <MobileTabBar />
       </div>
@@ -100,6 +104,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           <ContextRail />
         </aside>
       </div>
+      
+      {/* Floating Speed Dial */}
+      <FloatingSpeedDial />
     </div>
   );
 };
