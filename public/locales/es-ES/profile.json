@@ -257,6 +257,24 @@
     "error": "Error al guardar preferencias",
     "signInRequired": "Inicia sesión para configurar las preferencias de Olive"
   },
+  "skills": {
+    "title": "Habilidades de Olive",
+    "subtitle": "Activa capacidades especializadas para Olive. Cada habilidad añade nuevos disparadores y comandos.",
+    "enabled": "Habilidad activada",
+    "disabled": "Habilidad desactivada",
+    "errorLoading": "Error al cargar habilidades",
+    "errorToggle": "Error al activar/desactivar habilidad",
+    "signInRequired": "Inicia sesión para gestionar las habilidades de Olive",
+    "enabledCount": "{{count}} habilidades activadas",
+    "categories": {
+      "household": "Hogar",
+      "shopping": "Compras",
+      "food": "Comida y Recetas",
+      "personal": "Personal",
+      "finance": "Finanzas",
+      "general": "General"
+    }
+  },
   "legal": {
     "title": "Legal y Soporte",
     "terms": "Términos de Servicio",
