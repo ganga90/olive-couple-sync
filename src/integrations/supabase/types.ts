@@ -738,6 +738,410 @@ export type Database = {
           },
         ]
       }
+      olive_gateway_sessions: {
+        Row: {
+          channel: string | null
+          conversation_context: Json | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          last_activity: string | null
+          user_id: string
+        }
+        Insert: {
+          channel?: string | null
+          conversation_context?: Json | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_activity?: string | null
+          user_id: string
+        }
+        Update: {
+          channel?: string | null
+          conversation_context?: Json | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_activity?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      olive_heartbeat_jobs: {
+        Row: {
+          created_at: string | null
+          id: string
+          job_type: string
+          payload: Json | null
+          scheduled_for: string
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          job_type: string
+          payload?: Json | null
+          scheduled_for: string
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          job_type?: string
+          payload?: Json | null
+          scheduled_for?: string
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      olive_heartbeat_log: {
+        Row: {
+          created_at: string | null
+          execution_time_ms: number | null
+          id: string
+          job_type: string
+          message_preview: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          execution_time_ms?: number | null
+          id?: string
+          job_type: string
+          message_preview?: string | null
+          status: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          execution_time_ms?: number | null
+          id?: string
+          job_type?: string
+          message_preview?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      olive_memory_chunks: {
+        Row: {
+          chunk_index: number | null
+          chunk_type: string | null
+          content: string
+          created_at: string | null
+          embedding: string | null
+          id: string
+          importance: number | null
+          memory_file_id: string | null
+          metadata: Json | null
+          source: string | null
+          user_id: string
+        }
+        Insert: {
+          chunk_index?: number | null
+          chunk_type?: string | null
+          content: string
+          created_at?: string | null
+          embedding?: string | null
+          id?: string
+          importance?: number | null
+          memory_file_id?: string | null
+          metadata?: Json | null
+          source?: string | null
+          user_id: string
+        }
+        Update: {
+          chunk_index?: number | null
+          chunk_type?: string | null
+          content?: string
+          created_at?: string | null
+          embedding?: string | null
+          id?: string
+          importance?: number | null
+          memory_file_id?: string | null
+          metadata?: Json | null
+          source?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_memory_chunks_memory_file_id_fkey"
+            columns: ["memory_file_id"]
+            isOneToOne: false
+            referencedRelation: "olive_memory_files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_memory_files: {
+        Row: {
+          content: string
+          content_hash: string | null
+          couple_id: string | null
+          created_at: string | null
+          embedding: string | null
+          file_date: string | null
+          file_type: string
+          id: string
+          metadata: Json | null
+          token_count: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          content?: string
+          content_hash?: string | null
+          couple_id?: string | null
+          created_at?: string | null
+          embedding?: string | null
+          file_date?: string | null
+          file_type: string
+          id?: string
+          metadata?: Json | null
+          token_count?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          content?: string
+          content_hash?: string | null
+          couple_id?: string | null
+          created_at?: string | null
+          embedding?: string | null
+          file_date?: string | null
+          file_type?: string
+          id?: string
+          metadata?: Json | null
+          token_count?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_memory_files_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_couples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_outbound_queue: {
+        Row: {
+          content: string
+          created_at: string | null
+          error_message: string | null
+          id: string
+          media_url: string | null
+          message_type: string
+          priority: string | null
+          scheduled_for: string | null
+          sent_at: string | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          media_url?: string | null
+          message_type: string
+          priority?: string | null
+          scheduled_for?: string | null
+          sent_at?: string | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          media_url?: string | null
+          message_type?: string
+          priority?: string | null
+          scheduled_for?: string | null
+          sent_at?: string | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      olive_patterns: {
+        Row: {
+          confidence: number | null
+          couple_id: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          pattern_data: Json
+          pattern_type: string
+          sample_count: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          couple_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          pattern_data?: Json
+          pattern_type: string
+          sample_count?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          confidence?: number | null
+          couple_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          pattern_data?: Json
+          pattern_type?: string
+          sample_count?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_patterns_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_couples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_skills: {
+        Row: {
+          category: string | null
+          content: string | null
+          created_at: string | null
+          description: string | null
+          is_active: boolean | null
+          name: string
+          skill_id: string
+          triggers: Json | null
+        }
+        Insert: {
+          category?: string | null
+          content?: string | null
+          created_at?: string | null
+          description?: string | null
+          is_active?: boolean | null
+          name: string
+          skill_id: string
+          triggers?: Json | null
+        }
+        Update: {
+          category?: string | null
+          content?: string | null
+          created_at?: string | null
+          description?: string | null
+          is_active?: boolean | null
+          name?: string
+          skill_id?: string
+          triggers?: Json | null
+        }
+        Relationships: []
+      }
+      olive_user_preferences: {
+        Row: {
+          created_at: string | null
+          evening_review_enabled: boolean | null
+          max_daily_messages: number | null
+          morning_briefing_enabled: boolean | null
+          overdue_nudge_enabled: boolean | null
+          pattern_suggestions_enabled: boolean | null
+          proactive_enabled: boolean | null
+          quiet_hours_end: string | null
+          quiet_hours_start: string | null
+          timezone: string | null
+          updated_at: string | null
+          user_id: string
+          weekly_summary_enabled: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          evening_review_enabled?: boolean | null
+          max_daily_messages?: number | null
+          morning_briefing_enabled?: boolean | null
+          overdue_nudge_enabled?: boolean | null
+          pattern_suggestions_enabled?: boolean | null
+          proactive_enabled?: boolean | null
+          quiet_hours_end?: string | null
+          quiet_hours_start?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+          user_id: string
+          weekly_summary_enabled?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          evening_review_enabled?: boolean | null
+          max_daily_messages?: number | null
+          morning_briefing_enabled?: boolean | null
+          overdue_nudge_enabled?: boolean | null
+          pattern_suggestions_enabled?: boolean | null
+          proactive_enabled?: boolean | null
+          quiet_hours_end?: string | null
+          quiet_hours_start?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+          user_id?: string
+          weekly_summary_enabled?: boolean | null
+        }
+        Relationships: []
+      }
+      olive_user_skills: {
+        Row: {
+          config: Json | null
+          created_at: string | null
+          enabled: boolean | null
+          id: string
+          last_used_at: string | null
+          skill_id: string | null
+          usage_count: number | null
+          user_id: string
+        }
+        Insert: {
+          config?: Json | null
+          created_at?: string | null
+          enabled?: boolean | null
+          id?: string
+          last_used_at?: string | null
+          skill_id?: string | null
+          usage_count?: number | null
+          user_id: string
+        }
+        Update: {
+          config?: Json | null
+          created_at?: string | null
+          enabled?: boolean | null
+          id?: string
+          last_used_at?: string | null
+          skill_id?: string | null
+          usage_count?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_user_skills_skill_id_fkey"
+            columns: ["skill_id"]
+            isOneToOne: false
+            referencedRelation: "olive_skills"
+            referencedColumns: ["skill_id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
