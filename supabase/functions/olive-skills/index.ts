@@ -20,15 +20,13 @@ const corsHeaders = {
 };
 
 interface Skill {
-  id: string;
   skill_id: string;
   name: string;
   description: string;
   category: string;
   content: string;
   triggers: SkillTrigger[];
-  is_builtin: boolean;
-  enabled: boolean;
+  is_active: boolean;
 }
 
 interface SkillTrigger {
@@ -126,7 +124,8 @@ function matchSkillTriggers(
   const lowerMessage = message.toLowerCase();
 
   for (const skill of skills) {
-    if (!skill.enabled) continue;
+    if (!skill.is_active) continue;
+    if (!skill.triggers || !skill.content) continue;
 
     for (const trigger of skill.triggers) {
       // Check keyword match
@@ -236,11 +235,11 @@ async function getUserSkills(
   supabase: any,
   userId: string
 ): Promise<Array<Skill & { user_config?: Record<string, any>; user_skill_id?: string }>> {
-  // Get all available skills
+  // Get all available skills (column is 'is_active' not 'enabled')
   const { data: allSkills, error: skillsError } = await supabase
     .from('olive_skills')
     .select('*')
-    .eq('enabled', true);
+    .eq('is_active', true);
 
   if (skillsError) {
     console.error('Error fetching skills:', skillsError);
@@ -265,12 +264,15 @@ async function getUserSkills(
   });
 
   // Merge skills with user configurations
+  // All skills from olive_skills with is_active=true are available to all users
+  // Users can disable specific skills by having enabled=false in olive_user_skills
   return (allSkills || []).map((skill: Skill) => {
     const userSkill = userSkillMap.get(skill.skill_id);
+    // If user has explicitly disabled, respect that. Otherwise, skill is active.
+    const isEnabled = userSkill ? userSkill.enabled : true;
     return {
       ...skill,
-      // If user hasn't explicitly installed, check if it's builtin (auto-enabled)
-      enabled: userSkill?.enabled ?? skill.is_builtin,
+      is_active: skill.is_active && isEnabled,
       user_config: userSkill?.config,
       user_skill_id: userSkill?.id,
     };
@@ -293,11 +295,11 @@ serve(async (req) => {
 
     switch (action) {
       case 'list_available': {
-        // List all available skills
+        // List all available skills (column is 'is_active' not 'enabled')
         const { data: skills, error } = await supabase
           .from('olive_skills')
           .select('*')
-          .eq('enabled', true)
+          .eq('is_active', true)
           .order('category', { ascending: true });
 
         if (error) {
@@ -445,8 +447,9 @@ serve(async (req) => {
         }
 
         const skills = await getUserSkills(supabase, body.user_id);
-        const enabledSkills = skills.filter((s) => s.enabled);
-        const matchResult = matchSkillTriggers(body.message, body.category, enabledSkills);
+        const activeSkills = skills.filter((s) => s.is_active);
+        console.log(`[Skills Match] Found ${activeSkills.length} active skills for user ${body.user_id}`);
+        const matchResult = matchSkillTriggers(body.message, body.category, activeSkills);
 
         return new Response(
           JSON.stringify({ success: true, ...matchResult }),

@@ -8,12 +8,18 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Sparkles, ShoppingCart, Home, Utensils, Gift, PiggyBank, Users } from 'lucide-react';
 
+interface SkillTrigger {
+  keyword?: string;
+  category?: string;
+  command?: string;
+}
+
 interface Skill {
   skill_id: string;
   name: string;
   description: string | null;
   category: string | null;
-  triggers: string[];
+  triggers: SkillTrigger[];
 }
 
 interface UserSkill {
@@ -218,15 +224,19 @@ export function OliveSkillsManager() {
                         
                         {skill.triggers && skill.triggers.length > 0 && (
                           <div className="flex flex-wrap gap-1">
-                            {skill.triggers.slice(0, 3).map((trigger, idx) => (
-                              <Badge 
-                                key={idx} 
-                                variant="outline" 
-                                className="text-xs font-mono"
-                              >
-                                {trigger}
-                              </Badge>
-                            ))}
+                            {skill.triggers.slice(0, 3).map((trigger, idx) => {
+                              // Extract display text from trigger object
+                              const displayText = trigger.keyword || trigger.command || trigger.category || 'trigger';
+                              return (
+                                <Badge 
+                                  key={idx} 
+                                  variant="outline" 
+                                  className="text-xs font-mono"
+                                >
+                                  {displayText}
+                                </Badge>
+                              );
+                            })}
                             {skill.triggers.length > 3 && (
                               <Badge variant="outline" className="text-xs">
                                 +{skill.triggers.length - 3}

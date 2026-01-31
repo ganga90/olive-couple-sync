@@ -301,6 +301,120 @@ async function callAI(systemPrompt: string, userMessage: string, temperature = 0
   return text;
 }
 
+// ============================================================================
+// OLIVE SKILLS - Match and execute specialized skills based on triggers
+// ============================================================================
+interface SkillMatch {
+  matched: boolean;
+  skill?: {
+    skill_id: string;
+    name: string;
+    content: string;
+    category: string;
+  };
+  trigger_type?: 'keyword' | 'category' | 'command';
+  matched_value?: string;
+}
+
+async function matchUserSkills(
+  supabase: any,
+  userId: string,
+  message: string,
+  noteCategory?: string
+): Promise<SkillMatch> {
+  const lowerMessage = message.toLowerCase();
+  
+  try {
+    // Get user's enabled skills (either explicitly enabled or builtin)
+    const { data: userSkills } = await supabase
+      .from('olive_user_skills')
+      .select('skill_id, enabled')
+      .eq('user_id', userId)
+      .eq('enabled', true);
+    
+    const enabledSkillIds = new Set(userSkills?.map((s: any) => s.skill_id) || []);
+    
+    // Get all active skills
+    const { data: allSkills } = await supabase
+      .from('olive_skills')
+      .select('skill_id, name, content, category, triggers')
+      .eq('is_active', true);
+    
+    if (!allSkills || allSkills.length === 0) {
+      return { matched: false };
+    }
+    
+    // Check each skill's triggers
+    for (const skill of allSkills) {
+      // Skip if user hasn't enabled and it's not a default skill they should have
+      // For now, all active skills are available to all users
+      if (!skill.triggers || !skill.content) continue;
+      
+      const triggers = Array.isArray(skill.triggers) ? skill.triggers : [];
+      
+      for (const trigger of triggers) {
+        // Check keyword match
+        if (trigger.keyword) {
+          const keyword = trigger.keyword.toLowerCase();
+          if (lowerMessage.includes(keyword)) {
+            console.log(`[Skills] Matched skill "${skill.name}" via keyword "${keyword}"`);
+            return {
+              matched: true,
+              skill: {
+                skill_id: skill.skill_id,
+                name: skill.name,
+                content: skill.content,
+                category: skill.category || 'general'
+              },
+              trigger_type: 'keyword',
+              matched_value: trigger.keyword
+            };
+          }
+        }
+        
+        // Check category match
+        if (trigger.category && noteCategory) {
+          if (noteCategory.toLowerCase() === trigger.category.toLowerCase()) {
+            console.log(`[Skills] Matched skill "${skill.name}" via category "${trigger.category}"`);
+            return {
+              matched: true,
+              skill: {
+                skill_id: skill.skill_id,
+                name: skill.name,
+                content: skill.content,
+                category: skill.category || 'general'
+              },
+              trigger_type: 'category',
+              matched_value: trigger.category
+            };
+          }
+        }
+        
+        // Check command match (starts with /)
+        if (trigger.command && lowerMessage.startsWith(trigger.command.toLowerCase())) {
+          console.log(`[Skills] Matched skill "${skill.name}" via command "${trigger.command}"`);
+          return {
+            matched: true,
+            skill: {
+              skill_id: skill.skill_id,
+              name: skill.name,
+              content: skill.content,
+              category: skill.category || 'general'
+            },
+            trigger_type: 'command',
+            matched_value: trigger.command
+          };
+        }
+      }
+    }
+    
+    return { matched: false };
+  } catch (error) {
+    console.error('[Skills] Error matching skills:', error);
+    return { matched: false };
+  }
+}
+
 // Generate embedding for similarity search
 async function generateEmbedding(text: string): Promise<number[] | null> {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
@@ -1594,6 +1708,39 @@ ${eventsList}
       const topTodayTasks = dueTodayTasks.slice(0, 3).map(t => t.summary);
       
       // ================================================================
+      // OLIVE SKILLS MATCHING - Check if a skill should enhance the response
+      // ================================================================
+      const skillMatch = await matchUserSkills(supabase, userId, effectiveMessage || '');
+      let skillContext = '';
+      
+      if (skillMatch.matched && skillMatch.skill) {
+        console.log(`[WhatsApp Chat] Skill matched: ${skillMatch.skill.name} via ${skillMatch.trigger_type}: ${skillMatch.matched_value}`);
+        skillContext = `
+## 🧩 Active Skill: ${skillMatch.skill.name}
+${skillMatch.skill.content}
+
+IMPORTANT: Use the above skill knowledge to enhance your response with domain-specific expertise.
+`;
+        
+        // Track skill usage
+        try {
+          await supabase
+            .from('olive_user_skills')
+            .upsert({
+              user_id: userId,
+              skill_id: skillMatch.skill.skill_id,
+              enabled: true,
+              usage_count: 1,
+              last_used_at: new Date().toISOString()
+            }, {
+              onConflict: 'user_id,skill_id'
+            });
+        } catch (trackErr) {
+          console.warn('[Skills] Failed to track usage:', trackErr);
+        }
+      }
+      
+      // ================================================================
       // SPECIALIZED SYSTEM PROMPTS BY CHAT TYPE
       // ================================================================
       let systemPrompt: string;
@@ -1618,6 +1765,7 @@ ${memoryContext}
 ## Behavioral Patterns:
 ${patternContext}
 ${partnerContext}
+${skillContext}
 ## Current Priorities:
 - Urgent tasks: ${topUrgentTasks.join(', ') || 'None'}
 - Overdue tasks: ${topOverdueTasks.join(', ') || 'None'}
