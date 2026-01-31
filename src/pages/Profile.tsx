@@ -11,8 +11,9 @@ import { RegionalFormatCard } from "@/components/settings/RegionalFormatCard";
 import { WhatsAppUnifiedCard } from "@/components/settings/WhatsAppUnifiedCard";
 import { AppPreferencesModals } from "@/components/settings/AppPreferencesModals";
 import { OliveProactivePreferences } from "@/components/settings/OliveProactivePreferences";
+import { OliveSkillsManager } from "@/components/settings/OliveSkillsManager";
 import { CollapsibleSection } from "@/components/settings/CollapsibleSection";
-import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing } from "lucide-react";
+import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
 import { useLanguage } from "@/providers/LanguageProvider";
@@ -180,6 +181,15 @@ const Profile = () => {
             subtitle={t('profile:olivePreferences.subtitle', 'Configure when and how Olive reaches out')}
           >
             <OliveProactivePreferences />
+          </SettingsCard>
+
+          <SettingsCard
+            icon={<Puzzle className="h-5 w-5 text-purple-500" />}
+            iconBg="bg-purple-500/10"
+            title={t('profile:skills.title', 'Olive Skills')}
+            subtitle={t('profile:skills.subtitle', 'Enable specialized capabilities')}
+          >
+            <OliveSkillsManager />
           </SettingsCard>
         </CollapsibleSection>
 

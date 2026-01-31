@@ -285,6 +285,24 @@
     "error": "Failed to save preferences",
     "signInRequired": "Sign in to configure Olive preferences"
   },
+  "skills": {
+    "title": "Olive Skills",
+    "subtitle": "Enable specialized capabilities for Olive. Each skill adds new triggers and commands.",
+    "enabled": "Skill enabled",
+    "disabled": "Skill disabled",
+    "errorLoading": "Failed to load skills",
+    "errorToggle": "Failed to toggle skill",
+    "signInRequired": "Sign in to manage Olive skills",
+    "enabledCount": "{{count}} skills enabled",
+    "categories": {
+      "household": "Household",
+      "shopping": "Shopping",
+      "food": "Food & Meals",
+      "personal": "Personal",
+      "finance": "Finance",
+      "general": "General"
+    }
+  },
   "legal": {
     "title": "Legal & Support",
     "terms": "Terms of Service",

@@ -257,6 +257,24 @@
     "error": "Impossibile salvare le preferenze",
     "signInRequired": "Accedi per configurare le preferenze di Olive"
   },
+  "skills": {
+    "title": "Abilità di Olive",
+    "subtitle": "Attiva capacità specializzate per Olive. Ogni abilità aggiunge nuovi trigger e comandi.",
+    "enabled": "Abilità attivata",
+    "disabled": "Abilità disattivata",
+    "errorLoading": "Impossibile caricare le abilità",
+    "errorToggle": "Impossibile attivare/disattivare l'abilità",
+    "signInRequired": "Accedi per gestire le abilità di Olive",
+    "enabledCount": "{{count}} abilità attivate",
+    "categories": {
+      "household": "Casa",
+      "shopping": "Spesa",
+      "food": "Cibo e Pasti",
+      "personal": "Personale",
+      "finance": "Finanza",
+      "general": "Generale"
+    }
+  },
   "legal": {
     "title": "Legale e Supporto",
     "terms": "Termini di Servizio",
