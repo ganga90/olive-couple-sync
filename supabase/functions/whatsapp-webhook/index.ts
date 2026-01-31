@@ -14,13 +14,36 @@ const corsHeaders = {
 // CREATE: Everything else (default)
 // ============================================================================
 
-type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE'; isUrgent?: boolean; cleanMessage?: string };
+type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT'; isUrgent?: boolean; cleanMessage?: string };
 
 type QueryType = 'urgent' | 'today' | 'recent' | 'overdue' | 'general' | null;
 
+// ============================================================================
+// TEXT NORMALIZATION - Handle iOS/Android typographic characters
+// ============================================================================
+// iOS and Android often use "smart" typography that breaks regex patterns.
+// This normalizes all apostrophe/quote variants to ASCII equivalents.
+// ============================================================================
+function normalizeText(text: string): string {
+  return text
+    // Normalize all apostrophe variants to ASCII apostrophe
+    .replace(/[\u2018\u2019\u201B\u0060\u00B4]/g, "'")  // ' ' ‛ ` ´ -> '
+    // Normalize all double quote variants
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')  // " " „ ‟ -> "
+    // Normalize other common problematic characters
+    .replace(/[\u2013\u2014]/g, '-')  // – — -> -
+    .replace(/\u2026/g, '...')  // … -> ...
+    .replace(/[\u00A0]/g, ' ');  // non-breaking space -> regular space
+}
+
 function determineIntent(message: string, hasMedia: boolean): IntentResult & { queryType?: QueryType } {
   const trimmed = message.trim();
-  const lower = trimmed.toLowerCase();
+  // CRITICAL: Normalize text to handle iOS/Android smart typography
+  const normalized = normalizeText(trimmed);
+  const lower = normalized.toLowerCase();
+  
+  console.log('[Intent Detection] Original:', trimmed);
+  console.log('[Intent Detection] Normalized:', normalized);
   
   // ============================================================================
   // QUICK-SEARCH SYNTAX - Power user shortcuts
@@ -30,82 +53,135 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
   // ============================================================================
   
   // ? prefix -> Force SEARCH
-  if (trimmed.startsWith('?')) {
-    return { intent: 'SEARCH', cleanMessage: trimmed.slice(1).trim() };
+  if (normalized.startsWith('?')) {
+    console.log('[Intent Detection] Matched: ? prefix (forced SEARCH)');
+    return { intent: 'SEARCH', cleanMessage: normalized.slice(1).trim() };
   }
   
   // ! prefix -> Force URGENT CREATE
-  if (trimmed.startsWith('!')) {
-    return { intent: 'CREATE', isUrgent: true, cleanMessage: trimmed.slice(1).trim() };
+  if (normalized.startsWith('!')) {
+    console.log('[Intent Detection] Matched: ! prefix (forced URGENT CREATE)');
+    return { intent: 'CREATE', isUrgent: true, cleanMessage: normalized.slice(1).trim() };
   }
   
   // / prefix -> Force CREATE (explicit)
-  if (trimmed.startsWith('/')) {
-    return { intent: 'CREATE', cleanMessage: trimmed.slice(1).trim() };
+  if (normalized.startsWith('/')) {
+    console.log('[Intent Detection] Matched: / prefix (forced CREATE)');
+    return { intent: 'CREATE', cleanMessage: normalized.slice(1).trim() };
   }
   
   // MERGE: exact match only
   if (lower === 'merge') {
+    console.log('[Intent Detection] Matched: merge command');
     return { intent: 'MERGE' };
   }
+  
+  // ============================================================================
+  // QUESTION DETECTION - Messages that are clearly questions should be SEARCH/CHAT
+  // ============================================================================
+  const isQuestion = lower.endsWith('?') || /^(what|where|when|who|how|why|can|do|does|is|are|which)\b/i.test(lower);
   
   // ============================================================================
   // CONTEXTUAL SEARCH PATTERNS - "what's urgent", "what's on my day", etc.
   // ============================================================================
   
-  // Match "what's urgent", "whats urgent", "what is urgent"
-  if (/what['']?s?\s+(is\s+)?urgent/i.test(lower) || /urgent\s+tasks?/i.test(lower)) {
+  // Match "what's urgent", "whats urgent", "what is urgent", or just "urgent?" as a question
+  if (/what'?s?\s+(is\s+)?urgent/i.test(lower) || 
+      /urgent\s*\?$/i.test(lower) || 
+      /urgent\s+tasks?/i.test(lower) ||
+      (lower.includes('urgent') && isQuestion)) {
+    console.log('[Intent Detection] Matched: urgent query pattern');
     return { intent: 'SEARCH', queryType: 'urgent' };
   }
   
   // Match "what's on my day", "what's due today", "today's tasks"
-  if (/what['']?s?\s+(on\s+my\s+day|due\s+today|for\s+today)/i.test(lower) || 
-      /today['']?s?\s+tasks?/i.test(lower) ||
-      /due\s+today/i.test(lower)) {
+  if (/what'?s?\s+(on\s+my\s+day|due\s+today|for\s+today)/i.test(lower) || 
+      /today'?s?\s+tasks?/i.test(lower) ||
+      /due\s+today/i.test(lower) ||
+      (lower.includes('today') && isQuestion)) {
+    console.log('[Intent Detection] Matched: today query pattern');
     return { intent: 'SEARCH', queryType: 'today' };
   }
   
   // Match "what's recent", "recent tasks", "latest tasks"
-  if (/what['']?s?\s+recent/i.test(lower) || 
+  if (/what'?s?\s+recent/i.test(lower) || 
       /recent\s+tasks?/i.test(lower) || 
       /latest\s+tasks?/i.test(lower) ||
       /what\s+did\s+i\s+(add|save)/i.test(lower)) {
+    console.log('[Intent Detection] Matched: recent query pattern');
     return { intent: 'SEARCH', queryType: 'recent' };
   }
   
-  // Match "what's overdue", "overdue tasks"
-  if (/what['']?s?\s+overdue/i.test(lower) || /overdue\s+tasks?/i.test(lower)) {
+  // Match "what's overdue", "overdue tasks", or just "overdue?"
+  if (/what'?s?\s+overdue/i.test(lower) || 
+      /overdue\s*\?$/i.test(lower) ||
+      /overdue\s+tasks?/i.test(lower) ||
+      (lower.includes('overdue') && isQuestion)) {
+    console.log('[Intent Detection] Matched: overdue query pattern');
     return { intent: 'SEARCH', queryType: 'overdue' };
   }
   
   // Match "what's pending", "pending tasks"
-  if (/what['']?s?\s+pending/i.test(lower) || /pending\s+tasks?/i.test(lower)) {
+  if (/what'?s?\s+pending/i.test(lower) || 
+      /pending\s+tasks?/i.test(lower) ||
+      (lower.includes('pending') && isQuestion)) {
+    console.log('[Intent Detection] Matched: pending query pattern');
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
   // Generic "what do I have" patterns
   if (/what\s+(do\s+i\s+have|are\s+my\s+tasks?|tasks?\s+do\s+i)/i.test(lower)) {
+    console.log('[Intent Detection] Matched: what do I have pattern');
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
   // SEARCH: specific starters - show, find, list, search, get
   const searchStarters = ['show', 'find', 'list', 'search', 'get'];
   if (searchStarters.some(s => lower.startsWith(s + ' ') || lower === s)) {
+    console.log('[Intent Detection] Matched: search starter keyword');
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
   // SEARCH: contains "my tasks", "my list", "my reminders" etc.
   if (/\bmy\s+(tasks?|list|lists?|reminders?|items?|to-?do)\b/i.test(lower)) {
+    console.log('[Intent Detection] Matched: my tasks/list/reminders pattern');
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
   // SEARCH: asking questions about existing content
   if (/^(how many|do i have|check my|see my)/i.test(lower)) {
+    console.log('[Intent Detection] Matched: question about content');
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
+  // ============================================================================
+  // CHAT INTENT - Questions that aren't task queries go to conversational AI
+  // ============================================================================
+  // If message ends with ? and didn't match any SEARCH patterns, treat as CHAT
+  // This handles "how are you?", "tell me about X", "what should I do about Y?"
+  if (isQuestion && !hasMedia) {
+    // Check if it's a greeting/chat message rather than a task
+    const chatPatterns = [
+      /^(hi|hello|hey|good\s*(morning|afternoon|evening)|thanks|thank\s*you)/i,
+      /^(who\s+are\s+you|what\s+can\s+you\s+do|help\b)/i,
+      /^(how\s+are\s+you|how'?s\s+it\s+going)/i,
+      /^tell\s+me\s+(about|more)/i,
+      /\badvice\b|\bsuggestion\b|\bhelp\s+me\b|\bwhat\s+should\s+i\b/i
+    ];
+    
+    if (chatPatterns.some(p => p.test(lower))) {
+      console.log('[Intent Detection] Matched: chat/greeting pattern');
+      return { intent: 'CHAT', cleanMessage: normalized };
+    }
+    
+    // Generic question that might be task-related - let AI handle
+    console.log('[Intent Detection] Matched: ambiguous question -> CHAT');
+    return { intent: 'CHAT', cleanMessage: normalized };
+  }
+  
   // CREATE: default for everything else
-  // This includes ambiguous verbs like "check", "review", "look at", etc.
+  // This includes statements, commands, brain dumps, etc.
+  console.log('[Intent Detection] No pattern matched -> CREATE (default)');
   return { intent: 'CREATE' };
 }
 
@@ -1172,6 +1248,59 @@ serve(async (req) => {
         createTwimlResponse(summary),
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
       );
+    }
+
+    // ========================================================================
+    // CHAT INTENT - Conversational AI Responses
+    // ========================================================================
+    // Handle questions that aren't task queries but conversational interactions
+    if (intent === 'CHAT') {
+      console.log('[WhatsApp] Processing CHAT intent for:', effectiveMessage);
+      
+      // Fetch user's context for personalized responses
+      const { data: tasks } = await supabase
+        .from('clerk_notes')
+        .select('id, summary, due_date, completed, priority, category, created_at')
+        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+        .eq('completed', false)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      
+      const taskCount = tasks?.length || 0;
+      const urgentCount = tasks?.filter(t => t.priority === 'high').length || 0;
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const overdueCount = tasks?.filter(t => t.due_date && new Date(t.due_date) < today).length || 0;
+      
+      // Build context summary for AI
+      const taskContextSummary = `User has ${taskCount} active tasks (${urgentCount} urgent, ${overdueCount} overdue).`;
+      
+      const chatSystemPrompt = `You are Olive, a warm and helpful AI assistant for personal organization. You help couples and individuals manage their tasks, reminders, and life together.
+
+Context: ${taskContextSummary}
+
+Guidelines:
+- Be friendly, concise, and helpful (keep responses under 300 characters for WhatsApp)
+- If asked "what can you do" or similar, explain you help with: saving tasks/brain dumps, setting reminders, tracking urgent items, showing task summaries
+- If someone asks about their tasks, suggest they say "what's urgent", "what's due today", or "show my tasks"
+- Don't make up information about their specific tasks
+- Use emojis sparingly but warmly 🫒`;
+
+      try {
+        const chatResponse = await callAI(chatSystemPrompt, effectiveMessage || '', 0.7);
+        
+        return new Response(
+          createTwimlResponse(chatResponse.slice(0, 1500)), // Limit response length for WhatsApp
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } catch (error) {
+        console.error('[WhatsApp] Chat AI error:', error);
+        // Fallback to helpful message
+        return new Response(
+          createTwimlResponse('🫒 Hi! I\'m Olive, your personal assistant.\n\nI can help you:\n• Save tasks & reminders\n• Track urgent items\n• Show your task summaries\n\nTry: "What\'s urgent?" or just tell me what\'s on your mind!'),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
     }
 
     // ========================================================================
