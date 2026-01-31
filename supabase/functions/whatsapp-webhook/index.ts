@@ -18,27 +18,104 @@ type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT'; isUrgent?:
 
 type QueryType = 'urgent' | 'today' | 'recent' | 'overdue' | 'general' | null;
 
+// Chat subtypes for specialized AI handling
+type ChatType = 
+  | 'weekly_summary'      // "summarize my week", "how was my week"
+  | 'daily_focus'         // "what should I focus on", "prioritize my day"
+  | 'productivity_tips'   // "give me tips", "help me be productive"
+  | 'progress_check'      // "how am I doing", "my progress"
+  | 'motivation'          // "motivate me", "I'm stressed"
+  | 'planning'            // "help me plan", "what's next"
+  | 'greeting'            // "hi", "hello"
+  | 'help'                // "what can you do", "help"
+  | 'general';            // Catch-all for other questions
+
 // ============================================================================
 // TEXT NORMALIZATION - Handle iOS/Android typographic characters
 // ============================================================================
-// iOS and Android often use "smart" typography that breaks regex patterns.
-// This normalizes all apostrophe/quote variants to ASCII equivalents.
-// ============================================================================
 function normalizeText(text: string): string {
   return text
-    // Normalize all apostrophe variants to ASCII apostrophe
-    .replace(/[\u2018\u2019\u201B\u0060\u00B4]/g, "'")  // ' ' ‛ ` ´ -> '
-    // Normalize all double quote variants
-    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')  // " " „ ‟ -> "
-    // Normalize other common problematic characters
-    .replace(/[\u2013\u2014]/g, '-')  // – — -> -
-    .replace(/\u2026/g, '...')  // … -> ...
-    .replace(/[\u00A0]/g, ' ');  // non-breaking space -> regular space
+    .replace(/[\u2018\u2019\u201B\u0060\u00B4]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2026/g, '...')
+    .replace(/[\u00A0]/g, ' ');
 }
 
-function determineIntent(message: string, hasMedia: boolean): IntentResult & { queryType?: QueryType } {
+// ============================================================================
+// CHAT TYPE DETECTION - Classify conversational queries
+// ============================================================================
+function detectChatType(message: string): ChatType {
+  const lower = message.toLowerCase();
+  
+  // Weekly summary patterns
+  if (/\b(summarize|recap|review)\s+(my\s+)?(week|weekly|past\s+7|last\s+7)/i.test(lower) ||
+      /\b(how\s+was|how'?s)\s+(my\s+)?week/i.test(lower) ||
+      /\bweek(ly)?\s+(summary|recap|review)/i.test(lower) ||
+      /\bwhat\s+did\s+i\s+(do|accomplish|complete)\s+(this|last)\s+week/i.test(lower)) {
+    return 'weekly_summary';
+  }
+  
+  // Daily focus patterns
+  if (/\b(what\s+should\s+i|help\s+me)\s+(focus|prioritize|work)\s+on/i.test(lower) ||
+      /\b(prioritize|plan)\s+(my\s+)?(day|today)/i.test(lower) ||
+      /\bwhat'?s?\s+(most\s+)?important\s+today/i.test(lower) ||
+      /\bfocus\s+(for\s+)?today/i.test(lower) ||
+      /\bwhat\s+first\b/i.test(lower) ||
+      /\bwhere\s+should\s+i\s+start/i.test(lower)) {
+    return 'daily_focus';
+  }
+  
+  // Productivity tips patterns
+  if (/\b(productivity|efficiency)\s+(tips?|advice|suggestions?)/i.test(lower) ||
+      /\bgive\s+me\s+(some\s+)?(tips?|advice|suggestions?)/i.test(lower) ||
+      /\bhow\s+(can\s+i|to)\s+be\s+(more\s+)?(productive|efficient|organized)/i.test(lower) ||
+      /\bhelp\s+me\s+(be|get)\s+(more\s+)?(productive|organized|efficient)/i.test(lower)) {
+    return 'productivity_tips';
+  }
+  
+  // Progress check patterns
+  if (/\bhow\s+am\s+i\s+doing/i.test(lower) ||
+      /\b(my|check)\s+(progress|status|stats)/i.test(lower) ||
+      /\bhow\s+productive\s+(am\s+i|have\s+i\s+been)/i.test(lower) ||
+      /\bam\s+i\s+on\s+track/i.test(lower)) {
+    return 'progress_check';
+  }
+  
+  // Motivation patterns
+  if (/\b(motivate|encourage|inspire)\s+me/i.test(lower) ||
+      /\bi'?m\s+(stressed|overwhelmed|anxious|tired|exhausted)/i.test(lower) ||
+      /\b(feeling|feel)\s+(down|bad|stressed|overwhelmed)/i.test(lower) ||
+      /\bneed\s+(some\s+)?(motivation|encouragement)/i.test(lower) ||
+      /\btoo\s+much\s+to\s+do/i.test(lower)) {
+    return 'motivation';
+  }
+  
+  // Planning patterns
+  if (/\bhelp\s+me\s+plan/i.test(lower) ||
+      /\bwhat'?s?\s+next\b/i.test(lower) ||
+      /\bplan\s+(my|the)\s+(day|week|tomorrow)/i.test(lower) ||
+      /\bwhat\s+should\s+i\s+do\s+(next|now|after)/i.test(lower)) {
+    return 'planning';
+  }
+  
+  // Greeting patterns
+  if (/^(hi|hello|hey|good\s*(morning|afternoon|evening)|thanks|thank\s*you)\b/i.test(lower) ||
+      /^(how\s+are\s+you|how'?s\s+it\s+going)/i.test(lower)) {
+    return 'greeting';
+  }
+  
+  // Help patterns
+  if (/^(who\s+are\s+you|what\s+can\s+you\s+do|help\b|commands)/i.test(lower) ||
+      /\bwhat\s+are\s+your\s+(features|capabilities)/i.test(lower)) {
+    return 'help';
+  }
+  
+  return 'general';
+}
+
+function determineIntent(message: string, hasMedia: boolean): IntentResult & { queryType?: QueryType; chatType?: ChatType } {
   const trimmed = message.trim();
-  // CRITICAL: Normalize text to handle iOS/Android smart typography
   const normalized = normalizeText(trimmed);
   const lower = normalized.toLowerCase();
   
@@ -47,24 +124,18 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
   
   // ============================================================================
   // QUICK-SEARCH SYNTAX - Power user shortcuts
-  // ? message -> Forces SEARCH
-  // ! message -> Forces URGENT CREATE
-  // / message -> Forces CREATE (explicit)
   // ============================================================================
   
-  // ? prefix -> Force SEARCH
   if (normalized.startsWith('?')) {
     console.log('[Intent Detection] Matched: ? prefix (forced SEARCH)');
     return { intent: 'SEARCH', cleanMessage: normalized.slice(1).trim() };
   }
   
-  // ! prefix -> Force URGENT CREATE
   if (normalized.startsWith('!')) {
     console.log('[Intent Detection] Matched: ! prefix (forced URGENT CREATE)');
     return { intent: 'CREATE', isUrgent: true, cleanMessage: normalized.slice(1).trim() };
   }
   
-  // / prefix -> Force CREATE (explicit)
   if (normalized.startsWith('/')) {
     console.log('[Intent Detection] Matched: / prefix (forced CREATE)');
     return { intent: 'CREATE', cleanMessage: normalized.slice(1).trim() };
@@ -76,16 +147,12 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'MERGE' };
   }
   
-  // ============================================================================
-  // QUESTION DETECTION - Messages that are clearly questions should be SEARCH/CHAT
-  // ============================================================================
   const isQuestion = lower.endsWith('?') || /^(what|where|when|who|how|why|can|do|does|is|are|which)\b/i.test(lower);
   
   // ============================================================================
-  // CONTEXTUAL SEARCH PATTERNS - "what's urgent", "what's on my day", etc.
+  // CONTEXTUAL SEARCH PATTERNS
   // ============================================================================
   
-  // Match "what's urgent", "whats urgent", "what is urgent", or just "urgent?" as a question
   if (/what'?s?\s+(is\s+)?urgent/i.test(lower) || 
       /urgent\s*\?$/i.test(lower) || 
       /urgent\s+tasks?/i.test(lower) ||
@@ -94,16 +161,13 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'SEARCH', queryType: 'urgent' };
   }
   
-  // Match "what's on my day", "what's due today", "today's tasks"
   if (/what'?s?\s+(on\s+my\s+day|due\s+today|for\s+today)/i.test(lower) || 
       /today'?s?\s+tasks?/i.test(lower) ||
-      /due\s+today/i.test(lower) ||
-      (lower.includes('today') && isQuestion)) {
+      /due\s+today/i.test(lower)) {
     console.log('[Intent Detection] Matched: today query pattern');
     return { intent: 'SEARCH', queryType: 'today' };
   }
   
-  // Match "what's recent", "recent tasks", "latest tasks"
   if (/what'?s?\s+recent/i.test(lower) || 
       /recent\s+tasks?/i.test(lower) || 
       /latest\s+tasks?/i.test(lower) ||
@@ -112,7 +176,6 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'SEARCH', queryType: 'recent' };
   }
   
-  // Match "what's overdue", "overdue tasks", or just "overdue?"
   if (/what'?s?\s+overdue/i.test(lower) || 
       /overdue\s*\?$/i.test(lower) ||
       /overdue\s+tasks?/i.test(lower) ||
@@ -121,7 +184,6 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'SEARCH', queryType: 'overdue' };
   }
   
-  // Match "what's pending", "pending tasks"
   if (/what'?s?\s+pending/i.test(lower) || 
       /pending\s+tasks?/i.test(lower) ||
       (lower.includes('pending') && isQuestion)) {
@@ -129,58 +191,52 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
-  // Generic "what do I have" patterns
   if (/what\s+(do\s+i\s+have|are\s+my\s+tasks?|tasks?\s+do\s+i)/i.test(lower)) {
     console.log('[Intent Detection] Matched: what do I have pattern');
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
-  // SEARCH: specific starters - show, find, list, search, get
   const searchStarters = ['show', 'find', 'list', 'search', 'get'];
   if (searchStarters.some(s => lower.startsWith(s + ' ') || lower === s)) {
     console.log('[Intent Detection] Matched: search starter keyword');
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
-  // SEARCH: contains "my tasks", "my list", "my reminders" etc.
   if (/\bmy\s+(tasks?|list|lists?|reminders?|items?|to-?do)\b/i.test(lower)) {
     console.log('[Intent Detection] Matched: my tasks/list/reminders pattern');
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
-  // SEARCH: asking questions about existing content
   if (/^(how many|do i have|check my|see my)/i.test(lower)) {
     console.log('[Intent Detection] Matched: question about content');
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
   // ============================================================================
-  // CHAT INTENT - Questions that aren't task queries go to conversational AI
+  // CHAT INTENT - Conversational AI with subtype detection
   // ============================================================================
-  // If message ends with ? and didn't match any SEARCH patterns, treat as CHAT
-  // This handles "how are you?", "tell me about X", "what should I do about Y?"
   if (isQuestion && !hasMedia) {
-    // Check if it's a greeting/chat message rather than a task
-    const chatPatterns = [
-      /^(hi|hello|hey|good\s*(morning|afternoon|evening)|thanks|thank\s*you)/i,
-      /^(who\s+are\s+you|what\s+can\s+you\s+do|help\b)/i,
-      /^(how\s+are\s+you|how'?s\s+it\s+going)/i,
-      /^tell\s+me\s+(about|more)/i,
-      /\badvice\b|\bsuggestion\b|\bhelp\s+me\b|\bwhat\s+should\s+i\b/i
-    ];
-    
-    if (chatPatterns.some(p => p.test(lower))) {
-      console.log('[Intent Detection] Matched: chat/greeting pattern');
-      return { intent: 'CHAT', cleanMessage: normalized };
-    }
-    
-    // Generic question that might be task-related - let AI handle
-    console.log('[Intent Detection] Matched: ambiguous question -> CHAT');
-    return { intent: 'CHAT', cleanMessage: normalized };
+    const chatType = detectChatType(normalized);
+    console.log('[Intent Detection] Matched: CHAT intent, type:', chatType);
+    return { intent: 'CHAT', cleanMessage: normalized, chatType };
   }
   
-  // CREATE: default for everything else
-  // This includes statements, commands, brain dumps, etc.
+  // Check for non-question chat patterns (statements that should trigger chat)
+  const statementChatPatterns = [
+    /^(hi|hello|hey|good\s*(morning|afternoon|evening))\b/i,
+    /^(motivate|encourage|inspire)\s+me/i,
+    /\bi'?m\s+(stressed|overwhelmed|anxious)/i,
+    /^(summarize|recap)\s+(my\s+)?week/i,
+    /^plan\s+(my|the)\s+(day|week)/i,
+    /^(prioritize|focus)\s+(my\s+)?/i
+  ];
+  
+  if (statementChatPatterns.some(p => p.test(lower)) && !hasMedia) {
+    const chatType = detectChatType(normalized);
+    console.log('[Intent Detection] Matched: statement-based CHAT, type:', chatType);
+    return { intent: 'CHAT', cleanMessage: normalized, chatType };
+  }
+  
   console.log('[Intent Detection] No pattern matched -> CREATE (default)');
   return { intent: 'CREATE' };
 }
@@ -1251,53 +1307,335 @@ serve(async (req) => {
     }
 
     // ========================================================================
-    // CHAT INTENT - Conversational AI Responses
+    // CHAT INTENT - Context-Aware Conversational AI Responses
     // ========================================================================
-    // Handle questions that aren't task queries but conversational interactions
     if (intent === 'CHAT') {
-      console.log('[WhatsApp] Processing CHAT intent for:', effectiveMessage);
+      const chatType = (intentResult as any).chatType as ChatType || 'general';
+      console.log('[WhatsApp] Processing CHAT intent, type:', chatType, 'message:', effectiveMessage?.substring(0, 50));
       
-      // Fetch user's context for personalized responses
-      const { data: tasks } = await supabase
-        .from('clerk_notes')
-        .select('id, summary, due_date, completed, priority, category, created_at')
-        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
-        .eq('completed', false)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      
-      const taskCount = tasks?.length || 0;
-      const urgentCount = tasks?.filter(t => t.priority === 'high').length || 0;
+      // ================================================================
+      // RICH CONTEXT FETCHING - Gather all relevant user data
+      // ================================================================
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const overdueCount = tasks?.filter(t => t.due_date && new Date(t.due_date) < today).length || 0;
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
       
-      // Build context summary for AI
-      const taskContextSummary = `User has ${taskCount} active tasks (${urgentCount} urgent, ${overdueCount} overdue).`;
+      // Fetch tasks with extended data for analysis
+      const { data: allTasks } = await supabase
+        .from('clerk_notes')
+        .select('id, summary, due_date, completed, priority, category, list_id, items, created_at, updated_at, task_owner')
+        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+        .order('created_at', { ascending: false })
+        .limit(100);
       
-      const chatSystemPrompt = `You are Olive, a warm and helpful AI assistant for personal organization. You help couples and individuals manage their tasks, reminders, and life together.
+      // Fetch user memories for personalization
+      const { data: memories } = await supabase
+        .from('user_memories')
+        .select('title, content, category, importance')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('importance', { ascending: false })
+        .limit(10);
+      
+      // Fetch behavioral patterns
+      const { data: patterns } = await supabase
+        .from('olive_patterns')
+        .select('pattern_type, pattern_data, confidence')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .gte('confidence', 0.6)
+        .limit(5);
+      
+      // Fetch lists for context
+      const { data: lists } = await supabase
+        .from('clerk_lists')
+        .select('id, name')
+        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
+      
+      const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
+      
+      // ================================================================
+      // TASK ANALYTICS - Compute insights from task data
+      // ================================================================
+      const activeTasks = allTasks?.filter(t => !t.completed) || [];
+      const completedTasks = allTasks?.filter(t => t.completed) || [];
+      const urgentTasks = activeTasks.filter(t => t.priority === 'high');
+      const overdueTasks = activeTasks.filter(t => t.due_date && new Date(t.due_date) < today);
+      const dueTodayTasks = activeTasks.filter(t => {
+        if (!t.due_date) return false;
+        const dueDate = new Date(t.due_date);
+        return dueDate >= today && dueDate < tomorrow;
+      });
+      const dueTomorrowTasks = activeTasks.filter(t => {
+        if (!t.due_date) return false;
+        const dueDate = new Date(t.due_date);
+        const dayAfterTomorrow = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000);
+        return dueDate >= tomorrow && dueDate < dayAfterTomorrow;
+      });
+      
+      // Weekly analytics
+      const tasksCreatedThisWeek = allTasks?.filter(t => new Date(t.created_at) >= oneWeekAgo) || [];
+      const tasksCompletedThisWeek = completedTasks.filter(t => 
+        t.updated_at && new Date(t.updated_at) >= oneWeekAgo
+      );
+      
+      // Category distribution
+      const categoryCount: Record<string, number> = {};
+      activeTasks.forEach(t => {
+        const cat = t.category || 'uncategorized';
+        categoryCount[cat] = (categoryCount[cat] || 0) + 1;
+      });
+      const topCategories = Object.entries(categoryCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([cat, count]) => `${cat}: ${count}`);
+      
+      // List distribution
+      const listCount: Record<string, number> = {};
+      activeTasks.forEach(t => {
+        if (t.list_id) {
+          const listName = listIdToName.get(t.list_id) || 'Unknown';
+          listCount[listName] = (listCount[listName] || 0) + 1;
+        }
+      });
+      const topLists = Object.entries(listCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([list, count]) => `${list}: ${count}`);
+      
+      // ================================================================
+      // BUILD CONTEXT OBJECT FOR AI
+      // ================================================================
+      const taskContext = {
+        total_active: activeTasks.length,
+        urgent: urgentTasks.length,
+        overdue: overdueTasks.length,
+        due_today: dueTodayTasks.length,
+        due_tomorrow: dueTomorrowTasks.length,
+        created_this_week: tasksCreatedThisWeek.length,
+        completed_this_week: tasksCompletedThisWeek.length,
+        top_categories: topCategories,
+        top_lists: topLists,
+        completion_rate: tasksCreatedThisWeek.length > 0 
+          ? Math.round((tasksCompletedThisWeek.length / tasksCreatedThisWeek.length) * 100)
+          : 0
+      };
+      
+      const memoryContext = memories?.map(m => `${m.title}: ${m.content}`).join('; ') || 'No personalization data yet.';
+      
+      const patternContext = patterns?.map(p => {
+        const data = p.pattern_data as any;
+        return `${p.pattern_type}: ${data.description || JSON.stringify(data)}`;
+      }).join('; ') || 'No behavioral patterns detected yet.';
+      
+      // Top urgent/overdue for specific recommendations
+      const topUrgentTasks = urgentTasks.slice(0, 3).map(t => t.summary);
+      const topOverdueTasks = overdueTasks.slice(0, 3).map(t => t.summary);
+      const topTodayTasks = dueTodayTasks.slice(0, 3).map(t => t.summary);
+      
+      // ================================================================
+      // SPECIALIZED SYSTEM PROMPTS BY CHAT TYPE
+      // ================================================================
+      let systemPrompt: string;
+      let userPromptEnhancement = '';
+      
+      const baseContext = `
+## User Task Analytics:
+- Active tasks: ${taskContext.total_active}
+- Urgent (high priority): ${taskContext.urgent}
+- Overdue: ${taskContext.overdue}
+- Due today: ${taskContext.due_today}
+- Due tomorrow: ${taskContext.due_tomorrow}
+- Created this week: ${taskContext.created_this_week}
+- Completed this week: ${taskContext.completed_this_week}
+- Completion rate: ${taskContext.completion_rate}%
+- Top categories: ${taskContext.top_categories.join(', ') || 'None'}
+- Top lists: ${taskContext.top_lists.join(', ') || 'None'}
 
-Context: ${taskContextSummary}
+## User Memories/Preferences:
+${memoryContext}
+
+## Behavioral Patterns:
+${patternContext}
+
+## Current Priorities:
+- Urgent tasks: ${topUrgentTasks.join(', ') || 'None'}
+- Overdue tasks: ${topOverdueTasks.join(', ') || 'None'}
+- Due today: ${topTodayTasks.join(', ') || 'None'}
+`;
+      
+      switch (chatType) {
+        case 'weekly_summary':
+          systemPrompt = `You are Olive, a warm AI assistant providing a personalized weekly summary. 
+          
+${baseContext}
+
+Your task: Provide a concise, encouraging weekly recap (under 400 chars for WhatsApp).
+Include:
+1. Tasks completed vs created (celebrate wins!)
+2. Current workload snapshot
+3. One actionable insight based on patterns
+4. Brief motivational note
+
+Use emojis thoughtfully. Be warm but concise.`;
+          break;
+          
+        case 'daily_focus':
+          systemPrompt = `You are Olive, helping the user prioritize their day.
+
+${baseContext}
+
+Your task: Suggest 2-3 specific tasks to focus on today (under 400 chars).
+Prioritization logic:
+1. FIRST: Overdue tasks (catch up!)
+2. SECOND: Urgent/high-priority tasks  
+3. THIRD: Tasks due today
+4. Consider user's patterns and energy levels if known
+
+Be specific - name actual tasks. Be encouraging but direct.`;
+          userPromptEnhancement = `\n\nPlease recommend my top priorities for today based on my task data.`;
+          break;
+          
+        case 'productivity_tips':
+          systemPrompt = `You are Olive, providing personalized productivity advice.
+
+${baseContext}
+
+Your task: Give 2-3 specific, actionable productivity tips (under 500 chars).
+Personalize based on:
+- Their completion rate (${taskContext.completion_rate}%)
+- Their overdue tasks (${taskContext.overdue})
+- Their behavioral patterns
+- Their categories/lists (what they're working on)
+
+Avoid generic advice. Be specific to THEIR situation.`;
+          break;
+          
+        case 'progress_check':
+          systemPrompt = `You are Olive, giving an honest but supportive progress report.
+
+${baseContext}
+
+Your task: Provide a brief progress check (under 400 chars).
+Include:
+1. Completion rate assessment (${taskContext.completion_rate}%)
+2. What's going well (celebrate!)
+3. What needs attention (gently)
+4. Quick tip for improvement
+
+Be honest but encouraging. Never shame.`;
+          break;
+          
+        case 'motivation':
+          systemPrompt = `You are Olive, a supportive and understanding AI companion.
+
+${baseContext}
+
+The user seems stressed or needs motivation. Your task:
+1. Acknowledge their feelings warmly
+2. Put their workload in perspective
+3. Suggest ONE small, achievable action
+4. End with genuine encouragement
+
+Keep under 400 chars. Be empathetic, not dismissive. No toxic positivity.`;
+          break;
+          
+        case 'planning':
+          systemPrompt = `You are Olive, helping the user plan ahead.
+
+${baseContext}
+
+Your task: Help them see what's coming and plan effectively (under 400 chars).
+Consider:
+- What's due soon (today, tomorrow, this week)
+- What's overdue and needs rescheduling
+- Suggest breaking down large tasks if needed
+
+Be practical and forward-looking.`;
+          break;
+          
+        case 'greeting':
+          systemPrompt = `You are Olive, a warm and friendly AI assistant.
+
+${baseContext}
+
+The user is greeting you. Respond warmly (under 250 chars) with:
+1. A friendly greeting back
+2. A quick status hint (e.g., "You've got ${taskContext.urgent} urgent items" or "Looking good today!")
+3. An offer to help
+
+Be natural and personable.`;
+          break;
+          
+        case 'help':
+          systemPrompt = `You are Olive, explaining your capabilities.
+
+Context: The user wants to know what you can do.
+
+Response (under 400 chars):
+Explain you can:
+• Save tasks via brain dumps
+• Track urgent/overdue items
+• Summarize their week
+• Give personalized focus recommendations
+• Provide productivity tips
+• Set reminders
+
+Suggest trying: "What's urgent?", "Summarize my week", or "What should I focus on?"`;
+          break;
+          
+        default: // 'general'
+          systemPrompt = `You are Olive, a warm and helpful AI assistant for personal organization.
+
+${baseContext}
 
 Guidelines:
-- Be friendly, concise, and helpful (keep responses under 300 characters for WhatsApp)
-- If asked "what can you do" or similar, explain you help with: saving tasks/brain dumps, setting reminders, tracking urgent items, showing task summaries
-- If someone asks about their tasks, suggest they say "what's urgent", "what's due today", or "show my tasks"
-- Don't make up information about their specific tasks
-- Use emojis sparingly but warmly 🫒`;
-
+- Be friendly, concise, and helpful (under 350 chars for WhatsApp)
+- Use the context above to personalize your response
+- If they ask something you can help with (tasks, productivity), do so
+- If they ask about specific tasks, use the data above
+- Suggest relevant commands if appropriate ("what's urgent", "summarize my week", etc.)
+- Use emojis warmly but sparingly 🫒`;
+      }
+      
       try {
-        const chatResponse = await callAI(chatSystemPrompt, effectiveMessage || '', 0.7);
+        const enhancedMessage = (effectiveMessage || '') + userPromptEnhancement;
+        console.log('[WhatsApp Chat] Calling AI for chatType:', chatType);
+        
+        const chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7);
         
         return new Response(
-          createTwimlResponse(chatResponse.slice(0, 1500)), // Limit response length for WhatsApp
+          createTwimlResponse(chatResponse.slice(0, 1500)),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       } catch (error) {
         console.error('[WhatsApp] Chat AI error:', error);
-        // Fallback to helpful message
+        
+        // Fallback responses by type
+        let fallbackMessage: string;
+        switch (chatType) {
+          case 'weekly_summary':
+            fallbackMessage = `📊 Your Week:\n• Created: ${taskContext.created_this_week} tasks\n• Completed: ${taskContext.completed_this_week}\n• Active: ${taskContext.total_active} (${taskContext.urgent} urgent)\n\n💡 Try "what's urgent?" for priorities`;
+            break;
+          case 'daily_focus':
+            if (overdueTasks.length > 0) {
+              fallbackMessage = `🎯 Focus Today:\n1. Clear overdue: ${topOverdueTasks[0] || 'Check your overdue items'}\n${topTodayTasks.length > 0 ? `2. Then: ${topTodayTasks[0]}` : ''}\n\n🔗 witholive.app`;
+            } else if (dueTodayTasks.length > 0) {
+              fallbackMessage = `🎯 Today's Priorities:\n${topTodayTasks.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\n✨ You've got this!`;
+            } else {
+              fallbackMessage = `🎯 No urgent deadlines today! Consider tackling urgent tasks:\n${topUrgentTasks[0] || 'Check your task list'}\n\n💪 Stay proactive!`;
+            }
+            break;
+          case 'motivation':
+            fallbackMessage = `💚 You're doing great! ${taskContext.completed_this_week} tasks done this week.\n\nOne step at a time. Start with just one small task - momentum builds! 🫒`;
+            break;
+          default:
+            fallbackMessage = '🫒 Hi! I\'m Olive.\n\nTry:\n• "Summarize my week"\n• "What should I focus on?"\n• "What\'s urgent?"\n\nOr just tell me what\'s on your mind!';
+        }
+        
         return new Response(
-          createTwimlResponse('🫒 Hi! I\'m Olive, your personal assistant.\n\nI can help you:\n• Save tasks & reminders\n• Track urgent items\n• Show your task summaries\n\nTry: "What\'s urgent?" or just tell me what\'s on your mind!'),
+          createTwimlResponse(fallbackMessage),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
