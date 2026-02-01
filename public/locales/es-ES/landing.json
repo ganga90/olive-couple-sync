@@ -1,98 +1,129 @@
 {
+  "nav": {
+    "pricing": "Precios",
+    "login": "Iniciar Sesión",
+    "cta": "Empieza a Sincronizar – Gratis",
+    "microCopy": "Sin descargar apps"
+  },
   "hero": {
-    "eyebrow": "Para parejas ocupadas",
-    "headline": "El Tercer Cerebro de Tu Relación.",
-    "subheadline": "Deja de regañar. Deja de olvidar. El organizador compartido con IA que sincroniza tus tareas, calendarios y carga mental al instante.",
-    "cta": "Empieza a Organizaros – Gratis",
-    "trustSignal": "Elegido por más de 2.000 parejas"
+    "eyebrow": "Intermediario AI para Parejas",
+    "headline": "El AI Jefe de Gabinete para Dúos Dinámicos.",
+    "subheadline": "Deja de regañar. Deja de olvidar. Olive escucha tus notas de voz de WhatsApp, recibos y enlaces, y los organiza al instante. Perfecto para Parejas y Co-Fundadores.",
+    "ctaPrimary": "Prueba con tu Pareja",
+    "ctaSecondary": "Ver la Demo",
+    "trustSignal": "Elegido por más de 500 partners beta"
   },
-  "problems": {
-    "headline": "¿Por qué es tan difícil estar en la misma página?",
-    "nagging": {
-      "title": "El Bucle de las Quejas",
-      "description": "Preguntar '¿Llamaste al fontanero?' por quinta vez crea tensión, no trabajo en equipo."
+  "chooseMode": {
+    "headline": "¿Cómo se asocian?",
+    "subheadline": "Olive se adapta a su estilo de relación.",
+    "couples": {
+      "headline": "Pon Fin al Desequilibrio de la 'Carga Mental'.",
+      "painPoint": "Uno de ustedes recuerda todo. El otro es caótico. Olive cierra la brecha.",
+      "feature1": "Alertas de presupuesto",
+      "feature2": "Recuerdo de vacaciones",
+      "feature3": "Monitoreo de regalos"
     },
-    "scattered": {
-      "title": "El Caos Disperso",
-      "description": "Capturas en WhatsApp, notas en Apple Notes, eventos en G-Cal. Estás en todas partes y en ninguna."
-    },
-    "mentalLoad": {
-      "title": "La Carga Mental",
-      "description": "Una persona siempre termina cargando con el peso de recordar. Es agotador."
+    "cofounders": {
+      "headline": "Un Cerebro Compartido para tu Startup.",
+      "painPoint": "Slack es muy ruidoso. Notion es muy lento. Obtén un canal privado de alta velocidad para tomar decisiones.",
+      "feature1": "Escaneo de recibos",
+      "feature2": "Recuerdo de reuniones",
+      "feature3": "Registro de decisiones"
     }
   },
-  "valueStack": {
-    "headline": "La Solución",
-    "subheadline": "Olive toma el caos y lo convierte en claridad.",
-    "brainDump": {
-      "title": "Solo dilo. Olive lo organiza.",
-      "description": "No llenes formularios. Solo suelta tus pensamientos en bruto, y la IA de Olive extrae la fecha, hora y tema automáticamente."
+  "superpowers": {
+    "eyebrow": "Superpoderes",
+    "headline": "No son funciones. Son superpoderes.",
+    "subheadline": "Olive no solo almacena información. La entiende.",
+    "receipt": {
+      "title": "El Cazador de Recibos Contextual",
+      "description": "No solo guardes recibos. Olive los lee, los categoriza y te avisa si estás excediendo el presupuesto. Sin entrada manual."
     },
-    "whatsapp": {
-      "title": "WhatsApp es Tu Centro de Comando.",
-      "description": "Escribe a Olive mientras estás fuera. Actualiza tu lista compartida al instante. Sin abrir la app."
+    "memory": {
+      "title": "La Bóveda de Memoria",
+      "description": "Olive recuerda hechos y sentimientos. Recuerda no solo dónde fueron, sino qué pensaron al respecto."
     },
-    "sharedReality": {
-      "title": "Una Realidad Compartida.",
-      "description": "Tu calendario y tareas en una sola vista. Ve exactamente qué está haciendo tu pareja (y cuándo está ocupado/a)."
+    "wishlist": {
+      "title": "El Monitor Silencioso de Lista de Deseos",
+      "description": "Nunca pierdas un cumpleaños. Olive observa los enlaces que guarda tu pareja y te avisa cuando bajan los precios."
     }
   },
-  "socialProof": {
-    "headline": "Muro del Amor",
-    "subheadline": "Mira lo que dicen las parejas sobre Olive.",
-    "testimonials": [
+  "whatsappFirst": {
+    "headline": "Funciona donde ya vives.",
+    "description": "Sin nuevas apps que aprender. Solo reenvía una nota de voz, una foto o un enlace a Olive en WhatsApp. Ella se encarga de archivarlo.",
+    "comingSoon": "Próximamente",
+    "features": {
+      "voiceNotes": "🎙️ Notas de voz",
+      "photos": "📷 Fotos y recibos",
+      "links": "🔗 Enlaces",
+      "text": "💬 Mensajes de texto"
+    }
+  },
+  "testimonials": {
+    "eyebrow": "Beta Testers",
+    "headline": "De parejas que lo han probado.",
+    "items": [
       {
-        "quote": "Por fin dejamos de discutir por la compra.",
-        "author": "Sara & Miguel"
+        "quote": "Mi esposo envía 10 notas de voz al día. Olive las captura todas para que yo no tenga que ser su secretaria.",
+        "author": "Sara",
+        "role": "Beta User"
       },
       {
-        "quote": "Es como haber contratado un asistente personal.",
-        "author": "David L."
+        "quote": "Levantamos nuestra ronda semilla mientras manejábamos un millón de recibos. Olive nos ahorró horas cada semana.",
+        "author": "Marcos & Jenna",
+        "role": "Co-Fundadores"
       },
       {
-        "quote": "La integración con WhatsApp es revolucionaria.",
-        "author": "Elena R."
-      },
-      {
-        "quote": "Ahora estamos realmente en la misma página. Literalmente.",
-        "author": "Jaime & Priya"
-      },
-      {
-        "quote": "La mejor decisión para nuestra relación este año.",
-        "author": "Michelle T."
-      },
-      {
-        "quote": "No más momentos de 'Pensé que lo hacías tú'.",
-        "author": "Carlos & Ana"
+        "quote": "Finalmente dejamos de pelear sobre quién olvidó qué. Olive es la tercera parte neutral que necesitábamos.",
+        "author": "David",
+        "role": "Beta User"
       }
     ]
   },
-  "transformation": {
-    "headline": "La Vida Antes y Después de Olive",
-    "toggleBefore": "Sin Olive",
-    "toggleAfter": "Con Olive",
-    "before": {
-      "item1": "Mensajes enterrados en chats interminables",
-      "item2": "Olvidaste vuestro aniversario (otra vez)",
-      "item3": "'¿Pensé que lo hacías tú?'",
-      "item4": "Una persona carga con toda la carga mental"
+  "pricing": {
+    "headline": "Precios simples y transparentes.",
+    "subheadline": "Empieza gratis. Mejora cuando estés listo.",
+    "mostPopular": "Más Popular",
+    "trustNote": "Cancela cuando quieras. Sin tarjeta de crédito para el plan gratuito.",
+    "free": {
+      "name": "Gratis",
+      "tagline": "Para sincronización casual",
+      "period": "para siempre",
+      "feature1": "Listas compartidas básicas",
+      "feature2": "5 notas de voz/mes",
+      "feature3": "Integración WhatsApp",
+      "cta": "Empezar"
     },
-    "after": {
-      "item1": "Una lista compartida, siempre sincronizada",
-      "item2": "Recordatorios automáticos antes de cada fecha importante",
-      "item3": "'Ya está hecho.' 😎",
-      "item4": "Visibilidad y responsabilidad equitativas"
+    "power": {
+      "name": "Power Pair",
+      "tagline": "Para parejas",
+      "period": "mes",
+      "feature1": "Notas de voz ilimitadas",
+      "feature2": "Escaneo de recibos y presupuestos",
+      "feature3": "Acceso a la Bóveda de Memoria",
+      "feature4": "Soporte prioritario",
+      "cta": "Iniciar Prueba Gratis"
     },
-    "tagBefore": "Caótico y Estresante",
-    "tagAfter": "Calma y Conexión"
+    "cofounder": {
+      "name": "Co-Founder OS",
+      "tagline": "Para socios comerciales",
+      "period": "mes",
+      "feature1": "Todo en Power Pair",
+      "feature2": "Modo contexto empresarial",
+      "feature3": "Exportación a CSV",
+      "feature4": "Registro de decisiones",
+      "feature5": "Soporte prioritario",
+      "cta": "Contactar Ventas"
+    }
   },
-  "secondaryCta": {
-    "headline": "¿Listos para aligerar la carga?",
-    "description": "Únete a miles de parejas que cambiaron el caos por la claridad.",
-    "cta": "Crea Vuestro Espacio Compartido",
-    "riskReversal": "Gratis para siempre en funciones básicas. Sin tarjeta de crédito."
+  "footerCta": {
+    "headline": "Tu relación es demasiado importante para estar desorganizada.",
+    "subheadline": "Únete a miles de parejas que cambiaron el caos por la claridad.",
+    "cta": "Contrata a Olive Hoy",
+    "trustNote": "Gratis para empezar. Sin tarjeta de crédito requerida."
   },
   "footer": {
+    "pricing": "Precios",
     "login": "Iniciar Sesión",
     "privacy": "Política de Privacidad",
     "terms": "Términos de Servicio",

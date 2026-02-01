@@ -1,98 +1,129 @@
 {
+  "nav": {
+    "pricing": "Pricing",
+    "login": "Login",
+    "cta": "Start Syncing – Free",
+    "microCopy": "No app download required"
+  },
   "hero": {
-    "eyebrow": "For busy couples",
-    "headline": "Your Relationship's Third Brain.",
-    "subheadline": "Stop nagging. Stop forgetting. The AI-powered shared organizer that syncs your tasks, calendars, and mental load instantly.",
-    "cta": "Start Organizing Together – Free",
-    "trustSignal": "Trusted by 2,000+ couples"
+    "eyebrow": "AI Intermediary for Partners",
+    "headline": "The AI Chief of Staff for Dynamic Duos.",
+    "subheadline": "Stop nagging. Stop forgetting. Olive listens to your WhatsApp voice notes, receipts, and links, and organizes them instantly. Perfect for Couples and Co-Founders.",
+    "ctaPrimary": "Try with your Partner",
+    "ctaSecondary": "View the Demo",
+    "trustSignal": "Trusted by 500+ beta partners"
   },
-  "problems": {
-    "headline": "Why is it so hard to stay on the same page?",
-    "nagging": {
-      "title": "The Nagging Loop",
-      "description": "Asking 'Did you call the plumber?' for the 5th time creates tension, not teamwork."
+  "chooseMode": {
+    "headline": "How do you partner?",
+    "subheadline": "Olive adapts to your relationship style.",
+    "couples": {
+      "headline": "End the 'Mental Load' Imbalance.",
+      "painPoint": "One of you remembers everything. The other is chaotic. Olive bridges the gap.",
+      "feature1": "Budget alerts",
+      "feature2": "Vacation memory recall",
+      "feature3": "Gift monitoring"
     },
-    "scattered": {
-      "title": "The Scattered Mess",
-      "description": "Screenshots in WhatsApp, notes in Apple Notes, events in G-Cal. You're everywhere and nowhere."
-    },
-    "mentalLoad": {
-      "title": "The Mental Load",
-      "description": "One person always ends up carrying the burden of remembering. It's exhausting."
+    "cofounders": {
+      "headline": "A Shared Brain for your Startup.",
+      "painPoint": "Slack is too noisy. Notion is too slow. Get a private, high-speed channel for decision-making.",
+      "feature1": "Receipt scanning",
+      "feature2": "Meeting recall",
+      "feature3": "Decision logging"
     }
   },
-  "valueStack": {
-    "headline": "The Solution",
-    "subheadline": "Olive takes the chaos and turns it into clarity.",
-    "brainDump": {
-      "title": "Just Say It. Olive Sorts It.",
-      "description": "Don't fill out forms. Just dump your raw thoughts, and Olive's AI extracts the date, time, and topic automatically."
+  "superpowers": {
+    "eyebrow": "Superpowers",
+    "headline": "Not features. Superpowers.",
+    "subheadline": "Olive doesn't just store information. She understands it.",
+    "receipt": {
+      "title": "The Context-Aware Receipt Hunter",
+      "description": "Don't just save receipts. Olive reads them, categorizes them, and warns you if you're blowing the budget. No manual entry."
     },
-    "whatsapp": {
-      "title": "WhatsApp is Your Command Center.",
-      "description": "Text Olive while you're out. It instantly updates your shared list. No app opening required."
+    "memory": {
+      "title": "The Memory Vault",
+      "description": "Olive remembers facts and feelings. She recalls not just where you went, but what you thought about it."
     },
-    "sharedReality": {
-      "title": "One Shared Reality.",
-      "description": "Your calendar and to-dos in one view. See exactly what your partner is up to (and when they're busy)."
+    "wishlist": {
+      "title": "The Silent Wishlist Monitor",
+      "description": "Never miss a birthday. Olive watches the links your partner saves and nudges you when prices drop."
     }
   },
-  "socialProof": {
-    "headline": "Wall of Love",
-    "subheadline": "See what couples are saying about Olive.",
-    "testimonials": [
+  "whatsappFirst": {
+    "headline": "Works where you already live.",
+    "description": "No new apps to learn. Just forward a voice note, a photo, or a link to Olive on WhatsApp. She handles the filing.",
+    "comingSoon": "Coming soon",
+    "features": {
+      "voiceNotes": "🎙️ Voice notes",
+      "photos": "📷 Photos & receipts",
+      "links": "🔗 Links",
+      "text": "💬 Text messages"
+    }
+  },
+  "testimonials": {
+    "eyebrow": "Beta Testers",
+    "headline": "From couples who've tried it.",
+    "items": [
       {
-        "quote": "Finally stopped fighting about groceries.",
-        "author": "Sarah & Mike"
+        "quote": "My husband sends 10 voice notes a day. Olive catches them all so I don't have to be his secretary.",
+        "author": "Sarah",
+        "role": "Beta User"
       },
       {
-        "quote": "It feels like we hired a personal assistant.",
-        "author": "David L."
+        "quote": "We raised our seed round while juggling a million receipts. Olive saved us hours every week.",
+        "author": "Marcus & Jen",
+        "role": "Co-Founders"
       },
       {
-        "quote": "The WhatsApp integration is a game changer.",
-        "author": "Elena R."
-      },
-      {
-        "quote": "We're actually on the same page now. Literally.",
-        "author": "James & Priya"
-      },
-      {
-        "quote": "Best decision we made for our relationship this year.",
-        "author": "Michelle T."
-      },
-      {
-        "quote": "No more 'I thought you were doing that' moments.",
-        "author": "Carlos & Ana"
+        "quote": "Finally stopped fighting about who forgot what. Olive is the neutral third party we needed.",
+        "author": "David",
+        "role": "Beta User"
       }
     ]
   },
-  "transformation": {
-    "headline": "Life Before and After Olive",
-    "toggleBefore": "Without Olive",
-    "toggleAfter": "With Olive",
-    "before": {
-      "item1": "Text messages buried in endless chats",
-      "item2": "Forgot your anniversary (again)",
-      "item3": "'I thought you were doing that?'",
-      "item4": "One person carries all the mental load"
+  "pricing": {
+    "headline": "Simple, transparent pricing.",
+    "subheadline": "Start free. Upgrade when you're ready.",
+    "mostPopular": "Most Popular",
+    "trustNote": "Cancel anytime. No credit card required for free tier.",
+    "free": {
+      "name": "Free",
+      "tagline": "For casual syncing",
+      "period": "forever",
+      "feature1": "Basic shared lists",
+      "feature2": "5 voice notes/month",
+      "feature3": "WhatsApp integration",
+      "cta": "Get Started"
     },
-    "after": {
-      "item1": "One shared list, always in sync",
-      "item2": "Automated reminders before every important date",
-      "item3": "'Already done.' 😎",
-      "item4": "Equal visibility and ownership of tasks"
+    "power": {
+      "name": "Power Pair",
+      "tagline": "For couples",
+      "period": "month",
+      "feature1": "Unlimited voice notes",
+      "feature2": "Receipt scanning & budgets",
+      "feature3": "Memory Vault access",
+      "feature4": "Priority support",
+      "cta": "Start Free Trial"
     },
-    "tagBefore": "Chaotic & Stressful",
-    "tagAfter": "Calm & Connected"
+    "cofounder": {
+      "name": "Co-Founder OS",
+      "tagline": "For business partners",
+      "period": "month",
+      "feature1": "Everything in Power Pair",
+      "feature2": "Business context mode",
+      "feature3": "Export to CSV",
+      "feature4": "Decision logging",
+      "feature5": "Priority support",
+      "cta": "Contact Sales"
+    }
   },
-  "secondaryCta": {
-    "headline": "Ready to lighten the load?",
-    "description": "Join thousands of couples who've traded chaos for clarity.",
-    "cta": "Create Your Shared Space",
-    "riskReversal": "Free forever for core features. No credit card required."
+  "footerCta": {
+    "headline": "Your relationship is too important to be disorganized.",
+    "subheadline": "Join thousands of partners who've traded chaos for clarity.",
+    "cta": "Hire Olive Today",
+    "trustNote": "Free to start. No credit card required."
   },
   "footer": {
+    "pricing": "Pricing",
     "login": "Login",
     "privacy": "Privacy Policy",
     "terms": "Terms of Service",
