@@ -55,7 +55,10 @@ const Home = () => {
   // Onboarding tooltip for Brain Dump feature
   const brainDumpOnboarding = useOnboardingTooltip('brain_dump_feature');
 
-  const userName = isAuthenticated ? (user?.firstName || user?.fullName || you || "there") : "there";
+  // Get user's display name - prioritize full first name over initials
+  const userName = isAuthenticated 
+    ? (user?.firstName || you || user?.fullName?.split(' ')[0] || "there") 
+    : "there";
 
   // Apply filters to notes
   const filteredNotes = useMemo(() => {

@@ -1,32 +1,392 @@
-import { SignUp } from "@clerk/clerk-react";
+import { useSignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { useTranslation } from "react-i18next";
 import { useSEO } from "@/hooks/useSEO";
 import { Card } from "@/components/ui/card";
 import { OliveLogo } from "@/components/OliveLogo";
 import { LegalConsentText } from "@/components/LegalConsentText";
 import { useSearchParams } from "react-router-dom";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2, User, Mail, KeyRound, ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+
+type Step = "name" | "email" | "verify";
 
 const SignUpPage = () => {
   const { t } = useTranslation('auth');
   const [searchParams] = useSearchParams();
-  const redirectUrl = searchParams.get("redirect") || "/";
+  const redirectUrl = searchParams.get("redirect") || "/onboarding";
+  const navigate = useLocalizedNavigate();
+  const { signUp, isLoaded, setActive } = useSignUp();
+  const { isSignedIn } = useClerkAuth();
+  
+  const [step, setStep] = useState<Step>("name");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   
   useSEO({ title: `${t('signUp.title')} — Olive`, description: t('signUp.description') });
+
+  // Redirect if already signed in
+  useEffect(() => {
+    if (isSignedIn) {
+      navigate(redirectUrl, { replace: true });
+    }
+  }, [isSignedIn, navigate, redirectUrl]);
+
+  const handleNameSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!firstName.trim()) {
+      toast.error(t('signUp.nameRequired', 'Please enter your first name'));
+      return;
+    }
+    setStep("email");
+  };
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isLoaded || !signUp) return;
+
+    setIsLoading(true);
+    try {
+      // Create the sign-up with email code strategy
+      await signUp.create({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        emailAddress: email,
+      });
+
+      // Prepare email verification
+      await signUp.prepareEmailAddressVerification({
+        strategy: "email_code",
+      });
+      
+      setStep("verify");
+      toast.success(t('signUp.codeSent', 'Verification code sent to your email!'));
+    } catch (err: any) {
+      console.error('[SignUp] Error:', err);
+      const errorMessage = err?.errors?.[0]?.longMessage || err?.message || t('signUp.errorSendingCode', 'Failed to send verification code');
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isLoaded || !signUp) return;
+
+    setIsLoading(true);
+    try {
+      const result = await signUp.attemptEmailAddressVerification({
+        code,
+      });
+
+      if (result.status === "complete") {
+        await setActive({ session: result.createdSessionId });
+        toast.success(t('signUp.accountCreated', 'Account created successfully!'));
+        navigate(redirectUrl);
+      } else {
+        console.log('[SignUp] Sign up not complete:', result);
+        toast.error(t('signUp.verificationIncomplete', 'Verification incomplete. Please try again.'));
+      }
+    } catch (err: any) {
+      console.error('[SignUp] Error verifying code:', err);
+      const errorMessage = err?.errors?.[0]?.longMessage || err?.message || t('signUp.invalidCode', 'Invalid verification code');
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (!isLoaded || !signUp) return;
+
+    setIsLoading(true);
+    try {
+      await signUp.prepareEmailAddressVerification({
+        strategy: "email_code",
+      });
+      toast.success(t('signUp.codeResent', 'New code sent!'));
+    } catch (err: any) {
+      console.error('[SignUp] Error resending code:', err);
+      toast.error(t('signUp.errorResendingCode', 'Failed to resend code'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleBack = () => {
+    if (step === "email") {
+      setStep("name");
+    } else if (step === "verify") {
+      setStep("email");
+      setCode("");
+    }
+  };
+
+  if (!isLoaded) {
+    return (
+      <main className="min-h-screen bg-gradient-soft flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </main>
+    );
+  }
+
+  const steps: Step[] = ["name", "email", "verify"];
+  const currentStepIndex = steps.indexOf(step);
 
   return (
     <main className="min-h-screen bg-gradient-soft">
       <section className="mx-auto max-w-md px-4 py-10">
+        {/* Logo */}
         <div className="mb-6 flex justify-center">
           <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-olive/10 shadow-soft border border-olive/20">
             <OliveLogo size={32} />
           </div>
         </div>
         
-        <h1 className="mb-2 text-center text-3xl font-bold text-olive-dark">{t('signUp.title')}</h1>
-        <p className="mb-6 text-center text-muted-foreground">{t('signUp.description')}</p>
+        <h1 className="mb-2 text-center text-3xl font-bold text-foreground">{t('signUp.title')}</h1>
+        <p className="mb-4 text-center text-muted-foreground">{t('signUp.description')}</p>
+
+        {/* Progress Steps */}
+        <div className="flex items-center justify-center gap-2 mb-6">
+          {steps.map((s, i) => (
+            <div key={s} className="flex items-center">
+              <div className={cn(
+                "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all",
+                i < currentStepIndex 
+                  ? "bg-primary text-primary-foreground" 
+                  : i === currentStepIndex 
+                    ? "bg-primary text-primary-foreground ring-4 ring-primary/20" 
+                    : "bg-muted text-muted-foreground"
+              )}>
+                {i < currentStepIndex ? <Check className="h-4 w-4" /> : i + 1}
+              </div>
+              {i < steps.length - 1 && (
+                <div className={cn(
+                  "w-8 h-0.5 mx-1",
+                  i < currentStepIndex ? "bg-primary" : "bg-muted"
+                )} />
+              )}
+            </div>
+          ))}
+        </div>
         
-        <Card className="p-4 bg-white/50 border-olive/20 shadow-soft">
-          <SignUp fallbackRedirectUrl={redirectUrl} />
+        <Card className="p-6 bg-white/50 border-olive/20 shadow-soft overflow-hidden">
+          <AnimatePresence mode="wait">
+            {step === "name" && (
+              <motion.form
+                key="name"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2 }}
+                onSubmit={handleNameSubmit}
+                className="space-y-4"
+              >
+                <div className="text-center py-2">
+                  <User className="h-10 w-10 text-primary mx-auto mb-2" />
+                  <h2 className="text-lg font-semibold">{t('signUp.whatsYourName', "What's your name?")}</h2>
+                  <p className="text-sm text-muted-foreground">{t('signUp.nameHint', "So we can personalize your experience")}</p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">{t('signUp.firstName', 'First name')}</Label>
+                    <Input
+                      id="firstName"
+                      type="text"
+                      placeholder={t('signUp.firstNamePlaceholder', 'Your first name')}
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      required
+                      autoComplete="given-name"
+                      autoFocus
+                      className="bg-background text-base"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">{t('signUp.lastName', 'Last name')} <span className="text-muted-foreground">({t('signUp.optional', 'optional')})</span></Label>
+                    <Input
+                      id="lastName"
+                      type="text"
+                      placeholder={t('signUp.lastNamePlaceholder', 'Your last name')}
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      autoComplete="family-name"
+                      className="bg-background text-base"
+                    />
+                  </div>
+                </div>
+                
+                <Button 
+                  type="submit" 
+                  className="w-full bg-gradient-olive hover:bg-olive text-white shadow-olive"
+                  disabled={!firstName.trim()}
+                >
+                  {t('signUp.continue', 'Continue')}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+
+                <p className="text-center text-sm text-muted-foreground">
+                  {t('signUp.hasAccount', "Already have an account?")}{' '}
+                  <button 
+                    type="button"
+                    onClick={() => navigate('/sign-in')}
+                    className="text-primary hover:underline font-medium"
+                  >
+                    {t('signUp.signInLink', 'Sign in')}
+                  </button>
+                </p>
+              </motion.form>
+            )}
+
+            {step === "email" && (
+              <motion.form
+                key="email"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2 }}
+                onSubmit={handleEmailSubmit}
+                className="space-y-4"
+              >
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  {t('signUp.back', 'Back')}
+                </button>
+
+                <div className="text-center py-2">
+                  <Mail className="h-10 w-10 text-primary mx-auto mb-2" />
+                  <h2 className="text-lg font-semibold">{t('signUp.whatsYourEmail', "What's your email?")}</h2>
+                  <p className="text-sm text-muted-foreground">{t('signUp.emailHint', "We'll send you a verification code")}</p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="email">{t('signUp.emailLabel', 'Email address')}</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder={t('signUp.emailPlaceholder', 'you@example.com')}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    autoComplete="email"
+                    autoFocus
+                    className="bg-background text-base"
+                  />
+                </div>
+                
+                <Button 
+                  type="submit" 
+                  className="w-full bg-gradient-olive hover:bg-olive text-white shadow-olive"
+                  disabled={isLoading || !email}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {t('signUp.sendingCode', 'Sending code...')}
+                    </>
+                  ) : (
+                    <>
+                      {t('signUp.sendCode', 'Send verification code')}
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </motion.form>
+            )}
+
+            {step === "verify" && (
+              <motion.form
+                key="verify"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2 }}
+                onSubmit={handleVerifyCode}
+                className="space-y-4"
+              >
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  {t('signUp.back', 'Back')}
+                </button>
+
+                <div className="text-center py-2">
+                  <KeyRound className="h-10 w-10 text-primary mx-auto mb-2" />
+                  <h2 className="text-lg font-semibold">{t('signUp.checkYourEmail', 'Check your email')}</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {t('signUp.codeSentTo', 'We sent a code to')}
+                  </p>
+                  <p className="font-medium text-foreground">{email}</p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="code">{t('signUp.codeLabel', 'Verification code')}</Label>
+                  <Input
+                    id="code"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder={t('signUp.codePlaceholder', 'Enter 6-digit code')}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    required
+                    autoComplete="one-time-code"
+                    autoFocus
+                    className="bg-background text-center text-lg tracking-widest"
+                    maxLength={6}
+                  />
+                </div>
+                
+                <Button 
+                  type="submit" 
+                  className="w-full bg-gradient-olive hover:bg-olive text-white shadow-olive"
+                  disabled={isLoading || code.length < 6}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {t('signUp.verifying', 'Creating account...')}
+                    </>
+                  ) : (
+                    <>
+                      <Check className="mr-2 h-4 w-4" />
+                      {t('signUp.createAccount', 'Create my account')}
+                    </>
+                  )}
+                </Button>
+                
+                <p className="text-center text-sm text-muted-foreground">
+                  {t('signUp.didntReceive', "Didn't receive the code?")}{' '}
+                  <button 
+                    type="button"
+                    onClick={handleResendCode}
+                    disabled={isLoading}
+                    className="text-primary hover:underline font-medium disabled:opacity-50"
+                  >
+                    {t('signUp.resend', 'Resend')}
+                  </button>
+                </p>
+              </motion.form>
+            )}
+          </AnimatePresence>
+          
           <LegalConsentText className="mt-4 px-2" />
         </Card>
       </section>

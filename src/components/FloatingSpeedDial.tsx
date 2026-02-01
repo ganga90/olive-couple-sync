@@ -56,7 +56,8 @@ export const FloatingSpeedDial: React.FC = () => {
   return (
     <>
       {/* Speed Dial Container */}
-      <div className="fixed bottom-28 right-6 z-40 flex flex-col-reverse items-center gap-3 md:bottom-8">
+      {/* Speed Dial Container - higher z-index and bottom position to clear mobile tab bar */}
+      <div className="fixed bottom-36 right-6 z-[60] flex flex-col-reverse items-center gap-3 md:bottom-8">
         {/* Expanded Options */}
         <AnimatePresence>
           {isExpanded && (

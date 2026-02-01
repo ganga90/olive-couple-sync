@@ -67,7 +67,7 @@ export const LandingHero = () => {
         >
           <Button 
             size="xl" 
-            onClick={() => navigate(getLocalizedPath("/sign-up"))}
+            onClick={() => navigate(getLocalizedPath("/auth"))}
             className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg text-lg px-10 py-7 rounded-full"
           >
             {t('hero.cta')}
