@@ -14,7 +14,18 @@ const corsHeaders = {
 // CREATE: Everything else (default)
 // ============================================================================
 
-type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT'; isUrgent?: boolean; cleanMessage?: string };
+type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'TASK_ACTION'; isUrgent?: boolean; cleanMessage?: string };
+
+// Task action types for management commands
+type TaskActionType = 
+  | 'complete'      // "done with X", "mark X complete"
+  | 'set_priority'  // "make X urgent", "prioritize X"
+  | 'set_due'       // "X is due tomorrow"
+  | 'assign'        // "assign X to partner"
+  | 'edit'          // "change X to Y", "rename X"
+  | 'delete'        // "delete X", "remove X"
+  | 'move'          // "move X to groceries list"
+  | 'remind';       // "remind me about X tomorrow"
 
 type QueryType = 'urgent' | 'today' | 'recent' | 'overdue' | 'general' | null;
 
@@ -128,7 +139,7 @@ function detectChatType(message: string): ChatType {
   return 'general';
 }
 
-function determineIntent(message: string, hasMedia: boolean): IntentResult & { queryType?: QueryType; chatType?: ChatType } {
+function determineIntent(message: string, hasMedia: boolean): IntentResult & { queryType?: QueryType; chatType?: ChatType; actionType?: TaskActionType; actionTarget?: string } {
   const trimmed = message.trim();
   const normalized = normalizeText(trimmed);
   const lower = normalized.toLowerCase();
@@ -161,10 +172,86 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'MERGE' };
   }
   
-  const isQuestion = lower.endsWith('?') || /^(what|where|when|who|how|why|can|do|does|is|are|which)\b/i.test(lower);
+  const isQuestion = lower.endsWith('?') || /^(what|where|when|who|how|why|can|do|does|is|are|which|any|recommend|suggest)\b/i.test(lower);
   
   // ============================================================================
-  // CONTEXTUAL SEARCH PATTERNS
+  // TASK ACTION PATTERNS - Edit, complete, prioritize, assign
+  // ============================================================================
+  
+  // Complete/Done patterns
+  const completeMatch = lower.match(/^(?:done|complete|completed|finished|mark(?:ed)?\s+(?:as\s+)?(?:done|complete)|checked? off)\s*(?:with\s+)?(?:the\s+)?(.+)?$/i);
+  if (completeMatch) {
+    console.log('[Intent Detection] Matched: complete action');
+    return { intent: 'TASK_ACTION', actionType: 'complete', actionTarget: completeMatch[1]?.trim() };
+  }
+  
+  // Priority patterns
+  const priorityMatch = lower.match(/^(?:make|set|mark)\s+(.+?)\s+(?:as\s+)?(?:urgent|high\s*(?:priority)?|important|priority|low\s*(?:priority)?)/i) ||
+                        lower.match(/^(?:prioritize|urgent)\s+(.+)/i);
+  if (priorityMatch) {
+    console.log('[Intent Detection] Matched: set priority action');
+    return { intent: 'TASK_ACTION', actionType: 'set_priority', actionTarget: priorityMatch[1]?.trim() };
+  }
+  
+  // Due date patterns
+  const dueMatch = lower.match(/^(?:set|make|move)?\s*(.+?)\s+(?:is\s+)?(?:due|for)\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+week|\d+.+)/i);
+  if (dueMatch) {
+    console.log('[Intent Detection] Matched: set due date action');
+    return { intent: 'TASK_ACTION', actionType: 'set_due', actionTarget: dueMatch[1]?.trim(), cleanMessage: dueMatch[2] };
+  }
+  
+  // Assign patterns
+  const assignMatch = lower.match(/^(?:assign|give)\s+(.+?)\s+to\s+(partner|.+)/i);
+  if (assignMatch) {
+    console.log('[Intent Detection] Matched: assign action');
+    return { intent: 'TASK_ACTION', actionType: 'assign', actionTarget: assignMatch[1]?.trim(), cleanMessage: assignMatch[2] };
+  }
+  
+  // Delete patterns
+  const deleteMatch = lower.match(/^(?:delete|remove|cancel)\s+(?:the\s+)?(?:task\s+)?(.+)/i);
+  if (deleteMatch) {
+    console.log('[Intent Detection] Matched: delete action');
+    return { intent: 'TASK_ACTION', actionType: 'delete', actionTarget: deleteMatch[1]?.trim() };
+  }
+  
+  // Move to list patterns
+  const moveMatch = lower.match(/^(?:move|add)\s+(.+?)\s+to\s+(.+?)(?:\s+list)?$/i);
+  if (moveMatch) {
+    console.log('[Intent Detection] Matched: move action');
+    return { intent: 'TASK_ACTION', actionType: 'move', actionTarget: moveMatch[1]?.trim(), cleanMessage: moveMatch[2] };
+  }
+  
+  // Remind patterns
+  const remindMatch = lower.match(/^(?:remind\s+(?:me|us)\s+(?:about\s+)?|set\s+(?:a\s+)?reminder\s+(?:for\s+)?)(.+)/i);
+  if (remindMatch) {
+    console.log('[Intent Detection] Matched: remind action');
+    return { intent: 'TASK_ACTION', actionType: 'remind', actionTarget: remindMatch[1]?.trim() };
+  }
+  
+  // ============================================================================
+  // CONTEXTUAL SEARCH PATTERNS - Semantic questions needing AI understanding
+  // ============================================================================
+  
+  // These are questions that ask for recommendations or search within their data semantically
+  const contextualPatterns = [
+    /\b(?:any|good|best|recommend|suggest|ideas?\s+for|options?\s+for)\b.*\b(?:in\s+my|from\s+my|saved)\b/i,
+    /\bwhat\s+(?:books?|restaurants?|movies?|shows?|recipes?|ideas?|places?|items?)\s+(?:do\s+i|did\s+i|have\s+i)\s+(?:have|save)/i,
+    /\bwhat(?:'s|s)?\s+(?:in\s+my|on\s+my)\b.*\b(?:list|saved|wishlist|reading|watch|bucket)/i,
+    /\b(?:find|search|look)\s+(?:for\s+)?(?:something|anything)\b.*\b(?:in\s+my|from\s+my)\b/i,
+    /\b(?:recommend|suggest)\s+(?:something|anything|a)\b.*\b(?:from|based on|in)\s+my\b/i,
+    /\b(?:help\s+me\s+(?:find|pick|choose))\b.*\b(?:from\s+my|in\s+my)\b/i,
+    /\bdo\s+i\s+have\s+(?:any|a)\b.*\b(?:saved|in\s+my\s+list)/i,
+    /\b(?:what|which)\s+(?:restaurant|book|movie|place|idea)\s+(?:should|would)\s+(?:i|we)\b/i,
+    /\bany\s+(?:restaurants?|books?|movies?|ideas?|recommendations?|suggestions?|places?|recipes?)\b.*(?:for|about|from)\b/i,
+  ];
+  
+  if (contextualPatterns.some(p => p.test(lower)) && isQuestion) {
+    console.log('[Intent Detection] Matched: CONTEXTUAL_ASK (semantic question about saved items)');
+    return { intent: 'CONTEXTUAL_ASK', cleanMessage: normalized };
+  }
+  
+  // ============================================================================
+  // SIMPLE SEARCH PATTERNS - Listing items without semantic understanding
   // ============================================================================
   
   if (/what'?s?\s+(is\s+)?urgent/i.test(lower) || 
@@ -210,14 +297,34 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
-  const searchStarters = ['show', 'find', 'list', 'search', 'get'];
+  // Simple list display commands
+  const searchStarters = ['show', 'list', 'get'];
   if (searchStarters.some(s => lower.startsWith(s + ' ') || lower === s)) {
     console.log('[Intent Detection] Matched: search starter keyword');
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
-  if (/\bmy\s+(tasks?|list|lists?|reminders?|items?|to-?do)\b/i.test(lower)) {
-    console.log('[Intent Detection] Matched: my tasks/list/reminders pattern');
+  // "Find" with specific list names = SEARCH, but "find me something" = CONTEXTUAL_ASK
+  if (/^find\s+(?:my\s+)?(\w+)\s+(?:list|tasks?)$/i.test(lower)) {
+    console.log('[Intent Detection] Matched: find specific list pattern');
+    return { intent: 'SEARCH', queryType: 'general' };
+  }
+  
+  // "Search" command for specific items
+  if (/^search\s+/i.test(lower)) {
+    console.log('[Intent Detection] Matched: search command -> CONTEXTUAL_ASK');
+    return { intent: 'CONTEXTUAL_ASK', cleanMessage: normalized };
+  }
+  
+  // Simple "my tasks/list" queries
+  if (/^(?:show\s+)?my\s+(tasks?|list|lists?|reminders?|items?|to-?do)$/i.test(lower)) {
+    console.log('[Intent Detection] Matched: show my tasks pattern');
+    return { intent: 'SEARCH', queryType: 'general' };
+  }
+  
+  // Specific list requests (show my groceries list)
+  if (/^(?:show|display|what'?s\s+(?:in|on))\s+(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:list|tasks?)$/i.test(lower)) {
+    console.log('[Intent Detection] Matched: specific list request');
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
@@ -231,6 +338,11 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
   // ============================================================================
   if (isQuestion && !hasMedia) {
     const chatType = detectChatType(normalized);
+    // If it's a general question, route to CONTEXTUAL_ASK for richer handling
+    if (chatType === 'general') {
+      console.log('[Intent Detection] General question -> CONTEXTUAL_ASK');
+      return { intent: 'CONTEXTUAL_ASK', cleanMessage: normalized };
+    }
     console.log('[Intent Detection] Matched: CHAT intent, type:', chatType);
     return { intent: 'CHAT', cleanMessage: normalized, chatType };
   }
@@ -1437,6 +1549,451 @@ serve(async (req) => {
         createTwimlResponse(summary),
         { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
       );
+    }
+
+    // ========================================================================
+    // TASK ACTION HANDLER - Edit, complete, prioritize, assign, etc.
+    // ========================================================================
+    if (intent === 'TASK_ACTION') {
+      const actionType = (intentResult as any).actionType as TaskActionType;
+      const actionTarget = (intentResult as any).actionTarget as string;
+      console.log('[WhatsApp] Processing TASK_ACTION:', actionType, 'target:', actionTarget);
+      
+      if (!actionTarget) {
+        return new Response(
+          createTwimlResponse('I need to know which task you want to modify. Try "done with buy milk" or "make groceries urgent".'),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+      
+      // Extract keywords from the target to find the task
+      const keywords = actionTarget.split(/\s+/).filter(w => w.length > 2);
+      const foundTask = await searchTaskByKeywords(supabase, userId, coupleId, keywords);
+      
+      if (!foundTask) {
+        return new Response(
+          createTwimlResponse(`I couldn't find a task matching "${actionTarget}". Try "show my tasks" to see your list.`),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+      
+      switch (actionType) {
+        case 'complete': {
+          const { error } = await supabase
+            .from('clerk_notes')
+            .update({ completed: true, updated_at: new Date().toISOString() })
+            .eq('id', foundTask.id);
+          
+          if (error) {
+            return new Response(
+              createTwimlResponse('Sorry, I couldn\'t complete that task. Please try again.'),
+              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+            );
+          }
+          
+          return new Response(
+            createTwimlResponse(`✅ Done! Marked "${foundTask.summary}" as complete. Great job! 🎉`),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        case 'set_priority': {
+          const msgLower = (effectiveMessage || '').toLowerCase();
+          const newPriority = msgLower.includes('low') ? 'low' : 'high';
+          const { error } = await supabase
+            .from('clerk_notes')
+            .update({ priority: newPriority, updated_at: new Date().toISOString() })
+            .eq('id', foundTask.id);
+          
+          if (error) {
+            return new Response(
+              createTwimlResponse('Sorry, I couldn\'t update the priority. Please try again.'),
+              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+            );
+          }
+          
+          const emoji = newPriority === 'high' ? '🔥' : '📌';
+          return new Response(
+            createTwimlResponse(`${emoji} Updated! "${foundTask.summary}" is now ${newPriority} priority.`),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        case 'set_due': {
+          const dateExpr = effectiveMessage || 'tomorrow';
+          const parsed = parseNaturalDate(dateExpr, profile.timezone || 'America/New_York');
+          
+          if (!parsed.date) {
+            return new Response(
+              createTwimlResponse(`I couldn't understand the date "${dateExpr}". Try "tomorrow", "monday", or "next week".`),
+              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+            );
+          }
+          
+          // Ask for confirmation
+          await supabase
+            .from('user_sessions')
+            .update({ 
+              conversation_state: 'AWAITING_CONFIRMATION', 
+              context_data: {
+                pending_action: {
+                  type: 'set_due_date',
+                  task_id: foundTask.id,
+                  task_summary: foundTask.summary,
+                  date: parsed.date,
+                  readable: parsed.readable
+                }
+              },
+              updated_at: new Date().toISOString() 
+            })
+            .eq('id', session.id);
+          
+          return new Response(
+            createTwimlResponse(`📅 Set "${foundTask.summary}" due ${parsed.readable}?\n\nReply "yes" to confirm.`),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        case 'assign': {
+          if (!coupleId) {
+            return new Response(
+              createTwimlResponse('You need to be in a shared space to assign tasks. Invite a partner from the app!'),
+              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+            );
+          }
+          
+          // Find partner
+          const { data: partnerMember } = await supabase
+            .from('clerk_couple_members')
+            .select('user_id')
+            .eq('couple_id', coupleId)
+            .neq('user_id', userId)
+            .limit(1)
+            .single();
+          
+          if (!partnerMember) {
+            return new Response(
+              createTwimlResponse('I couldn\'t find your partner. Make sure they\'ve accepted your invite!'),
+              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+            );
+          }
+          
+          // Get partner name
+          const { data: coupleData } = await supabase
+            .from('clerk_couples')
+            .select('you_name, partner_name, created_by')
+            .eq('id', coupleId)
+            .single();
+          
+          const isCreator = coupleData?.created_by === userId;
+          const partnerName = isCreator ? (coupleData?.partner_name || 'Partner') : (coupleData?.you_name || 'Partner');
+          
+          // Ask for confirmation
+          await supabase
+            .from('user_sessions')
+            .update({ 
+              conversation_state: 'AWAITING_CONFIRMATION', 
+              context_data: {
+                pending_action: {
+                  type: 'assign',
+                  task_id: foundTask.id,
+                  task_summary: foundTask.summary,
+                  target_user_id: partnerMember.user_id,
+                  target_name: partnerName
+                }
+              },
+              updated_at: new Date().toISOString() 
+            })
+            .eq('id', session.id);
+          
+          return new Response(
+            createTwimlResponse(`🤝 Assign "${foundTask.summary}" to ${partnerName}?\n\nReply "yes" to confirm.`),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        case 'delete': {
+          // Ask for confirmation
+          await supabase
+            .from('user_sessions')
+            .update({ 
+              conversation_state: 'AWAITING_CONFIRMATION', 
+              context_data: {
+                pending_action: {
+                  type: 'delete',
+                  task_id: foundTask.id,
+                  task_summary: foundTask.summary
+                }
+              },
+              updated_at: new Date().toISOString() 
+            })
+            .eq('id', session.id);
+          
+          return new Response(
+            createTwimlResponse(`🗑️ Delete "${foundTask.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        case 'move': {
+          const targetListName = effectiveMessage?.trim();
+          
+          // Find or create target list
+          const { data: existingList } = await supabase
+            .from('clerk_lists')
+            .select('id, name')
+            .ilike('name', `%${targetListName}%`)
+            .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+            .limit(1)
+            .single();
+          
+          if (existingList) {
+            const { error } = await supabase
+              .from('clerk_notes')
+              .update({ list_id: existingList.id, updated_at: new Date().toISOString() })
+              .eq('id', foundTask.id);
+            
+            if (!error) {
+              return new Response(
+                createTwimlResponse(`📂 Moved "${foundTask.summary}" to ${existingList.name}!`),
+                { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+              );
+            }
+          }
+          
+          // Create new list
+          const { data: newList, error: createError } = await supabase
+            .from('clerk_lists')
+            .insert({ 
+              name: targetListName, 
+              author_id: userId, 
+              couple_id: coupleId,
+              is_manual: true
+            })
+            .select('id, name')
+            .single();
+          
+          if (newList) {
+            await supabase
+              .from('clerk_notes')
+              .update({ list_id: newList.id, updated_at: new Date().toISOString() })
+              .eq('id', foundTask.id);
+            
+            return new Response(
+              createTwimlResponse(`📂 Created "${newList.name}" list and moved "${foundTask.summary}" there!`),
+              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+            );
+          }
+          
+          return new Response(
+            createTwimlResponse('Sorry, I couldn\'t move that task. Please try again.'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        case 'remind': {
+          const reminderExpr = actionTarget;
+          const parsed = parseNaturalDate(reminderExpr, profile.timezone || 'America/New_York');
+          
+          if (parsed.date) {
+            // Ask for confirmation
+            await supabase
+              .from('user_sessions')
+              .update({ 
+                conversation_state: 'AWAITING_CONFIRMATION', 
+                context_data: {
+                  pending_action: {
+                    type: 'set_reminder',
+                    task_id: foundTask.id,
+                    task_summary: foundTask.summary,
+                    time: parsed.date,
+                    readable: parsed.readable,
+                    has_due_date: !!foundTask.due_date
+                  }
+                },
+                updated_at: new Date().toISOString() 
+              })
+              .eq('id', session.id);
+            
+            return new Response(
+              createTwimlResponse(`⏰ Set reminder for "${foundTask.summary}" ${parsed.readable}?\n\nReply "yes" to confirm.`),
+              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+            );
+          }
+          
+          // No time specified - set for tomorrow 9am as default
+          const tomorrowReminder = new Date();
+          tomorrowReminder.setDate(tomorrowReminder.getDate() + 1);
+          tomorrowReminder.setHours(9, 0, 0, 0);
+          
+          await supabase
+            .from('user_sessions')
+            .update({ 
+              conversation_state: 'AWAITING_CONFIRMATION', 
+              context_data: {
+                pending_action: {
+                  type: 'set_reminder',
+                  task_id: foundTask.id,
+                  task_summary: foundTask.summary,
+                  time: tomorrowReminder.toISOString(),
+                  readable: 'tomorrow at 9:00 AM',
+                  has_due_date: !!foundTask.due_date
+                }
+              },
+              updated_at: new Date().toISOString() 
+            })
+            .eq('id', session.id);
+          
+          return new Response(
+            createTwimlResponse(`⏰ Set reminder for "${foundTask.summary}" tomorrow at 9:00 AM?\n\nReply "yes" to confirm.`),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        default:
+          return new Response(
+            createTwimlResponse('I didn\'t understand that action. Try "done with [task]", "make [task] urgent", or "assign [task] to partner".'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+      }
+    }
+
+    // ========================================================================
+    // CONTEXTUAL ASK HANDLER - AI-powered semantic search with saved items
+    // ========================================================================
+    if (intent === 'CONTEXTUAL_ASK') {
+      console.log('[WhatsApp] Processing CONTEXTUAL_ASK for:', effectiveMessage?.substring(0, 50));
+      
+      // Build comprehensive saved items context (like ask-olive-individual)
+      const { data: allTasks } = await supabase
+        .from('clerk_notes')
+        .select('id, summary, category, list_id, items, tags, priority, due_date, completed')
+        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      
+      const { data: lists } = await supabase
+        .from('clerk_lists')
+        .select('id, name, description')
+        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
+      
+      const { data: memories } = await supabase
+        .from('user_memories')
+        .select('title, content, category')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .limit(15);
+      
+      const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
+      
+      // Build rich saved items context
+      let savedItemsContext = '\n## USER\'S LISTS AND SAVED ITEMS:\n';
+      
+      // Group tasks by list
+      const tasksByList = new Map<string, any[]>();
+      const uncategorizedTasks: any[] = [];
+      
+      allTasks?.forEach(task => {
+        if (task.list_id && listIdToName.has(task.list_id)) {
+          const listName = listIdToName.get(task.list_id);
+          if (!tasksByList.has(listName)) {
+            tasksByList.set(listName, []);
+          }
+          tasksByList.get(listName)!.push(task);
+        } else {
+          uncategorizedTasks.push(task);
+        }
+      });
+      
+      // Format lists with their items
+      tasksByList.forEach((tasks, listName) => {
+        savedItemsContext += `\n### ${listName}:\n`;
+        tasks.slice(0, 20).forEach(task => {
+          const status = task.completed ? '✓' : '○';
+          const priority = task.priority === 'high' ? ' 🔥' : '';
+          const dueInfo = task.due_date ? ` (Due: ${new Date(task.due_date).toLocaleDateString()})` : '';
+          savedItemsContext += `- ${status} ${task.summary}${priority}${dueInfo}\n`;
+          
+          // Include sub-items if present
+          if (task.items && task.items.length > 0) {
+            task.items.slice(0, 5).forEach((item: string) => {
+              savedItemsContext += `  • ${item}\n`;
+            });
+          }
+        });
+        if (tasks.length > 20) {
+          savedItemsContext += `  ...and ${tasks.length - 20} more items\n`;
+        }
+      });
+      
+      // Add uncategorized tasks
+      if (uncategorizedTasks.length > 0) {
+        savedItemsContext += `\n### Uncategorized Tasks:\n`;
+        uncategorizedTasks.slice(0, 10).forEach(task => {
+          const status = task.completed ? '✓' : '○';
+          savedItemsContext += `- ${status} ${task.summary}\n`;
+        });
+      }
+      
+      // Add memories context
+      let memoryContext = '';
+      if (memories && memories.length > 0) {
+        memoryContext = '\n## USER MEMORIES & PREFERENCES:\n';
+        memories.forEach(m => {
+          memoryContext += `- ${m.title}: ${m.content}\n`;
+        });
+      }
+      
+      // Build the AI prompt
+      const systemPrompt = `You are Olive, a friendly and intelligent AI assistant for the Olive app. The user is asking a question about their saved items.
+
+CRITICAL INSTRUCTIONS:
+1. You MUST answer based on the user's actual saved data provided below
+2. Be specific - reference actual item names, lists, and details from their data
+3. If they ask for recommendations, ONLY suggest items from their saved lists
+4. If you can't find what they're looking for in their data, say so clearly
+5. Be concise (max 400 chars for WhatsApp) but helpful
+6. Use emojis sparingly for warmth
+
+${savedItemsContext}
+${memoryContext}
+
+USER'S QUESTION: ${effectiveMessage}
+
+Respond with helpful, specific information from their saved items. If asking for a restaurant, book, or recommendation, check their lists first!`;
+
+      try {
+        const response = await callAI(systemPrompt, effectiveMessage || '', 0.7);
+        
+        return new Response(
+          createTwimlResponse(response.slice(0, 1500)),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      } catch (error) {
+        console.error('[WhatsApp] Contextual AI error:', error);
+        
+        // Fallback: Try to find relevant items manually
+        const searchTerms = (effectiveMessage || '').toLowerCase().split(/\s+/);
+        const matchingTasks = allTasks?.filter(t => 
+          searchTerms.some(term => 
+            t.summary.toLowerCase().includes(term) || 
+            t.items?.some((i: string) => i.toLowerCase().includes(term))
+          )
+        ).slice(0, 5);
+        
+        if (matchingTasks && matchingTasks.length > 0) {
+          const results = matchingTasks.map(t => `• ${t.summary}`).join('\n');
+          return new Response(
+            createTwimlResponse(`📋 Found these matching items:\n\n${results}\n\n🔗 Manage: https://witholive.app`),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        return new Response(
+          createTwimlResponse('I couldn\'t find matching items in your lists. Try "show my tasks" to see everything.'),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
     }
 
     // ========================================================================
