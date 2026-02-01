@@ -47,16 +47,27 @@ export const PartnerAvatar: React.FC<PartnerAvatarProps> = ({
   return (
     <div className={cn("relative", className)} title={getTooltipText()}>
       <Avatar className={cn(
-        "h-8 w-8 ring-2 ring-offset-1 ring-offset-background transition-all",
-        getStatusColor()
+        // Slightly larger avatar for better visibility
+        "h-9 w-9",
+        // White border ring for premium look that pops against any background
+        "ring-2 ring-white ring-offset-2 ring-offset-background",
+        // Subtle shadow for depth
+        "shadow-sm",
+        "transition-all duration-200"
       )}>
         {imageUrl && <AvatarImage src={imageUrl} alt={name || 'Partner'} />}
-        <AvatarFallback className="text-xs bg-muted text-muted-foreground">
+        <AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">
           {getInitials(name)}
         </AvatarFallback>
       </Avatar>
+      {/* Status indicator dot */}
       {isActive && (
-        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[hsl(var(--status-active))] rounded-full border-2 border-background" />
+        <div className={cn(
+          "absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full",
+          "bg-[hsl(var(--status-active))]",
+          "border-2 border-white",
+          "shadow-sm"
+        )} />
       )}
     </div>
   );

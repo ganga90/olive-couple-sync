@@ -35,15 +35,15 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
-  
+
   const { user, loading, isAuthenticated } = useAuth();
   const { currentCouple, createCouple } = useSupabaseCouple();
   const { addNote, refetch: refetchNotes } = useSupabaseNotesContext();
   const { style: noteStyle } = useNoteStyle();
 
   // Debug authentication state in NoteInput
-  console.log('[NoteInput] Auth State:', { 
-    user: !!user, 
+  console.log('[NoteInput] Auth State:', {
+    user: !!user,
     userId: user?.id,
     loading,
     isAuthenticated,
@@ -71,17 +71,17 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    
+
     const newFiles: File[] = [];
     const newPreviews: string[] = [];
-    
+
     // Supported file types: images, audio, PDFs
     const supportedTypes = ['image/', 'audio/', 'application/pdf'];
-    
+
     for (let i = 0; i < files.length && mediaFiles.length + newFiles.length < 5; i++) {
       const file = files[i];
       const isSupported = supportedTypes.some(type => file.type.startsWith(type));
-      
+
       if (isSupported) {
         newFiles.push(file);
         if (file.type.startsWith('image/')) {
@@ -93,10 +93,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         }
       }
     }
-    
+
     setMediaFiles(prev => [...prev, ...newFiles]);
     setMediaPreviews(prev => [...prev, ...newPreviews]);
-    
+
     // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -170,7 +170,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     for (let i = 0; i < files.length && mediaFiles.length + newFiles.length < 5; i++) {
       const file = files[i];
       const isSupported = supportedTypes.some(type => file.type.startsWith(type));
-      
+
       if (isSupported) {
         newFiles.push(file);
         if (file.type.startsWith('image/')) {
@@ -187,8 +187,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       setMediaFiles(prev => [...prev, ...newFiles]);
       setMediaPreviews(prev => [...prev, ...newPreviews]);
       toast.success(
-        newFiles.length === 1 
-          ? t('brainDump.fileAdded') || 'File added' 
+        newFiles.length === 1
+          ? t('brainDump.fileAdded') || 'File added'
           : t('brainDump.filesAdded', { count: newFiles.length }) || `${newFiles.length} files added`
       );
     }
@@ -207,42 +207,42 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
 
   const uploadMediaFiles = async (): Promise<string[]> => {
     if (mediaFiles.length === 0) return [];
-    
+
     setIsUploadingMedia(true);
     const uploadedUrls: string[] = [];
-    
+
     try {
       for (const file of mediaFiles) {
         const ext = file.name.split('.').pop() || 'bin';
         const timestamp = Date.now();
         const randomStr = Math.random().toString(36).substring(7);
         const filename = `${user?.id}/${timestamp}_${randomStr}.${ext}`;
-        
+
         const { data, error } = await supabase.storage
           .from('note-media')
           .upload(filename, file, {
             contentType: file.type,
             upsert: false
           });
-        
+
         if (error) {
           console.error('[NoteInput] Failed to upload media:', error);
           continue;
         }
-        
+
         // Use signed URL for private bucket access
         const { data: signedData, error: signedError } = await supabase.storage
           .from('note-media')
           .createSignedUrl(filename, 60 * 60 * 24 * 365); // 1 year expiry for stored URLs
-        
+
         if (signedError || !signedData?.signedUrl) {
           console.error('[NoteInput] Failed to create signed URL:', signedError);
           continue;
         }
-        
+
         uploadedUrls.push(signedData.signedUrl);
       }
-      
+
       return uploadedUrls;
     } finally {
       setIsUploadingMedia(false);
@@ -251,19 +251,19 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Comprehensive auth debugging
     console.log('[NoteInput] === SUBMISSION DEBUG ===');
     console.log('[NoteInput] Text:', text.trim());
     console.log('[NoteInput] Media files:', mediaFiles.length);
-    console.log('[NoteInput] Auth state:', { 
-      user: !!user, 
+    console.log('[NoteInput] Auth state:', {
+      user: !!user,
       userId: user?.id,
       loading,
       isAuthenticated,
       userObject: user
     });
-    
+
     if (!text.trim() && mediaFiles.length === 0) {
       toast.error(t('toast.enterNoteOrMedia'));
       return;
@@ -278,7 +278,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     console.log('[NoteInput] ✅ Auth checks passed, proceeding with note creation');
 
     setIsProcessing(true);
-    
+
     try {
       // Double-check auth state before AI processing
       if (!user) {
@@ -294,11 +294,11 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       }
 
       console.log('[NoteInput] Processing note with AI for user:', user.id);
-      
+
       // Process the note with Gemini AI (including media and style)
       // Send empty string for media-only notes - process-note will derive content from media
       const { data: aiProcessedNote, error } = await supabase.functions.invoke('process-note', {
-        body: { 
+        body: {
           text: text.trim(),
           user_id: user.id,
           couple_id: currentCouple?.id || null,
@@ -312,18 +312,18 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         console.error('[NoteInput] AI processing error:', error);
         throw new Error(`Failed to process note with AI: ${error.message || error}`);
       }
-      
+
       if (!aiProcessedNote) {
         console.error('[NoteInput] No data returned from AI processing');
         throw new Error('No data returned from AI processing');
       }
 
       console.log('[NoteInput] AI processed note:', aiProcessedNote);
-      
+
       // Check if we got multiple notes
       if (aiProcessedNote.multiple && aiProcessedNote.notes) {
         console.log('[NoteInput] Got multiple notes:', aiProcessedNote.notes.length);
-        
+
         // Show multiple notes recap for user review before saving
         setMultipleNotes({
           notes: aiProcessedNote.notes.map((note: any) => ({
@@ -346,10 +346,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         toast.success(t('toast.multipleTasksIdentified', { count: aiProcessedNote.notes.length }));
         return;
       }
-      
+
       // Handle single note - show recap BEFORE saving to database
       console.log('[NoteInput] Single note case, showing recap for review');
-      
+
       // Store the AI-processed data for review (NOT saved to DB yet)
       setProcessedNote({
         originalText: text.trim(),
@@ -367,12 +367,12 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
 
       // Success feedback
       toast.success(t('toast.noteProcessed'));
-      
+
       // Clear the input
       setText("");
       setInterim("");
       clearMediaFiles();
-      
+
       // Don't call onNoteAdded yet - wait for user to accept
     } catch (error) {
       console.error("Error processing note:", error);
@@ -418,10 +418,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
 
   const handleSaveNote = async () => {
     if (!processedNote || !user) return;
-    
+
     try {
       console.log('[NoteInput] Saving accepted note to database:', processedNote);
-      
+
       // Prepare note data in the correct format for SupabaseNotesProvider (Note shape)
       const noteData = {
         originalText: processedNote.originalText,
@@ -437,15 +437,15 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         media_urls: processedNote.mediaUrls || [],
       };
 
-      
+
       const newNote = await addNote(noteData);
-      
+
       if (!newNote) {
         throw new Error('Failed to save note to database');
       }
-      
+
       toast.success(t('toast.noteSaved'));
-      
+
       // Refetch and close
       await refetchNotes();
       handleCloseRecap();
@@ -465,22 +465,22 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const getDynamicPlaceholder = () => {
     const hour = new Date().getHours();
     const day = new Date().getDay();
-    
+
     // Weekend suggestions
     if (day === 0 || day === 6) {
       return t('brainDump.placeholder.weekend');
     }
-    
+
     // Morning suggestions
     if (hour < 12) {
       return t('brainDump.placeholder.morning');
     }
-    
+
     // Afternoon suggestions
     if (hour < 18) {
       return t('brainDump.placeholder.afternoon');
     }
-    
+
     // Evening suggestions
     return t('brainDump.placeholder.evening');
   };
@@ -501,20 +501,20 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   if (processedNote) {
     return (
       <div className="space-y-4 animate-fade-in">
-        <NoteRecap 
-          note={processedNote} 
-          onClose={handleCloseRecap} 
+        <NoteRecap
+          note={processedNote}
+          onClose={handleCloseRecap}
           onNoteUpdated={handleNoteUpdated}
         />
         <div className="flex gap-3">
-          <Button 
+          <Button
             onClick={handleCloseRecap}
-            variant="outline" 
+            variant="outline"
             className="flex-1 border-border hover:bg-muted transition-all duration-200"
           >
             {t('brainDump.startOver')}
           </Button>
-          <Button 
+          <Button
             onClick={handleSaveNote}
             variant="accent"
             className="flex-1 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02]"
@@ -531,7 +531,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const hasContent = text.trim() || mediaFiles.length > 0;
 
   return (
-    <div 
+    <div
       ref={dropZoneRef}
       className={cn(
         // HERO INPUT: No card background on desktop - sits directly on paper
@@ -558,7 +558,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           </div>
         </div>
       )}
-      
+
       {/* Content - HERO STYLE on desktop */}
       <form onSubmit={handleSubmit} className="p-6 md:p-0 space-y-5 md:space-y-8">
         {/* AI Icon in Gutter Position (desktop only) */}
@@ -566,10 +566,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           {/* Prominent AI Stars icon - 32x32 */}
           <div className={cn(
             "flex-shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300",
-            isProcessing 
-              ? "bg-[hsl(var(--olive-magic))]/30 animate-pulse" 
-              : hasContent 
-                ? "bg-primary/10" 
+            isProcessing
+              ? "bg-[hsl(var(--olive-magic))]/30 animate-pulse"
+              : hasContent
+                ? "bg-primary/10"
                 : "bg-stone-100"
           )}>
             <Sparkles className={cn(
@@ -577,7 +577,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
               isProcessing ? "text-[hsl(130_22%_29%)]" : hasContent ? "text-primary" : "text-stone-400"
             )} />
           </div>
-          
+
           {/* Desktop Input Column - Full border on focus */}
           <div className={cn(
             "flex-1 space-y-4 p-4 rounded-2xl transition-all duration-300 relative",
@@ -604,7 +604,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 )}
                 disabled={isProcessing || isUploadingMedia}
               />
-              
+
               {/* Controls - Right side */}
               <div className="absolute top-2 right-2 flex items-center gap-2">
                 <input
@@ -615,7 +615,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                   multiple
                   className="hidden"
                 />
-                
+
                 <Button
                   type="button"
                   variant="ghost"
@@ -630,9 +630,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 >
                   <Image className="h-5 w-5" />
                 </Button>
-                
-                <VoiceInput 
-                  text={text} 
+
+                <VoiceInput
+                  text={text}
                   setText={setText}
                   interim={interim}
                   setInterim={setInterim}
@@ -640,13 +640,13 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 />
               </div>
             </div>
-            
+
             {/* Media previews */}
             {mediaPreviews.length > 0 && (
               <div className="flex flex-wrap gap-3 p-4 bg-stone-50 rounded-2xl animate-fade-in">
                 {mediaPreviews.map((preview, index) => (
-                  <div 
-                    key={index} 
+                  <div
+                    key={index}
                     className="relative group animate-scale-in"
                     style={{ animationDelay: `${index * 50}ms` }}
                   >
@@ -661,8 +661,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                         </svg>
                       </div>
                     ) : (
-                      <img 
-                        src={preview} 
+                      <img
+                        src={preview}
                         alt={`Attached ${index + 1}`}
                         className="w-16 h-16 object-cover rounded-xl"
                       />
@@ -678,18 +678,18 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 ))}
               </div>
             )}
-            
+
             {/* Submit row - Floating pill button inside input area */}
             <div className="flex items-center justify-between mt-4">
               <p className={cn(
                 "text-sm transition-all duration-300",
-                isProcessing || isUploadingMedia 
-                  ? "text-primary font-medium" 
+                isProcessing || isUploadingMedia
+                  ? "text-primary font-medium"
                   : "text-stone-500"
               )}>
                 {isUploadingMedia ? "Uploading..." : isProcessing ? "AI is organizing..." : "AI will organize your note"}
               </p>
-              
+
               <Button
                 type="submit"
                 disabled={isProcessing || isUploadingMedia || !hasContent}
@@ -715,40 +715,40 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             </div>
           </div>
         </div>
-        
-        {/* Mobile Layout - Enhanced for native feel */}
+
+        {/* Mobile Layout - Premium iOS-style card design */}
         <div className="md:hidden">
-          {/* Header with animated brain icon */}
+          {/* Header with animated brain icon - centered for visual hierarchy */}
           <div className="text-center mb-5">
             <div className="inline-flex items-center gap-3 mb-2">
               <div className={cn(
-                "w-11 h-11 rounded-full flex items-center justify-center transition-all duration-300",
-                isProcessing 
-                  ? "bg-[hsl(var(--olive-magic))]/30 animate-pulse" 
-                  : hasContent 
-                    ? "bg-primary/15" 
-                    : "bg-muted"
+                "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-sm",
+                isProcessing
+                  ? "bg-[hsl(var(--olive-magic))]/30 animate-pulse shadow-magic"
+                  : hasContent
+                    ? "bg-primary/15 shadow-sm"
+                    : "bg-muted/80"
               )}>
                 <Brain className={cn(
-                  "w-5 h-5 transition-colors duration-300",
+                  "w-6 h-6 transition-colors duration-300",
                   isProcessing ? "text-[hsl(130_22%_29%)]" : hasContent ? "text-primary" : "text-muted-foreground"
                 )} />
               </div>
-              <h2 className="font-serif font-semibold text-xl text-foreground">
+              <h2 className="font-serif font-bold text-2xl text-foreground tracking-tight">
                 {t('brainDump.title')}
               </h2>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-base text-muted-foreground/80 font-light">
               {t('brainDump.subtitle')}
             </p>
           </div>
-          
+
           {/* Media previews */}
           {mediaPreviews.length > 0 && (
             <div className="flex flex-wrap gap-3 p-3 bg-muted/30 rounded-xl animate-fade-in">
               {mediaPreviews.map((preview, index) => (
-                <div 
-                  key={index} 
+                <div
+                  key={index}
                   className="relative group animate-scale-in"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
@@ -763,8 +763,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                       </svg>
                     </div>
                   ) : (
-                    <img 
-                      src={preview} 
+                    <img
+                      src={preview}
                       alt={`Attached ${index + 1}`}
                       className="w-16 h-16 object-cover rounded-xl"
                     />
@@ -783,8 +783,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
               </span>
             </div>
           )}
-          
-          {/* Textarea - Mobile version - Enhanced with larger placeholder */}
+
+          {/* Textarea - Mobile version with larger placeholder and anchored icons */}
           <div className="relative group">
             <Textarea
               value={text}
@@ -792,26 +792,27 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
               onPaste={handlePaste}
               placeholder={getDynamicPlaceholder()}
               className={cn(
-                "min-h-[160px] resize-none pb-16 transition-all duration-300 ease-out",
-                // Larger placeholder text (18px = text-lg, font-medium)
-                "text-lg leading-relaxed font-medium",
-                "bg-muted/30 border-0 rounded-2xl shadow-inner",
-                "focus:ring-2 focus:ring-primary/30 focus:bg-white focus:shadow-lg",
-                // Better placeholder legibility with slightly darker color
-                "placeholder:text-stone-400 placeholder:text-lg placeholder:font-normal"
+                // Increased min-height and padding for more spacious feel
+                "min-h-[180px] resize-none pb-20 pr-4 transition-all duration-300 ease-out",
+                // Larger placeholder text (18px equivalent) for better readability
+                "text-lg leading-relaxed",
+                "bg-muted/30 border-0 rounded-2xl",
+                "focus:ring-2 focus:ring-primary/20 focus:bg-white",
+                // Darker placeholder for better contrast (stone-400 instead of muted/50)
+                "placeholder:text-stone-400 placeholder:font-medium placeholder:text-lg"
               )}
               disabled={isProcessing || isUploadingMedia}
             />
-            
+
             {/* Interim transcript */}
             {interim && (
-              <div className="absolute top-4 left-5 right-28 text-base text-primary/70 italic pointer-events-none animate-pulse">
+              <div className="absolute top-4 left-5 right-20 text-lg text-primary/70 italic pointer-events-none animate-pulse">
                 {interim}...
               </div>
             )}
-            
-            {/* Voice and media input controls - anchored bottom-right */}
-            <div className="absolute bottom-3 right-14 flex items-center gap-2">
+
+            {/* Voice and media input controls - Anchored to BOTTOM-RIGHT */}
+            <div className="absolute bottom-3 right-3 flex items-center gap-2">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -820,7 +821,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 multiple
                 className="hidden"
               />
-              
+
+              {/* Image/Media Button - 44px touch target */}
               <Button
                 type="button"
                 variant="ghost"
@@ -828,55 +830,53 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isProcessing || isUploadingMedia || mediaFiles.length >= 5}
                 className={cn(
-                  "h-10 w-10 rounded-full transition-all duration-300",
-                  "text-stone-400 hover:text-primary hover:bg-primary/10",
+                  "h-11 w-11 rounded-full transition-all duration-300",
+                  "text-muted-foreground hover:text-primary hover:bg-primary/10",
+                  "active:scale-95",
                   mediaFiles.length > 0 && "text-primary bg-primary/10"
                 )}
               >
                 <Image className="h-5 w-5" />
               </Button>
-              
-              <VoiceInput 
-                text={text} 
+
+              {/* Voice Input Button */}
+              <VoiceInput
+                text={text}
                 setText={setText}
                 interim={interim}
                 setInterim={setInterim}
                 disabled={isProcessing || isUploadingMedia}
               />
-            </div>
-            
-            {/* Send button - circular, bottom-right */}
-            <div className={cn(
-              "absolute bottom-3 right-3 transition-all duration-300 ease-out",
-              hasContent ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
-            )}>
+
+              {/* Send button - primary action, most prominent */}
               <Button
                 type="submit"
                 size="icon"
                 disabled={isProcessing || isUploadingMedia || !hasContent}
                 className={cn(
-                  "h-10 w-10 rounded-full bg-primary hover:bg-primary-dark text-primary-foreground",
+                  "h-12 w-12 rounded-full bg-primary hover:bg-primary-dark text-primary-foreground",
                   "shadow-lg transition-all duration-300 ease-out",
-                  "hover:shadow-xl hover:scale-105",
+                  "hover:shadow-xl active:scale-95",
+                  !hasContent && "opacity-40",
                   isProcessing && "animate-pulse"
                 )}
               >
                 {isProcessing || isUploadingMedia ? (
-                  <Sparkles className="h-4 w-4 animate-spin" />
+                  <Sparkles className="h-5 w-5 animate-spin" />
                 ) : (
-                  <Send className="h-4 w-4" />
+                  <Send className="h-5 w-5" />
                 )}
               </Button>
             </div>
           </div>
-          
-          {/* Status text - as a subtle pill tag */}
+
+          {/* AI Feature pill - styled as an active feature indicator */}
           <div className="flex items-center justify-center mt-3">
             <div className={cn(
-              "inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs transition-all duration-300",
-              isProcessing || isUploadingMedia 
-                ? "bg-primary/10 text-primary font-medium" 
-                : "bg-muted/50 text-muted-foreground"
+              "inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all duration-300",
+              isProcessing || isUploadingMedia
+                ? "bg-primary/15 text-primary"
+                : "bg-stone-100 text-stone-500"
             )}>
               {isUploadingMedia ? (
                 <>
@@ -885,21 +885,21 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 </>
               ) : isProcessing ? (
                 <>
-                  <Sparkles className="w-3 h-3 animate-spin" />
-                  AI is organizing your note...
+                  <Sparkles className="w-3.5 h-3.5 animate-spin" />
+                  AI is organizing...
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-3 h-3" />
-                  AI will organize your note
+                  <Sparkles className="w-3.5 h-3.5" />
+                  AI auto-organizes
                 </>
               )}
             </div>
           </div>
         </div>
       </form>
-      
-      <LoginPromptDialog 
+
+      <LoginPromptDialog
         open={showLoginPrompt}
         onOpenChange={setShowLoginPrompt}
       />

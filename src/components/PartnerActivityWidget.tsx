@@ -6,6 +6,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useLanguage } from "@/providers/LanguageProvider";
 import { formatDistanceToNow } from "date-fns";
+import { cn } from "@/lib/utils";
 import type { Note } from "@/types/note";
 
 interface PartnerActivityWidgetProps {
@@ -18,14 +19,14 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
   const { user } = useAuth();
   const { partner, currentCouple } = useSupabaseCouple();
   const { getLocalizedPath } = useLanguage();
-  
+
   const partnerName = partner || t('common:common.partner');
   const userId = user?.id;
 
   // Get recent partner activity from shared notes only
   const partnerActivity = useMemo(() => {
     if (!userId || !currentCouple) return [];
-    
+
     // Filter for shared notes (with coupleId) added by partner (not by current user)
     // Use authorId (raw user ID) for filtering, not addedBy (display name)
     const partnerNotes = notes
@@ -39,15 +40,15 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3); // Get last 3 activities
-    
+
     return partnerNotes.map(note => {
       // Determine if it was assigned to the current user
       // task_owner could be 'you', the user's name, or their ID
       const youName = currentCouple?.you_name;
-      const isAssignedToYou = note.task_owner === 'you' || 
+      const isAssignedToYou = note.task_owner === 'you' ||
                               note.task_owner === youName ||
                               note.task_owner === userId;
-      
+
       return {
         id: note.id,
         summary: note.summary,
@@ -88,44 +89,52 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
 
   return (
     <div className="animate-fade-up stagger-2 mt-6">
+      {/* Section Header - proper spacing and visual hierarchy */}
       <div className="flex items-center gap-2 mb-3 px-1">
         <Users className="w-4 h-4 text-muted-foreground" />
-        <span className="text-sm font-medium text-muted-foreground">
+        <span className="text-sm font-semibold text-muted-foreground tracking-wide">
           {t('home:partnerActivity.title', { name: partnerName })}
         </span>
       </div>
-      
+
+      {/* Activity Cards - more generous padding */}
       <div className="space-y-2">
         {partnerActivity.slice(0, 2).map((activity) => (
           <button
             key={activity.id}
             onClick={() => handleActivityClick(activity.id)}
-            className="w-full text-left px-4 py-3 rounded-xl bg-muted/30 hover:bg-muted/50 
-                       border border-border/50 transition-all duration-200 group active:scale-[0.98]"
+            className={cn(
+              "w-full text-left px-4 py-3.5 rounded-xl",
+              "bg-muted/30 hover:bg-muted/50",
+              "border border-border/50 hover:border-primary/20",
+              "transition-all duration-200 group",
+              "active:scale-[0.98]"
+            )}
           >
             <div className="flex items-start gap-3">
-              {/* Larger avatar with white ring */}
-              <div className={`mt-0.5 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0
-                ring-2 ring-white shadow-sm
-                ${activity.isAssignedToYou 
-                  ? 'bg-accent/20 text-accent' 
-                  : 'bg-primary/10 text-primary'
-                }`}>
-                {activity.isAssignedToYou 
-                  ? <UserPlus className="w-3.5 h-3.5" />
-                  : <Users className="w-3.5 h-3.5" />
+              {/* Icon with larger touch target */}
+              <div className={cn(
+                "mt-0.5 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
+                "transition-colors duration-200",
+                activity.isAssignedToYou
+                  ? 'bg-accent/20 text-accent group-hover:bg-accent/30'
+                  : 'bg-primary/10 text-primary group-hover:bg-primary/20'
+              )}>
+                {activity.isAssignedToYou
+                  ? <UserPlus className="w-4 h-4" />
+                  : <Users className="w-4 h-4" />
                 }
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-muted-foreground leading-tight">
                   {activity.isAssignedToYou ? (
                     <span>
-                      <span className="font-medium text-foreground">{partnerName}</span>
+                      <span className="font-semibold text-foreground">{partnerName}</span>
                       {' '}{t('home:partnerActivity.assignedYou')}
                     </span>
                   ) : (
                     <span>
-                      <span className="font-medium text-foreground">{partnerName}</span>
+                      <span className="font-semibold text-foreground">{partnerName}</span>
                       {' '}{t('home:partnerActivity.added')}
                     </span>
                   )}
@@ -133,12 +142,13 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
                 <p className="text-sm font-medium text-foreground truncate mt-1 group-hover:text-primary transition-colors">
                   {activity.summary}
                 </p>
-                <p className="text-[11px] text-muted-foreground/70 mt-1">
+                <p className="text-[11px] text-muted-foreground/70 mt-1.5">
                   {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
                 </p>
               </div>
-              <ArrowRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-primary 
-                                     opacity-0 group-hover:opacity-100 transition-all mt-1" />
+              <ArrowRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-primary
+                                     opacity-0 group-hover:opacity-100 transition-all mt-2
+                                     group-hover:translate-x-0.5" />
             </div>
           </button>
         ))}

@@ -70,10 +70,22 @@ const MobileTabBar = () => {
   return (
     <nav
       aria-label="Primary navigation"
-      className="fixed bottom-0 left-0 right-0 z-50 md:hidden pb-[env(safe-area-inset-bottom)]"
+      className="fixed bottom-0 left-0 right-0 z-50 md:hidden"
+      style={{
+        // Respect iOS safe area for home indicator
+        paddingBottom: 'env(safe-area-inset-bottom, 8px)',
+      }}
     >
-      {/* Glassmorphic Floating Dock */}
-      <div className="mx-4 mb-2 rounded-full nav-glass">
+      {/* Premium Glassmorphic Floating Dock - enhanced blur and shadow */}
+      <div className={cn(
+        "mx-4 mb-2 rounded-full",
+        // Glassmorphism: translucent white + strong backdrop blur
+        "bg-white/80 backdrop-blur-xl",
+        // Subtle border for depth
+        "border border-white/50",
+        // Premium shadow for elevation
+        "shadow-[0_8px_32px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.04)]"
+      )}>
         <div className="flex items-center justify-around px-3 py-3">
           {tabs.map((tab) => {
             const localizedPath = getLocalizedPath(tab.to);

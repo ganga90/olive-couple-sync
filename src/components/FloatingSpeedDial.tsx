@@ -22,12 +22,18 @@ export const FloatingSpeedDial: React.FC = () => {
   const { t } = useTranslation("common");
   const location = useLocation();
 
-  // Hide on Home tab on mobile - Brain Dump card is the primary action there
-  const isHomePage = location.pathname.includes('/home') || location.pathname.endsWith('/');
-  const shouldHideFAB = isMobile && isHomePage;
+  // Check if we're on the Home page - hide the FAB there since the Brain Dump card is already visible
+  const isHomePage = location.pathname === "/home" ||
+                     location.pathname.endsWith("/home") ||
+                     location.pathname === "/" ||
+                     location.pathname.includes('/home') ||
+                     location.pathname.match(/^\/[a-z]{2}\/home$/); // Handle localized paths like /en/home
 
-  // Only show for authenticated users, and hide on Home (mobile)
-  if (!isAuthenticated || shouldHideFAB) return null;
+  // Only show for authenticated users
+  if (!isAuthenticated) return null;
+
+  // On mobile, hide the FAB on the Home page to reduce clutter (Brain Dump card serves same purpose)
+  if (isMobile && isHomePage) return null;
 
   const handleOptionClick = (option: "ask-olive" | "brain-dump") => {
     setActiveModal(option);
@@ -74,8 +80,8 @@ export const FloatingSpeedDial: React.FC = () => {
                   initial={{ opacity: 0, scale: 0.3, y: 20 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.3, y: 20 }}
-                  transition={{ 
-                    duration: 0.2, 
+                  transition={{
+                    duration: 0.2,
                     delay: index * 0.05,
                     type: "spring",
                     stiffness: 300,
@@ -93,7 +99,7 @@ export const FloatingSpeedDial: React.FC = () => {
                   >
                     {option.label}
                   </motion.span>
-                  
+
                   {/* Option Button */}
                   <Button
                     onClick={() => handleOptionClick(option.id)}
@@ -116,8 +122,8 @@ export const FloatingSpeedDial: React.FC = () => {
           onClick={() => setIsExpanded(!isExpanded)}
           className={cn(
             "h-14 w-14 rounded-full shadow-lg transition-all duration-300",
-            isExpanded 
-              ? "bg-muted text-muted-foreground hover:bg-muted/80 rotate-45" 
+            isExpanded
+              ? "bg-muted text-muted-foreground hover:bg-muted/80 rotate-45"
               : "bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-110"
           )}
           size="icon"
