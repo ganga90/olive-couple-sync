@@ -25,6 +25,7 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [interactionId, setInteractionId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
@@ -34,14 +35,26 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
 
   // Initial greeting
   useEffect(() => {
+    const displayName = String(
+      you || user?.fullName || user?.firstName || user?.username || ""
+    ).trim();
+
     const greeting: Message = {
       id: "greeting",
       role: "assistant",
-      content: t("askOlive.greeting", { name: you || "", defaultValue: `Hi${you ? ` ${you}` : ""}! 👋 How can I help you today? I can help with tasks, planning, reminders, or just chat about anything.` }),
+      content: displayName
+        ? t("askOlive.greetingWithName", {
+            name: displayName,
+            defaultValue: `Hi ${displayName}! 👋 How can I help you today? I can help with tasks, planning, reminders, or just chat about anything.`,
+          })
+        : t("askOlive.greetingNoName", {
+            defaultValue:
+              "Hi! 👋 How can I help you today? I can help with tasks, planning, reminders, or just chat about anything.",
+          }),
       timestamp: new Date(),
     };
     setMessages([greeting]);
-  }, [you, t]);
+  }, [you, user, t]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -69,22 +82,30 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
     try {
       const { data, error } = await supabase.functions.invoke("ask-olive-individual", {
         body: {
-          message: userMessage.content,
+          // ask-olive-individual expects these fields
+          noteContent: "",
+          noteCategory: "general",
+          noteTitle: "Global chat",
+          userMessage: userMessage.content,
+          previousInteractionId: interactionId,
           user_id: user.id,
-          couple_id: currentCouple?.id,
-          context: {
-            source: "global_chat",
-            user_name: you,
-          },
         },
       });
 
       if (error) throw error;
 
+      // Persist interaction ID (for multi-turn continuity)
+      if (data?.interactionId) {
+        setInteractionId(String(data.interactionId));
+      }
+
       const assistantMessage: Message = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
-        content: data?.response || t("askOlive.error", "I'm having trouble responding right now. Please try again."),
+        content:
+          data?.reply ||
+          data?.response ||
+          t("askOlive.error", "I'm having trouble responding right now. Please try again."),
         timestamp: new Date(),
       };
 
