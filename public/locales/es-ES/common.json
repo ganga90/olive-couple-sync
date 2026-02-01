@@ -4,7 +4,9 @@
     "brainDump": "Volcado mental"
   },
   "askOlive": {
-    "greeting": "¡Hola{{name}}! 👋 ¿En qué puedo ayudarte hoy? Puedo ayudarte con tareas, planificación, recordatorios o simplemente charlar.",
+    "greeting": "¡Hola {{name}}! 👋 ¿En qué puedo ayudarte hoy? Puedo ayudarte con tareas, planificación, recordatorios o simplemente charlar.",
+    "greetingWithName": "¡Hola {{name}}! 👋 ¿En qué puedo ayudarte hoy? Puedo ayudarte con tareas, planificación, recordatorios o simplemente charlar.",
+    "greetingNoName": "¡Hola! 👋 ¿En qué puedo ayudarte hoy? Puedo ayudarte con tareas, planificación, recordatorios o simplemente charlar.",
     "placeholder": "Pregúntame lo que quieras...",
     "thinking": "Pensando...",
     "error": "Tengo problemas para responder ahora. Por favor, inténtalo de nuevo.",
