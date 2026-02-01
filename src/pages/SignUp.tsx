@@ -229,7 +229,9 @@ const SignUpPage = () => {
                 
                 <Button 
                   type="submit" 
-                  className="w-full bg-gradient-olive hover:bg-olive text-white shadow-olive"
+                  variant="default"
+                  size="lg"
+                  className="w-full"
                   disabled={!firstName.trim()}
                 >
                   {t('signUp.continue', 'Continue')}
@@ -278,7 +280,9 @@ const SignUpPage = () => {
                   <Label htmlFor="email">{t('signUp.emailLabel', 'Email address')}</Label>
                   <Input
                     id="email"
+                    name="email"
                     type="email"
+                    inputMode="email"
                     placeholder={t('signUp.emailPlaceholder', 'you@example.com')}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -291,7 +295,9 @@ const SignUpPage = () => {
                 
                 <Button 
                   type="submit" 
-                  className="w-full bg-gradient-olive hover:bg-olive text-white shadow-olive"
+                  variant="default"
+                  size="lg"
+                  className="w-full"
                   disabled={isLoading || !email}
                 >
                   {isLoading ? (
@@ -356,7 +362,9 @@ const SignUpPage = () => {
                 
                 <Button 
                   type="submit" 
-                  className="w-full bg-gradient-olive hover:bg-olive text-white shadow-olive"
+                  variant="default"
+                  size="lg"
+                  className="w-full"
                   disabled={isLoading || code.length < 6}
                 >
                   {isLoading ? (
