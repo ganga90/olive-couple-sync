@@ -28,6 +28,7 @@ import SignInPage from "./pages/SignIn";
 import SignUpPage from "./pages/SignUp";
 import AuthPage from "./pages/Auth";
 import AuthRedirectNative from "./pages/AuthRedirectNative";
+import NativeWelcome from "./pages/NativeWelcome";
 import CookieConsentBanner from "./components/CookieConsentBanner";
 
 // Import i18n configuration
@@ -53,6 +54,7 @@ const AppRoutes = () => (
     <Route path="/sign-in" element={<SignInPage />} />
     <Route path="/sign-up" element={<SignUpPage />} />
     <Route path="/auth-redirect-native" element={<AuthRedirectNative />} />
+    <Route path="/native-welcome" element={<NativeWelcome />} />
     <Route path="/accept-invite" element={<AcceptInvite />} />
     <Route path="/join/:token" element={<JoinInvite />} />
     <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
@@ -93,6 +95,7 @@ const App = () => (
                   <Route path="/sign-in" element={<SignInPage />} />
                   <Route path="/sign-up" element={<SignUpPage />} />
                   <Route path="/auth-redirect-native" element={<AuthRedirectNative />} />
+                  <Route path="/native-welcome" element={<NativeWelcome />} />
                   <Route path="/accept-invite" element={<AcceptInvite />} />
                   <Route path="/join/:token" element={<JoinInvite />} />
                   <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
