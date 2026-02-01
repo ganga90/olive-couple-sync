@@ -716,13 +716,13 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           </div>
         </div>
         
-        {/* Mobile Layout - Keep original compact design */}
+        {/* Mobile Layout - Enhanced for native feel */}
         <div className="md:hidden">
           {/* Header with animated brain icon */}
-          <div className="text-center mb-4">
+          <div className="text-center mb-5">
             <div className="inline-flex items-center gap-3 mb-2">
               <div className={cn(
-                "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
+                "w-11 h-11 rounded-full flex items-center justify-center transition-all duration-300",
                 isProcessing 
                   ? "bg-[hsl(var(--olive-magic))]/30 animate-pulse" 
                   : hasContent 
@@ -738,7 +738,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 {t('brainDump.title')}
               </h2>
             </div>
-            <p className="text-base text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {t('brainDump.subtitle')}
             </p>
           </div>
@@ -784,7 +784,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             </div>
           )}
           
-          {/* Textarea - Mobile version */}
+          {/* Textarea - Mobile version - Enhanced with larger placeholder */}
           <div className="relative group">
             <Textarea
               value={text}
@@ -792,11 +792,13 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
               onPaste={handlePaste}
               placeholder={getDynamicPlaceholder()}
               className={cn(
-                "min-h-[160px] resize-none pr-24 transition-all duration-300 ease-out",
-                "text-lg leading-relaxed",
-                "bg-muted/30 border-0 rounded-2xl",
-                "focus:ring-2 focus:ring-primary/20 focus:bg-white",
-                "placeholder:text-muted-foreground/50 placeholder:font-light"
+                "min-h-[160px] resize-none pb-16 transition-all duration-300 ease-out",
+                // Larger placeholder text (18px = text-lg, font-medium)
+                "text-lg leading-relaxed font-medium",
+                "bg-muted/30 border-0 rounded-2xl shadow-inner",
+                "focus:ring-2 focus:ring-primary/30 focus:bg-white focus:shadow-lg",
+                // Better placeholder legibility with slightly darker color
+                "placeholder:text-stone-400 placeholder:text-lg placeholder:font-normal"
               )}
               disabled={isProcessing || isUploadingMedia}
             />
@@ -808,8 +810,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
               </div>
             )}
             
-            {/* Voice and media input controls */}
-            <div className="absolute top-3 right-3 flex items-center gap-1">
+            {/* Voice and media input controls - anchored bottom-right */}
+            <div className="absolute bottom-3 right-14 flex items-center gap-2">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -826,12 +828,12 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isProcessing || isUploadingMedia || mediaFiles.length >= 5}
                 className={cn(
-                  "h-9 w-9 rounded-full transition-all duration-300",
-                  "text-muted-foreground hover:text-primary hover:bg-primary/10",
+                  "h-10 w-10 rounded-full transition-all duration-300",
+                  "text-stone-400 hover:text-primary hover:bg-primary/10",
                   mediaFiles.length > 0 && "text-primary bg-primary/10"
                 )}
               >
-                <Image className="h-4 w-4" />
+                <Image className="h-5 w-5" />
               </Button>
               
               <VoiceInput 
@@ -868,28 +870,31 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             </div>
           </div>
           
-          {/* Status text */}
-          <div className="h-5 flex items-center justify-center">
-            <p className={cn(
-              "text-xs text-center transition-all duration-300",
+          {/* Status text - as a subtle pill tag */}
+          <div className="flex items-center justify-center mt-3">
+            <div className={cn(
+              "inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs transition-all duration-300",
               isProcessing || isUploadingMedia 
-                ? "text-primary font-medium" 
-                : "text-muted-foreground"
+                ? "bg-primary/10 text-primary font-medium" 
+                : "bg-muted/50 text-muted-foreground"
             )}>
               {isUploadingMedia ? (
-                <span className="flex items-center gap-2">
+                <>
                   <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" />
                   Uploading media...
-                </span>
+                </>
               ) : isProcessing ? (
-                <span className="flex items-center gap-2">
+                <>
                   <Sparkles className="w-3 h-3 animate-spin" />
                   AI is organizing your note...
-                </span>
+                </>
               ) : (
-                "AI will categorize, summarize, and organize your note"
+                <>
+                  <Sparkles className="w-3 h-3" />
+                  AI will organize your note
+                </>
               )}
-            </p>
+            </div>
           </div>
         </div>
       </form>
