@@ -168,7 +168,9 @@ const SignInPage = () => {
               
               <Button 
                 type="submit" 
-                className="w-full bg-gradient-olive hover:bg-olive text-white shadow-olive"
+                variant="default"
+                size="lg"
+                className="w-full"
                 disabled={isLoading || !email}
               >
                 {isLoading ? (
@@ -232,7 +234,9 @@ const SignInPage = () => {
               
               <Button 
                 type="submit" 
-                className="w-full bg-gradient-olive hover:bg-olive text-white shadow-olive"
+                variant="default"
+                size="lg"
+                className="w-full"
                 disabled={isLoading || code.length < 6}
               >
                 {isLoading ? (
