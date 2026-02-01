@@ -87,31 +87,33 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
   }
 
   return (
-    <div className="animate-fade-up stagger-2">
-      <div className="flex items-center gap-2 mb-2 px-1">
-        <Users className="w-3.5 h-3.5 text-muted-foreground" />
-        <span className="text-xs font-medium text-muted-foreground">
+    <div className="animate-fade-up stagger-2 mt-6">
+      <div className="flex items-center gap-2 mb-3 px-1">
+        <Users className="w-4 h-4 text-muted-foreground" />
+        <span className="text-sm font-medium text-muted-foreground">
           {t('home:partnerActivity.title', { name: partnerName })}
         </span>
       </div>
       
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {partnerActivity.slice(0, 2).map((activity) => (
           <button
             key={activity.id}
             onClick={() => handleActivityClick(activity.id)}
-            className="w-full text-left px-3 py-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 
-                       border border-border/50 transition-colors group"
+            className="w-full text-left px-4 py-3 rounded-xl bg-muted/30 hover:bg-muted/50 
+                       border border-border/50 transition-all duration-200 group active:scale-[0.98]"
           >
-            <div className="flex items-start gap-2.5">
-              <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0
+            <div className="flex items-start gap-3">
+              {/* Larger avatar with white ring */}
+              <div className={`mt-0.5 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0
+                ring-2 ring-white shadow-sm
                 ${activity.isAssignedToYou 
                   ? 'bg-accent/20 text-accent' 
                   : 'bg-primary/10 text-primary'
                 }`}>
                 {activity.isAssignedToYou 
-                  ? <UserPlus className="w-3 h-3" />
-                  : <Users className="w-3 h-3" />
+                  ? <UserPlus className="w-3.5 h-3.5" />
+                  : <Users className="w-3.5 h-3.5" />
                 }
               </div>
               <div className="flex-1 min-w-0">
@@ -128,14 +130,14 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
                     </span>
                   )}
                 </p>
-                <p className="text-sm font-medium text-foreground truncate mt-0.5 group-hover:text-primary transition-colors">
+                <p className="text-sm font-medium text-foreground truncate mt-1 group-hover:text-primary transition-colors">
                   {activity.summary}
                 </p>
-                <p className="text-[10px] text-muted-foreground/70 mt-1">
+                <p className="text-[11px] text-muted-foreground/70 mt-1">
                   {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
                 </p>
               </div>
-              <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/50 group-hover:text-primary 
+              <ArrowRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-primary 
                                      opacity-0 group-hover:opacity-100 transition-all mt-1" />
             </div>
           </button>

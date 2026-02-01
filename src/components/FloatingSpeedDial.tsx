@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Plus, X, MessageCircle, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,9 +20,14 @@ export const FloatingSpeedDial: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const isMobile = useIsMobile();
   const { t } = useTranslation("common");
+  const location = useLocation();
 
-  // Only show for authenticated users
-  if (!isAuthenticated) return null;
+  // Hide on Home tab on mobile - Brain Dump card is the primary action there
+  const isHomePage = location.pathname.includes('/home') || location.pathname.endsWith('/');
+  const shouldHideFAB = isMobile && isHomePage;
+
+  // Only show for authenticated users, and hide on Home (mobile)
+  if (!isAuthenticated || shouldHideFAB) return null;
 
   const handleOptionClick = (option: "ask-olive" | "brain-dump") => {
     setActiveModal(option);
