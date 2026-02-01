@@ -26,6 +26,7 @@ import { SupabaseNotesProvider } from "./providers/SupabaseNotesProvider";
 import { LanguageProvider } from "./providers/LanguageProvider";
 import SignInPage from "./pages/SignIn";
 import SignUpPage from "./pages/SignUp";
+import AuthPage from "./pages/Auth";
 import AuthRedirectNative from "./pages/AuthRedirectNative";
 import CookieConsentBanner from "./components/CookieConsentBanner";
 
@@ -48,6 +49,7 @@ const AppRoutes = () => (
     <Route path="/welcome" element={<Welcome />} />
     <Route path="/profile" element={<Profile />} />
     <Route path="/notes/:id" element={<NoteDetails />} />
+    <Route path="/auth" element={<AuthPage />} />
     <Route path="/sign-in" element={<SignInPage />} />
     <Route path="/sign-up" element={<SignUpPage />} />
     <Route path="/auth-redirect-native" element={<AuthRedirectNative />} />
@@ -87,6 +89,7 @@ const App = () => (
                   <Route path="/welcome" element={<Welcome />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/notes/:id" element={<NoteDetails />} />
+                  <Route path="/auth" element={<AuthPage />} />
                   <Route path="/sign-in" element={<SignInPage />} />
                   <Route path="/sign-up" element={<SignUpPage />} />
                   <Route path="/auth-redirect-native" element={<AuthRedirectNative />} />
