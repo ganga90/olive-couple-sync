@@ -5,11 +5,14 @@
  *
  * Allows users to view, create, and manage spending budgets by category.
  * Displays current spending progress and provides budget insights.
+ * 
+ * NOTE: This component currently uses local state only as the 
+ * 'budgets' and 'transactions' tables are not yet created in the database.
+ * TODO: Create budgets and transactions tables and connect to Supabase
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
-import { supabase } from '@/integrations/supabase/client';
 import {
   Plus,
   Edit2,
@@ -19,7 +22,6 @@ import {
   TrendingDown,
   Wallet,
   PieChart,
-  Calendar,
   AlertCircle,
   CheckCircle
 } from 'lucide-react';
@@ -36,7 +38,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -72,12 +73,6 @@ interface Budget {
   created_at: string;
   current_spending?: number;
   percentage?: number;
-}
-
-interface CategorySpending {
-  category: string;
-  total: number;
-  count: number;
 }
 
 // ============================================================================
@@ -259,7 +254,7 @@ interface BudgetDialogProps {
   onOpenChange: (open: boolean) => void;
   budget: Budget | null;
   existingCategories: string[];
-  onSave: (data: { category: string; limit_amount: number; period: string }) => Promise<void>;
+  onSave: (data: { category: string; limit_amount: number; period: string }) => void;
 }
 
 const BudgetDialog: React.FC<BudgetDialogProps> = ({
@@ -281,7 +276,7 @@ const BudgetDialog: React.FC<BudgetDialogProps> = ({
     cat => !existingCategories.includes(cat) || cat === budget?.category
   );
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (open) {
       setCategory(budget?.category || '');
       setLimitAmount(budget?.limit_amount.toString() || '');
@@ -289,7 +284,7 @@ const BudgetDialog: React.FC<BudgetDialogProps> = ({
     }
   }, [open, budget]);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!category || !limitAmount) {
       toast.error('Please fill in all fields');
       return;
@@ -302,14 +297,9 @@ const BudgetDialog: React.FC<BudgetDialogProps> = ({
     }
 
     setSaving(true);
-    try {
-      await onSave({ category, limit_amount: amount, period });
-      onOpenChange(false);
-    } catch (error) {
-      console.error('Error saving budget:', error);
-    } finally {
-      setSaving(false);
-    }
+    onSave({ category, limit_amount: amount, period });
+    setSaving(false);
+    onOpenChange(false);
   };
 
   return (
@@ -403,75 +393,14 @@ const BudgetDialog: React.FC<BudgetDialogProps> = ({
 
 export const BudgetManager: React.FC = () => {
   const { user } = useAuth();
+  // Using local state only - budgets/transactions tables not yet in database
   const [budgets, setBudgets] = useState<Budget[]>([]);
-  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
-  const [totalSpending, setTotalSpending] = useState(0);
 
-  // Fetch budgets with current spending
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const fetchBudgets = async () => {
-      setLoading(true);
-      try {
-        // Get budgets
-        const { data: budgetData, error: budgetError } = await supabase
-          .from('budgets')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('is_active', true)
-          .order('category');
-
-        if (budgetError) throw budgetError;
-
-        // Get current month's transactions for spending calculation
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
-
-        const { data: transactionData, error: transactionError } = await supabase
-          .from('transactions')
-          .select('category, amount')
-          .eq('user_id', user.id)
-          .gte('transaction_date', startOfMonth.toISOString());
-
-        if (transactionError) throw transactionError;
-
-        // Calculate spending by category
-        const spendingByCategory: Record<string, number> = {};
-        let total = 0;
-
-        (transactionData || []).forEach((t: { category: string; amount: number }) => {
-          spendingByCategory[t.category] = (spendingByCategory[t.category] || 0) + t.amount;
-          total += t.amount;
-        });
-
-        setTotalSpending(total);
-
-        // Merge spending with budgets
-        const budgetsWithSpending = (budgetData || []).map((budget: Budget) => {
-          const spending = spendingByCategory[budget.category] || 0;
-          return {
-            ...budget,
-            current_spending: spending,
-            percentage: budget.limit_amount > 0 ? (spending / budget.limit_amount) * 100 : 0
-          };
-        });
-
-        setBudgets(budgetsWithSpending);
-
-      } catch (error) {
-        console.error('Error fetching budgets:', error);
-        toast.error('Failed to load budgets');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchBudgets();
-  }, [user?.id]);
+  const totalSpending = budgets.reduce((sum, b) => sum + (b.current_spending || 0), 0);
+  const totalBudget = budgets.reduce((sum, b) => sum + b.limit_amount, 0);
+  const overallPercentage = totalBudget > 0 ? (totalSpending / totalBudget) * 100 : 0;
 
   const handleCreateBudget = () => {
     setEditingBudget(null);
@@ -483,172 +412,118 @@ export const BudgetManager: React.FC = () => {
     setDialogOpen(true);
   };
 
-  const handleDeleteBudget = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('budgets')
-        .update({ is_active: false })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      setBudgets(budgets.filter(b => b.id !== id));
-      toast.success('Budget deleted');
-    } catch (error) {
-      console.error('Error deleting budget:', error);
-      toast.error('Failed to delete budget');
-    }
+  const handleDeleteBudget = (id: string) => {
+    setBudgets(budgets.filter(b => b.id !== id));
+    toast.success('Budget deleted');
   };
 
-  const handleSaveBudget = async (data: { category: string; limit_amount: number; period: string }) => {
+  const handleSaveBudget = (data: { category: string; limit_amount: number; period: string }) => {
     if (!user?.id) return;
 
-    try {
-      if (editingBudget) {
-        // Update existing budget
-        const { error } = await supabase
-          .from('budgets')
-          .update({
-            limit_amount: data.limit_amount,
-            period: data.period
-          })
-          .eq('id', editingBudget.id);
-
-        if (error) throw error;
-
-        setBudgets(budgets.map(b =>
-          b.id === editingBudget.id
-            ? { ...b, limit_amount: data.limit_amount, period: data.period as Budget['period'] }
-            : b
-        ));
-
-        toast.success('Budget updated');
-      } else {
-        // Create new budget
-        const { data: newBudget, error } = await supabase
-          .from('budgets')
-          .insert({
-            user_id: user.id,
-            category: data.category,
-            limit_amount: data.limit_amount,
-            period: data.period
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        setBudgets([...budgets, { ...newBudget, current_spending: 0, percentage: 0 }]);
-        toast.success('Budget created');
-      }
-    } catch (error) {
-      console.error('Error saving budget:', error);
-      toast.error('Failed to save budget');
-      throw error;
+    if (editingBudget) {
+      // Update existing budget
+      setBudgets(budgets.map(b =>
+        b.id === editingBudget.id
+          ? { ...b, limit_amount: data.limit_amount, period: data.period as Budget['period'] }
+          : b
+      ));
+      toast.success('Budget updated');
+    } else {
+      // Create new budget
+      const newBudget: Budget = {
+        id: crypto.randomUUID(),
+        category: data.category,
+        limit_amount: data.limit_amount,
+        period: data.period as Budget['period'],
+        is_active: true,
+        created_at: new Date().toISOString(),
+        current_spending: 0,
+        percentage: 0
+      };
+      setBudgets([...budgets, newBudget]);
+      toast.success('Budget created');
     }
   };
 
   const existingCategories = budgets.map(b => b.category);
-  const totalBudgeted = budgets.reduce((sum, b) => sum + b.limit_amount, 0);
-  const overBudgetCount = budgets.filter(b => (b.percentage || 0) >= 100).length;
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <div className="h-24 bg-muted/50 rounded-lg animate-pulse" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-36 bg-muted/50 rounded-lg animate-pulse" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const overBudgetCount = budgets.filter(b => (b.percentage || 0) >= 100).length;
+  const warningCount = budgets.filter(b => {
+    const p = b.percentage || 0;
+    return p >= 80 && p < 100;
+  }).length;
 
   return (
     <div className="space-y-6">
       {/* Summary Card */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Wallet className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Budgeted</p>
-                <p className="text-xl font-bold">${totalBudgeted.toFixed(0)}</p>
-              </div>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wallet className="w-5 h-5 text-primary" />
+              <CardTitle>Budget Overview</CardTitle>
             </div>
+            <Button onClick={handleCreateBudget} size="sm">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Budget
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center">
+              <p className="text-2xl font-bold">${totalSpending.toFixed(0)}</p>
+              <p className="text-xs text-muted-foreground">Total Spent</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold">${totalBudget.toFixed(0)}</p>
+              <p className="text-xs text-muted-foreground">Total Budget</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-amber-600">{warningCount}</p>
+              <p className="text-xs text-muted-foreground">Near Limit</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-red-600">{overBudgetCount}</p>
+              <p className="text-xs text-muted-foreground">Over Budget</p>
+            </div>
+          </div>
 
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <PieChart className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">This Month</p>
-                <p className="text-xl font-bold">${totalSpending.toFixed(0)}</p>
-              </div>
+          <div className="mt-4">
+            <div className="flex justify-between text-sm mb-1">
+              <span>Overall Progress</span>
+              <span>{overallPercentage.toFixed(0)}%</span>
             </div>
-
-            <div className="flex items-center gap-3">
-              <div className={cn(
-                "p-2 rounded-lg",
-                overBudgetCount > 0 ? "bg-red-100" : "bg-green-100"
-              )}>
-                {overBudgetCount > 0 ? (
-                  <TrendingDown className="w-5 h-5 text-red-600" />
-                ) : (
-                  <TrendingUp className="w-5 h-5 text-green-600" />
-                )}
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Over Budget</p>
-                <p className={cn(
-                  "text-xl font-bold",
-                  overBudgetCount > 0 ? "text-red-600" : "text-green-600"
-                )}>
-                  {overBudgetCount} {overBudgetCount === 1 ? 'category' : 'categories'}
-                </p>
-              </div>
-            </div>
+            <Progress 
+              value={Math.min(overallPercentage, 100)} 
+              className={cn(
+                "h-2",
+                overallPercentage >= 100 && "[&>div]:bg-red-500",
+                overallPercentage >= 80 && overallPercentage < 100 && "[&>div]:bg-amber-500"
+              )}
+            />
           </div>
         </CardContent>
       </Card>
 
-      {/* Header with Add Button */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Your Budgets</h2>
-          <p className="text-sm text-muted-foreground">
-            {budgets.length} {budgets.length === 1 ? 'budget' : 'budgets'} set
-          </p>
-        </div>
-
-        <Button onClick={handleCreateBudget}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Budget
-        </Button>
-      </div>
-
-      {/* Budget Cards Grid */}
+      {/* Budget Grid */}
       {budgets.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="py-12 text-center">
-            <Wallet className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
-            <h3 className="font-medium mb-1">No budgets yet</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Create your first budget to start tracking spending
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <PieChart className="w-12 h-12 text-muted-foreground/50 mb-4" />
+            <h3 className="font-medium text-lg">No budgets yet</h3>
+            <p className="text-sm text-muted-foreground mt-1 text-center max-w-sm">
+              Create your first budget to start tracking spending by category
             </p>
-            <Button onClick={handleCreateBudget} variant="outline">
+            <Button onClick={handleCreateBudget} className="mt-4">
               <Plus className="w-4 h-4 mr-2" />
               Create Budget
             </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {budgets.map(budget => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {budgets.map((budget) => (
             <BudgetCard
               key={budget.id}
               budget={budget}

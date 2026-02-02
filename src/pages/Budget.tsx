@@ -7,27 +7,26 @@
  * - View and manage their spending budgets by category
  * - See recent transactions from receipt processing
  * - Track budget progress and spending trends
+ * 
+ * NOTE: This page currently uses local state only as the 
+ * 'transactions' table is not yet created in the database.
+ * TODO: Create transactions table and connect to Supabase
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
-import { supabase } from '@/integrations/supabase/client';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import {
   Receipt,
-  TrendingUp,
-  TrendingDown,
   DollarSign,
   Calendar,
-  Filter,
   RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BudgetManager } from '@/components/receipts';
 import { cn } from '@/lib/utils';
@@ -234,46 +233,10 @@ const RecentTransactions: React.FC<RecentTransactionsProps> = ({ transactions, l
 const BudgetPage: React.FC = () => {
   const { user } = useAuth();
   const { currentCouple } = useSupabaseCouple();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Using local state only - transactions table not yet in database
+  const [transactions] = useState<Transaction[]>([]);
+  const [loading] = useState(false);
   const [activeTab, setActiveTab] = useState('budgets');
-
-  // Fetch transactions
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const fetchTransactions = async () => {
-      setLoading(true);
-      try {
-        let query = supabase
-          .from('transactions')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('transaction_date', { ascending: false })
-          .limit(50);
-
-        if (currentCouple?.id) {
-          query = supabase
-            .from('transactions')
-            .select('*')
-            .or(`user_id.eq.${user.id},couple_id.eq.${currentCouple.id}`)
-            .order('transaction_date', { ascending: false })
-            .limit(50);
-        }
-
-        const { data, error } = await query;
-
-        if (error) throw error;
-        setTransactions(data || []);
-      } catch (error) {
-        console.error('Error fetching transactions:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTransactions();
-  }, [user?.id, currentCouple?.id]);
 
   return (
     <div className="space-y-6 pb-8">
