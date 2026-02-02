@@ -9,6 +9,6 @@
 
 export {
   NotificationsCenter,
-  type Notification,
-  type NotificationsCenterProps
+  type NotificationsCenterProps,
+  type Notification
 } from './NotificationsCenter';

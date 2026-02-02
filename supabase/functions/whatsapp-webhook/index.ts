@@ -2700,7 +2700,7 @@ Guidelines:
           // Generate embedding for the new note
           const embedding = await generateEmbedding(insertedNoteSummary);
           
-          if (embedding) {
+          if (embedding && insertedNoteId) {
             // Store the embedding for future similarity searches
             await supabase
               .from('clerk_notes')
