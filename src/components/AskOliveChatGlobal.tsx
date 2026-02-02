@@ -11,12 +11,15 @@ import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import { useSupabaseNotes, type SupabaseNote } from "@/hooks/useSupabaseNotes";
 import { useSupabaseLists, type SupabaseList } from "@/hooks/useSupabaseLists";
+import { CitationBadges, type Citation, type SourcesUsed } from "@/components/chat/CitationBadges";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  citations?: Citation[];
+  sourcesUsed?: SourcesUsed;
 }
 
 interface AskOliveChatGlobalProps {
@@ -263,6 +266,9 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
           data?.response ||
           t("askOlive.error", "I'm having trouble responding right now. Please try again."),
         timestamp: new Date(),
+        // Include RAG citations if present
+        citations: data?.citations,
+        sourcesUsed: data?.sources_used,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -309,10 +315,21 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
                 )}
               >
                 {message.role === "assistant" ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:mb-2 [&>ol]:mb-2">
-                    <ReactMarkdown>
-                      {message.content}
-                    </ReactMarkdown>
+                  <div className="space-y-2">
+                    <div className="prose prose-sm dark:prose-invert max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:mb-2 [&>ol]:mb-2">
+                      <ReactMarkdown>
+                        {message.content}
+                      </ReactMarkdown>
+                    </div>
+                    {/* Show RAG citations if present */}
+                    {message.citations && message.citations.length > 0 && (
+                      <CitationBadges
+                        citations={message.citations}
+                        sourcesUsed={message.sourcesUsed}
+                        compact
+                        className="pt-2 border-t border-border/50"
+                      />
+                    )}
                   </div>
                 ) : (
                   <p className="whitespace-pre-wrap">{message.content}</p>

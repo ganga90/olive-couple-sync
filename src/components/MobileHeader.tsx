@@ -1,11 +1,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Settings } from 'lucide-react';
+import { Settings, Bell } from 'lucide-react';
 import { PartnerAvatar } from './PartnerAvatar';
 import { OliveLogoWithText } from './OliveLogo';
 import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
 import { useLocalizedHref } from '@/hooks/useLocalizedNavigate';
 import { cn } from '@/lib/utils';
+import { NotificationsCenter } from '@/components/notifications';
 
 export const MobileHeader = () => {
   const { partner } = useSupabaseCouple();
@@ -43,13 +44,32 @@ export const MobileHeader = () => {
           <OliveLogoWithText size="sm" />
         </Link>
 
-        {/* Right: Settings Icon with 44x44pt touch target */}
-        <div className="w-11 flex items-center justify-end">
+        {/* Right: Notifications + Settings Icons with 44x44pt touch targets */}
+        <div className="flex items-center gap-1">
+          {/* Notifications Bell */}
+          <NotificationsCenter
+            trigger={
+              <button
+                className={cn(
+                  "flex items-center justify-center",
+                  "w-11 h-11 rounded-full",
+                  "text-muted-foreground hover:text-foreground",
+                  "hover:bg-muted/50 active:bg-muted/70",
+                  "transition-all duration-200"
+                )}
+                aria-label="Notifications"
+              >
+                <Bell className="h-5 w-5" />
+              </button>
+            }
+          />
+
+          {/* Settings */}
           <Link
             to={getLocalizedPath("/profile")}
             className={cn(
               "flex items-center justify-center",
-              "w-11 h-11 rounded-full", // 44px touch target for accessibility
+              "w-11 h-11 rounded-full",
               "text-muted-foreground hover:text-foreground",
               "hover:bg-muted/50 active:bg-muted/70",
               "transition-all duration-200"

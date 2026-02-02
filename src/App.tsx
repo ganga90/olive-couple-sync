@@ -19,6 +19,7 @@ import JoinInvite from "./pages/JoinInvite";
 import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
 import TermsOfService from "./pages/legal/TermsOfService";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
+import BudgetPage from "./pages/Budget";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider } from "./providers/AuthProvider";
 import { SupabaseCoupleProvider } from "./providers/SupabaseCoupleProvider";
@@ -46,6 +47,7 @@ const AppRoutes = () => (
     <Route path="/lists/:listId" element={<ListCategory />} />
     <Route path="/calendar" element={<CalendarPage />} />
     <Route path="/reminders" element={<Reminders />} />
+    <Route path="/budget" element={<BudgetPage />} />
     <Route path="/onboarding" element={<Onboarding />} />
     <Route path="/welcome" element={<Welcome />} />
     <Route path="/profile" element={<Profile />} />
@@ -87,6 +89,7 @@ const App = () => (
                   <Route path="/lists/:listId" element={<ListCategory />} />
                   <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/reminders" element={<Reminders />} />
+                  <Route path="/budget" element={<BudgetPage />} />
                   <Route path="/onboarding" element={<Onboarding />} />
                   <Route path="/welcome" element={<Welcome />} />
                   <Route path="/profile" element={<Profile />} />

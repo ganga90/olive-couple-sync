@@ -1,11 +1,70 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@1.0.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, prefer',
 };
+
+// ============================================================================
+// URL EXTRACTION & LINK SAVING
+// ============================================================================
+
+// URL regex that matches common URL patterns
+const URL_REGEX = /https?:\/\/[^\s<>\[\]{}'"(),;]+[^\s<>\[\]{}'"(),;.!?]/gi;
+
+// Extract URLs from text
+function extractUrls(text: string): string[] {
+  if (!text) return [];
+  const matches = text.match(URL_REGEX);
+  if (!matches) return [];
+
+  // Deduplicate and return
+  return [...new Set(matches)];
+}
+
+// Save extracted links via save-link function (non-blocking)
+async function saveExtractedLinks(
+  supabase: SupabaseClient,
+  urls: string[],
+  userId: string,
+  coupleId?: string,
+  sourceNoteId?: string
+): Promise<void> {
+  if (urls.length === 0) return;
+
+  console.log('[process-note] Saving', urls.length, 'extracted links');
+
+  // Process links in parallel (non-blocking)
+  const promises = urls.slice(0, 5).map(async (url) => {  // Limit to 5 links per note
+    try {
+      const { data, error } = await supabase.functions.invoke('save-link', {
+        body: {
+          url,
+          user_id: userId,
+          couple_id: coupleId,
+          source_note_id: sourceNoteId
+        }
+      });
+
+      if (error) {
+        console.warn('[process-note] Failed to save link:', url, error);
+      } else if (data?.duplicate) {
+        console.log('[process-note] Link already saved:', url);
+      } else {
+        console.log('[process-note] Link saved successfully:', data?.link?.id);
+      }
+    } catch (err) {
+      console.warn('[process-note] Error saving link:', url, err);
+    }
+  });
+
+  // Don't await - let links save in background
+  Promise.all(promises).catch(err => {
+    console.warn('[process-note] Background link saving error:', err);
+  });
+}
 
 // Define the JSON schema for structured output
 const singleNoteSchema = {
@@ -480,6 +539,111 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
+// ============================================================================
+// RECEIPT DETECTION
+// ============================================================================
+
+interface ReceiptDetectionResult {
+  isReceipt: boolean;
+  confidence: number;
+  receiptType?: 'retail' | 'restaurant' | 'service' | 'other';
+}
+
+// Detect if an image is a receipt
+async function detectReceipt(genai: GoogleGenAI, base64Image: string, mimeType: string): Promise<ReceiptDetectionResult> {
+  try {
+    const detectionPrompt = `Analyze this image and determine if it is a receipt, invoice, or bill.
+
+Return JSON with:
+{
+  "isReceipt": true/false,
+  "confidence": 0.0-1.0,
+  "receiptType": "retail" | "restaurant" | "service" | "other" | null
+}
+
+Signs of a receipt:
+- Contains store/merchant name
+- Shows line items with prices
+- Has a total amount
+- Contains date/time
+- May have payment method info
+- May have tax breakdown
+
+If NOT a receipt (e.g., screenshot of social media, book cover, photo), return isReceipt: false.`;
+
+    const response = await genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: detectionPrompt },
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: base64Image
+              }
+            }
+          ]
+        }
+      ],
+      config: {
+        responseMimeType: "application/json",
+        temperature: 0.1,
+        maxOutputTokens: 200
+      }
+    });
+
+    const responseText = response.text || '';
+    const parsed = JSON.parse(responseText);
+
+    return {
+      isReceipt: parsed.isReceipt === true,
+      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0,
+      receiptType: parsed.receiptType
+    };
+  } catch (error) {
+    console.error('[Receipt Detection] Error:', error);
+    return { isReceipt: false, confidence: 0 };
+  }
+}
+
+// Process receipt using the dedicated receipt processor
+async function processReceiptImage(
+  supabase: any,
+  base64Image: string,
+  userId: string,
+  coupleId?: string
+): Promise<{ success: boolean; transaction?: any; alert?: boolean; message?: string }> {
+  try {
+    console.log('[process-note] Invoking process-receipt for receipt image...');
+
+    const { data, error } = await supabase.functions.invoke('process-receipt', {
+      body: {
+        base64_image: base64Image,
+        user_id: userId,
+        couple_id: coupleId
+      }
+    });
+
+    if (error) {
+      console.error('[process-note] Receipt processing error:', error);
+      return { success: false, message: error.message };
+    }
+
+    console.log('[process-note] Receipt processed successfully:', data?.transaction?.id);
+    return {
+      success: data?.success || false,
+      transaction: data?.transaction,
+      alert: data?.alert,
+      message: data?.budget_message
+    };
+  } catch (error: any) {
+    console.error('[process-note] Receipt processing exception:', error);
+    return { success: false, message: error?.message };
+  }
+}
+
 // Analyze image using Gemini Vision with enhanced extraction
 async function analyzeImageWithGemini(genai: GoogleGenAI, imageUrl: string): Promise<string> {
   try {
@@ -866,21 +1030,76 @@ serve(async (req) => {
     // Process media if provided
     const mediaDescriptions: string[] = [];
     const mediaUrls: string[] = media || [];
-    
+    let receiptProcessingResult: { success: boolean; transaction?: any; alert?: boolean; message?: string } | null = null;
+
     if (mediaUrls.length > 0) {
       console.log('[process-note] Processing', mediaUrls.length, 'media files, content types:', contentTypes);
-      
+
       for (let i = 0; i < mediaUrls.length; i++) {
         const mediaUrl = mediaUrls[i];
         // Use content type from WhatsApp if available, fallback to URL detection
         const contentType = contentTypes[i] || undefined;
         const mediaType = getMediaType(mediaUrl, contentType);
         console.log('[process-note] Media type:', mediaType, 'Content-Type:', contentType, 'URL:', mediaUrl);
-        
+
         if (mediaType === 'image') {
-          const description = await analyzeImageWithGemini(genai, mediaUrl);
-          if (description) {
-            mediaDescriptions.push(`[Image] ${description}`);
+          // Download image for receipt detection
+          try {
+            const imageResponse = await fetch(mediaUrl);
+            if (imageResponse.ok) {
+              const imageBlob = await imageResponse.blob();
+              const arrayBuffer = await imageBlob.arrayBuffer();
+              const base64Image = arrayBufferToBase64(arrayBuffer);
+              const mimeType = imageBlob.type || 'image/jpeg';
+
+              // Check if this image is a receipt
+              console.log('[process-note] Checking if image is a receipt...');
+              const receiptCheck = await detectReceipt(genai, base64Image, mimeType);
+              console.log('[process-note] Receipt detection result:', receiptCheck);
+
+              if (receiptCheck.isReceipt && receiptCheck.confidence >= 0.7) {
+                // Process as receipt with specialized handler
+                console.log('[process-note] High-confidence receipt detected, processing with receipt handler');
+                receiptProcessingResult = await processReceiptImage(supabase, base64Image, user_id, couple_id);
+
+                if (receiptProcessingResult.success && receiptProcessingResult.transaction) {
+                  // Add receipt info to media descriptions
+                  const txn = receiptProcessingResult.transaction;
+                  mediaDescriptions.push(`[Receipt] ${txn.merchant} - $${txn.amount} (${txn.category}) on ${txn.date}`);
+
+                  // If there's a budget alert, add it to the description
+                  if (receiptProcessingResult.alert && receiptProcessingResult.message) {
+                    mediaDescriptions.push(`[Budget Alert] ${receiptProcessingResult.message}`);
+                  }
+                } else {
+                  // Fallback to normal image analysis if receipt processing fails
+                  console.log('[process-note] Receipt processing failed, falling back to normal image analysis');
+                  const description = await analyzeImageWithGemini(genai, mediaUrl);
+                  if (description) {
+                    mediaDescriptions.push(`[Image] ${description}`);
+                  }
+                }
+              } else {
+                // Not a receipt - use normal image analysis
+                const description = await analyzeImageWithGemini(genai, mediaUrl);
+                if (description) {
+                  mediaDescriptions.push(`[Image] ${description}`);
+                }
+              }
+            } else {
+              // Couldn't download image, try normal analysis
+              const description = await analyzeImageWithGemini(genai, mediaUrl);
+              if (description) {
+                mediaDescriptions.push(`[Image] ${description}`);
+              }
+            }
+          } catch (imgError) {
+            console.error('[process-note] Image processing error:', imgError);
+            // Fallback to normal analysis
+            const description = await analyzeImageWithGemini(genai, mediaUrl);
+            if (description) {
+              mediaDescriptions.push(`[Image] ${description}`);
+            }
           }
         } else if (mediaType === 'pdf') {
           const description = await analyzePdfWithGemini(genai, mediaUrl);
@@ -900,7 +1119,7 @@ serve(async (req) => {
           }
         }
       }
-      
+
       console.log('[process-note] Media descriptions:', mediaDescriptions);
     }
 
@@ -1396,19 +1615,47 @@ Process this note:
 
     const isMultiple = processedResponse.multiple === true || notes.length > 1;
 
-    const result = isMultiple
+    // Build the base result
+    let result: any = isMultiple
       ? { multiple: true, notes: processedNotes, original_text: safeText, media_urls: mediaUrls.length > 0 ? mediaUrls : null }
       : { ...processedNotes[0], original_text: safeText };
 
+    // Include receipt processing results if a receipt was detected and processed
+    if (receiptProcessingResult && receiptProcessingResult.success) {
+      result.receipt_processed = true;
+      result.receipt = {
+        transaction_id: receiptProcessingResult.transaction?.id,
+        merchant: receiptProcessingResult.transaction?.merchant,
+        amount: receiptProcessingResult.transaction?.amount,
+        category: receiptProcessingResult.transaction?.category,
+        date: receiptProcessingResult.transaction?.date,
+      };
+      if (receiptProcessingResult.alert) {
+        result.budget_alert = {
+          triggered: true,
+          message: receiptProcessingResult.message,
+        };
+      }
+    }
+
     console.log('[GenAI SDK] Final result:', result);
-    
+
     // Auto-extract memories from brain-dump (async, non-blocking) - only if there's actual text
     if (safeText.trim()) {
       extractMemoriesFromDump(genai, supabase, safeText, user_id).catch(err => {
         console.warn('[Memory Extraction] Non-blocking error:', err);
       });
     }
-    
+
+    // Auto-save any URLs found in the note text (async, non-blocking)
+    const extractedUrls = extractUrls(safeText);
+    if (extractedUrls.length > 0) {
+      console.log('[process-note] Found', extractedUrls.length, 'URLs in note text');
+      saveExtractedLinks(supabase, extractedUrls, user_id, couple_id).catch(err => {
+        console.warn('[Link Extraction] Non-blocking error:', err);
+      });
+    }
+
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
