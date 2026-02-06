@@ -27,7 +27,7 @@ type TaskActionType =
   | 'move'          // "move X to groceries list"
   | 'remind';       // "remind me about X tomorrow"
 
-type QueryType = 'urgent' | 'today' | 'recent' | 'overdue' | 'general' | null;
+type QueryType = 'urgent' | 'today' | 'tomorrow' | 'recent' | 'overdue' | 'general' | null;
 
 // Chat subtypes for specialized AI handling
 type ChatType = 
@@ -60,12 +60,15 @@ function normalizeText(text: string): string {
 function detectChatType(message: string): ChatType {
   const lower = message.toLowerCase();
   
-  // Briefing patterns - comprehensive morning overview
+  // Briefing patterns - comprehensive morning overview (today AND tomorrow)
   if (/\b(morning\s+)?briefing\b/i.test(lower) ||
       /\bstart\s+my\s+day\b/i.test(lower) ||
       /\bmy\s+day\s+ahead\b/i.test(lower) ||
       /\bgive\s+me\s+(a\s+)?rundown\b/i.test(lower) ||
-      /\b(what'?s|whats)\s+(on\s+)?(my\s+)?(schedule|agenda|calendar)\s*(today|for today)?\b/i.test(lower) ||
+      /\b(what'?s|whats)\s+(on\s+)?(my\s+)?(schedule|agenda|calendar|day|plate)\s*(today|for today|tomorrow|for tomorrow)?\b/i.test(lower) ||
+      /\b(what'?s|whats)\s+(for|on)\s+(today|tomorrow)\b/i.test(lower) ||
+      /\b(what|which)\s+(tasks?|things?|items?)\s+(are|do i have)\s+(on|for|due)\s+(my\s+)?(day|today|tomorrow)\b/i.test(lower) ||
+      /\b(my|the)\s+(agenda|schedule|plan)\s+(for\s+)?(today|tomorrow)\b/i.test(lower) ||
       /\bgood\s+morning\s+olive\b/i.test(lower) ||
       /\bmorning\s+olive\b/i.test(lower) ||
       /\bbrief\s+me\b/i.test(lower) ||
@@ -172,7 +175,7 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'MERGE' };
   }
   
-  const isQuestion = lower.endsWith('?') || /^(what|where|when|who|how|why|can|do|does|is|are|which|any|recommend|suggest)\b/i.test(lower);
+  const isQuestion = lower.endsWith('?') || /^(what|where|when|who|how|why|can|do|does|is|are|which|any|recommend|suggest|so\s+what)\b/i.test(lower);
   
   // ============================================================================
   // TASK ACTION PATTERNS - Edit, complete, prioritize, assign
@@ -267,6 +270,20 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
       /due\s+today/i.test(lower)) {
     console.log('[Intent Detection] Matched: today query pattern');
     return { intent: 'SEARCH', queryType: 'today' };
+  }
+  
+  // Tomorrow queries - schedule/agenda for tomorrow
+  if (/what'?s?\s+(?:on\s+)?(?:my\s+)?(?:day|agenda|schedule|calendar|plate|plan)?\s*(?:for\s+)?tomorrow/i.test(lower) ||
+      /what'?s?\s+(?:due\s+)?tomorrow/i.test(lower) ||
+      /what'?s?\s+for\s+tomorrow/i.test(lower) ||
+      /tomorrow'?s?\s+(?:tasks?|agenda|schedule|plan)/i.test(lower) ||
+      /due\s+tomorrow/i.test(lower) ||
+      /\b(?:what|which)\s+(?:tasks?|things?|items?)\s+.*(?:tomorrow|for\s+tomorrow)\b/i.test(lower) ||
+      /\b(?:my|the)\s+(?:agenda|schedule|plan)\s+(?:for\s+)?tomorrow\b/i.test(lower) ||
+      /\b(?:agenda|schedule|plan)\s+(?:for\s+)?tomorrow\b/i.test(lower) ||
+      /\b(?:so\s+)?what(?:'s|s)?\s+(?:is\s+)?(?:on\s+)?(?:my\s+)?(?:agenda|schedule|calendar|day|plate|plan)\s+(?:for\s+)?(?:tomorrow)\b/i.test(lower)) {
+    console.log('[Intent Detection] Matched: tomorrow query pattern');
+    return { intent: 'SEARCH', queryType: 'tomorrow' };
   }
   
   if (/what'?s?\s+recent/i.test(lower) || 
@@ -1473,6 +1490,83 @@ serve(async (req) => {
         );
       }
       
+      // Handle "what's due tomorrow" query
+      if (queryType === 'tomorrow') {
+        const dayAfterTomorrow = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000);
+        const dueTomorrowTasks = activeTasks.filter(t => {
+          if (!t.due_date) return false;
+          const dueDate = new Date(t.due_date);
+          return dueDate >= tomorrow && dueDate < dayAfterTomorrow;
+        });
+        
+        // Also fetch calendar events for tomorrow
+        let tomorrowCalendarEvents: string[] = [];
+        try {
+          const { data: calConnection } = await supabase
+            .from('calendar_connections')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .limit(1)
+            .single();
+          
+          if (calConnection) {
+            const { data: events } = await supabase
+              .from('calendar_events')
+              .select('title, start_time, all_day')
+              .eq('connection_id', calConnection.id)
+              .gte('start_time', tomorrow.toISOString())
+              .lt('start_time', dayAfterTomorrow.toISOString())
+              .order('start_time', { ascending: true })
+              .limit(10);
+            
+            tomorrowCalendarEvents = (events || []).map(e => {
+              if (e.all_day) return `• ${e.title} (all day)`;
+              const time = new Date(e.start_time).toLocaleTimeString('en-US', { 
+                hour: 'numeric', minute: '2-digit', hour12: true 
+              });
+              return `• ${time}: ${e.title}`;
+            });
+          }
+        } catch (calErr) {
+          console.warn('[WhatsApp] Calendar fetch error for tomorrow:', calErr);
+        }
+        
+        if (dueTomorrowTasks.length === 0 && tomorrowCalendarEvents.length === 0) {
+          return new Response(
+            createTwimlResponse('📅 Nothing scheduled for tomorrow! Enjoy your free day.\n\n💡 Try "what\'s urgent" to see high-priority tasks'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        let response = '📅 Tomorrow\'s Agenda:\n';
+        
+        if (tomorrowCalendarEvents.length > 0) {
+          response += `\n🗓️ Calendar (${tomorrowCalendarEvents.length}):\n${tomorrowCalendarEvents.join('\n')}\n`;
+        }
+        
+        if (dueTomorrowTasks.length > 0) {
+          const tomorrowList = dueTomorrowTasks.slice(0, 8).map((t, i) => {
+            const priority = t.priority === 'high' ? ' 🔥' : '';
+            return `${i + 1}. ${t.summary}${priority}`;
+          }).join('\n');
+          const moreText = dueTomorrowTasks.length > 8 ? `\n...and ${dueTomorrowTasks.length - 8} more` : '';
+          response += `\n📋 Tasks Due (${dueTomorrowTasks.length}):\n${tomorrowList}${moreText}\n`;
+        }
+        
+        // Also mention overdue tasks as context
+        if (overdueTasks.length > 0) {
+          response += `\n⚠️ Also: ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''} to catch up on`;
+        }
+        
+        response += '\n\n🔗 Manage: https://witholive.app';
+        
+        return new Response(
+          createTwimlResponse(response),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+      
       // Handle "what's recent" query
       if (queryType === 'recent') {
         if (recentTasks.length === 0) {
@@ -2129,10 +2223,14 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
       }
       
       // ================================================================
-      // CALENDAR EVENTS - Fetch for briefing context
+      // CALENDAR EVENTS - Fetch for briefing context (today + tomorrow)
       // ================================================================
       let calendarContext = '';
       let todayEvents: Array<{ title: string; start_time: string; all_day: boolean }> = [];
+      let tomorrowEvents: Array<{ title: string; start_time: string; all_day: boolean }> = [];
+      
+      // Detect if user is asking about tomorrow specifically
+      const isTomorrowQuery = /\btomorrow\b/i.test(effectiveMessage || '');
       
       if (chatType === 'briefing') {
         try {
@@ -2161,23 +2259,41 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
             
             todayEvents = events || [];
             
-            if (todayEvents.length > 0) {
-              const eventsList = todayEvents.map(e => {
-                if (e.all_day) return `• ${e.title} (all day)`;
-                const time = new Date(e.start_time).toLocaleTimeString('en-US', { 
-                  hour: 'numeric', 
-                  minute: '2-digit',
-                  hour12: true 
-                });
-                return `• ${time}: ${e.title}`;
-              }).join('\n');
-              
-              calendarContext = `
-## Today's Calendar (${todayEvents.length} events):
-${eventsList}
-`;
+            // Also fetch tomorrow's events
+            const dayAfterTomorrow = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000);
+            const { data: tmrwEvents } = await supabase
+              .from('calendar_events')
+              .select('title, start_time, end_time, all_day, location')
+              .eq('connection_id', calConnection.id)
+              .gte('start_time', tomorrow.toISOString())
+              .lt('start_time', dayAfterTomorrow.toISOString())
+              .order('start_time', { ascending: true })
+              .limit(10);
+            
+            tomorrowEvents = tmrwEvents || [];
+            
+            const formatEvents = (evts: typeof todayEvents) => evts.map(e => {
+              if (e.all_day) return `• ${e.title} (all day)`;
+              const time = new Date(e.start_time).toLocaleTimeString('en-US', { 
+                hour: 'numeric', minute: '2-digit', hour12: true 
+              });
+              return `• ${time}: ${e.title}`;
+            }).join('\n');
+            
+            if (isTomorrowQuery) {
+              // Focus on tomorrow's context
+              calendarContext = tomorrowEvents.length > 0
+                ? `\n## Tomorrow's Calendar (${tomorrowEvents.length} events):\n${formatEvents(tomorrowEvents)}\n`
+                : '\n## Tomorrow\'s Calendar:\nNo events scheduled for tomorrow.\n';
             } else {
-              calendarContext = '\n## Today\'s Calendar:\nNo events scheduled today - clear schedule!\n';
+              // Show today (and tomorrow preview)
+              calendarContext = todayEvents.length > 0
+                ? `\n## Today's Calendar (${todayEvents.length} events):\n${formatEvents(todayEvents)}\n`
+                : '\n## Today\'s Calendar:\nNo events scheduled today - clear schedule!\n';
+              
+              if (tomorrowEvents.length > 0) {
+                calendarContext += `\n## Tomorrow Preview (${tomorrowEvents.length} events):\n${formatEvents(tomorrowEvents)}\n`;
+              }
             }
           }
         } catch (calErr) {
@@ -2327,32 +2443,42 @@ ${skillContext}
 - Urgent tasks: ${topUrgentTasks.join(', ') || 'None'}
 - Overdue tasks: ${topOverdueTasks.join(', ') || 'None'}
 - Due today: ${topTodayTasks.join(', ') || 'None'}
+- Due tomorrow: ${dueTomorrowTasks.slice(0, 3).map(t => t.summary).join(', ') || 'None'}
 `;
       
       switch (chatType) {
         case 'briefing':
-          // Comprehensive morning briefing with schedule, focus, and partner context
+          // Comprehensive briefing with schedule, focus, and partner context
           const briefingCalendar = calendarContext || '\n## Today\'s Calendar:\nNo calendar connected - connect in settings to see events!\n';
           const briefingPartner = partnerContext || (coupleId ? '' : '');
           
-          systemPrompt = `You are Olive, providing a comprehensive morning briefing to help the user start their day.
+          // Determine if user is asking about tomorrow
+          const briefingTimeframe = isTomorrowQuery ? 'tomorrow' : 'today';
+          const briefingEmoji = isTomorrowQuery ? '📅' : '🌅';
+          const briefingTitle = isTomorrowQuery ? 'Tomorrow\'s Preview' : 'Morning Briefing';
+          
+          systemPrompt = `You are Olive, providing a comprehensive ${briefingTitle} to help the user plan.
 
 ${baseContext}
 ${briefingCalendar}
 ${briefingPartner}
-Your task: Deliver a complete but concise morning briefing (under 600 chars for WhatsApp).
+Your task: Deliver a complete but concise ${briefingTitle} focused on ${briefingTimeframe} (under 600 chars for WhatsApp).
 
 Structure your response:
-🌅 **Morning Briefing**
+${briefingEmoji} **${briefingTitle}**
 
-1. **Schedule Snapshot**: Mention key calendar events (if any) or note a clear schedule
-2. **Today's Focus**: Top 2-3 priorities (overdue first, then urgent, then due today)
-3. **Quick Stats**: ${taskContext.total_active} active tasks, ${taskContext.urgent} urgent, ${taskContext.overdue} overdue
+1. **Schedule Snapshot**: Mention ${briefingTimeframe}'s calendar events (if any) or note a clear schedule
+2. **${isTomorrowQuery ? 'Tomorrow\'s' : 'Today\'s'} Focus**: Top 2-3 priorities ${isTomorrowQuery ? 'for tomorrow' : '(overdue first, then urgent, then due today)'}
+3. **Quick Stats**: ${taskContext.total_active} active tasks, ${taskContext.urgent} urgent, ${taskContext.overdue} overdue, ${taskContext.due_tomorrow} due tomorrow
 ${partnerName ? `4. **${partnerName} Update**: Brief note on partner's recent activity or assignments (if any)` : ''}
 5. **Encouragement**: One motivating line personalized to their situation
 
+IMPORTANT: The user asked "${effectiveMessage}". If they ask about "tomorrow", focus on TOMORROW's tasks and events, not today's.
+
 Be warm, organized, and actionable. Use emojis thoughtfully.`;
-          userPromptEnhancement = `\n\nGive me my complete morning briefing for today.`;
+          userPromptEnhancement = isTomorrowQuery
+            ? `\n\nGive me my complete preview for tomorrow.`
+            : `\n\nGive me my complete morning briefing for today.`;
           break;
           
         case 'weekly_summary':
