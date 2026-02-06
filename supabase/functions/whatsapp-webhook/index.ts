@@ -178,6 +178,13 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
   const isQuestion = lower.endsWith('?') || /^(what|where|when|who|how|why|can|do|does|is|are|which|any|recommend|suggest|so\s+what)\b/i.test(lower);
   
   // ============================================================================
+  // QUESTION EARLY-EXIT: Skip task action patterns for questions.
+  // Task actions are imperative commands ("done with X", "make X urgent").
+  // Questions ("what's for tomorrow?", "what's on my agenda?") must route
+  // to SEARCH / CHAT / CONTEXTUAL_ASK handlers below.
+  // ============================================================================
+  if (!isQuestion) {
+  // ============================================================================
   // TASK ACTION PATTERNS - Edit, complete, prioritize, assign
   // ============================================================================
   
@@ -196,8 +203,9 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'TASK_ACTION', actionType: 'set_priority', actionTarget: priorityMatch[1]?.trim() };
   }
   
-  // Due date patterns
-  const dueMatch = lower.match(/^(?:set|make|move)?\s*(.+?)\s+(?:is\s+)?(?:due|for)\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+week|\d+.+)/i);
+  // Due date patterns - REQUIRE a verb prefix to avoid false positives on questions
+  const dueMatch = lower.match(/^(?:set|make|move)\s+(.+?)\s+(?:is\s+)?(?:due|for)\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+week|\d+.+)/i) ||
+                   lower.match(/^(.+?)\s+is\s+due\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+week|\d+.+)/i);
   if (dueMatch) {
     console.log('[Intent Detection] Matched: set due date action');
     return { intent: 'TASK_ACTION', actionType: 'set_due', actionTarget: dueMatch[1]?.trim(), cleanMessage: dueMatch[2] };
@@ -230,6 +238,8 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     console.log('[Intent Detection] Matched: remind action');
     return { intent: 'TASK_ACTION', actionType: 'remind', actionTarget: remindMatch[1]?.trim() };
   }
+
+  } // end !isQuestion guard
   
   // ============================================================================
   // CONTEXTUAL SEARCH PATTERNS - Semantic questions needing AI understanding
