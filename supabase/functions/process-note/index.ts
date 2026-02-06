@@ -347,10 +347,12 @@ Example: "buy milk, call doctor tomorrow, book restaurant Friday" → 3 separate
 You MUST use the user's memories to:
 1. **Personalize summaries** with specific details (pet names, brands, quantities)
 2. **Route to correct lists** - If memories mention saving specific content types to specific lists, output that exact list name in target_list
+3. **Match note text against list names** - If ANY word or phrase in the note text exactly matches an existing list name, set target_list to that list name
 
 Examples:
 - Memory: "I save books to Books list" + Image of a book → target_list: "Books"
 - Memory: "Movies go to Tv shows and Movies list" + Movie screenshot → target_list: "Tv shows and Movies"
+- Memory: "I have an LLC" + Note text contains "LLC" + User has a list called "LLC" → target_list: "LLC"
 - User says "buy dog food" + memory "dog named Milka eats Royal Canine" → Summary: "Buy Royal Canine for Milka"`;
   }
 
@@ -359,13 +361,11 @@ Examples:
   if (existingListNames.length > 0) {
     listsSection = `\n\n**USER'S EXISTING LISTS**: ${existingListNames.join(', ')}
 
-**LIST ROUTING RULES (CRITICAL)**:
-- When content clearly matches a list name, output that exact list name in target_list
-- Image of books/reading material → look for "Books" list
-- Movies, TV shows, series → look for "Movies", "Tv shows", or similar list
-- Recipes/cooking → look for "Recipes" list
-- If user memories specify routing preferences, ALWAYS follow them
-- Only leave target_list null if content doesn't match any list`;
+**LIST ROUTING RULES (CRITICAL - FOLLOW IN THIS EXACT ORDER)**:
+1. **DIRECT NAME MATCH**: If any word or phrase in the note text EXACTLY matches an existing list name (case-insensitive), output that list name in target_list. Example: Note "LLC check business account" + list "LLC" exists → target_list: "LLC"
+2. **Memory-based routing**: If user memories specify routing preferences, ALWAYS follow them
+3. **Content matching**: When content clearly matches a list name, output that exact list name in target_list
+4. Only leave target_list null if content doesn't match any list`;
   }
 
   return `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
@@ -1377,6 +1377,35 @@ Process this note:
       const normalizeName = (name: string): string => {
         return name.toLowerCase().trim().replace(/[_\-\s]+/g, ' ');
       };
+      
+      // ================================================================
+      // PRIORITY 0: Direct text-to-list-name match
+      // Check if any word/phrase in the original note text or summary matches a list name exactly
+      // This catches cases like "LLC check account" when a list "LLC" exists
+      // ================================================================
+      if (existingLists && existingLists.length > 0) {
+        const textToCheck = [safeText, summary, targetList].filter(Boolean).join(' ').toLowerCase();
+        
+        // Sort lists by name length descending so longer names are matched first
+        // (prevents "Home" matching before "Home Improvement")
+        const sortedLists = [...existingLists].sort((a: any, b: any) => b.name.length - a.name.length);
+        
+        for (const list of sortedLists) {
+          const listNameLower = list.name.toLowerCase().trim();
+          // Skip very generic list names that would match too broadly
+          const genericNames = ['task', 'tasks', 'personal', 'general', 'other', 'misc'];
+          if (genericNames.includes(listNameLower)) continue;
+          
+          // Check if the list name appears as a word/phrase in the text (word boundary match)
+          const escapedName = listNameLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const wordBoundaryRegex = new RegExp(`\\b${escapedName}\\b`, 'i');
+          
+          if (wordBoundaryRegex.test(textToCheck)) {
+            console.log('[findOrCreateList] PRIORITY 0: Direct text-to-list match! Text contains "' + list.name + '"');
+            return list.id;
+          }
+        }
+      }
       
       // ================================================================
       // PRIORITY 1: Exact or near-exact match by category name
