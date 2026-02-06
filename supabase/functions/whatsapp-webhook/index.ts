@@ -1419,17 +1419,99 @@ serve(async (req) => {
 
       const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
 
-      // Check if asking about a specific list
-      const listNameMatch = effectiveMessage?.toLowerCase().match(/(?:what'?s in|show me|list)\s+(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:list|tasks?)/i);
-      let specificList: string | null = null;
+      // ================================================================
+      // SMART LIST LOOKUP - Extract list name from flexible patterns
+      // ================================================================
       
-      if (listNameMatch) {
-        const requestedList = listNameMatch[1].toLowerCase();
+      // Normalize: strip articles, trim, lowercase
+      function normalizeListName(name: string): string {
+        return name.toLowerCase()
+          .replace(/\b(the|a|an|my|our)\b/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+      
+      // Singularize: basic English plural→singular for matching
+      function singularize(word: string): string {
+        if (word.endsWith('ies')) return word.slice(0, -3) + 'y'; // groceries→grocery
+        if (word.endsWith('ves')) return word.slice(0, -3) + 'f'; // wolves→wolf
+        if (word.endsWith('ses') || word.endsWith('xes') || word.endsWith('zes') || word.endsWith('ches') || word.endsWith('shes')) {
+          return word.slice(0, -2); // boxes→box, watches→watch
+        }
+        if (word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1); // tasks→task
+        return word;
+      }
+      
+      // Try multiple regex patterns to extract a list name from the message
+      const listExtractionPatterns = [
+        // "show me the grocery list" / "show the groceries list"
+        /(?:show|display|open|get|see)\s+(?:me\s+)?(?:the\s+|my\s+|our\s+)?(.+?)\s+(?:list|tasks?|items?)$/i,
+        // "what's in my grocery list" / "what's on the groceries list"
+        /(?:what'?s|whats)\s+(?:in|on)\s+(?:the\s+|my\s+|our\s+)?(.+?)\s+(?:list|tasks?|items?)$/i,
+        // "list groceries" / "list my groceries"
+        /^list\s+(?:my\s+|the\s+|our\s+)?(.+?)$/i,
+        // "my groceries" / "my grocery list"
+        /^(?:my|our)\s+(.+?)(?:\s+list)?$/i,
+        // "groceries list" / "grocery list"
+        /^(.+?)\s+list$/i,
+        // "what's in groceries" / "show groceries"
+        /(?:show|display|open|get|see|what'?s\s+in)\s+(?:me\s+)?(?:the\s+|my\s+|our\s+)?(.+?)$/i,
+      ];
+      
+      let specificList: string | null = null;
+      let matchedListName: string | null = null;
+      
+      // Try each extraction pattern
+      for (const pattern of listExtractionPatterns) {
+        const match = effectiveMessage?.match(pattern);
+        if (!match) continue;
+        
+        const rawExtracted = normalizeListName(match[1]);
+        if (!rawExtracted || rawExtracted.length < 2) continue;
+        
+        // Don't match generic words that aren't list names
+        const genericWords = new Set(['tasks', 'task', 'all', 'everything', 'stuff', 'things', 'my', 'me', 'the']);
+        if (genericWords.has(rawExtracted)) continue;
+        
+        const extractedSingular = singularize(rawExtracted);
+        
+        // Try to match against existing lists with fuzzy matching
         for (const [listId, listName] of listIdToName) {
-          if ((listName as string).toLowerCase().includes(requestedList) || requestedList.includes((listName as string).toLowerCase())) {
+          const normalizedListName = normalizeListName(listName as string);
+          const listNameSingular = singularize(normalizedListName);
+          
+          // Exact match (after normalization)
+          if (normalizedListName === rawExtracted || normalizedListName === extractedSingular) {
             specificList = listId;
+            matchedListName = listName as string;
             break;
           }
+          
+          // Singular match (groceries→grocery vs grocery)
+          if (listNameSingular === extractedSingular) {
+            specificList = listId;
+            matchedListName = listName as string;
+            break;
+          }
+          
+          // Substring match (e.g., "grocery" in "groceries" or vice versa)
+          if (normalizedListName.includes(rawExtracted) || rawExtracted.includes(normalizedListName)) {
+            specificList = listId;
+            matchedListName = listName as string;
+            break;
+          }
+          
+          // Singular substring match
+          if (listNameSingular.includes(extractedSingular) || extractedSingular.includes(listNameSingular)) {
+            specificList = listId;
+            matchedListName = listName as string;
+            break;
+          }
+        }
+        
+        if (specificList) {
+          console.log(`[WhatsApp] List matched: "${match[1]}" → "${matchedListName}" (pattern: ${pattern.source.substring(0, 30)}...)`);
+          break;
         }
       }
 
@@ -1437,20 +1519,25 @@ serve(async (req) => {
         const relevantTasks = tasks.filter(t => t.list_id === specificList && !t.completed);
         
         if (relevantTasks.length === 0) {
+          const completedInList = tasks.filter(t => t.list_id === specificList && t.completed);
+          const emptyMsg = completedInList.length > 0
+            ? `Your ${matchedListName} list is all done! ✅ (${completedInList.length} completed item${completedInList.length > 1 ? 's' : ''})`
+            : `Your ${matchedListName} list is empty! 🎉`;
           return new Response(
-            createTwimlResponse(`Your ${listIdToName.get(specificList)} list is empty! 🎉`),
+            createTwimlResponse(emptyMsg),
             { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
           );
         }
         
-        const listName = listIdToName.get(specificList);
         const itemsList = relevantTasks.map((t, i) => {
           const items = t.items && t.items.length > 0 ? `\n  ${t.items.join('\n  ')}` : '';
-          return `${i + 1}. ${t.summary}${items}`;
+          const priority = t.priority === 'high' ? ' 🔥' : '';
+          const dueInfo = t.due_date ? ` (Due: ${new Date(t.due_date).toLocaleDateString()})` : '';
+          return `${i + 1}. ${t.summary}${priority}${dueInfo}${items}`;
         }).join('\n\n');
         
         return new Response(
-          createTwimlResponse(`📋 ${listName}:\n\n${itemsList}\n\n💡 Say "mark as done" to complete items`),
+          createTwimlResponse(`📋 ${matchedListName} (${relevantTasks.length}):\n\n${itemsList}\n\n💡 Say "done with [task]" to complete items`),
           { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
         );
       }
