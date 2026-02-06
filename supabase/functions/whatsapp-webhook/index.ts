@@ -27,7 +27,7 @@ type TaskActionType =
   | 'move'          // "move X to groceries list"
   | 'remind';       // "remind me about X tomorrow"
 
-type QueryType = 'urgent' | 'today' | 'tomorrow' | 'recent' | 'overdue' | 'general' | null;
+type QueryType = 'urgent' | 'today' | 'tomorrow' | 'this_week' | 'recent' | 'overdue' | 'general' | null;
 
 // Chat subtypes for specialized AI handling
 type ChatType = 
@@ -64,7 +64,7 @@ function detectChatType(message: string): ChatType {
   if (/\b(morning\s+)?briefing\b/i.test(lower) ||
       /\bstart\s+my\s+day\b/i.test(lower) ||
       /\bmy\s+day\s+ahead\b/i.test(lower) ||
-      /\bgive\s+me\s+(a\s+)?rundown\b/i.test(lower) ||
+      /\bgive\s+me\s+(a\s+)?(rundown|quick\s+update|update|overview|snapshot|recap)\b/i.test(lower) ||
       /\b(what'?s|whats)\s+(on\s+)?(my\s+)?(schedule|agenda|calendar|day|plate)\s*(today|for today|tomorrow|for tomorrow)?\b/i.test(lower) ||
       /\b(what'?s|whats)\s+(for|on)\s+(today|tomorrow)\b/i.test(lower) ||
       /\b(what|which)\s+(tasks?|things?|items?)\s+(are|do i have)\s+(on|for|due)\s+(my\s+)?(day|today|tomorrow)\b/i.test(lower) ||
@@ -72,7 +72,12 @@ function detectChatType(message: string): ChatType {
       /\bgood\s+morning\s+olive\b/i.test(lower) ||
       /\bmorning\s+olive\b/i.test(lower) ||
       /\bbrief\s+me\b/i.test(lower) ||
-      /\bdaily\s+briefing\b/i.test(lower)) {
+      /\bdaily\s+briefing\b/i.test(lower) ||
+      /\bcatch\s+me\s+up\b/i.test(lower) ||
+      /\bquick\s+update\b/i.test(lower) ||
+      /\bwhat\s+do\s+i\s+need\s+to\s+know\b/i.test(lower) ||
+      /\bwhat('?s| is)\s+happening\s+(today|tomorrow|this week)\b/i.test(lower) ||
+      /\bgive\s+me\s+(the\s+)?highlights\b/i.test(lower)) {
     return 'briefing';
   }
   
@@ -80,7 +85,10 @@ function detectChatType(message: string): ChatType {
   if (/\b(summarize|recap|review)\s+(my\s+)?(week|weekly|past\s+7|last\s+7)/i.test(lower) ||
       /\b(how\s+was|how'?s)\s+(my\s+)?week/i.test(lower) ||
       /\bweek(ly)?\s+(summary|recap|review)/i.test(lower) ||
-      /\bwhat\s+did\s+i\s+(do|accomplish|complete)\s+(this|last)\s+week/i.test(lower)) {
+      /\bwhat\s+did\s+i\s+(do|accomplish|complete)\s+(this|last)\s+week/i.test(lower) ||
+      /\b(anything|something|what'?s?)\s+(important|big|notable)\s+(this|for the)\s+week\b/i.test(lower) ||
+      /\bwhat('?s| is)\s+(coming\s+up|ahead)\s+(this\s+week|for the week)\b/i.test(lower) ||
+      /\bhow('?s| is)\s+(this|the)\s+week\s+(looking|going|shaping)\b/i.test(lower)) {
     return 'weekly_summary';
   }
   
@@ -90,7 +98,12 @@ function detectChatType(message: string): ChatType {
       /\bwhat'?s?\s+(most\s+)?important\s+today/i.test(lower) ||
       /\bfocus\s+(for\s+)?today/i.test(lower) ||
       /\bwhat\s+first\b/i.test(lower) ||
-      /\bwhere\s+should\s+i\s+start/i.test(lower)) {
+      /\bwhere\s+should\s+i\s+start/i.test(lower) ||
+      /\bwhat\s+do\s+i\s+need\s+to\s+(focus|work)\s+on\b/i.test(lower) ||
+      /\bwhat('?s| is)\s+(the\s+)?top\s+priority\b/i.test(lower) ||
+      /\bwhat\s+matters\s+most\b/i.test(lower) ||
+      /\bmy\s+priorities\b/i.test(lower) ||
+      /\bwhat\s+should\s+i\s+tackle\b/i.test(lower)) {
     return 'daily_focus';
   }
   
@@ -106,7 +119,8 @@ function detectChatType(message: string): ChatType {
   if (/\bhow\s+am\s+i\s+doing/i.test(lower) ||
       /\b(my|check)\s+(progress|status|stats)/i.test(lower) ||
       /\bhow\s+productive\s+(am\s+i|have\s+i\s+been)/i.test(lower) ||
-      /\bam\s+i\s+on\s+track/i.test(lower)) {
+      /\bam\s+i\s+on\s+track/i.test(lower) ||
+      /\bhow\s+(are|am)\s+(we|i)\s+doing\b/i.test(lower)) {
     return 'progress_check';
   }
   
@@ -123,7 +137,9 @@ function detectChatType(message: string): ChatType {
   if (/\bhelp\s+me\s+plan/i.test(lower) ||
       /\bwhat'?s?\s+next\b/i.test(lower) ||
       /\bplan\s+(my|the)\s+(day|week|tomorrow)/i.test(lower) ||
-      /\bwhat\s+should\s+i\s+do\s+(next|now|after)/i.test(lower)) {
+      /\bwhat\s+should\s+i\s+do\s+(next|now|after)/i.test(lower) ||
+      /\bwhat('?s| is)\s+the\s+plan\b/i.test(lower) ||
+      /\bwhat('?s| is)\s+(on\s+)?(the|my)\s+plate\b/i.test(lower)) {
     return 'planning';
   }
   
@@ -296,6 +312,18 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'SEARCH', queryType: 'tomorrow' };
   }
   
+  // This week queries - schedule/agenda for the week
+  if (/\b(?:what'?s|whats)\s+(?:on\s+)?(?:my\s+)?(?:agenda|schedule|calendar|plan|plate)\s+(?:for\s+)?(?:this|the)\s+week\b/i.test(lower) ||
+      /\b(?:anything|something|what'?s?)\s+(?:important|big|notable|coming\s+up)\s+(?:this|for the|for this)\s+week\b/i.test(lower) ||
+      /\bthis\s+week(?:'?s)?\s+(?:tasks?|agenda|schedule|plan)\b/i.test(lower) ||
+      /\bwhat(?:'s|s)?\s+(?:coming\s+up|ahead|happening)\s+(?:this\s+week|for the week)\b/i.test(lower) ||
+      /\bhow(?:'s| is)\s+(?:this|the|my)\s+week\s+(?:looking|going|shaping)\b/i.test(lower) ||
+      /\bweek\s+ahead\b/i.test(lower) ||
+      /\bwhat\s+do\s+i\s+have\s+(?:this|for the|for this)\s+week\b/i.test(lower)) {
+    console.log('[Intent Detection] Matched: this_week query pattern');
+    return { intent: 'SEARCH', queryType: 'this_week' };
+  }
+  
   if (/what'?s?\s+recent/i.test(lower) || 
       /recent\s+tasks?/i.test(lower) || 
       /latest\s+tasks?/i.test(lower) ||
@@ -386,7 +414,12 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     /^(summarize|recap)\s+(my\s+)?week/i,
     /^plan\s+(my|the)\s+(day|week)/i,
     /^(prioritize|focus)\s+(my\s+)?/i,
-    /^brief\s+me\b/i
+    /^brief\s+me\b/i,
+    /^catch\s+me\s+up\b/i,
+    /^quick\s+update\b/i,
+    /^give\s+me\s+(a\s+)?(quick\s+)?update\b/i,
+    /^give\s+me\s+(the\s+)?highlights\b/i,
+    /^give\s+me\s+(a\s+)?rundown\b/i
   ];
   
   if (statementChatPatterns.some(p => p.test(lower)) && !hasMedia) {
@@ -1567,6 +1600,93 @@ serve(async (req) => {
         // Also mention overdue tasks as context
         if (overdueTasks.length > 0) {
           response += `\n⚠️ Also: ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''} to catch up on`;
+        }
+        
+        response += '\n\n🔗 Manage: https://witholive.app';
+        
+        return new Response(
+          createTwimlResponse(response),
+          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        );
+      }
+      
+      // Handle "this week" query
+      if (queryType === 'this_week') {
+        const endOfWeek = new Date(today);
+        // Set to end of Sunday (or next 7 days)
+        const daysUntilSunday = 7 - endOfWeek.getDay();
+        endOfWeek.setDate(endOfWeek.getDate() + (daysUntilSunday === 0 ? 7 : daysUntilSunday) + 1);
+        
+        const dueThisWeekTasks = activeTasks.filter(t => {
+          if (!t.due_date) return false;
+          const dueDate = new Date(t.due_date);
+          return dueDate >= today && dueDate < endOfWeek;
+        });
+        
+        // Also fetch calendar events for this week
+        let weekCalendarEvents: string[] = [];
+        try {
+          const { data: calConnection } = await supabase
+            .from('calendar_connections')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .limit(1)
+            .single();
+          
+          if (calConnection) {
+            const { data: events } = await supabase
+              .from('calendar_events')
+              .select('title, start_time, all_day')
+              .eq('connection_id', calConnection.id)
+              .gte('start_time', today.toISOString())
+              .lt('start_time', endOfWeek.toISOString())
+              .order('start_time', { ascending: true })
+              .limit(15);
+            
+            weekCalendarEvents = (events || []).map(e => {
+              const eventDate = new Date(e.start_time);
+              const dayName = eventDate.toLocaleDateString('en-US', { weekday: 'short' });
+              if (e.all_day) return `• ${dayName}: ${e.title} (all day)`;
+              const time = eventDate.toLocaleTimeString('en-US', { 
+                hour: 'numeric', minute: '2-digit', hour12: true 
+              });
+              return `• ${dayName} ${time}: ${e.title}`;
+            });
+          }
+        } catch (calErr) {
+          console.warn('[WhatsApp] Calendar fetch error for week:', calErr);
+        }
+        
+        if (dueThisWeekTasks.length === 0 && weekCalendarEvents.length === 0) {
+          return new Response(
+            createTwimlResponse('📅 Nothing scheduled for this week! Looks like a clear week ahead.\n\n💡 Try "what\'s urgent" to see high-priority tasks'),
+            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+          );
+        }
+        
+        let response = '📅 This Week\'s Overview:\n';
+        
+        if (weekCalendarEvents.length > 0) {
+          response += `\n🗓️ Calendar (${weekCalendarEvents.length}):\n${weekCalendarEvents.join('\n')}\n`;
+        }
+        
+        if (dueThisWeekTasks.length > 0) {
+          const weekList = dueThisWeekTasks.slice(0, 10).map((t, i) => {
+            const priority = t.priority === 'high' ? ' 🔥' : '';
+            const dueDate = t.due_date ? new Date(t.due_date).toLocaleDateString('en-US', { weekday: 'short' }) : '';
+            return `${i + 1}. ${t.summary}${priority}${dueDate ? ` (${dueDate})` : ''}`;
+          }).join('\n');
+          const moreText = dueThisWeekTasks.length > 10 ? `\n...and ${dueThisWeekTasks.length - 10} more` : '';
+          response += `\n📋 Tasks Due (${dueThisWeekTasks.length}):\n${weekList}${moreText}\n`;
+        }
+        
+        if (overdueTasks.length > 0) {
+          response += `\n⚠️ Also: ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''} to catch up on`;
+        }
+        
+        if (urgentTasks.length > 0) {
+          response += `\n🔥 ${urgentTasks.length} urgent task${urgentTasks.length > 1 ? 's' : ''} need attention`;
         }
         
         response += '\n\n🔗 Manage: https://witholive.app';
