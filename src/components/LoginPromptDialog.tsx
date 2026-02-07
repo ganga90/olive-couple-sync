@@ -1,7 +1,7 @@
 import React from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+
 import { OliveLogo } from "@/components/OliveLogo";
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 

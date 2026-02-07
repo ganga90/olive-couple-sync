@@ -119,7 +119,7 @@ const AuthPage = () => {
           transition={{ duration: 0.5, delay: 0.4 }}
           className="text-center text-sm text-muted-foreground mt-8"
         >
-          {t('entry.noPassword', 'No password needed — we use secure verification codes')}
+          {t('entry.secureLogin', 'Sign in with a verification code or password')}
         </motion.p>
       </section>
     </main>
