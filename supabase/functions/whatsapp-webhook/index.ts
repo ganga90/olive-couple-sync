@@ -195,9 +195,6 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
   
   // ============================================================================
   // QUESTION EARLY-EXIT: Skip task action patterns for questions.
-  // Task actions are imperative commands ("done with X", "make X urgent").
-  // Questions ("what's for tomorrow?", "what's on my agenda?") must route
-  // to SEARCH / CHAT / CONTEXTUAL_ASK handlers below.
   // ============================================================================
   if (!isQuestion) {
   // ============================================================================
@@ -219,7 +216,7 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'TASK_ACTION', actionType: 'set_priority', actionTarget: priorityMatch[1]?.trim() };
   }
   
-  // Due date patterns - REQUIRE a verb prefix to avoid false positives on questions
+  // Due date patterns
   const dueMatch = lower.match(/^(?:set|make|move)\s+(.+?)\s+(?:is\s+)?(?:due|for)\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+week|\d+.+)/i) ||
                    lower.match(/^(.+?)\s+is\s+due\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+week|\d+.+)/i);
   if (dueMatch) {
@@ -261,7 +258,6 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
   // CONTEXTUAL SEARCH PATTERNS - Semantic questions needing AI understanding
   // ============================================================================
   
-  // These are questions that ask for recommendations or search within their data semantically
   const contextualPatterns = [
     /\b(?:any|good|best|recommend|suggest|ideas?\s+for|options?\s+for)\b.*\b(?:in\s+my|from\s+my|saved)\b/i,
     /\bwhat\s+(?:books?|restaurants?|movies?|shows?|recipes?|ideas?|places?|items?)\s+(?:do\s+i|did\s+i|have\s+i)\s+(?:have|save)/i,
@@ -298,7 +294,7 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'SEARCH', queryType: 'today' };
   }
   
-  // Tomorrow queries - schedule/agenda for tomorrow
+  // Tomorrow queries
   if (/what'?s?\s+(?:on\s+)?(?:my\s+)?(?:day|agenda|schedule|calendar|plate|plan)?\s*(?:for\s+)?tomorrow/i.test(lower) ||
       /what'?s?\s+(?:due\s+)?tomorrow/i.test(lower) ||
       /what'?s?\s+for\s+tomorrow/i.test(lower) ||
@@ -312,7 +308,7 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'SEARCH', queryType: 'tomorrow' };
   }
   
-  // This week queries - schedule/agenda for the week
+  // This week queries
   if (/\b(?:what'?s|whats)\s+(?:on\s+)?(?:my\s+)?(?:agenda|schedule|calendar|plan|plate)\s+(?:for\s+)?(?:this|the)\s+week\b/i.test(lower) ||
       /\b(?:anything|something|what'?s?)\s+(?:important|big|notable|coming\s+up)\s+(?:this|for the|for this)\s+week\b/i.test(lower) ||
       /\bthis\s+week(?:'?s)?\s+(?:tasks?|agenda|schedule|plan)\b/i.test(lower) ||
@@ -359,7 +355,7 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
-  // "Find" with specific list names = SEARCH, but "find me something" = CONTEXTUAL_ASK
+  // "Find" with specific list names = SEARCH
   if (/^find\s+(?:my\s+)?(\w+)\s+(?:list|tasks?)$/i.test(lower)) {
     console.log('[Intent Detection] Matched: find specific list pattern');
     return { intent: 'SEARCH', queryType: 'general' };
@@ -377,7 +373,7 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'SEARCH', queryType: 'general' };
   }
   
-  // Specific list requests (show my groceries list)
+  // Specific list requests
   if (/^(?:show|display|what'?s\s+(?:in|on))\s+(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:list|tasks?)$/i.test(lower)) {
     console.log('[Intent Detection] Matched: specific list request');
     return { intent: 'SEARCH', queryType: 'general' };
@@ -393,7 +389,6 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
   // ============================================================================
   if (isQuestion && !hasMedia) {
     const chatType = detectChatType(normalized);
-    // If it's a general question, route to CONTEXTUAL_ASK for richer handling
     if (chatType === 'general') {
       console.log('[Intent Detection] General question -> CONTEXTUAL_ASK');
       return { intent: 'CONTEXTUAL_ASK', cleanMessage: normalized };
@@ -432,9 +427,9 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
   return { intent: 'CREATE' };
 }
 
-// Standardize phone number format
+// Standardize phone number format - Meta sends raw numbers like "15551234567"
 function standardizePhoneNumber(rawNumber: string): string {
-  let cleaned = rawNumber.replace(/^whatsapp:/, '').replace(/\D/g, '');
+  let cleaned = rawNumber.replace(/\D/g, '');
   if (!cleaned.startsWith('+')) cleaned = '+' + cleaned;
   return cleaned;
 }
@@ -497,7 +492,6 @@ async function matchUserSkills(
   const lowerMessage = message.toLowerCase();
   
   try {
-    // Get user's enabled skills (either explicitly enabled or builtin)
     const { data: userSkills } = await supabase
       .from('olive_user_skills')
       .select('skill_id, enabled')
@@ -506,7 +500,6 @@ async function matchUserSkills(
     
     const enabledSkillIds = new Set(userSkills?.map((s: any) => s.skill_id) || []);
     
-    // Get all active skills
     const { data: allSkills } = await supabase
       .from('olive_skills')
       .select('skill_id, name, content, category, triggers')
@@ -516,16 +509,12 @@ async function matchUserSkills(
       return { matched: false };
     }
     
-    // Check each skill's triggers
     for (const skill of allSkills) {
-      // Skip if user hasn't enabled and it's not a default skill they should have
-      // For now, all active skills are available to all users
       if (!skill.triggers || !skill.content) continue;
       
       const triggers = Array.isArray(skill.triggers) ? skill.triggers : [];
       
       for (const trigger of triggers) {
-        // Check keyword match
         if (trigger.keyword) {
           const keyword = trigger.keyword.toLowerCase();
           if (lowerMessage.includes(keyword)) {
@@ -544,7 +533,6 @@ async function matchUserSkills(
           }
         }
         
-        // Check category match
         if (trigger.category && noteCategory) {
           if (noteCategory.toLowerCase() === trigger.category.toLowerCase()) {
             console.log(`[Skills] Matched skill "${skill.name}" via category "${trigger.category}"`);
@@ -562,7 +550,6 @@ async function matchUserSkills(
           }
         }
         
-        // Check command match (starts with /)
         if (trigger.command && lowerMessage.startsWith(trigger.command.toLowerCase())) {
           console.log(`[Skills] Matched skill "${skill.name}" via command "${trigger.command}"`);
           return {
@@ -621,75 +608,142 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
   }
 }
 
-// Helper to create TwiML response with media
-function createTwimlResponse(messageText: string, mediaUrl?: string): string {
-  if (mediaUrl) {
-    return `<?xml version="1.0" encoding="UTF-8"?><Response><Message><Body>${messageText}</Body><Media>${mediaUrl}</Media></Message></Response>`;
+// ============================================================================
+// META WHATSAPP CLOUD API - Send messages via Meta's direct API
+// ============================================================================
+async function sendWhatsAppReply(
+  phoneNumberId: string,
+  to: string,
+  text: string,
+  accessToken: string,
+  mediaUrl?: string
+): Promise<boolean> {
+  try {
+    const apiUrl = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`;
+    
+    let body: any;
+    
+    if (mediaUrl) {
+      // Send image message
+      body = {
+        messaging_product: 'whatsapp',
+        to,
+        type: 'image',
+        image: {
+          link: mediaUrl,
+          caption: text
+        }
+      };
+    } else {
+      // Send text message
+      body = {
+        messaging_product: 'whatsapp',
+        to,
+        type: 'text',
+        text: { 
+          preview_url: true,
+          body: text 
+        }
+      };
+    }
+    
+    console.log('[Meta API] Sending message to:', to, 'length:', text.length);
+    
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Meta API] Send failed:', response.status, errorText);
+      return false;
+    }
+    
+    const result = await response.json();
+    console.log('[Meta API] Message sent successfully, id:', result.messages?.[0]?.id);
+    return true;
+  } catch (error) {
+    console.error('[Meta API] Error sending message:', error);
+    return false;
   }
-  return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${messageText}</Message></Response>`;
 }
 
-// Helper to download and upload media to Supabase Storage
-async function downloadAndUploadMedia(
-  twilioMediaUrl: string,
-  mediaType: string,
+// Download media from Meta's API and upload to Supabase Storage
+async function downloadAndUploadMetaMedia(
+  mediaId: string,
+  accessToken: string,
   supabase: any
-): Promise<string | null> {
+): Promise<{ url: string; mimeType: string } | null> {
   try {
-    const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
-    const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
-    
-    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
-      console.error('Twilio credentials not configured');
-      return null;
-    }
-
-    const authHeader = `Basic ${btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`)}`;
-    const mediaResponse = await fetch(twilioMediaUrl, {
-      headers: { 'Authorization': authHeader }
+    // Step 1: Get the media URL from Meta
+    const mediaInfoResponse = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
     });
-
-    if (!mediaResponse.ok) {
-      console.error('Failed to download media from Twilio:', mediaResponse.status);
+    
+    if (!mediaInfoResponse.ok) {
+      console.error('[Meta Media] Failed to get media info:', mediaInfoResponse.status);
+      const errText = await mediaInfoResponse.text();
+      console.error('[Meta Media] Error:', errText);
       return null;
     }
-
+    
+    const mediaInfo = await mediaInfoResponse.json();
+    const mediaDownloadUrl = mediaInfo.url;
+    const mimeType = mediaInfo.mime_type || 'application/octet-stream';
+    
+    console.log('[Meta Media] Downloading from:', mediaDownloadUrl, 'type:', mimeType);
+    
+    // Step 2: Download the actual media file
+    const mediaResponse = await fetch(mediaDownloadUrl, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    
+    if (!mediaResponse.ok) {
+      console.error('[Meta Media] Failed to download media:', mediaResponse.status);
+      return null;
+    }
+    
     const mediaBlob = await mediaResponse.blob();
     const arrayBuffer = await mediaBlob.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
-
-    const ext = mediaType.split('/')[1] || 'bin';
+    
+    // Step 3: Upload to Supabase Storage
+    const ext = mimeType.split('/')[1]?.split(';')[0] || 'bin';
     const timestamp = new Date().getTime();
     const randomStr = Math.random().toString(36).substring(7);
     const filename = `${timestamp}_${randomStr}.${ext}`;
-    const filePath = `${filename}`;
-
+    
     const { data, error } = await supabase.storage
       .from('whatsapp-media')
-      .upload(filePath, uint8Array, {
-        contentType: mediaType,
+      .upload(filename, uint8Array, {
+        contentType: mimeType,
         upsert: false
       });
-
+    
     if (error) {
-      console.error('Failed to upload media to Supabase:', error);
+      console.error('[Meta Media] Failed to upload to Supabase:', error);
       return null;
     }
-
-    // Use signed URL for private bucket access (1 year expiry for stored URLs)
+    
+    // Get signed URL (1 year expiry)
     const { data: signedData, error: signedError } = await supabase.storage
       .from('whatsapp-media')
-      .createSignedUrl(filePath, 60 * 60 * 24 * 365);
-
+      .createSignedUrl(filename, 60 * 60 * 24 * 365);
+    
     if (signedError || !signedData?.signedUrl) {
-      console.error('Failed to create signed URL:', signedError);
+      console.error('[Meta Media] Failed to create signed URL:', signedError);
       return null;
     }
-
-    console.log('Successfully uploaded media with signed URL');
-    return signedData.signedUrl;
+    
+    console.log('[Meta Media] Successfully uploaded with signed URL');
+    return { url: signedData.signedUrl, mimeType };
   } catch (error) {
-    console.error('Error downloading/uploading media:', error);
+    console.error('[Meta Media] Error:', error);
     return null;
   }
 }
@@ -697,16 +751,6 @@ async function downloadAndUploadMedia(
 // Constants for input validation
 const MAX_MESSAGE_LENGTH = 10000;
 const MAX_MEDIA_COUNT = 10;
-const TWILIO_MEDIA_DOMAIN = 'api.twilio.com';
-
-function isValidTwilioMediaUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname.endsWith(TWILIO_MEDIA_DOMAIN) || parsed.hostname.includes('twilio');
-  } catch {
-    return false;
-  }
-}
 
 function isValidCoordinates(lat: string | null, lon: string | null): boolean {
   if (!lat || !lon) return true;
@@ -799,42 +843,43 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
     targetDate = new Date(now);
     targetDate.setMinutes(targetDate.getMinutes() + parseInt(inMinutesMatch[1]));
     readable = `in ${inMinutesMatch[1]} minutes`;
+    hours = targetDate.getHours();
+    minutes = targetDate.getMinutes();
   } else if (inHoursMatch) {
     targetDate = new Date(now);
     targetDate.setHours(targetDate.getHours() + parseInt(inHoursMatch[1]));
-    readable = `in ${inHoursMatch[1]} hour(s)`;
+    readable = `in ${inHoursMatch[1]} hours`;
+    hours = targetDate.getHours();
+    minutes = targetDate.getMinutes();
   } else if (inDaysMatch) {
     targetDate = new Date(now);
     targetDate.setDate(targetDate.getDate() + parseInt(inDaysMatch[1]));
-    readable = `in ${inDaysMatch[1]} day(s)`;
+    readable = `in ${inDaysMatch[1]} days`;
   }
   
   if (!targetDate) {
-    const monthFirstMatch = lowerExpr.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
-    const dayFirstMatch = lowerExpr.match(/\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+of\s+|\s*-?\s*)(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\b/i);
-    
-    let monthNum: number | undefined;
-    let dayNum: number | undefined;
-    
-    if (monthFirstMatch) {
-      monthNum = monthNames[monthFirstMatch[1].toLowerCase()];
-      dayNum = parseInt(monthFirstMatch[2]);
-    } else if (dayFirstMatch) {
-      dayNum = parseInt(dayFirstMatch[1]);
-      monthNum = monthNames[dayFirstMatch[2].toLowerCase()];
-    }
-    
-    if (monthNum !== undefined && dayNum !== undefined && dayNum >= 1 && dayNum <= 31) {
-      targetDate = new Date(now);
-      targetDate.setMonth(monthNum, dayNum);
-      
-      if (targetDate < now) {
-        targetDate.setFullYear(targetDate.getFullYear() + 1);
+    for (const [monthWord, monthNum] of Object.entries(monthNames)) {
+      const monthDayMatch = lowerExpr.match(new RegExp(`${monthWord}\\s+(\\d{1,2})(?:st|nd|rd|th)?`, 'i'));
+      if (monthDayMatch) {
+        const dayNum = parseInt(monthDayMatch[1]);
+        if (dayNum >= 1 && dayNum <= 31) {
+          targetDate = new Date(now.getFullYear(), monthNum, dayNum);
+          if (hours !== null) {
+            targetDate.setHours(hours, minutes, 0, 0);
+          } else {
+            targetDate.setHours(9, 0, 0, 0);
+          }
+          
+          if (targetDate < now) {
+            targetDate.setFullYear(targetDate.getFullYear() + 1);
+          }
+          
+          const monthDisplayNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                                      'July', 'August', 'September', 'October', 'November', 'December'];
+          readable = `${monthDisplayNames[monthNum]} ${dayNum}`;
+        }
+        break;
       }
-      
-      const monthDisplayNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                                  'July', 'August', 'September', 'October', 'November', 'December'];
-      readable = `${monthDisplayNames[monthNum]} ${dayNum}`;
     }
   }
   
@@ -932,7 +977,6 @@ async function findSimilarNotes(
   excludeId: string
 ): Promise<{ id: string; summary: string; similarity: number } | null> {
   try {
-    // Use the database function for similarity search
     const { data, error } = await supabase.rpc('find_similar_notes', {
       p_user_id: userId,
       p_couple_id: coupleId,
@@ -946,7 +990,6 @@ async function findSimilarNotes(
       return null;
     }
 
-    // Filter out the just-created note
     const matches = (data || []).filter((n: any) => n.id !== excludeId);
     
     if (matches.length > 0) {
@@ -964,115 +1007,257 @@ async function findSimilarNotes(
   }
 }
 
+// ============================================================================
+// EXTRACT MESSAGE DATA FROM META WEBHOOK PAYLOAD
+// ============================================================================
+interface MetaMessageData {
+  fromNumber: string;
+  messageBody: string | null;
+  mediaItems: Array<{ id: string; mimeType: string }>;
+  latitude: string | null;
+  longitude: string | null;
+  phoneNumberId: string;
+  messageId: string;
+}
+
+function extractMetaMessage(body: any): MetaMessageData | null {
+  try {
+    const entry = body?.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const value = changes?.value;
+    
+    if (!value?.messages || value.messages.length === 0) {
+      console.log('[Meta] No messages in webhook (could be status update)');
+      return null;
+    }
+    
+    const message = value.messages[0];
+    const phoneNumberId = value.metadata?.phone_number_id;
+    const fromNumber = message.from; // Raw number like "15551234567"
+    const messageId = message.id;
+    
+    let messageBody: string | null = null;
+    let latitude: string | null = null;
+    let longitude: string | null = null;
+    const mediaItems: Array<{ id: string; mimeType: string }> = [];
+    
+    switch (message.type) {
+      case 'text':
+        messageBody = message.text?.body || null;
+        break;
+      case 'image':
+        if (message.image) {
+          mediaItems.push({ id: message.image.id, mimeType: message.image.mime_type || 'image/jpeg' });
+          messageBody = message.image.caption || null;
+        }
+        break;
+      case 'video':
+        if (message.video) {
+          mediaItems.push({ id: message.video.id, mimeType: message.video.mime_type || 'video/mp4' });
+          messageBody = message.video.caption || null;
+        }
+        break;
+      case 'audio':
+        if (message.audio) {
+          mediaItems.push({ id: message.audio.id, mimeType: message.audio.mime_type || 'audio/ogg' });
+        }
+        break;
+      case 'document':
+        if (message.document) {
+          mediaItems.push({ id: message.document.id, mimeType: message.document.mime_type || 'application/pdf' });
+          messageBody = message.document.caption || message.document.filename || null;
+        }
+        break;
+      case 'location':
+        latitude = String(message.location?.latitude || '');
+        longitude = String(message.location?.longitude || '');
+        messageBody = message.location?.name || message.location?.address || null;
+        break;
+      case 'contacts':
+        messageBody = `Shared contact: ${message.contacts?.[0]?.name?.formatted_name || 'Unknown'}`;
+        break;
+      case 'interactive':
+        // Handle button/list replies
+        messageBody = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || null;
+        break;
+      default:
+        console.log('[Meta] Unhandled message type:', message.type);
+        messageBody = null;
+    }
+    
+    return {
+      fromNumber: fromNumber || '',
+      messageBody,
+      mediaItems,
+      latitude: latitude || null,
+      longitude: longitude || null,
+      phoneNumberId: phoneNumberId || '',
+      messageId: messageId || ''
+    };
+  } catch (error) {
+    console.error('[Meta] Error extracting message:', error);
+    return null;
+  }
+}
+
+// ============================================================================
+// MAIN WEBHOOK HANDLER
+// ============================================================================
 serve(async (req) => {
+  const url = new URL(req.url);
+  
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // ========================================================================
+  // META WEBHOOK VERIFICATION (GET request)
+  // Meta sends a GET request to verify webhook ownership during setup.
+  // We must reply with the hub.challenge value if the verify_token matches.
+  // ========================================================================
+  if (req.method === 'GET') {
+    const mode = url.searchParams.get('hub.mode');
+    const token = url.searchParams.get('hub.verify_token');
+    const challenge = url.searchParams.get('hub.challenge');
+    
+    const VERIFY_TOKEN = Deno.env.get('WHATSAPP_VERIFY_TOKEN');
+    
+    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+      console.log('[Meta Webhook] Verification successful!');
+      // MUST return the challenge string directly (not JSON) 
+      return new Response(challenge, { 
+        status: 200, 
+        headers: { 'Content-Type': 'text/plain' } 
+      });
+    }
+    
+    console.warn('[Meta Webhook] Verification failed - token mismatch');
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  // ========================================================================
+  // META WEBHOOK MESSAGE HANDLER (POST request)
+  // ========================================================================
+  if (req.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405 });
   }
 
   try {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const WHATSAPP_ACCESS_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN')!;
+    const WHATSAPP_PHONE_NUMBER_ID = Deno.env.get('WHATSAPP_PHONE_NUMBER_ID')!;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Parse Twilio webhook body
-    const formData = await req.formData();
-    const fromNumber = standardizePhoneNumber(formData.get('From') as string);
-    const rawMessageBody = formData.get('Body') as string;
+    // Parse Meta webhook JSON body
+    const webhookBody = await req.json();
+    console.log('[Meta Webhook] Received:', JSON.stringify(webhookBody).substring(0, 500));
     
+    // Extract message data from Meta's nested structure
+    const messageData = extractMetaMessage(webhookBody);
+    
+    if (!messageData) {
+      // This could be a status update (delivered, read, etc.) - acknowledge it
+      console.log('[Meta Webhook] No message to process (status update or empty)');
+      return new Response(JSON.stringify({ status: 'ok' }), { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+    
+    const { fromNumber: rawFromNumber, messageBody: rawMessageBody, mediaItems, latitude, longitude, phoneNumberId, messageId } = messageData;
+    const fromNumber = standardizePhoneNumber(rawFromNumber);
+    
+    // Helper to send reply via Meta Cloud API
+    const reply = async (text: string, mediaUrl?: string): Promise<Response> => {
+      await sendWhatsAppReply(phoneNumberId || WHATSAPP_PHONE_NUMBER_ID, rawFromNumber, text, WHATSAPP_ACCESS_TOKEN, mediaUrl);
+      return new Response(JSON.stringify({ status: 'ok' }), { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    };
+    
+    // Mark message as read
+    try {
+      await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId || WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          status: 'read',
+          message_id: messageId
+        })
+      });
+    } catch (readErr) {
+      console.warn('[Meta] Failed to mark message as read:', readErr);
+    }
+    
+    // Validate message length
     if (rawMessageBody && rawMessageBody.length > MAX_MESSAGE_LENGTH) {
       console.warn('[Validation] Message too long:', rawMessageBody.length, 'chars');
-      return new Response(
-        createTwimlResponse('Your message is too long. Please keep messages under 10,000 characters.'),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
+      return reply('Your message is too long. Please keep messages under 10,000 characters.');
     }
     
-    const messageBody = rawMessageBody?.trim();
+    const messageBody = rawMessageBody?.trim() || null;
     
-    const latitude = formData.get('Latitude') as string | null;
-    const longitude = formData.get('Longitude') as string | null;
-    
+    // Validate coordinates
     if (!isValidCoordinates(latitude, longitude)) {
       console.warn('[Validation] Invalid coordinates:', { latitude, longitude });
-      return new Response(
-        createTwimlResponse('Invalid location data received. Please try sharing your location again.'),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
+      return reply('Invalid location data received. Please try sharing your location again.');
     }
     
-    const numMedia = parseInt(formData.get('NumMedia') as string || '0');
-    
-    if (numMedia > MAX_MEDIA_COUNT) {
-      console.warn('[Validation] Too many media attachments:', numMedia);
-      return new Response(
-        createTwimlResponse(`Too many attachments (${numMedia}). Please send up to ${MAX_MEDIA_COUNT} files at a time.`),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
-    }
-    
-    const hadIncomingMedia = numMedia > 0;
+    // Download and upload media from Meta
     const mediaUrls: string[] = [];
     const mediaTypes: string[] = [];
     let mediaDownloadFailed = false;
-
-    for (let i = 0; i < numMedia; i++) {
-      const mediaUrl = formData.get(`MediaUrl${i}`) as string;
-      const mediaType = formData.get(`MediaContentType${i}`) as string || 'application/octet-stream';
-      
-      if (mediaUrl) {
-        if (!isValidTwilioMediaUrl(mediaUrl)) {
-          console.warn('[Validation] Invalid media URL:', mediaUrl);
-          mediaDownloadFailed = true;
-          continue;
-        }
-        
-        const publicUrl = await downloadAndUploadMedia(mediaUrl, mediaType, supabase);
-        if (publicUrl) {
-          mediaUrls.push(publicUrl);
-          mediaTypes.push(mediaType);
-        } else {
-          mediaDownloadFailed = true;
-        }
+    
+    if (mediaItems.length > MAX_MEDIA_COUNT) {
+      console.warn('[Validation] Too many media attachments:', mediaItems.length);
+      return reply(`Too many attachments (${mediaItems.length}). Please send up to ${MAX_MEDIA_COUNT} files at a time.`);
+    }
+    
+    for (const media of mediaItems) {
+      const result = await downloadAndUploadMetaMedia(media.id, WHATSAPP_ACCESS_TOKEN, supabase);
+      if (result) {
+        mediaUrls.push(result.url);
+        mediaTypes.push(result.mimeType);
+      } else {
+        mediaDownloadFailed = true;
       }
     }
 
     console.log('Incoming WhatsApp message:', { 
       fromNumber, 
       messageBody: messageBody?.substring(0, 100),
-      numMedia,
+      numMedia: mediaItems.length,
       uploadedMedia: mediaUrls.length
     });
 
     // Handle location sharing
     if (latitude && longitude && !messageBody && mediaUrls.length === 0) {
-      return new Response(
-        createTwimlResponse(`📍 Thanks for sharing your location! (${latitude}, ${longitude})\n\nYou can add a task with this location by sending a message like:\n"Buy groceries at this location"`),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
+      return reply(`📍 Thanks for sharing your location! (${latitude}, ${longitude})\n\nYou can add a task with this location by sending a message like:\n"Buy groceries at this location"`);
     }
 
-    // Handle media-only messages - process them
+    // Handle media-only messages
     if (mediaUrls.length > 0 && !messageBody) {
       console.log('[WhatsApp] Processing media-only message');
     }
 
     if (!messageBody && mediaUrls.length === 0) {
-      if (hadIncomingMedia && mediaDownloadFailed) {
+      if (mediaItems.length > 0 && mediaDownloadFailed) {
         console.warn('[WhatsApp] User attached media but download failed');
-        return new Response(
-          createTwimlResponse(
-            "I see you attached a photo or file, but I couldn't download it from WhatsApp. " +
-            "Please try sending it again, or add a short caption describing what you want to save."
-          ),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+        return reply(
+          "I see you attached a photo or file, but I couldn't download it. " +
+          "Please try sending it again, or add a short caption describing what you want to save."
         );
       }
       
-      return new Response(
-        createTwimlResponse('Please send a message, share your location 📍, or attach media 📎'),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
+      return reply('Please send a message, share your location 📍, or attach media 📎');
     }
 
     // Check for linking token
@@ -1091,10 +1276,7 @@ serve(async (req) => {
 
       if (tokenError || !tokenData) {
         console.error('Token lookup error:', tokenError);
-        return new Response(
-          '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Invalid or expired token. Please generate a new one from the Olive app.</Message></Response>',
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply('Invalid or expired token. Please generate a new one from the Olive app.');
       }
 
       const { error: updateError } = await supabase
@@ -1104,10 +1286,7 @@ serve(async (req) => {
 
       if (updateError) {
         console.error('Error linking WhatsApp:', updateError);
-        return new Response(
-          '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Failed to link your account. Please try again.</Message></Response>',
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply('Failed to link your account. Please try again.');
       }
 
       await supabase
@@ -1117,13 +1296,8 @@ serve(async (req) => {
 
       console.log('WhatsApp account linked successfully for user:', tokenData.user_id);
 
-      const successImage = 'https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?w=400&q=80';
-      return new Response(
-        createTwimlResponse(
-          '✅ Your Olive account is successfully linked!\n\nYou can now:\n• Send brain dumps to organize\n• Share locations 📍 with tasks\n• Ask about your tasks\n• Send images 📸 or voice notes 🎤',
-          successImage
-        ),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      return reply(
+        '✅ Your Olive account is successfully linked!\n\nYou can now:\n• Send brain dumps to organize\n• Share locations 📍 with tasks\n• Ask about your tasks\n• Send images 📸 or voice notes 🎤'
       );
     }
 
@@ -1138,16 +1312,13 @@ serve(async (req) => {
 
     if (profileError || !profile) {
       console.error('Profile lookup error:', profileError);
-      return new Response(
-        createTwimlResponse(
-          '👋 Hi! To use Olive via WhatsApp, please link your account first:\n\n' +
-          '1️⃣ Open the Olive app\n' +
-          '2️⃣ Go to Profile/Settings\n' +
-          '3️⃣ Tap "Link WhatsApp"\n' +
-          '4️⃣ Send the token here\n\n' +
-          'Then I can help organize your tasks, locations, and more!'
-        ),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
+      return reply(
+        '👋 Hi! To use Olive via WhatsApp, please link your account first:\n\n' +
+        '1️⃣ Open the Olive app\n' +
+        '2️⃣ Go to Profile/Settings\n' +
+        '3️⃣ Tap "Link WhatsApp"\n' +
+        '4️⃣ Send the token here\n\n' +
+        'Then I can help organize your tasks, locations, and more!'
       );
     }
 
@@ -1172,10 +1343,7 @@ serve(async (req) => {
 
       if (sessionError) {
         console.error('Error creating session:', sessionError);
-        return new Response(
-          '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Sorry, there was an error. Please try again.</Message></Response>',
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply('Sorry, there was an error. Please try again.');
       }
       session = newSession;
     }
@@ -1195,8 +1363,8 @@ serve(async (req) => {
     // ========================================================================
     if (session.conversation_state === 'AWAITING_CONFIRMATION') {
       const contextData = session.context_data as any;
-      const isAffirmative = /^(yes|yeah|yep|sure|ok|okay|confirm|si|sí|do it|go ahead|please|y)$/i.test(messageBody.trim());
-      const isNegative = /^(no|nope|nah|cancel|nevermind|never mind|n)$/i.test(messageBody.trim());
+      const isAffirmative = /^(yes|yeah|yep|sure|ok|okay|confirm|si|sí|do it|go ahead|please|y)$/i.test(messageBody!.trim());
+      const isNegative = /^(no|nope|nah|cancel|nevermind|never mind|n)$/i.test(messageBody!.trim());
 
       // Reset session state first
       await supabase
@@ -1205,17 +1373,11 @@ serve(async (req) => {
         .eq('id', session.id);
 
       if (isNegative) {
-        return new Response(
-          createTwimlResponse('👍 No problem, I cancelled that action.'),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply('👍 No problem, I cancelled that action.');
       }
 
       if (!isAffirmative) {
-        return new Response(
-          createTwimlResponse('I didn\'t understand. Please reply "yes" to confirm or "no" to cancel.'),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply('I didn\'t understand. Please reply "yes" to confirm or "no" to cancel.');
       }
 
       // Execute the pending action
@@ -1232,16 +1394,10 @@ serve(async (req) => {
 
         if (updateError) {
           console.error('Error assigning task:', updateError);
-          return new Response(
-            createTwimlResponse('Sorry, I couldn\'t assign that task. Please try again.'),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply('Sorry, I couldn\'t assign that task. Please try again.');
         }
 
-        return new Response(
-          createTwimlResponse(`✅ Done! I assigned "${pendingAction.task_summary}" to ${pendingAction.target_name}. 🎯`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(`✅ Done! I assigned "${pendingAction.task_summary}" to ${pendingAction.target_name}. 🎯`);
       } else if (pendingAction?.type === 'set_due_date') {
         await supabase
           .from('clerk_notes')
@@ -1251,10 +1407,7 @@ serve(async (req) => {
           })
           .eq('id', pendingAction.task_id);
 
-        return new Response(
-          createTwimlResponse(`✅ Done! "${pendingAction.task_summary}" is now due ${pendingAction.readable}. 📅`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(`✅ Done! "${pendingAction.task_summary}" is now due ${pendingAction.readable}. 📅`);
       } else if (pendingAction?.type === 'set_reminder') {
         const updateData: any = { 
           reminder_time: pendingAction.time, 
@@ -1270,22 +1423,15 @@ serve(async (req) => {
           .update(updateData)
           .eq('id', pendingAction.task_id);
 
-        return new Response(
-          createTwimlResponse(`✅ Done! I'll remind you about "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(`✅ Done! I'll remind you about "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`);
       } else if (pendingAction?.type === 'delete') {
         await supabase
           .from('clerk_notes')
           .delete()
           .eq('id', pendingAction.task_id);
 
-        return new Response(
-          createTwimlResponse(`🗑️ Done! "${pendingAction.task_summary}" has been deleted.`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(`🗑️ Done! "${pendingAction.task_summary}" has been deleted.`);
       } else if (pendingAction?.type === 'merge') {
-        // Execute merge using the database function
         const { data: mergeResult, error: mergeError } = await supabase.rpc('merge_notes', {
           p_source_id: pendingAction.source_id,
           p_target_id: pendingAction.target_id
@@ -1293,22 +1439,13 @@ serve(async (req) => {
 
         if (mergeError) {
           console.error('Error merging notes:', mergeError);
-          return new Response(
-            createTwimlResponse('Sorry, I couldn\'t merge those notes. Please try again.'),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply('Sorry, I couldn\'t merge those notes. Please try again.');
         }
 
-        return new Response(
-          createTwimlResponse(`✅ Merged! Combined your note into: "${pendingAction.target_summary}"\n\n🔗 Manage: https://witholive.app`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(`✅ Merged! Combined your note into: "${pendingAction.target_summary}"\n\n🔗 Manage: https://witholive.app`);
       }
 
-      return new Response(
-        createTwimlResponse('Something went wrong with the confirmation. Please try again.'),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
+      return reply('Something went wrong with the confirmation. Please try again.');
     }
 
     // ========================================================================
@@ -1316,7 +1453,6 @@ serve(async (req) => {
     // ========================================================================
     const intentResult = determineIntent(messageBody || '', mediaUrls.length > 0);
     const { intent, isUrgent, cleanMessage } = intentResult;
-    // Use cleanMessage if prefix was stripped, otherwise use original
     const effectiveMessage = cleanMessage ?? messageBody;
     console.log('Deterministic intent:', intent, 'isUrgent:', isUrgent, 'for message:', effectiveMessage?.substring(0, 50));
 
@@ -1324,7 +1460,6 @@ serve(async (req) => {
     // MERGE COMMAND HANDLER
     // ========================================================================
     if (intent === 'MERGE') {
-      // Find the most recently created note by this user (within last 5 minutes)
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       
       const { data: recentNotes, error: recentError } = await supabase
@@ -1337,15 +1472,10 @@ serve(async (req) => {
         .limit(1);
 
       if (recentError || !recentNotes || recentNotes.length === 0) {
-        return new Response(
-          createTwimlResponse('I don\'t see any recent tasks to merge. The Merge command works within 5 minutes of creating a task.'),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply('I don\'t see any recent tasks to merge. The Merge command works within 5 minutes of creating a task.');
       }
 
       const sourceNote = recentNotes[0];
-
-      // If we have an embedding, find similar notes
       let targetNote: { id: string; summary: string } | null = null;
 
       if (sourceNote.embedding) {
@@ -1355,7 +1485,6 @@ serve(async (req) => {
         }
       }
 
-      // Fallback: generate embedding from summary if we don't have one stored
       if (!targetNote) {
         const embedding = await generateEmbedding(sourceNote.summary);
         if (embedding) {
@@ -1367,13 +1496,9 @@ serve(async (req) => {
       }
 
       if (!targetNote) {
-        return new Response(
-          createTwimlResponse(`I couldn't find a similar task to merge "${sourceNote.summary}" with. The task remains as-is.`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(`I couldn't find a similar task to merge "${sourceNote.summary}" with. The task remains as-is.`);
       }
 
-      // Ask for confirmation before merging
       await supabase
         .from('user_sessions')
         .update({ 
@@ -1391,20 +1516,15 @@ serve(async (req) => {
         })
         .eq('id', session.id);
 
-      return new Response(
-        createTwimlResponse(`🔀 Merge "${sourceNote.summary}" into "${targetNote.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
+      return reply(`🔀 Merge "${sourceNote.summary}" into "${targetNote.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`);
     }
 
     // ========================================================================
     // SEARCH INTENT - Consultation with Context-Aware Responses
     // ========================================================================
     if (intent === 'SEARCH') {
-      // Get queryType from intent result for contextual responses
       const queryType = (intentResult as any).queryType as QueryType;
       
-      // Fetch user's tasks and lists
       const { data: tasks } = await supabase
         .from('clerk_notes')
         .select('id, summary, due_date, completed, priority, category, list_id, items, task_owner, created_at')
@@ -1420,10 +1540,9 @@ serve(async (req) => {
       const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
 
       // ================================================================
-      // SMART LIST LOOKUP - Extract list name from flexible patterns
+      // SMART LIST LOOKUP
       // ================================================================
       
-      // Normalize: strip articles, trim, lowercase
       function normalizeListName(name: string): string {
         return name.toLowerCase()
           .replace(/\b(the|a|an|my|our)\b/g, '')
@@ -1431,37 +1550,28 @@ serve(async (req) => {
           .trim();
       }
       
-      // Singularize: basic English plural→singular for matching
       function singularize(word: string): string {
-        if (word.endsWith('ies')) return word.slice(0, -3) + 'y'; // groceries→grocery
-        if (word.endsWith('ves')) return word.slice(0, -3) + 'f'; // wolves→wolf
+        if (word.endsWith('ies')) return word.slice(0, -3) + 'y';
+        if (word.endsWith('ves')) return word.slice(0, -3) + 'f';
         if (word.endsWith('ses') || word.endsWith('xes') || word.endsWith('zes') || word.endsWith('ches') || word.endsWith('shes')) {
-          return word.slice(0, -2); // boxes→box, watches→watch
+          return word.slice(0, -2);
         }
-        if (word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1); // tasks→task
+        if (word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
         return word;
       }
       
-      // Try multiple regex patterns to extract a list name from the message
       const listExtractionPatterns = [
-        // "show me the grocery list" / "show the groceries list"
         /(?:show|display|open|get|see)\s+(?:me\s+)?(?:the\s+|my\s+|our\s+)?(.+?)\s+(?:list|tasks?|items?)$/i,
-        // "what's in my grocery list" / "what's on the groceries list"
         /(?:what'?s|whats)\s+(?:in|on)\s+(?:the\s+|my\s+|our\s+)?(.+?)\s+(?:list|tasks?|items?)$/i,
-        // "list groceries" / "list my groceries"
         /^list\s+(?:my\s+|the\s+|our\s+)?(.+?)$/i,
-        // "my groceries" / "my grocery list"
         /^(?:my|our)\s+(.+?)(?:\s+list)?$/i,
-        // "groceries list" / "grocery list"
         /^(.+?)\s+list$/i,
-        // "what's in groceries" / "show groceries"
         /(?:show|display|open|get|see|what'?s\s+in)\s+(?:me\s+)?(?:the\s+|my\s+|our\s+)?(.+?)$/i,
       ];
       
       let specificList: string | null = null;
       let matchedListName: string | null = null;
       
-      // Try each extraction pattern
       for (const pattern of listExtractionPatterns) {
         const match = effectiveMessage?.match(pattern);
         if (!match) continue;
@@ -1469,39 +1579,33 @@ serve(async (req) => {
         const rawExtracted = normalizeListName(match[1]);
         if (!rawExtracted || rawExtracted.length < 2) continue;
         
-        // Don't match generic words that aren't list names
         const genericWords = new Set(['tasks', 'task', 'all', 'everything', 'stuff', 'things', 'my', 'me', 'the']);
         if (genericWords.has(rawExtracted)) continue;
         
         const extractedSingular = singularize(rawExtracted);
         
-        // Try to match against existing lists with fuzzy matching
         for (const [listId, listName] of listIdToName) {
           const normalizedListName = normalizeListName(listName as string);
           const listNameSingular = singularize(normalizedListName);
           
-          // Exact match (after normalization)
           if (normalizedListName === rawExtracted || normalizedListName === extractedSingular) {
             specificList = listId;
             matchedListName = listName as string;
             break;
           }
           
-          // Singular match (groceries→grocery vs grocery)
           if (listNameSingular === extractedSingular) {
             specificList = listId;
             matchedListName = listName as string;
             break;
           }
           
-          // Substring match (e.g., "grocery" in "groceries" or vice versa)
           if (normalizedListName.includes(rawExtracted) || rawExtracted.includes(normalizedListName)) {
             specificList = listId;
             matchedListName = listName as string;
             break;
           }
           
-          // Singular substring match
           if (listNameSingular.includes(extractedSingular) || extractedSingular.includes(listNameSingular)) {
             specificList = listId;
             matchedListName = listName as string;
@@ -1510,7 +1614,7 @@ serve(async (req) => {
         }
         
         if (specificList) {
-          console.log(`[WhatsApp] List matched: "${match[1]}" → "${matchedListName}" (pattern: ${pattern.source.substring(0, 30)}...)`);
+          console.log(`[WhatsApp] List matched: "${match[1]}" → "${matchedListName}"`);
           break;
         }
       }
@@ -1523,10 +1627,7 @@ serve(async (req) => {
           const emptyMsg = completedInList.length > 0
             ? `Your ${matchedListName} list is all done! ✅ (${completedInList.length} completed item${completedInList.length > 1 ? 's' : ''})`
             : `Your ${matchedListName} list is empty! 🎉`;
-          return new Response(
-            createTwimlResponse(emptyMsg),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply(emptyMsg);
         }
         
         const itemsList = relevantTasks.map((t, i) => {
@@ -1536,18 +1637,12 @@ serve(async (req) => {
           return `${i + 1}. ${t.summary}${priority}${dueInfo}${items}`;
         }).join('\n\n');
         
-        return new Response(
-          createTwimlResponse(`📋 ${matchedListName} (${relevantTasks.length}):\n\n${itemsList}\n\n💡 Say "done with [task]" to complete items`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(`📋 ${matchedListName} (${relevantTasks.length}):\n\n${itemsList}\n\n💡 Say "done with [task]" to complete items`);
       }
 
       // General task summary
       if (!tasks || tasks.length === 0) {
-        return new Response(
-          createTwimlResponse('You don\'t have any tasks yet! Send me something to save like "Buy groceries tomorrow" 🛒'),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply('You don\'t have any tasks yet! Send me something to save like "Buy groceries tomorrow" 🛒');
       }
 
       const activeTasks = tasks.filter(t => !t.completed);
@@ -1568,7 +1663,6 @@ serve(async (req) => {
         return dueDate < today;
       });
       
-      // Get recent tasks (last 24 hours)
       const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       const recentTasks = activeTasks.filter(t => new Date(t.created_at) >= oneDayAgo);
 
@@ -1576,13 +1670,9 @@ serve(async (req) => {
       // CONTEXTUAL QUERY RESPONSES
       // ================================================================
       
-      // Handle "what's urgent" query
       if (queryType === 'urgent') {
         if (urgentTasks.length === 0) {
-          return new Response(
-            createTwimlResponse('🎉 Great news! You have no urgent tasks right now.\n\n💡 Use "!" prefix to mark tasks as urgent (e.g., "!call mom")'),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply('🎉 Great news! You have no urgent tasks right now.\n\n💡 Use "!" prefix to mark tasks as urgent (e.g., "!call mom")');
         }
         
         const urgentList = urgentTasks.slice(0, 8).map((t, i) => {
@@ -1592,19 +1682,12 @@ serve(async (req) => {
         
         const moreText = urgentTasks.length > 8 ? `\n\n...and ${urgentTasks.length - 8} more urgent tasks` : '';
         
-        return new Response(
-          createTwimlResponse(`🔥 ${urgentTasks.length} Urgent Task${urgentTasks.length === 1 ? '' : 's'}:\n\n${urgentList}${moreText}\n\n🔗 Manage: https://witholive.app`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(`🔥 ${urgentTasks.length} Urgent Task${urgentTasks.length === 1 ? '' : 's'}:\n\n${urgentList}${moreText}\n\n🔗 Manage: https://witholive.app`);
       }
       
-      // Handle "what's due today" query
       if (queryType === 'today') {
         if (dueTodayTasks.length === 0) {
-          return new Response(
-            createTwimlResponse('📅 Nothing due today! You\'re all caught up.\n\n💡 Try "what\'s urgent" to see high-priority tasks'),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply('📅 Nothing due today! You\'re all caught up.\n\n💡 Try "what\'s urgent" to see high-priority tasks');
         }
         
         const todayList = dueTodayTasks.slice(0, 8).map((t, i) => {
@@ -1614,13 +1697,9 @@ serve(async (req) => {
         
         const moreText = dueTodayTasks.length > 8 ? `\n\n...and ${dueTodayTasks.length - 8} more` : '';
         
-        return new Response(
-          createTwimlResponse(`📅 ${dueTodayTasks.length} Task${dueTodayTasks.length === 1 ? '' : 's'} Due Today:\n\n${todayList}${moreText}\n\n🔗 Manage: https://witholive.app`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(`📅 ${dueTodayTasks.length} Task${dueTodayTasks.length === 1 ? '' : 's'} Due Today:\n\n${todayList}${moreText}\n\n🔗 Manage: https://witholive.app`);
       }
       
-      // Handle "what's due tomorrow" query
       if (queryType === 'tomorrow') {
         const dayAfterTomorrow = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000);
         const dueTomorrowTasks = activeTasks.filter(t => {
@@ -1629,7 +1708,6 @@ serve(async (req) => {
           return dueDate >= tomorrow && dueDate < dayAfterTomorrow;
         });
         
-        // Also fetch calendar events for tomorrow
         let tomorrowCalendarEvents: string[] = [];
         try {
           const { data: calConnection } = await supabase
@@ -1663,10 +1741,7 @@ serve(async (req) => {
         }
         
         if (dueTomorrowTasks.length === 0 && tomorrowCalendarEvents.length === 0) {
-          return new Response(
-            createTwimlResponse('📅 Nothing scheduled for tomorrow! Enjoy your free day.\n\n💡 Try "what\'s urgent" to see high-priority tasks'),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply('📅 Nothing scheduled for tomorrow! Enjoy your free day.\n\n💡 Try "what\'s urgent" to see high-priority tasks');
         }
         
         let response = '📅 Tomorrow\'s Agenda:\n';
@@ -1684,23 +1759,17 @@ serve(async (req) => {
           response += `\n📋 Tasks Due (${dueTomorrowTasks.length}):\n${tomorrowList}${moreText}\n`;
         }
         
-        // Also mention overdue tasks as context
         if (overdueTasks.length > 0) {
           response += `\n⚠️ Also: ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''} to catch up on`;
         }
         
         response += '\n\n🔗 Manage: https://witholive.app';
         
-        return new Response(
-          createTwimlResponse(response),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(response);
       }
       
-      // Handle "this week" query
       if (queryType === 'this_week') {
         const endOfWeek = new Date(today);
-        // Set to end of Sunday (or next 7 days)
         const daysUntilSunday = 7 - endOfWeek.getDay();
         endOfWeek.setDate(endOfWeek.getDate() + (daysUntilSunday === 0 ? 7 : daysUntilSunday) + 1);
         
@@ -1710,7 +1779,6 @@ serve(async (req) => {
           return dueDate >= today && dueDate < endOfWeek;
         });
         
-        // Also fetch calendar events for this week
         let weekCalendarEvents: string[] = [];
         try {
           const { data: calConnection } = await supabase
@@ -1746,10 +1814,7 @@ serve(async (req) => {
         }
         
         if (dueThisWeekTasks.length === 0 && weekCalendarEvents.length === 0) {
-          return new Response(
-            createTwimlResponse('📅 Nothing scheduled for this week! Looks like a clear week ahead.\n\n💡 Try "what\'s urgent" to see high-priority tasks'),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply('📅 Nothing scheduled for this week! Looks like a clear week ahead.\n\n💡 Try "what\'s urgent" to see high-priority tasks');
         }
         
         let response = '📅 This Week\'s Overview:\n';
@@ -1778,29 +1843,18 @@ serve(async (req) => {
         
         response += '\n\n🔗 Manage: https://witholive.app';
         
-        return new Response(
-          createTwimlResponse(response),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(response);
       }
       
-      // Handle "what's recent" query
       if (queryType === 'recent') {
         if (recentTasks.length === 0) {
-          // Fallback to showing last 5 active tasks regardless of creation time
           const lastFive = activeTasks.slice(0, 5);
           if (lastFive.length === 0) {
-            return new Response(
-              createTwimlResponse('No recent tasks found. Send me something to save!'),
-              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-            );
+            return reply('No recent tasks found. Send me something to save!');
           }
           
           const recentList = lastFive.map((t, i) => `${i + 1}. ${t.summary}`).join('\n');
-          return new Response(
-            createTwimlResponse(`📝 Your Latest Tasks:\n\n${recentList}\n\n🔗 Manage: https://witholive.app`),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply(`📝 Your Latest Tasks:\n\n${recentList}\n\n🔗 Manage: https://witholive.app`);
         }
         
         const recentList = recentTasks.slice(0, 8).map((t, i) => {
@@ -1810,19 +1864,12 @@ serve(async (req) => {
         
         const moreText = recentTasks.length > 8 ? `\n\n...and ${recentTasks.length - 8} more` : '';
         
-        return new Response(
-          createTwimlResponse(`🕐 ${recentTasks.length} Task${recentTasks.length === 1 ? '' : 's'} Added Recently:\n\n${recentList}${moreText}\n\n🔗 Manage: https://witholive.app`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(`🕐 ${recentTasks.length} Task${recentTasks.length === 1 ? '' : 's'} Added Recently:\n\n${recentList}${moreText}\n\n🔗 Manage: https://witholive.app`);
       }
       
-      // Handle "what's overdue" query
       if (queryType === 'overdue') {
         if (overdueTasks.length === 0) {
-          return new Response(
-            createTwimlResponse('✅ No overdue tasks! You\'re on track.\n\n💡 Try "what\'s due today" to see today\'s tasks'),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply('✅ No overdue tasks! You\'re on track.\n\n💡 Try "what\'s due today" to see today\'s tasks');
         }
         
         const overdueList = overdueTasks.slice(0, 8).map((t, i) => {
@@ -1833,10 +1880,7 @@ serve(async (req) => {
         
         const moreText = overdueTasks.length > 8 ? `\n\n...and ${overdueTasks.length - 8} more` : '';
         
-        return new Response(
-          createTwimlResponse(`⚠️ ${overdueTasks.length} Overdue Task${overdueTasks.length === 1 ? '' : 's'}:\n\n${overdueList}${moreText}\n\n🔗 Manage: https://witholive.app`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(`⚠️ ${overdueTasks.length} Overdue Task${overdueTasks.length === 1 ? '' : 's'}:\n\n${overdueList}${moreText}\n\n🔗 Manage: https://witholive.app`);
       }
 
       // Default: General task summary
@@ -1856,14 +1900,11 @@ serve(async (req) => {
 
       summary += '\n\n💡 Try: "what\'s urgent", "what\'s due today", or "show my groceries list"';
 
-      return new Response(
-        createTwimlResponse(summary),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
+      return reply(summary);
     }
 
     // ========================================================================
-    // TASK ACTION HANDLER - Edit, complete, prioritize, assign, etc.
+    // TASK ACTION HANDLER
     // ========================================================================
     if (intent === 'TASK_ACTION') {
       const actionType = (intentResult as any).actionType as TaskActionType;
@@ -1871,21 +1912,14 @@ serve(async (req) => {
       console.log('[WhatsApp] Processing TASK_ACTION:', actionType, 'target:', actionTarget);
       
       if (!actionTarget) {
-        return new Response(
-          createTwimlResponse('I need to know which task you want to modify. Try "done with buy milk" or "make groceries urgent".'),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply('I need to know which task you want to modify. Try "done with buy milk" or "make groceries urgent".');
       }
       
-      // Extract keywords from the target to find the task
       const keywords = actionTarget.split(/\s+/).filter(w => w.length > 2);
       const foundTask = await searchTaskByKeywords(supabase, userId, coupleId, keywords);
       
       if (!foundTask) {
-        return new Response(
-          createTwimlResponse(`I couldn't find a task matching "${actionTarget}". Try "show my tasks" to see your list.`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(`I couldn't find a task matching "${actionTarget}". Try "show my tasks" to see your list.`);
       }
       
       switch (actionType) {
@@ -1896,16 +1930,10 @@ serve(async (req) => {
             .eq('id', foundTask.id);
           
           if (error) {
-            return new Response(
-              createTwimlResponse('Sorry, I couldn\'t complete that task. Please try again.'),
-              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-            );
+            return reply('Sorry, I couldn\'t complete that task. Please try again.');
           }
           
-          return new Response(
-            createTwimlResponse(`✅ Done! Marked "${foundTask.summary}" as complete. Great job! 🎉`),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply(`✅ Done! Marked "${foundTask.summary}" as complete. Great job! 🎉`);
         }
         
         case 'set_priority': {
@@ -1917,17 +1945,11 @@ serve(async (req) => {
             .eq('id', foundTask.id);
           
           if (error) {
-            return new Response(
-              createTwimlResponse('Sorry, I couldn\'t update the priority. Please try again.'),
-              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-            );
+            return reply('Sorry, I couldn\'t update the priority. Please try again.');
           }
           
           const emoji = newPriority === 'high' ? '🔥' : '📌';
-          return new Response(
-            createTwimlResponse(`${emoji} Updated! "${foundTask.summary}" is now ${newPriority} priority.`),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply(`${emoji} Updated! "${foundTask.summary}" is now ${newPriority} priority.`);
         }
         
         case 'set_due': {
@@ -1935,13 +1957,9 @@ serve(async (req) => {
           const parsed = parseNaturalDate(dateExpr, profile.timezone || 'America/New_York');
           
           if (!parsed.date) {
-            return new Response(
-              createTwimlResponse(`I couldn't understand the date "${dateExpr}". Try "tomorrow", "monday", or "next week".`),
-              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-            );
+            return reply(`I couldn't understand the date "${dateExpr}". Try "tomorrow", "monday", or "next week".`);
           }
           
-          // Ask for confirmation
           await supabase
             .from('user_sessions')
             .update({ 
@@ -1959,21 +1977,14 @@ serve(async (req) => {
             })
             .eq('id', session.id);
           
-          return new Response(
-            createTwimlResponse(`📅 Set "${foundTask.summary}" due ${parsed.readable}?\n\nReply "yes" to confirm.`),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply(`📅 Set "${foundTask.summary}" due ${parsed.readable}?\n\nReply "yes" to confirm.`);
         }
         
         case 'assign': {
           if (!coupleId) {
-            return new Response(
-              createTwimlResponse('You need to be in a shared space to assign tasks. Invite a partner from the app!'),
-              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-            );
+            return reply('You need to be in a shared space to assign tasks. Invite a partner from the app!');
           }
           
-          // Find partner
           const { data: partnerMember } = await supabase
             .from('clerk_couple_members')
             .select('user_id')
@@ -1983,13 +1994,9 @@ serve(async (req) => {
             .single();
           
           if (!partnerMember) {
-            return new Response(
-              createTwimlResponse('I couldn\'t find your partner. Make sure they\'ve accepted your invite!'),
-              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-            );
+            return reply('I couldn\'t find your partner. Make sure they\'ve accepted your invite!');
           }
           
-          // Get partner name
           const { data: coupleData } = await supabase
             .from('clerk_couples')
             .select('you_name, partner_name, created_by')
@@ -1999,7 +2006,6 @@ serve(async (req) => {
           const isCreator = coupleData?.created_by === userId;
           const partnerName = isCreator ? (coupleData?.partner_name || 'Partner') : (coupleData?.you_name || 'Partner');
           
-          // Ask for confirmation
           await supabase
             .from('user_sessions')
             .update({ 
@@ -2017,14 +2023,10 @@ serve(async (req) => {
             })
             .eq('id', session.id);
           
-          return new Response(
-            createTwimlResponse(`🤝 Assign "${foundTask.summary}" to ${partnerName}?\n\nReply "yes" to confirm.`),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply(`🤝 Assign "${foundTask.summary}" to ${partnerName}?\n\nReply "yes" to confirm.`);
         }
         
         case 'delete': {
-          // Ask for confirmation
           await supabase
             .from('user_sessions')
             .update({ 
@@ -2040,16 +2042,12 @@ serve(async (req) => {
             })
             .eq('id', session.id);
           
-          return new Response(
-            createTwimlResponse(`🗑️ Delete "${foundTask.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply(`🗑️ Delete "${foundTask.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`);
         }
         
         case 'move': {
           const targetListName = effectiveMessage?.trim();
           
-          // Find or create target list
           const { data: existingList } = await supabase
             .from('clerk_lists')
             .select('id, name')
@@ -2065,14 +2063,10 @@ serve(async (req) => {
               .eq('id', foundTask.id);
             
             if (!error) {
-              return new Response(
-                createTwimlResponse(`📂 Moved "${foundTask.summary}" to ${existingList.name}!`),
-                { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-              );
+              return reply(`📂 Moved "${foundTask.summary}" to ${existingList.name}!`);
             }
           }
           
-          // Create new list
           const { data: newList, error: createError } = await supabase
             .from('clerk_lists')
             .insert({ 
@@ -2090,16 +2084,10 @@ serve(async (req) => {
               .update({ list_id: newList.id, updated_at: new Date().toISOString() })
               .eq('id', foundTask.id);
             
-            return new Response(
-              createTwimlResponse(`📂 Created "${newList.name}" list and moved "${foundTask.summary}" there!`),
-              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-            );
+            return reply(`📂 Created "${newList.name}" list and moved "${foundTask.summary}" there!`);
           }
           
-          return new Response(
-            createTwimlResponse('Sorry, I couldn\'t move that task. Please try again.'),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply('Sorry, I couldn\'t move that task. Please try again.');
         }
         
         case 'remind': {
@@ -2107,7 +2095,6 @@ serve(async (req) => {
           const parsed = parseNaturalDate(reminderExpr, profile.timezone || 'America/New_York');
           
           if (parsed.date) {
-            // Ask for confirmation
             await supabase
               .from('user_sessions')
               .update({ 
@@ -2126,13 +2113,9 @@ serve(async (req) => {
               })
               .eq('id', session.id);
             
-            return new Response(
-              createTwimlResponse(`⏰ Set reminder for "${foundTask.summary}" ${parsed.readable}?\n\nReply "yes" to confirm.`),
-              { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-            );
+            return reply(`⏰ Set reminder for "${foundTask.summary}" ${parsed.readable}?\n\nReply "yes" to confirm.`);
           }
           
-          // No time specified - set for tomorrow 9am as default
           const tomorrowReminder = new Date();
           tomorrowReminder.setDate(tomorrowReminder.getDate() + 1);
           tomorrowReminder.setHours(9, 0, 0, 0);
@@ -2155,27 +2138,20 @@ serve(async (req) => {
             })
             .eq('id', session.id);
           
-          return new Response(
-            createTwimlResponse(`⏰ Set reminder for "${foundTask.summary}" tomorrow at 9:00 AM?\n\nReply "yes" to confirm.`),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply(`⏰ Set reminder for "${foundTask.summary}" tomorrow at 9:00 AM?\n\nReply "yes" to confirm.`);
         }
         
         default:
-          return new Response(
-            createTwimlResponse('I didn\'t understand that action. Try "done with [task]", "make [task] urgent", or "assign [task] to partner".'),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply('I didn\'t understand that action. Try "done with [task]", "make [task] urgent", or "assign [task] to partner".');
       }
     }
 
     // ========================================================================
-    // CONTEXTUAL ASK HANDLER - AI-powered semantic search with saved items
+    // CONTEXTUAL ASK HANDLER - AI-powered semantic search
     // ========================================================================
     if (intent === 'CONTEXTUAL_ASK') {
       console.log('[WhatsApp] Processing CONTEXTUAL_ASK for:', effectiveMessage?.substring(0, 50));
       
-      // Build comprehensive saved items context (like ask-olive-individual)
       const { data: allTasks } = await supabase
         .from('clerk_notes')
         .select('id, summary, category, list_id, items, tags, priority, due_date, completed')
@@ -2197,10 +2173,8 @@ serve(async (req) => {
       
       const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
       
-      // Build rich saved items context
       let savedItemsContext = '\n## USER\'S LISTS AND SAVED ITEMS:\n';
       
-      // Group tasks by list
       const tasksByList = new Map<string, any[]>();
       const uncategorizedTasks: any[] = [];
       
@@ -2216,7 +2190,6 @@ serve(async (req) => {
         }
       });
       
-      // Format lists with their items
       tasksByList.forEach((tasks, listName) => {
         savedItemsContext += `\n### ${listName}:\n`;
         tasks.slice(0, 20).forEach(task => {
@@ -2225,7 +2198,6 @@ serve(async (req) => {
           const dueInfo = task.due_date ? ` (Due: ${new Date(task.due_date).toLocaleDateString()})` : '';
           savedItemsContext += `- ${status} ${task.summary}${priority}${dueInfo}\n`;
           
-          // Include sub-items if present
           if (task.items && task.items.length > 0) {
             task.items.slice(0, 5).forEach((item: string) => {
               savedItemsContext += `  • ${item}\n`;
@@ -2237,7 +2209,6 @@ serve(async (req) => {
         }
       });
       
-      // Add uncategorized tasks
       if (uncategorizedTasks.length > 0) {
         savedItemsContext += `\n### Uncategorized Tasks:\n`;
         uncategorizedTasks.slice(0, 10).forEach(task => {
@@ -2246,7 +2217,6 @@ serve(async (req) => {
         });
       }
       
-      // Add memories context
       let memoryContext = '';
       if (memories && memories.length > 0) {
         memoryContext = '\n## USER MEMORIES & PREFERENCES:\n';
@@ -2255,7 +2225,6 @@ serve(async (req) => {
         });
       }
       
-      // Build the AI prompt
       const systemPrompt = `You are Olive, a friendly and intelligent AI assistant for the Olive app. The user is asking a question about their saved items.
 
 CRITICAL INSTRUCTIONS:
@@ -2276,14 +2245,10 @@ Respond with helpful, specific information from their saved items. If asking for
       try {
         const response = await callAI(systemPrompt, effectiveMessage || '', 0.7);
         
-        return new Response(
-          createTwimlResponse(response.slice(0, 1500)),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(response.slice(0, 1500));
       } catch (error) {
         console.error('[WhatsApp] Contextual AI error:', error);
         
-        // Fallback: Try to find relevant items manually
         const searchTerms = (effectiveMessage || '').toLowerCase().split(/\s+/);
         const matchingTasks = allTasks?.filter(t => 
           searchTerms.some(term => 
@@ -2294,16 +2259,10 @@ Respond with helpful, specific information from their saved items. If asking for
         
         if (matchingTasks && matchingTasks.length > 0) {
           const results = matchingTasks.map(t => `• ${t.summary}`).join('\n');
-          return new Response(
-            createTwimlResponse(`📋 Found these matching items:\n\n${results}\n\n🔗 Manage: https://witholive.app`),
-            { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-          );
+          return reply(`📋 Found these matching items:\n\n${results}\n\n🔗 Manage: https://witholive.app`);
         }
         
-        return new Response(
-          createTwimlResponse('I couldn\'t find matching items in your lists. Try "show my tasks" to see everything.'),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply('I couldn\'t find matching items in your lists. Try "show my tasks" to see everything.');
       }
     }
 
@@ -2314,15 +2273,11 @@ Respond with helpful, specific information from their saved items. If asking for
       const chatType = (intentResult as any).chatType as ChatType || 'general';
       console.log('[WhatsApp] Processing CHAT intent, type:', chatType, 'message:', effectiveMessage?.substring(0, 50));
       
-      // ================================================================
-      // RICH CONTEXT FETCHING - Gather all relevant user data
-      // ================================================================
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
       
-      // Fetch tasks with extended data for analysis
       const { data: allTasks } = await supabase
         .from('clerk_notes')
         .select('id, summary, due_date, completed, priority, category, list_id, items, created_at, updated_at, task_owner')
@@ -2330,7 +2285,6 @@ Respond with helpful, specific information from their saved items. If asking for
         .order('created_at', { ascending: false })
         .limit(100);
       
-      // Fetch user memories for personalization
       const { data: memories } = await supabase
         .from('user_memories')
         .select('title, content, category, importance')
@@ -2339,7 +2293,6 @@ Respond with helpful, specific information from their saved items. If asking for
         .order('importance', { ascending: false })
         .limit(10);
       
-      // Fetch behavioral patterns
       const { data: patterns } = await supabase
         .from('olive_patterns')
         .select('pattern_type, pattern_data, confidence')
@@ -2348,7 +2301,6 @@ Respond with helpful, specific information from their saved items. If asking for
         .gte('confidence', 0.6)
         .limit(5);
       
-      // Fetch lists for context
       const { data: lists } = await supabase
         .from('clerk_lists')
         .select('id, name')
@@ -2357,14 +2309,13 @@ Respond with helpful, specific information from their saved items. If asking for
       const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
       
       // ================================================================
-      // PARTNER CONTEXT - Fetch partner data when in a couple
+      // PARTNER CONTEXT
       // ================================================================
       let partnerContext = '';
       let partnerName = '';
       
       if (coupleId) {
         try {
-          // Get couple info and partner name
           const { data: coupleData } = await supabase
             .from('clerk_couples')
             .select('you_name, partner_name, created_by')
@@ -2372,11 +2323,9 @@ Respond with helpful, specific information from their saved items. If asking for
             .single();
           
           if (coupleData) {
-            // Determine which name belongs to partner based on who created the couple
             const isCreator = coupleData.created_by === userId;
             partnerName = isCreator ? (coupleData.partner_name || 'Partner') : (coupleData.you_name || 'Partner');
             
-            // Get partner's user_id
             const { data: partnerMember } = await supabase
               .from('clerk_couple_members')
               .select('user_id')
@@ -2386,10 +2335,8 @@ Respond with helpful, specific information from their saved items. If asking for
               .single();
             
             if (partnerMember?.user_id) {
-              // Fetch partner's recent activity (last 48 hours)
               const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
               
-              // Tasks partner added recently
               const { data: partnerRecentTasks } = await supabase
                 .from('clerk_notes')
                 .select('summary, created_at, priority')
@@ -2399,7 +2346,6 @@ Respond with helpful, specific information from their saved items. If asking for
                 .order('created_at', { ascending: false })
                 .limit(5);
               
-              // Tasks assigned to current user by partner
               const { data: assignedByPartner } = await supabase
                 .from('clerk_notes')
                 .select('summary, due_date, priority')
@@ -2409,7 +2355,6 @@ Respond with helpful, specific information from their saved items. If asking for
                 .eq('completed', false)
                 .limit(3);
               
-              // Tasks you assigned to partner
               const { data: assignedToPartner } = await supabase
                 .from('clerk_notes')
                 .select('summary, due_date, priority, completed')
@@ -2419,7 +2364,6 @@ Respond with helpful, specific information from their saved items. If asking for
                 .eq('completed', false)
                 .limit(3);
               
-              // Build partner context string
               const partnerRecentSummaries = partnerRecentTasks?.slice(0, 3).map(t => t.summary) || [];
               const assignedToMe = assignedByPartner?.map(t => t.summary) || [];
               const myAssignments = assignedToPartner?.map(t => t.summary) || [];
@@ -2440,18 +2384,16 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
       }
       
       // ================================================================
-      // CALENDAR EVENTS - Fetch for briefing context (today + tomorrow)
+      // CALENDAR EVENTS
       // ================================================================
       let calendarContext = '';
       let todayEvents: Array<{ title: string; start_time: string; all_day: boolean }> = [];
       let tomorrowEvents: Array<{ title: string; start_time: string; all_day: boolean }> = [];
       
-      // Detect if user is asking about tomorrow specifically
       const isTomorrowQuery = /\btomorrow\b/i.test(effectiveMessage || '');
       
       if (chatType === 'briefing') {
         try {
-          // Get user's calendar connection
           const { data: calConnection } = await supabase
             .from('calendar_connections')
             .select('id, calendar_name')
@@ -2461,7 +2403,6 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
             .single();
           
           if (calConnection) {
-            // Fetch today's events
             const todayStart = today.toISOString();
             const todayEnd = tomorrow.toISOString();
             
@@ -2476,7 +2417,6 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
             
             todayEvents = events || [];
             
-            // Also fetch tomorrow's events
             const dayAfterTomorrow = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000);
             const { data: tmrwEvents } = await supabase
               .from('calendar_events')
@@ -2498,12 +2438,10 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
             }).join('\n');
             
             if (isTomorrowQuery) {
-              // Focus on tomorrow's context
               calendarContext = tomorrowEvents.length > 0
                 ? `\n## Tomorrow's Calendar (${tomorrowEvents.length} events):\n${formatEvents(tomorrowEvents)}\n`
                 : '\n## Tomorrow\'s Calendar:\nNo events scheduled for tomorrow.\n';
             } else {
-              // Show today (and tomorrow preview)
               calendarContext = todayEvents.length > 0
                 ? `\n## Today's Calendar (${todayEvents.length} events):\n${formatEvents(todayEvents)}\n`
                 : '\n## Today\'s Calendar:\nNo events scheduled today - clear schedule!\n';
@@ -2519,7 +2457,7 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
       }
       
       // ================================================================
-      // TASK ANALYTICS - Compute insights from task data
+      // TASK ANALYTICS
       // ================================================================
       const activeTasks = allTasks?.filter(t => !t.completed) || [];
       const completedTasks = allTasks?.filter(t => t.completed) || [];
@@ -2537,13 +2475,11 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
         return dueDate >= tomorrow && dueDate < dayAfterTomorrow;
       });
       
-      // Weekly analytics
       const tasksCreatedThisWeek = allTasks?.filter(t => new Date(t.created_at) >= oneWeekAgo) || [];
       const tasksCompletedThisWeek = completedTasks.filter(t => 
         t.updated_at && new Date(t.updated_at) >= oneWeekAgo
       );
       
-      // Category distribution
       const categoryCount: Record<string, number> = {};
       activeTasks.forEach(t => {
         const cat = t.category || 'uncategorized';
@@ -2554,7 +2490,6 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
         .slice(0, 3)
         .map(([cat, count]) => `${cat}: ${count}`);
       
-      // List distribution
       const listCount: Record<string, number> = {};
       activeTasks.forEach(t => {
         if (t.list_id) {
@@ -2567,9 +2502,6 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
         .slice(0, 3)
         .map(([list, count]) => `${list}: ${count}`);
       
-      // ================================================================
-      // BUILD CONTEXT OBJECT FOR AI
-      // ================================================================
       const taskContext = {
         total_active: activeTasks.length,
         urgent: urgentTasks.length,
@@ -2592,13 +2524,12 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
         return `${p.pattern_type}: ${data.description || JSON.stringify(data)}`;
       }).join('; ') || 'No behavioral patterns detected yet.';
       
-      // Top urgent/overdue for specific recommendations
       const topUrgentTasks = urgentTasks.slice(0, 3).map(t => t.summary);
       const topOverdueTasks = overdueTasks.slice(0, 3).map(t => t.summary);
       const topTodayTasks = dueTodayTasks.slice(0, 3).map(t => t.summary);
       
       // ================================================================
-      // OLIVE SKILLS MATCHING - Check if a skill should enhance the response
+      // OLIVE SKILLS MATCHING
       // ================================================================
       const skillMatch = await matchUserSkills(supabase, userId, effectiveMessage || '');
       let skillContext = '';
@@ -2612,7 +2543,6 @@ ${skillMatch.skill.content}
 IMPORTANT: Use the above skill knowledge to enhance your response with domain-specific expertise.
 `;
         
-        // Track skill usage
         try {
           await supabase
             .from('olive_user_skills')
@@ -2665,11 +2595,9 @@ ${skillContext}
       
       switch (chatType) {
         case 'briefing':
-          // Comprehensive briefing with schedule, focus, and partner context
           const briefingCalendar = calendarContext || '\n## Today\'s Calendar:\nNo calendar connected - connect in settings to see events!\n';
           const briefingPartner = partnerContext || (coupleId ? '' : '');
           
-          // Determine if user is asking about tomorrow
           const briefingTimeframe = isTomorrowQuery ? 'tomorrow' : 'today';
           const briefingEmoji = isTomorrowQuery ? '📅' : '🌅';
           const briefingTitle = isTomorrowQuery ? 'Tomorrow\'s Preview' : 'Morning Briefing';
@@ -2837,18 +2765,13 @@ Guidelines:
         
         const chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7);
         
-        return new Response(
-          createTwimlResponse(chatResponse.slice(0, 1500)),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(chatResponse.slice(0, 1500));
       } catch (error) {
         console.error('[WhatsApp] Chat AI error:', error);
         
-        // Fallback responses by type
         let fallbackMessage: string;
         switch (chatType) {
           case 'briefing':
-            // Rich fallback briefing without AI
             const calEventCount = todayEvents.length;
             const calSummary = calEventCount > 0 
               ? `📅 ${calEventCount} event${calEventCount > 1 ? 's' : ''} today`
@@ -2881,23 +2804,18 @@ Guidelines:
             fallbackMessage = '🫒 Hi! I\'m Olive.\n\nTry:\n• "Morning briefing"\n• "Summarize my week"\n• "What should I focus on?"\n• "What\'s urgent?"\n\nOr just tell me what\'s on your mind!';
         }
         
-        return new Response(
-          createTwimlResponse(fallbackMessage),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(fallbackMessage);
       }
     }
 
     // ========================================================================
     // CREATE INTENT (Default) - Capture First
     // ========================================================================
-    // Prepare note data - use effectiveMessage (stripped of prefix if any)
     const notePayload: any = { 
       text: effectiveMessage || '', 
       user_id: userId,
       couple_id: coupleId,
       timezone: profile.timezone || 'America/New_York',
-      // Pass urgency flag from ! prefix
       force_priority: isUrgent ? 'high' : undefined
     };
     
@@ -2910,21 +2828,17 @@ Guidelines:
     
     if (mediaUrls.length > 0) {
       notePayload.media = mediaUrls;
-      notePayload.mediaTypes = mediaTypes; // Pass content types for PDF detection
+      notePayload.mediaTypes = mediaTypes;
       console.log('[WhatsApp] Sending', mediaUrls.length, 'media file(s) for AI processing, types:', mediaTypes);
     }
 
-    // Process the note with AI
     const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
       body: notePayload
     });
 
     if (processError) {
       console.error('Error processing note:', processError);
-      return new Response(
-        createTwimlResponse('Sorry, I had trouble processing that. Please try again.'),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
+      return reply('Sorry, I had trouble processing that. Please try again.');
     }
 
     // Insert the processed note(s) into the database
@@ -2933,7 +2847,6 @@ Guidelines:
       let insertedNoteSummary: string = '';
       let insertedListId: string | null = null;
       
-      // Random tips for unique notes
       const randomTips = [
         "Reply 'Make it urgent' to change priority",
         "Reply 'Show my tasks' to see your list",
@@ -2943,7 +2856,6 @@ Guidelines:
       ];
       const getRandomTip = () => randomTips[Math.floor(Math.random() * randomTips.length)];
       
-      // Helper to get list name from list_id
       async function getListName(listId: string | null): Promise<string> {
         if (!listId) return 'Tasks';
         
@@ -2957,7 +2869,6 @@ Guidelines:
       }
       
       if (processData.multiple && Array.isArray(processData.notes)) {
-        // Insert multiple notes
         const notesToInsert = processData.notes.map((note: any) => ({
           author_id: userId,
           couple_id: coupleId,
@@ -2985,7 +2896,6 @@ Guidelines:
 
         if (insertError) throw insertError;
 
-        // Get list name for the first item (they likely share the same list)
         const primaryListId = insertedNotes?.[0]?.list_id;
         const listName = await getListName(primaryListId);
         
@@ -2993,12 +2903,8 @@ Guidelines:
         const itemsList = insertedNotes?.slice(0, 3).map(n => `• ${n.summary}`).join('\n') || '';
         const moreText = count > 3 ? `\n...and ${count - 3} more` : '';
         
-        return new Response(
-          createTwimlResponse(`✅ Saved ${count} items!\n${itemsList}${moreText}\n\n📂 Added to: ${listName}\n\n🔗 Manage: https://witholive.app\n\n💡 ${getRandomTip()}`),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(`✅ Saved ${count} items!\n${itemsList}${moreText}\n\n📂 Added to: ${listName}\n\n🔗 Manage: https://witholive.app\n\n💡 ${getRandomTip()}`);
       } else {
-        // Single note
         const noteData = {
           author_id: userId,
           couple_id: coupleId,
@@ -3031,7 +2937,6 @@ Guidelines:
         insertedNoteSummary = insertedNote.summary;
         insertedListId = insertedNote.list_id;
 
-        // Get the list name for rich feedback
         const listName = await getListName(insertedListId);
 
         // ================================================================
@@ -3040,17 +2945,14 @@ Guidelines:
         let duplicateWarning: { found: boolean; targetId: string; targetTitle: string } | null = null;
 
         try {
-          // Generate embedding for the new note
           const embedding = await generateEmbedding(insertedNoteSummary);
           
           if (embedding && insertedNoteId) {
-            // Store the embedding for future similarity searches
             await supabase
               .from('clerk_notes')
               .update({ embedding: JSON.stringify(embedding) })
               .eq('id', insertedNoteId);
 
-            // Search for similar existing notes (only if coupleId is available and not null)
             const similarNote = (coupleId && typeof coupleId === 'string') ? await findSimilarNotes(supabase, userId, coupleId, embedding, insertedNoteId) : null;
             
             if (similarNote) {
@@ -3064,7 +2966,6 @@ Guidelines:
           }
         } catch (dupError) {
           console.error('Duplicate detection error (non-blocking):', dupError);
-          // Non-blocking - continue with the response even if duplicate detection fails
         }
 
         // ================================================================
@@ -3073,7 +2974,6 @@ Guidelines:
         let confirmationMessage: string;
         
         if (duplicateWarning?.found) {
-          // Scenario B: Duplicate detected - no tip to avoid clutter
           confirmationMessage = [
             `✅ Saved: ${insertedNoteSummary}`,
             `📂 Added to: ${listName}`,
@@ -3082,7 +2982,6 @@ Guidelines:
             `Reply "Merge" to combine them.`
           ].join('\n');
         } else {
-          // Scenario A: Unique note - include tip
           confirmationMessage = [
             `✅ Saved: ${insertedNoteSummary}`,
             `📂 Added to: ${listName}`,
@@ -3093,24 +2992,19 @@ Guidelines:
           ].join('\n');
         }
         
-        return new Response(
-          createTwimlResponse(confirmationMessage),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        return reply(confirmationMessage);
       }
     } catch (insertError) {
       console.error('Database insertion error:', insertError);
-      return new Response(
-        createTwimlResponse('I understood your task but had trouble saving it. Please try again.'),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
+      return reply('I understood your task but had trouble saving it. Please try again.');
     }
 
   } catch (error) {
     console.error('WhatsApp webhook error:', error);
-    return new Response(
-      createTwimlResponse('Sorry, something went wrong. Please try again later. 🔄'),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-    );
+    // For unexpected errors, we can't send a reply via Meta API since we may not have the user info
+    return new Response(JSON.stringify({ status: 'error', message: 'Internal error' }), { 
+      status: 200, // Meta requires 200 even on errors to prevent retries
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
   }
 });
