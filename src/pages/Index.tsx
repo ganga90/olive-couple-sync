@@ -282,6 +282,19 @@ const Index = () => {
               </div>
             </div>
           )}
+
+          {/* Olive Assistant Branding */}
+          <div className="text-center pt-8 pb-4 space-y-2">
+            <div className="flex items-center justify-center gap-2">
+              <OliveLogoWithText size="sm" className="justify-center" />
+            </div>
+            <p className="text-xs text-muted-foreground tracking-wide uppercase">
+              Olive Assistant — Your AI Chief of Staff
+            </p>
+            <p className="text-[11px] text-muted-foreground/60">
+              With Olive, everything stays organized.
+            </p>
+          </div>
         </div>
       </div>
     </main>

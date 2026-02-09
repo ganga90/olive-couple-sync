@@ -6,6 +6,54 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/**
+ * Send a WhatsApp message via Meta Cloud API
+ */
+async function sendWhatsAppMessage(to: string, body: string): Promise<boolean> {
+  const WHATSAPP_ACCESS_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
+  const WHATSAPP_PHONE_NUMBER_ID = Deno.env.get('WHATSAPP_PHONE_NUMBER_ID');
+
+  if (!WHATSAPP_ACCESS_TOKEN || !WHATSAPP_PHONE_NUMBER_ID) {
+    console.error('Meta WhatsApp credentials not configured');
+    return false;
+  }
+
+  // Normalize: Meta expects raw digits without + prefix
+  const cleanNumber = to.replace(/\D/g, '');
+
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: cleanNumber,
+          type: 'text',
+          text: { preview_url: true, body },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Meta Reminders] Send failed:', response.status, errorText);
+      return false;
+    }
+
+    const data = await response.json();
+    console.log('[Meta Reminders] Sent, id:', data.messages?.[0]?.id);
+    return true;
+  } catch (error) {
+    console.error('[Meta Reminders] Error:', error);
+    return false;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -14,21 +62,20 @@ serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
-    const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
-    const TWILIO_WHATSAPP_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER'); // WhatsApp number format
 
-    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_NUMBER) {
-      console.error('Twilio credentials not configured');
+    const WHATSAPP_ACCESS_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
+    const WHATSAPP_PHONE_NUMBER_ID = Deno.env.get('WHATSAPP_PHONE_NUMBER_ID');
+
+    if (!WHATSAPP_ACCESS_TOKEN || !WHATSAPP_PHONE_NUMBER_ID) {
+      console.error('Meta WhatsApp credentials not configured');
       return new Response(
-        JSON.stringify({ error: 'Twilio not configured' }),
+        JSON.stringify({ error: 'WhatsApp not configured' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Find notes with reminder_time in the next 5 minutes that haven't been reminded yet
     const now = new Date();
     const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
 
@@ -75,12 +122,9 @@ serve(async (req) => {
         
         const alreadySent = note.auto_reminders_sent || [];
         
-        // Check if we should send 24h reminder (23.9 to 24.1 hours before)
         if (hoursUntilDue >= 23.9 && hoursUntilDue <= 24.1 && !alreadySent.includes('24h')) {
           autoReminders.push({ ...note, reminder_type: '24h', reminder_message: 'in 24 hours' });
-        }
-        // Check if we should send 2h reminder (1.9 to 2.1 hours before)
-        else if (hoursUntilDue >= 1.9 && hoursUntilDue <= 2.1 && !alreadySent.includes('2h')) {
+        } else if (hoursUntilDue >= 1.9 && hoursUntilDue <= 2.1 && !alreadySent.includes('2h')) {
           autoReminders.push({ ...note, reminder_type: '2h', reminder_message: 'in 2 hours' });
         }
       }
@@ -88,7 +132,6 @@ serve(async (req) => {
 
     console.log(`Found ${autoReminders.length} notes needing automatic due date reminders`);
 
-    // Combine both types of reminders
     const allReminders = [...(explicitReminders || []), ...autoReminders];
     
     if (allReminders.length === 0) {
@@ -98,21 +141,18 @@ serve(async (req) => {
       );
     }
 
-    const dueNotes = allReminders;
-
     let sentCount = 0;
     const errors: string[] = [];
 
-    // Group notes by author to batch reminders per user
-    const notesByAuthor = dueNotes.reduce((acc, note) => {
+    // Group notes by author
+    const notesByAuthor = allReminders.reduce((acc, note) => {
       if (!note.author_id) return acc;
       if (!acc[note.author_id]) acc[note.author_id] = [];
       acc[note.author_id].push(note);
       return acc;
-    }, {} as Record<string, typeof dueNotes>);
+    }, {} as Record<string, typeof allReminders>);
 
-    for (const [authorId, notes] of Object.entries(notesByAuthor) as [string, typeof dueNotes][]) {
-      // Get user's phone number
+    for (const [authorId, notes] of Object.entries(notesByAuthor) as [string, typeof allReminders][]) {
       const { data: profile, error: profileError } = await supabase
         .from('clerk_profiles')
         .select('phone_number, display_name')
@@ -125,34 +165,15 @@ serve(async (req) => {
         continue;
       }
 
-      // Prepare reminder message with due date context
       const reminderText = notes.length === 1
         ? `⏰ ${(notes[0] as any).reminder_type ? `Reminder: "${notes[0].summary}" is due ${(notes[0] as any).reminder_message}` : `Here's your reminder: "${notes[0].summary}"`}\n\nLet me know if you have completed it or if you want me to remind you later! 🙂`
         : `⏰ You have ${notes.length} reminders:\n\n${notes.map((n: any, i: number) => `${i + 1}. ${n.summary}${n.reminder_type ? ` (due ${n.reminder_message})` : ''}`).join('\n')}\n\nLet me know which ones you've completed or if you want me to remind you later! 🙂`;
 
-      // Send WhatsApp message via Twilio
       try {
-        const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
-        const twilioAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+        const sent = await sendWhatsAppMessage(profile.phone_number, reminderText);
 
-        const formData = new URLSearchParams();
-        formData.append('From', TWILIO_WHATSAPP_NUMBER);
-        formData.append('To', profile.phone_number);
-        formData.append('Body', reminderText);
-
-        const twilioResponse = await fetch(twilioUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Basic ${twilioAuth}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: formData.toString(),
-        });
-
-        if (!twilioResponse.ok) {
-          const errorText = await twilioResponse.text();
-          console.error(`Failed to send WhatsApp to ${profile.phone_number}:`, errorText);
-          errors.push(`User ${authorId}: Twilio error`);
+        if (!sent) {
+          errors.push(`User ${authorId}: Meta API error`);
           continue;
         }
 
@@ -166,14 +187,11 @@ serve(async (req) => {
             updated_at: new Date().toISOString()
           };
 
-          // If this is an automatic due date reminder, track it
           if (note.reminder_type) {
             const alreadySent = note.auto_reminders_sent || [];
             updateData.auto_reminders_sent = [...alreadySent, note.reminder_type];
             console.log(`Marked ${note.reminder_type} reminder as sent for note ${note.id}`);
-          }
-          // Handle recurring explicit reminders
-          else if (note.recurrence_frequency && note.recurrence_frequency !== 'none' && note.reminder_time) {
+          } else if (note.recurrence_frequency && note.recurrence_frequency !== 'none' && note.reminder_time) {
             const currentReminder = new Date(note.reminder_time);
             const interval = note.recurrence_interval || 1;
             let nextReminder = new Date(currentReminder);
@@ -196,7 +214,6 @@ serve(async (req) => {
             updateData.reminder_time = nextReminder.toISOString();
             console.log(`Scheduled next recurring reminder for note ${note.id}: ${nextReminder.toISOString()}`);
           } else if (note.reminder_time) {
-            // For non-recurring explicit reminders, clear the reminder_time after sending
             updateData.reminder_time = null;
           }
 
@@ -216,7 +233,7 @@ serve(async (req) => {
       JSON.stringify({ 
         message: 'Reminders processed', 
         sent: sentCount,
-        total: dueNotes.length,
+        total: allReminders.length,
         errors: errors.length > 0 ? errors : undefined
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
