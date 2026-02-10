@@ -27,7 +27,7 @@ export const NewLandingFooter = () => {
             <div className="w-8 h-8 bg-gradient-to-br from-olive to-olive/80 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">O</span>
             </div>
-            <span className="text-xl font-bold">Olive</span>
+            <span className="text-xl font-bold">Olive Assistant</span>
           </div>
 
           {/* Links */}
@@ -81,6 +81,9 @@ export const NewLandingFooter = () => {
           </p>
           <p className="text-stone-600 text-xs mt-2">
             {t('footer.madeWith')}
+          </p>
+          <p className="text-stone-600 text-xs mt-1">
+            {t('footer.tagline')}
           </p>
         </div>
       </div>
