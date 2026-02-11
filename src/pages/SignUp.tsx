@@ -10,7 +10,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, User, Mail, KeyRound, ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { Loader2, User, Mail, KeyRound, ArrowLeft, ArrowRight, Check, Lock, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,8 @@ const SignUpPage = () => {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
   useSEO({ title: `${t('signUp.title')} — Olive`, description: t('signUp.description') });
@@ -74,6 +76,7 @@ const SignUpPage = () => {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         emailAddress: email,
+        password,
       });
 
       // Check if sign-up is already complete (e.g. user already verified)
@@ -372,13 +375,36 @@ const SignUpPage = () => {
                     className="bg-background text-base"
                   />
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">{t('signUp.passwordLabel', 'Create a password')}</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder={t('signUp.passwordPlaceholder', 'Choose a secure password')}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      autoComplete="new-password"
+                      className="bg-background text-base pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
                 
                 <Button 
                   type="submit" 
                   variant="default"
                   size="lg"
                   className="w-full"
-                  disabled={isLoading || !email}
+                  disabled={isLoading || !email || !password}
                 >
                   {isLoading ? (
                     <>
