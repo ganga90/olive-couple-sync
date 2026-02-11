@@ -10,7 +10,8 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Mail, KeyRound, ArrowLeft, Lock, Sparkles, Eye, EyeOff } from "lucide-react";
+import { Loader2, Mail, KeyRound, ArrowLeft, Lock, Sparkles, Eye, EyeOff, Fingerprint } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 import { motion, AnimatePresence } from "framer-motion";
@@ -170,6 +171,35 @@ const SignInPage = () => {
     setPassword("");
     setCode("");
     setPendingVerification(false);
+  };
+
+  const handlePasskeySignIn = async () => {
+    if (!isLoaded || !signIn) return;
+
+    setIsLoading(true);
+    try {
+      const result = await (signIn as any).authenticateWithPasskey({ flow: 'discoverable' });
+
+      if (result.status === 'complete') {
+        await setActive({ session: result.createdSessionId });
+        const effectiveRedirectUrl = isNativeRequest ? '/auth-redirect-native' : redirectUrl;
+        setTimeout(() => navigate(effectiveRedirectUrl), 300);
+      } else {
+        console.log('[SignIn] Passkey sign-in not complete:', result);
+        toast.error(t('signIn.verificationIncomplete', 'Verification incomplete. Please try again.'));
+      }
+    } catch (err: any) {
+      console.error('[SignIn] Passkey error:', err);
+      const clerkError = err?.errors?.[0];
+      // If passkeys not supported or not set up, show helpful message
+      if (clerkError?.code === 'passkey_not_supported' || err?.name === 'NotAllowedError') {
+        toast.error(t('signIn.passkeyNotAvailable', 'Passkey not available. Please use another sign-in method.'));
+      } else {
+        toast.error(clerkError?.longMessage || t('signIn.passkeyError', 'Passkey sign-in failed. Try another method.'));
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (!isLoaded) {
@@ -448,6 +478,28 @@ const SignInPage = () => {
               </motion.form>
             )}
           </AnimatePresence>
+
+          {/* Passkey sign-in option */}
+          {!pendingVerification && (
+            <>
+              <div className="flex items-center gap-3 my-4">
+                <Separator className="flex-1" />
+                <span className="text-xs text-muted-foreground">{t('signIn.or', 'or')}</span>
+                <Separator className="flex-1" />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="w-full"
+                onClick={handlePasskeySignIn}
+                disabled={isLoading}
+              >
+                <Fingerprint className="mr-2 h-4 w-4" />
+                {t('signIn.passkeyButton', 'Sign in with passkey')}
+              </Button>
+            </>
+          )}
 
           <LegalConsentText className="mt-4 px-2" />
         </Card>
