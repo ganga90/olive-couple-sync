@@ -112,10 +112,32 @@ const SignUpPage = () => {
     try {
       const result = await signUp.attemptEmailAddressVerification({ code });
 
+      console.log('[SignUp] Verification result:', JSON.stringify({
+        status: result.status,
+        createdSessionId: result.createdSessionId,
+        createdUserId: result.createdUserId,
+        missingFields: result.missingFields,
+        unverifiedFields: result.unverifiedFields,
+        verifications: result.verifications,
+      }, null, 2));
+
       if (await completeSignUp(result)) return;
 
-      // If not complete, check what's needed
-      console.log('[SignUp] Sign up not complete, status:', result.status);
+      // Handle "missing_requirements" — email verified but sign-up needs session activation
+      // This happens when Clerk considers sign-up done but hasn't created a session yet
+      if (result.status === 'missing_requirements') {
+        // Check if email is now verified — if so, the sign-up is essentially done
+        const emailVerified = (result as any).verifications?.emailAddress?.status === 'verified';
+        if (emailVerified && result.createdSessionId) {
+          await setActive({ session: result.createdSessionId });
+          toast.success(t('signUp.accountCreated', 'Account created successfully!'));
+          setTimeout(() => navigate(redirectUrl), 300);
+          return;
+        }
+        // If there are unverified fields we can't handle, log and show message
+        console.log('[SignUp] Missing requirements:', result.missingFields, result.unverifiedFields);
+      }
+
       toast.error(t('signUp.verificationIncomplete', 'Verification incomplete. Please try again.'));
     } catch (err: any) {
       console.error('[SignUp] Error verifying code:', err);
@@ -124,7 +146,7 @@ const SignUpPage = () => {
 
       // Handle "already verified" - try to complete the sign-up
       if (errorCode === 'verification_already_verified' || 
-          errorCode === 'form_code_incorrect' && signUp.status === 'complete') {
+          (errorCode === 'form_code_incorrect' && signUp.status === 'complete')) {
         if (await completeSignUp(signUp)) return;
       }
 
