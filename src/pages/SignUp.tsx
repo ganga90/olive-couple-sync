@@ -51,20 +51,34 @@ const SignUpPage = () => {
     setStep("email");
   };
 
+  const completeSignUp = async (result: any) => {
+    if (result.status === "complete") {
+      if (result.createdSessionId) {
+        await setActive({ session: result.createdSessionId });
+      }
+      toast.success(t('signUp.accountCreated', 'Account created successfully!'));
+      // Small delay to let Clerk session propagate
+      setTimeout(() => navigate(redirectUrl), 300);
+      return true;
+    }
+    return false;
+  };
+
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isLoaded || !signUp) return;
 
     setIsLoading(true);
     try {
-      // Create the sign-up with email code strategy
       await signUp.create({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         emailAddress: email,
       });
 
-      // Prepare email verification
+      // Check if sign-up is already complete (e.g. user already verified)
+      if (await completeSignUp(signUp)) return;
+
       await signUp.prepareEmailAddressVerification({
         strategy: "email_code",
       });
@@ -73,7 +87,17 @@ const SignUpPage = () => {
       toast.success(t('signUp.codeSent', 'Verification code sent to your email!'));
     } catch (err: any) {
       console.error('[SignUp] Error:', err);
-      const errorMessage = err?.errors?.[0]?.longMessage || err?.message || t('signUp.errorSendingCode', 'Failed to send verification code');
+      const clerkError = err?.errors?.[0];
+      const errorCode = clerkError?.code;
+      
+      // If user already exists, redirect to sign-in
+      if (errorCode === 'form_identifier_exists') {
+        toast.error(t('signUp.emailExists', 'This email is already registered. Please sign in instead.'));
+        navigate('/sign-in');
+        return;
+      }
+      
+      const errorMessage = clerkError?.longMessage || err?.message || t('signUp.errorSendingCode', 'Failed to send verification code');
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
@@ -86,21 +110,25 @@ const SignUpPage = () => {
 
     setIsLoading(true);
     try {
-      const result = await signUp.attemptEmailAddressVerification({
-        code,
-      });
+      const result = await signUp.attemptEmailAddressVerification({ code });
 
-      if (result.status === "complete") {
-        await setActive({ session: result.createdSessionId });
-        toast.success(t('signUp.accountCreated', 'Account created successfully!'));
-        navigate(redirectUrl);
-      } else {
-        console.log('[SignUp] Sign up not complete:', result);
-        toast.error(t('signUp.verificationIncomplete', 'Verification incomplete. Please try again.'));
-      }
+      if (await completeSignUp(result)) return;
+
+      // If not complete, check what's needed
+      console.log('[SignUp] Sign up not complete, status:', result.status);
+      toast.error(t('signUp.verificationIncomplete', 'Verification incomplete. Please try again.'));
     } catch (err: any) {
       console.error('[SignUp] Error verifying code:', err);
-      const errorMessage = err?.errors?.[0]?.longMessage || err?.message || t('signUp.invalidCode', 'Invalid verification code');
+      const clerkError = err?.errors?.[0];
+      const errorCode = clerkError?.code;
+
+      // Handle "already verified" - try to complete the sign-up
+      if (errorCode === 'verification_already_verified' || 
+          errorCode === 'form_code_incorrect' && signUp.status === 'complete') {
+        if (await completeSignUp(signUp)) return;
+      }
+
+      const errorMessage = clerkError?.longMessage || err?.message || t('signUp.invalidCode', 'Invalid verification code');
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
@@ -112,13 +140,25 @@ const SignUpPage = () => {
 
     setIsLoading(true);
     try {
+      // If sign-up is already complete, just activate the session
+      if (signUp.status === 'complete') {
+        if (await completeSignUp(signUp)) return;
+      }
+
       await signUp.prepareEmailAddressVerification({
         strategy: "email_code",
       });
       toast.success(t('signUp.codeResent', 'New code sent!'));
     } catch (err: any) {
       console.error('[SignUp] Error resending code:', err);
-      toast.error(t('signUp.errorResendingCode', 'Failed to resend code'));
+      const clerkError = err?.errors?.[0];
+      
+      // If already verified, complete the sign-up
+      if (clerkError?.code === 'verification_already_verified') {
+        if (await completeSignUp(signUp)) return;
+      }
+      
+      toast.error(clerkError?.longMessage || t('signUp.errorResendingCode', 'Failed to resend code'));
     } finally {
       setIsLoading(false);
     }
