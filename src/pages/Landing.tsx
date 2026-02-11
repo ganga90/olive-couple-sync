@@ -14,8 +14,8 @@ const Landing = () => {
   const { t } = useTranslation('landing');
   
   useSEO({ 
-    title: "Olive – The AI Chief of Staff for Couples & Co-Founders",
-    description: "Stop nagging. Stop forgetting. Olive listens to your WhatsApp voice notes, receipts, and links, and organizes them instantly."
+    title: "Olive — Stop Texting Into the Void",
+    description: "Your gate codes, grocery lists, and brilliant ideas deserve better than dying in a chat with yourself. Olive organizes everything you text, automatically."
   });
 
   return (

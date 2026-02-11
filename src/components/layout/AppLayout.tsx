@@ -67,7 +67,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         <MobileHeader />
         
         {/* Main Content Area - with padding for header and bottom bar */}
-        <main className="flex-1 overflow-hidden pt-[calc(57px+env(safe-area-inset-top))] pb-[calc(90px+env(safe-area-inset-bottom))]">
+        <main className="flex-1 overflow-hidden pt-[calc(64px+env(safe-area-inset-top))] pb-[calc(90px+env(safe-area-inset-bottom))]">
           {children}
         </main>
         

@@ -41,10 +41,18 @@
     "inviteButton": "Invitar pareja",
     "skipText": "Lo haré más tarde"
   },
+  "demoPreview": {
+    "header": "Así funciona Olive.",
+    "subtext": "Escribe de forma natural. Olive entiende y organiza todo.",
+    "insight": "3 mensajes. Compra ordenada, cena programada, código guardado. Sin abrir ninguna app.",
+    "continue": "Entendido — vamos a configurar"
+  },
   "whatsapp": {
     "header": "Tu asistente personal, directamente en WhatsApp.",
     "subtext": "No abras la app cada vez. Solo escribe a Olive para añadir la compra, recordatorios o eventos.",
-    "connectButton": "Conectar WhatsApp"
+    "connectButton": "Conectar WhatsApp",
+    "scanQr": "Escanea este código QR con tu teléfono para abrir WhatsApp y empezar a chatear con Olive.",
+    "done": "Listo — Continuar"
   },
   "calendar": {
     "header": "Ve toda tu semana de un vistazo.",

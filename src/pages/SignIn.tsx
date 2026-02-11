@@ -4,13 +4,13 @@ import { useSEO } from "@/hooks/useSEO";
 import { Card } from "@/components/ui/card";
 import { OliveLogo } from "@/components/OliveLogo";
 import { LegalConsentText } from "@/components/LegalConsentText";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Mail, KeyRound, ArrowLeft, Lock, Sparkles } from "lucide-react";
+import { Loader2, Mail, KeyRound, ArrowLeft, Lock, Sparkles, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 import { motion, AnimatePresence } from "framer-motion";
@@ -27,14 +27,16 @@ const SignInPage = () => {
   const { isSignedIn } = useAuth();
   const { signIn, isLoaded, setActive } = useSignIn();
   const navigate = useLocalizedNavigate();
-  
+  const rawNavigate = useNavigate();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingVerification, setPendingVerification] = useState(false);
   const [method, setMethod] = useState<SignInMethod>("email_code");
-  
+
   useSEO({ title: `${t('signIn.title')} — Olive`, description: t('signIn.description') });
 
   // If this page was opened from native app and user is now signed in,
@@ -63,7 +65,7 @@ const SignInPage = () => {
         strategy: "email_code",
         identifier: email,
       });
-      
+
       setPendingVerification(true);
       toast.success(t('signIn.codeSent', 'Verification code sent to your email!'));
     } catch (err: any) {
@@ -137,6 +139,14 @@ const SignInPage = () => {
     setCode("");
   };
 
+  const handleNavigateBack = () => {
+    if (window.history.length > 1) {
+      rawNavigate(-1);
+    } else {
+      navigate('/');
+    }
+  };
+
   const handleResendCode = async () => {
     if (!isLoaded || !signIn) return;
 
@@ -173,15 +183,25 @@ const SignInPage = () => {
   return (
     <main className="min-h-screen bg-gradient-soft">
       <section className="mx-auto max-w-md px-4 py-10">
+        {/* Back navigation */}
+        <button
+          type="button"
+          onClick={handleNavigateBack}
+          className="flex items-center gap-1 mb-6 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t('signIn.backNav', 'Back')}
+        </button>
+
         <div className="mb-6 flex justify-center">
           <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-olive/10 shadow-soft border border-olive/20">
             <OliveLogo size={32} />
           </div>
         </div>
-        
+
         <h1 className="mb-2 text-center text-3xl font-bold text-olive-dark">{t('signIn.title')}</h1>
         <p className="mb-6 text-center text-muted-foreground">{t('signIn.description')}</p>
-        
+
         <Card className="p-6 bg-white/50 border-olive/20 shadow-soft overflow-hidden">
           <AnimatePresence mode="wait">
             {!pendingVerification ? (
@@ -243,9 +263,9 @@ const SignInPage = () => {
                         className="bg-background text-base"
                       />
                     </div>
-                    
-                    <Button 
-                      type="submit" 
+
+                    <Button
+                      type="submit"
                       variant="default"
                       size="lg"
                       className="w-full"
@@ -260,10 +280,10 @@ const SignInPage = () => {
                         t('signIn.sendCode', 'Send verification code')
                       )}
                     </Button>
-                    
+
                     <p className="text-center text-sm text-muted-foreground">
                       {t('signIn.noAccount', "Don't have an account?")}{' '}
-                      <button 
+                      <button
                         type="button"
                         onClick={() => navigate('/sign-up')}
                         className="text-primary hover:underline font-medium"
@@ -293,26 +313,36 @@ const SignInPage = () => {
                         className="bg-background text-base"
                       />
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Label htmlFor="password" className="flex items-center gap-2">
                         <Lock className="h-4 w-4" />
                         {t('signIn.passwordLabel', 'Password')}
                       </Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        placeholder={t('signIn.passwordPlaceholder', 'Enter your password')}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        autoComplete="current-password"
-                        className="bg-background text-base"
-                      />
+                      <div className="relative">
+                        <Input
+                          id="password"
+                          type={showPassword ? "text" : "password"}
+                          placeholder={t('signIn.passwordPlaceholder', 'Enter your password')}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                          autoComplete="current-password"
+                          className="bg-background text-base pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                          aria-label={showPassword ? t('signIn.hidePassword', 'Hide password') : t('signIn.showPassword', 'Show password')}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
                     </div>
-                    
-                    <Button 
-                      type="submit" 
+
+                    <Button
+                      type="submit"
                       variant="default"
                       size="lg"
                       className="w-full"
@@ -327,10 +357,10 @@ const SignInPage = () => {
                         t('signIn.signInButton', 'Sign in')
                       )}
                     </Button>
-                    
+
                     <p className="text-center text-sm text-muted-foreground">
                       {t('signIn.noAccount', "Don't have an account?")}{' '}
-                      <button 
+                      <button
                         type="button"
                         onClick={() => navigate('/sign-up')}
                         className="text-primary hover:underline font-medium"
@@ -360,14 +390,14 @@ const SignInPage = () => {
                   <ArrowLeft className="h-4 w-4" />
                   {t('signIn.back', 'Back')}
                 </button>
-                
+
                 <div className="text-center py-2">
                   <p className="text-sm text-muted-foreground">
                     {t('signIn.codeSentTo', 'We sent a code to')}
                   </p>
                   <p className="font-medium text-foreground">{email}</p>
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="code" className="flex items-center gap-2">
                     <KeyRound className="h-4 w-4" />
@@ -386,9 +416,9 @@ const SignInPage = () => {
                     maxLength={6}
                   />
                 </div>
-                
-                <Button 
-                  type="submit" 
+
+                <Button
+                  type="submit"
                   variant="default"
                   size="lg"
                   className="w-full"
@@ -403,10 +433,10 @@ const SignInPage = () => {
                     t('signIn.verify', 'Verify and sign in')
                   )}
                 </Button>
-                
+
                 <p className="text-center text-sm text-muted-foreground">
                   {t('signIn.didntReceive', "Didn't receive the code?")}{' '}
-                  <button 
+                  <button
                     type="button"
                     onClick={handleResendCode}
                     disabled={isLoading}
@@ -418,7 +448,7 @@ const SignInPage = () => {
               </motion.form>
             )}
           </AnimatePresence>
-          
+
           <LegalConsentText className="mt-4 px-2" />
         </Card>
       </section>

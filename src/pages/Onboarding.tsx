@@ -46,16 +46,19 @@ import {
 } from "lucide-react";
 import { LANGUAGES } from "@/lib/i18n/languages";
 import { cn } from "@/lib/utils";
+import { OnboardingDemo } from "@/components/OnboardingDemo";
+import { QRCodeSVG } from "qrcode.react";
 
 // Onboarding step types - quiz is now the first step
-type OnboardingStep = 
+type OnboardingStep =
   | "quiz"
+  | "demoPreview"
   | "regional"
-  | "couple" 
-  | "whatsapp" 
-  | "calendar" 
-  | "style" 
-  | "notifications" 
+  | "couple"
+  | "whatsapp"
+  | "calendar"
+  | "style"
+  | "notifications"
   | "demo";
 
 type NoteStyle = 'auto' | 'succinct' | 'conversational';
@@ -100,7 +103,7 @@ const defaultState: OnboardingState = {
   quizAnswers: defaultQuizAnswers,
 };
 
-const STEPS_ORDER: OnboardingStep[] = ['quiz', 'regional', 'couple', 'whatsapp', 'calendar', 'style', 'notifications', 'demo'];
+const STEPS_ORDER: OnboardingStep[] = ['quiz', 'demoPreview', 'regional', 'whatsapp', 'calendar', 'style', 'couple', 'notifications', 'demo'];
 
 // Common timezones for selection
 const TIMEZONES = [
@@ -149,6 +152,8 @@ const Onboarding = () => {
   const [demoText, setDemoText] = useState('');
   const [isProcessingDemo, setIsProcessingDemo] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [whatsappLink, setWhatsappLink] = useState('');
+  const [isDesktop, setIsDesktop] = useState(false);
   
   // Regional settings state - auto-detect on mount
   const [detectedTimezone, setDetectedTimezone] = useState<string>('');
@@ -185,8 +190,18 @@ const Onboarding = () => {
     setHasAutoDetected(true);
   }, [hasAutoDetected]);
   
-  useSEO({ 
-    title: "Get Started — Olive", 
+  // Detect desktop vs mobile
+  useEffect(() => {
+    const checkDesktop = () => {
+      const ua = navigator.userAgent;
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+      setIsDesktop(!isMobile);
+    };
+    checkDesktop();
+  }, []);
+
+  useSEO({
+    title: "Get Started — Olive",
     description: t('personalizeExperience')
   });
 
@@ -474,12 +489,19 @@ const Onboarding = () => {
       });
 
       if (!error && data?.whatsappLink) {
-        window.open(data.whatsappLink, '_blank');
+        setWhatsappLink(data.whatsappLink);
+        if (!isDesktop) {
+          window.open(data.whatsappLink, '_blank');
+          goToNextStep();
+        }
+        // On desktop, show QR code instead of navigating
+      } else {
+        goToNextStep();
       }
     } catch (error) {
       console.error('Failed to generate WhatsApp link:', error);
+      goToNextStep();
     }
-    goToNextStep();
   };
 
   const handleConnectCalendar = async () => {
@@ -963,6 +985,11 @@ const Onboarding = () => {
         {/* Quiz Steps */}
         {state.currentStep === 'quiz' && renderQuizStep()}
 
+        {/* Demo Preview Step (simulated chat) */}
+        {state.currentStep === 'demoPreview' && (
+          <OnboardingDemo onContinue={goToNextStep} />
+        )}
+
         {/* Regional Settings Step */}
         {state.currentStep === 'regional' && (
           <div className="w-full max-w-md animate-fade-up space-y-6">
@@ -1209,40 +1236,68 @@ const Onboarding = () => {
               </p>
             </div>
 
-            {/* Visual: Olive + WhatsApp */}
-            <div className="flex justify-center py-8">
-              <div className="relative flex items-center gap-6">
-                <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
-                  <OliveLogo size={40} />
+            {/* QR Code for desktop users */}
+            {isDesktop && whatsappLink ? (
+              <div className="space-y-4">
+                <div className="flex justify-center py-4">
+                  <div className="bg-white p-4 rounded-2xl shadow-lg border border-stone-200">
+                    <QRCodeSVG
+                      value={whatsappLink}
+                      size={180}
+                      level="M"
+                      includeMargin
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center">
-                  <div className="w-12 h-0.5 bg-gradient-to-r from-primary to-green-500" />
-                  <ArrowRight className="w-5 h-5 text-green-500" />
-                </div>
-                <div className="w-20 h-20 rounded-2xl bg-green-500/10 flex items-center justify-center border border-green-500/20">
-                  <MessageCircle className="w-10 h-10 text-green-500" />
-                </div>
+                <p className="text-center text-sm text-muted-foreground">
+                  {t('whatsapp.scanQr', { defaultValue: "Scan this QR code with your phone to open WhatsApp and start chatting with Olive." })}
+                </p>
+                <Button
+                  onClick={goToNextStep}
+                  className="w-full h-12 text-base group"
+                >
+                  {t('whatsapp.done', { defaultValue: "Done — Continue" })}
+                  <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
+                </Button>
               </div>
-            </div>
+            ) : (
+              <>
+                {/* Visual: Olive + WhatsApp */}
+                <div className="flex justify-center py-8">
+                  <div className="relative flex items-center gap-6">
+                    <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
+                      <OliveLogo size={40} />
+                    </div>
+                    <div className="flex items-center">
+                      <div className="w-12 h-0.5 bg-gradient-to-r from-primary to-green-500" />
+                      <ArrowRight className="w-5 h-5 text-green-500" />
+                    </div>
+                    <div className="w-20 h-20 rounded-2xl bg-green-500/10 flex items-center justify-center border border-green-500/20">
+                      <MessageCircle className="w-10 h-10 text-green-500" />
+                    </div>
+                  </div>
+                </div>
 
-            {/* Actions */}
-            <div className="space-y-3">
-              <Button 
-                onClick={handleConnectWhatsApp}
-                className="w-full h-12 text-base bg-green-600 hover:bg-green-700 group"
-              >
-                <MessageCircle className="w-4 h-4 mr-2" />
-                {t('whatsapp.connectButton', { defaultValue: "Connect WhatsApp" })}
-                <ExternalLink className="w-4 h-4 ml-2" />
-              </Button>
-              
-              <button 
-                onClick={goToNextStep}
-                className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {t('skip', { defaultValue: "Skip for now" })}
-              </button>
-            </div>
+                {/* Actions */}
+                <div className="space-y-3">
+                  <Button
+                    onClick={handleConnectWhatsApp}
+                    className="w-full h-12 text-base bg-green-600 hover:bg-green-700 group"
+                  >
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    {t('whatsapp.connectButton', { defaultValue: "Connect WhatsApp" })}
+                    <ExternalLink className="w-4 h-4 ml-2" />
+                  </Button>
+                </div>
+              </>
+            )}
+
+            <button
+              onClick={goToNextStep}
+              className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {t('skip', { defaultValue: "Skip for now" })}
+            </button>
           </div>
         )}
 

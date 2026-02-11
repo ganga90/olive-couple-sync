@@ -2,55 +2,63 @@
   "nav": {
     "pricing": "Pricing",
     "login": "Login",
-    "cta": "Start Syncing – Free",
+    "cta": "Try Olive Free",
     "microCopy": "No app download required"
   },
   "hero": {
-    "eyebrow": "AI Intermediary for Partners",
-    "headline": "The AI Chief of Staff for Dynamic Duos.",
-    "subheadline": "Stop nagging. Stop forgetting. Olive listens to your WhatsApp voice notes, receipts, and links, and organizes them instantly. Perfect for Couples and Co-Founders.",
-    "ctaPrimary": "Try with your Partner",
-    "ctaSecondary": "View the Demo",
-    "trustSignal": "Trusted by 500+ beta partners"
+    "eyebrow": "Your texts deserve better",
+    "headline": "Stop texting yourself into the void.",
+    "subheadline": "Gate codes, grocery lists, brilliant ideas — all dying in a chat with yourself. Olive catches every text, voice note, and photo, then turns them into organized actions.",
+    "ctaPrimary": "Try Olive Free",
+    "ctaSecondary": "See How It Works",
+    "trustSignal": "Trusted by 500+ beta users"
   },
   "chooseMode": {
-    "headline": "How do you partner?",
-    "subheadline": "Olive adapts to your relationship style.",
-    "couples": {
-      "headline": "End the 'Mental Load' Imbalance.",
-      "painPoint": "One of you remembers everything. The other is chaotic. Olive bridges the gap.",
-      "feature1": "Budget alerts",
-      "feature2": "Vacation memory recall",
-      "feature3": "Gift monitoring"
+    "headline": "Olive adapts to you.",
+    "subheadline": "Whether you're flying solo, syncing with a partner, or running a business.",
+    "waitlistCta": "Join the Beta Waitlist",
+    "personal": {
+      "headline": "For the Organized Individual.",
+      "painPoint": "You text yourself reminders, links, and ideas. They vanish. Olive catches them all.",
+      "feature1": "Auto-sort notes by category",
+      "feature2": "Smart reminders from your texts",
+      "feature3": "Voice note transcription"
     },
-    "cofounders": {
-      "headline": "A Shared Brain for your Startup.",
-      "painPoint": "Slack is too noisy. Notion is too slow. Get a private, high-speed channel for decision-making.",
-      "feature1": "Receipt scanning",
-      "feature2": "Meeting recall",
-      "feature3": "Decision logging"
+    "partner": {
+      "headline": "Stop the Nagging. Share the Load.",
+      "painPoint": "One of you remembers everything. The other is chaotic. Olive bridges the gap.",
+      "feature1": "Shared lists and budgets",
+      "feature2": "Partner notifications",
+      "feature3": "Memory vault for both"
+    },
+    "business": {
+      "headline": "The Headless CRM.",
+      "painPoint": "Update Salesforce via WhatsApp. Log decisions without opening another tab.",
+      "feature1": "Receipt scanning & expenses",
+      "feature2": "Decision logging",
+      "feature3": "Export to CSV / integrations"
     }
   },
   "superpowers": {
-    "eyebrow": "Superpowers",
-    "headline": "Not features. Superpowers.",
-    "subheadline": "Olive doesn't just store information. She understands it.",
-    "receipt": {
-      "title": "The Context-Aware Receipt Hunter",
-      "description": "Don't just save receipts. Olive reads them, categorizes them, and warns you if you're blowing the budget. No manual entry."
+    "eyebrow": "How It Works",
+    "headline": "You already do the work. Olive makes it count.",
+    "subheadline": "Don't change your habits. Just let Olive turn your texts into action.",
+    "capture": {
+      "title": "Capture",
+      "description": "Don't change your habits. Just forward that voice note, photo, or link to Olive on WhatsApp. She catches everything."
     },
-    "memory": {
-      "title": "The Memory Vault",
-      "description": "Olive remembers facts and feelings. She recalls not just where you went, but what you thought about it."
+    "organize": {
+      "title": "Organize",
+      "description": "Olive sorts the chaos. She files receipts, schedules dates, and remembers context — automatically."
     },
-    "wishlist": {
-      "title": "The Silent Wishlist Monitor",
-      "description": "Never miss a birthday. Olive watches the links your partner saves and nudges you when prices drop."
+    "act": {
+      "title": "Act",
+      "description": "The Agentic Layer. Olive doesn't just store data; she saves events to your calendar, researches for you, and nags your partner so you don't have to."
     }
   },
   "whatsappFirst": {
     "headline": "Works where you already live.",
-    "description": "No new apps to learn. Just forward a voice note, a photo, or a link to Olive on WhatsApp. She handles the filing.",
+    "description": "No new apps to learn. Just forward a voice note, a photo, or a link to Olive on WhatsApp. She handles the rest.",
     "comingSoon": "Coming soon",
     "features": {
       "voiceNotes": "🎙️ Voice notes",
@@ -60,11 +68,11 @@
     }
   },
   "testimonials": {
-    "eyebrow": "Beta Testers",
-    "headline": "From couples who've tried it.",
+    "eyebrow": "Beta Users",
+    "headline": "From people who stopped texting themselves.",
     "items": [
       {
-        "quote": "My husband sends 10 voice notes a day. Olive catches them all so I don't have to be his secretary.",
+        "quote": "I used to text myself 10 things a day. Now I text Olive and everything just... works.",
         "author": "Sarah",
         "role": "Beta User"
       },
@@ -85,30 +93,30 @@
     "subheadline": "Start free. Upgrade when you're ready.",
     "mostPopular": "Most Popular",
     "trustNote": "Cancel anytime. No credit card required for free tier.",
-    "free": {
-      "name": "Free",
-      "tagline": "For casual syncing",
+    "personal": {
+      "name": "Personal",
+      "tagline": "For the organized individual",
       "period": "forever",
-      "feature1": "Basic shared lists",
+      "feature1": "Unlimited text capture",
       "feature2": "5 voice notes/month",
       "feature3": "WhatsApp integration",
       "cta": "Get Started"
     },
-    "power": {
-      "name": "Power Pair",
-      "tagline": "For couples",
+    "partner": {
+      "name": "Partner",
+      "tagline": "For couples and duos",
       "period": "month",
       "feature1": "Unlimited voice notes",
       "feature2": "Receipt scanning & budgets",
-      "feature3": "Memory Vault access",
+      "feature3": "Shared lists & memory vault",
       "feature4": "Priority support",
       "cta": "Start Free Trial"
     },
-    "cofounder": {
-      "name": "Co-Founder OS",
-      "tagline": "For business partners",
+    "business": {
+      "name": "Business",
+      "tagline": "For teams and solopreneurs",
       "period": "month",
-      "feature1": "Everything in Power Pair",
+      "feature1": "Everything in Partner",
       "feature2": "Business context mode",
       "feature3": "Export to CSV",
       "feature4": "Decision logging",
@@ -117,9 +125,9 @@
     }
   },
   "footerCta": {
-    "headline": "Your relationship is too important to be disorganized.",
-    "subheadline": "Join thousands of partners who've traded chaos for clarity.",
-    "cta": "Hire Olive Today",
+    "headline": "Your texts deserve better than the void.",
+    "subheadline": "Join thousands who stopped texting themselves and started texting Olive.",
+    "cta": "Try Olive Free",
     "trustNote": "Free to start. No credit card required."
   },
   "footer": {

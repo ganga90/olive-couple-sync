@@ -157,7 +157,7 @@ const Home = () => {
       {/* Main Content - Scrollable */}
       <div className="flex-1 overflow-y-auto pb-32 scrollbar-thin relative z-10">
         {/* Reduced spacing between sections for tighter layout */}
-        <div className="px-4 md:px-0 space-y-6 md:space-y-8">
+        <div className="px-4 md:px-0 pt-4 md:pt-0 space-y-6 md:space-y-8">
           {/* Greeting Section - MASSIVE SERIF Typography for Desktop */}
           <div className="text-center md:text-left animate-fade-up">
             <h1 className="font-serif font-bold text-4xl md:text-5xl lg:text-6xl xl:text-7xl tracking-tight text-stone-900 mb-3 md:mb-4">

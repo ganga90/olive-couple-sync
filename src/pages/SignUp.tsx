@@ -4,7 +4,7 @@ import { useSEO } from "@/hooks/useSEO";
 import { Card } from "@/components/ui/card";
 import { OliveLogo } from "@/components/OliveLogo";
 import { LegalConsentText } from "@/components/LegalConsentText";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ const SignUpPage = () => {
   const [searchParams] = useSearchParams();
   const redirectUrl = searchParams.get("redirect") || "/onboarding";
   const navigate = useLocalizedNavigate();
+  const rawNavigate = useNavigate();
   const { signUp, isLoaded, setActive } = useSignUp();
   const { isSignedIn } = useClerkAuth();
   
@@ -124,7 +125,14 @@ const SignUpPage = () => {
   };
 
   const handleBack = () => {
-    if (step === "email") {
+    if (step === "name") {
+      // On first step, navigate back to previous page
+      if (window.history.length > 1) {
+        rawNavigate(-1);
+      } else {
+        navigate('/');
+      }
+    } else if (step === "email") {
       setStep("name");
     } else if (step === "verify") {
       setStep("email");
@@ -146,6 +154,16 @@ const SignUpPage = () => {
   return (
     <main className="min-h-screen bg-gradient-soft">
       <section className="mx-auto max-w-md px-4 py-10">
+        {/* Back navigation */}
+        <button
+          type="button"
+          onClick={handleBack}
+          className="flex items-center gap-1 mb-6 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t('signUp.back', 'Back')}
+        </button>
+
         {/* Logo */}
         <div className="mb-6 flex justify-center">
           <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-olive/10 shadow-soft border border-olive/20">
