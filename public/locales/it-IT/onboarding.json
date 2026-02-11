@@ -102,7 +102,9 @@
       "partner": "Io e il mio partner",
       "partnerDesc": "Focus di coppia",
       "family": "La mia famiglia",
-      "familyDesc": "Focus domestico"
+      "familyDesc": "Focus domestico",
+      "business": "La mia attività",
+      "businessDesc": "Focus aziendale"
     },
     "mentalLoad": {
       "question": "Cosa occupa di più il tuo carico mentale?",

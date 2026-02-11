@@ -21,6 +21,7 @@ import { useOnboardingTooltip } from "@/hooks/useOnboardingTooltip";
 import { OnboardingTooltip } from "@/components/OnboardingTooltip";
 import { PartnerActivityWidget } from "@/components/PartnerActivityWidget";
 import { InsightDiscoveryCard } from "@/components/InsightDiscoveryCard";
+import { useCalendarEvents } from "@/hooks/useCalendarEvents";
 
 const Home = () => {
   const { t } = useTranslation(['home', 'common']);
@@ -37,6 +38,7 @@ const Home = () => {
   const { notes, updateNote, refetch: refetchNotes } = useSupabaseNotesContext();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
+  const { connection: calendarConnection } = useCalendarEvents();
   
   // Organize Agent
   const {
@@ -189,7 +191,7 @@ const Home = () => {
           </div>
 
           {/* Quick Action Cards - Glass Style (only show if no notes) */}
-          {notes.length === 0 && (
+          {notes.length === 0 && !calendarConnection?.connected && (
             <div className="space-y-4 animate-fade-up stagger-3">
               <div 
                 className="card-glass p-6 cursor-pointer hover:scale-[1.01] transition-all duration-300"

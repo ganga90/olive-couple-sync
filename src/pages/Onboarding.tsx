@@ -631,6 +631,12 @@ const Onboarding = () => {
       desc: t('quiz.scope.familyDesc', { defaultValue: 'Household focus' }),
       icon: House 
     },
+    { 
+      value: 'My Business', 
+      label: t('quiz.scope.business', { defaultValue: 'My Business' }),
+      desc: t('quiz.scope.businessDesc', { defaultValue: 'Business focus' }),
+      icon: Briefcase 
+    },
   ];
 
   const mentalLoadOptions = [

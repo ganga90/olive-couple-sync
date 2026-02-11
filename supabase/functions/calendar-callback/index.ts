@@ -148,11 +148,11 @@ serve(async (req) => {
       { onConflict: "connection_id" }
     );
 
-    // Redirect to success page
+    // Redirect to home page after successful connection
     return new Response(null, {
       status: 303,
       headers: {
-        Location: `${origin}/profile?calendar=connected`,
+        Location: `${origin}/home?calendar=connected`,
       },
     });
   } catch (error: unknown) {

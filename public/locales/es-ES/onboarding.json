@@ -102,7 +102,9 @@
       "partner": "Mi pareja y yo",
       "partnerDesc": "Enfoque en pareja",
       "family": "Mi familia",
-      "familyDesc": "Enfoque del hogar"
+      "familyDesc": "Enfoque del hogar",
+      "business": "Mi negocio",
+      "businessDesc": "Enfoque empresarial"
     },
     "mentalLoad": {
       "question": "¿Qué ocupa más tu carga mental?",
