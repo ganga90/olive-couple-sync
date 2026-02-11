@@ -123,7 +123,7 @@ supabase functions deploy olive-memory
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
-- `TWILIO_PHONE_NUMBER` (default: +18556864055)
+- `TWILIO_PHONE_NUMBER` (default: +17542511999)
 
 **Deployment:**
 ```bash
@@ -494,7 +494,7 @@ createOptimizedContext(memoryContext, history, message, additional): {
 | `LOVABLE_API_KEY` | AI gateway for embeddings | (from Lovable) |
 | `TWILIO_ACCOUNT_SID` | Twilio account | `AC...` (from Twilio console) |
 | `TWILIO_AUTH_TOKEN` | Twilio auth | (from Twilio) |
-| `TWILIO_PHONE_NUMBER` | WhatsApp number | `+18556864055` |
+| `TWILIO_PHONE_NUMBER` | WhatsApp number | `+17542511999` |
 
 ---
 

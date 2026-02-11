@@ -24,7 +24,16 @@
     "connected": "Connesso",
     "phoneTitle": "Numero per Notifiche",
     "phoneDescription": "Ricevi promemoria e aggiornamenti su questo numero.",
-    "aiTitle": "Link Chat IA"
+    "aiTitle": "Link Chat IA",
+    "testMessage": {
+      "title": "Invia Messaggio di Prova",
+      "description": "Invia un messaggio di prova da Olive al tuo WhatsApp per verificare che l'integrazione funzioni.",
+      "button": "Invia Messaggio di Prova",
+      "sending": "Invio in corso...",
+      "success": "Messaggio di prova inviato! Controlla il tuo WhatsApp.",
+      "error": "Impossibile inviare il messaggio di prova. Assicurati che il numero sia salvato e WhatsApp collegato.",
+      "noPhone": "Per favore salva prima il tuo numero di telefono."
+    }
   },
   "appPreferences": {
     "title": "Preferenze App",
@@ -272,24 +281,6 @@
       "food": "Cibo e Pasti",
       "personal": "Personale",
       "finance": "Finanza",
-      "general": "Generale"
-    }
-  },
-  "skills": {
-    "title": "Abilità di Olive",
-    "subtitle": "Abilita capacità specializzate per migliorare le risposte di Olive",
-    "enabled": "Abilità attivata",
-    "disabled": "Abilità disattivata",
-    "errorLoading": "Impossibile caricare le abilità",
-    "errorToggle": "Impossibile modificare l'abilità",
-    "signInRequired": "Accedi per gestire le abilità di Olive",
-    "enabledCount": "{{count}} abilità attivate",
-    "categories": {
-      "household": "Casa",
-      "shopping": "Shopping",
-      "food": "Cibo e Pasti",
-      "personal": "Personale",
-      "finance": "Finanze",
       "general": "Generale"
     }
   },

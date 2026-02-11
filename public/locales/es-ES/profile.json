@@ -24,7 +24,16 @@
     "connected": "Conectado",
     "phoneTitle": "Número de Notificaciones",
     "phoneDescription": "Recibe recordatorios de tareas y actualizaciones en este número.",
-    "aiTitle": "Enlace de Chat IA"
+    "aiTitle": "Enlace de Chat IA",
+    "testMessage": {
+      "title": "Enviar Mensaje de Prueba",
+      "description": "Envía un mensaje de prueba desde Olive a tu WhatsApp para verificar que la integración funciona.",
+      "button": "Enviar Mensaje de Prueba",
+      "sending": "Enviando...",
+      "success": "¡Mensaje de prueba enviado! Revisa tu WhatsApp.",
+      "error": "Error al enviar el mensaje de prueba. Asegúrate de que tu número esté guardado y WhatsApp vinculado.",
+      "noPhone": "Por favor guarda tu número de teléfono primero."
+    }
   },
   "appPreferences": {
     "title": "Preferencias de la App",
@@ -270,24 +279,6 @@
       "household": "Hogar",
       "shopping": "Compras",
       "food": "Comida y Recetas",
-      "personal": "Personal",
-      "finance": "Finanzas",
-      "general": "General"
-    }
-  },
-  "skills": {
-    "title": "Habilidades de Olive",
-    "subtitle": "Activa capacidades especializadas para mejorar las respuestas de Olive",
-    "enabled": "Habilidad activada",
-    "disabled": "Habilidad desactivada",
-    "errorLoading": "Error al cargar habilidades",
-    "errorToggle": "Error al cambiar la habilidad",
-    "signInRequired": "Inicia sesión para gestionar las habilidades de Olive",
-    "enabledCount": "{{count}} habilidades activadas",
-    "categories": {
-      "household": "Hogar",
-      "shopping": "Compras",
-      "food": "Comida y Cocina",
       "personal": "Personal",
       "finance": "Finanzas",
       "general": "General"

@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Phone, MessageCircle, ExternalLink, Check, CheckCircle2 } from 'lucide-react';
+import { Loader2, Phone, MessageCircle, ExternalLink, Check, CheckCircle2, Send } from 'lucide-react';
 import { toast as sonnerToast } from 'sonner';
 
 export const WhatsAppUnifiedCard: React.FC = () => {
@@ -25,6 +25,10 @@ export const WhatsAppUnifiedCard: React.FC = () => {
   // WhatsApp link state
   const [isLinkLoading, setIsLinkLoading] = useState(false);
   const [linkData, setLinkData] = useState<{ token: string; whatsappLink: string; expiresAt: string } | null>(null);
+
+  // Test message state
+  const [isTestSending, setIsTestSending] = useState(false);
+  const [testSent, setTestSent] = useState(false);
 
   useEffect(() => {
     if (userId) {
@@ -93,6 +97,42 @@ export const WhatsAppUnifiedCard: React.FC = () => {
       });
     } finally {
       setIsLinkLoading(false);
+    }
+  };
+
+  const handleSendTestMessage = async () => {
+    if (!userId) return;
+    if (!phoneNumber || phoneNumber.length < 6) {
+      sonnerToast.error(t('profile:whatsapp.testMessage.noPhone'));
+      return;
+    }
+
+    setIsTestSending(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-gateway', {
+        body: {
+          action: 'send',
+          message: {
+            user_id: userId,
+            message_type: 'system_alert',
+            content: '👋 Hello from Olive! This is a test message to verify your WhatsApp integration is working correctly. You can reply to this message to start chatting with Olive AI!',
+            priority: 'high',
+          },
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Send failed');
+
+      setTestSent(true);
+      sonnerToast.success(t('profile:whatsapp.testMessage.success'));
+      // Reset sent state after 5 seconds
+      setTimeout(() => setTestSent(false), 5000);
+    } catch (error) {
+      console.error('Error sending test message:', error);
+      sonnerToast.error(t('profile:whatsapp.testMessage.error'));
+    } finally {
+      setIsTestSending(false);
     }
   };
 
@@ -175,6 +215,48 @@ export const WhatsAppUnifiedCard: React.FC = () => {
           )}
         </Button>
       </div>
+
+      {/* Send Test Message Section */}
+      {isConnected && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Send className="h-4 w-4 text-primary" />
+              <Label className="text-sm font-medium">
+                {t('profile:whatsapp.testMessage.title', 'Send Test Message')}
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t('profile:whatsapp.testMessage.description', 'Send a test message from Olive to your WhatsApp to verify the integration is working.')}
+            </p>
+            <Button
+              onClick={handleSendTestMessage}
+              disabled={isTestSending || testSent}
+              className="w-full"
+              variant={testSent ? "outline" : "default"}
+              size="sm"
+            >
+              {isTestSending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {t('profile:whatsapp.testMessage.sending', 'Sending...')}
+                </>
+              ) : testSent ? (
+                <>
+                  <CheckCircle2 className="mr-2 h-4 w-4 text-[hsl(var(--success))]" />
+                  {t('profile:whatsapp.testMessage.success', 'Test message sent! Check your WhatsApp.')}
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2 h-4 w-4" />
+                  {t('profile:whatsapp.testMessage.button', 'Send Test Message')}
+                </>
+              )}
+            </Button>
+          </div>
+        </>
+      )}
 
       <Separator />
 

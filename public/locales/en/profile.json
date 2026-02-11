@@ -24,7 +24,16 @@
     "connected": "Connected",
     "phoneTitle": "Notification Number",
     "phoneDescription": "Receive task reminders and updates on this number.",
-    "aiTitle": "AI Chat Link"
+    "aiTitle": "AI Chat Link",
+    "testMessage": {
+      "title": "Send Test Message",
+      "description": "Send a test message from Olive to your WhatsApp to verify the integration is working.",
+      "button": "Send Test Message",
+      "sending": "Sending...",
+      "success": "Test message sent! Check your WhatsApp.",
+      "error": "Failed to send test message. Make sure your phone number is saved and WhatsApp is linked.",
+      "noPhone": "Please save your phone number first."
+    }
   },
   "appPreferences": {
     "title": "App Preferences",
