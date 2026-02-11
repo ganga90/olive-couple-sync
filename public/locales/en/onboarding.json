@@ -102,7 +102,9 @@
       "partner": "Me & My Partner",
       "partnerDesc": "Couple focus",
       "family": "My Family",
-      "familyDesc": "Household focus"
+      "familyDesc": "Household focus",
+      "business": "My Business",
+      "businessDesc": "Business focus"
     },
     "mentalLoad": {
       "question": "What takes up most of your mental load?",
