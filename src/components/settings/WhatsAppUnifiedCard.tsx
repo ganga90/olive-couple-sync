@@ -109,6 +109,7 @@ export const WhatsAppUnifiedCard: React.FC = () => {
 
     setIsTestSending(true);
     try {
+      console.log('[TestMessage] Sending test message for user:', userId, 'phone:', phoneNumber);
       const { data, error } = await supabase.functions.invoke('whatsapp-gateway', {
         body: {
           action: 'send',
@@ -121,16 +122,25 @@ export const WhatsAppUnifiedCard: React.FC = () => {
         },
       });
 
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Send failed');
+      console.log('[TestMessage] Gateway response:', { data, error });
+
+      if (error) {
+        console.error('[TestMessage] Invoke error:', error);
+        throw new Error(error.message || 'Edge function invocation failed');
+      }
+      if (!data?.success) {
+        console.error('[TestMessage] Gateway returned failure:', data);
+        throw new Error(data?.error || 'Send failed');
+      }
 
       setTestSent(true);
       sonnerToast.success(t('profile:whatsapp.testMessage.success'));
       // Reset sent state after 5 seconds
       setTimeout(() => setTestSent(false), 5000);
-    } catch (error) {
-      console.error('Error sending test message:', error);
-      sonnerToast.error(t('profile:whatsapp.testMessage.error'));
+    } catch (error: any) {
+      console.error('[TestMessage] Error:', error);
+      const errorMsg = error?.message || 'Unknown error';
+      sonnerToast.error(`${t('profile:whatsapp.testMessage.error')} (${errorMsg})`);
     } finally {
       setIsTestSending(false);
     }
