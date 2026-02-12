@@ -2872,7 +2872,7 @@ Guidelines:
         const notesToInsert = processData.notes.map((note: any) => ({
           author_id: userId,
           couple_id: coupleId,
-          original_text: messageBody,
+          original_text: messageBody || note.summary || 'Media attachment',
           summary: note.summary,
           category: note.category || 'task',
           due_date: note.due_date,
@@ -2908,7 +2908,7 @@ Guidelines:
         const noteData = {
           author_id: userId,
           couple_id: coupleId,
-          original_text: messageBody,
+          original_text: messageBody || processData.summary || 'Media attachment',
           summary: processData.summary,
           category: processData.category || 'task',
           due_date: processData.due_date,
@@ -2995,7 +2995,8 @@ Guidelines:
         return reply(confirmationMessage);
       }
     } catch (insertError) {
-      console.error('Database insertion error:', insertError);
+      console.error('Database insertion error:', JSON.stringify(insertError));
+      console.error('Insert error details:', (insertError as any)?.message, (insertError as any)?.details, (insertError as any)?.hint);
       return reply('I understood your task but had trouble saving it. Please try again.');
     }
 
