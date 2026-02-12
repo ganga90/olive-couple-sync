@@ -1325,6 +1325,12 @@ serve(async (req) => {
     console.log('Authenticated user:', profile.id, profile.display_name);
     const userId = profile.id;
 
+    // Track last user message timestamp for 24h template window
+    await supabase
+      .from('clerk_profiles')
+      .update({ last_user_message_at: new Date().toISOString() })
+      .eq('id', userId);
+
     // Get or create session
     let { data: session } = await supabase
       .from('user_sessions')

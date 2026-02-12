@@ -6,8 +6,20 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// 24h window (in milliseconds)
+const WINDOW_24H_MS = 24 * 60 * 60 * 1000;
+
 /**
- * Send a WhatsApp message via Meta Cloud API
+ * Check if user is within the 24h messaging window
+ */
+function isWithin24hWindow(lastUserMessageAt: string | null): boolean {
+  if (!lastUserMessageAt) return false;
+  const lastMsg = new Date(lastUserMessageAt).getTime();
+  return (Date.now() - lastMsg) < WINDOW_24H_MS;
+}
+
+/**
+ * Send a free-form WhatsApp text message via Meta Cloud API
  */
 async function sendWhatsAppMessage(to: string, body: string): Promise<boolean> {
   const WHATSAPP_ACCESS_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
@@ -18,7 +30,6 @@ async function sendWhatsAppMessage(to: string, body: string): Promise<boolean> {
     return false;
   }
 
-  // Normalize: Meta expects raw digits without + prefix
   const cleanNumber = to.replace(/\D/g, '');
 
   try {
@@ -52,6 +63,98 @@ async function sendWhatsAppMessage(to: string, body: string): Promise<boolean> {
     console.error('[Meta Reminders] Error:', error);
     return false;
   }
+}
+
+/**
+ * Send a template message via Meta Cloud API (for outside 24h window)
+ */
+async function sendWhatsAppTemplate(
+  to: string,
+  templateName: string,
+  parameters: string[],
+  language: string = 'en'
+): Promise<boolean> {
+  const WHATSAPP_ACCESS_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
+  const WHATSAPP_PHONE_NUMBER_ID = Deno.env.get('WHATSAPP_PHONE_NUMBER_ID');
+
+  if (!WHATSAPP_ACCESS_TOKEN || !WHATSAPP_PHONE_NUMBER_ID) {
+    console.error('Meta WhatsApp credentials not configured');
+    return false;
+  }
+
+  const cleanNumber = to.replace(/\D/g, '');
+
+  const components: any[] = [];
+  if (parameters.length > 0) {
+    components.push({
+      type: 'body',
+      parameters: parameters.map(text => ({ type: 'text', text })),
+    });
+  }
+
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: cleanNumber,
+          type: 'template',
+          template: {
+            name: templateName,
+            language: { code: language },
+            components,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Meta Reminders] Template send failed:', response.status, errorText);
+      return false;
+    }
+
+    const data = await response.json();
+    console.log('[Meta Reminders] Template sent, id:', data.messages?.[0]?.id);
+    return true;
+  } catch (error) {
+    console.error('[Meta Reminders] Template error:', error);
+    return false;
+  }
+}
+
+/**
+ * Smart send: use free-form text inside 24h window, template outside
+ */
+async function smartSendReminder(
+  phoneNumber: string,
+  reminderText: string,
+  displayName: string | null,
+  lastUserMessageAt: string | null
+): Promise<boolean> {
+  if (isWithin24hWindow(lastUserMessageAt)) {
+    console.log('[Meta Reminders] Within 24h window, sending free-form text');
+    const sent = await sendWhatsAppMessage(phoneNumber, reminderText);
+    if (sent) return true;
+    // If text fails (possible window expiry), fall through to template
+    console.log('[Meta Reminders] Free-form failed, trying template fallback');
+  }
+
+  // Outside 24h window or free-form failed → send template
+  console.log('[Meta Reminders] Sending olive_task_reminder template');
+  const name = displayName || 'there';
+  const truncated = reminderText.length > 800
+    ? reminderText.substring(0, 800) + '...'
+    : reminderText;
+  const taskTitle = truncated.split('\n')[0].replace(/^⏰\s*/, '').substring(0, 100) || 'Task reminder';
+
+  return sendWhatsAppTemplate(phoneNumber, 'olive_task_reminder', [taskTitle, truncated]);
 }
 
 serve(async (req) => {
@@ -119,9 +222,9 @@ serve(async (req) => {
         const dueDate = new Date(note.due_date);
         const timeDiff = dueDate.getTime() - now.getTime();
         const hoursUntilDue = timeDiff / (1000 * 60 * 60);
-        
+
         const alreadySent = note.auto_reminders_sent || [];
-        
+
         if (hoursUntilDue >= 23.9 && hoursUntilDue <= 24.1 && !alreadySent.includes('24h')) {
           autoReminders.push({ ...note, reminder_type: '24h', reminder_message: 'in 24 hours' });
         } else if (hoursUntilDue >= 1.9 && hoursUntilDue <= 2.1 && !alreadySent.includes('2h')) {
@@ -133,7 +236,7 @@ serve(async (req) => {
     console.log(`Found ${autoReminders.length} notes needing automatic due date reminders`);
 
     const allReminders = [...(explicitReminders || []), ...autoReminders];
-    
+
     if (allReminders.length === 0) {
       return new Response(
         JSON.stringify({ message: 'No reminders to send', count: 0 }),
@@ -153,9 +256,10 @@ serve(async (req) => {
     }, {} as Record<string, typeof allReminders>);
 
     for (const [authorId, notes] of Object.entries(notesByAuthor) as [string, typeof allReminders][]) {
+      // Fetch profile with 24h window info
       const { data: profile, error: profileError } = await supabase
         .from('clerk_profiles')
-        .select('phone_number, display_name')
+        .select('phone_number, display_name, last_user_message_at')
         .eq('id', authorId)
         .single();
 
@@ -170,7 +274,13 @@ serve(async (req) => {
         : `⏰ You have ${notes.length} reminders:\n\n${notes.map((n: any, i: number) => `${i + 1}. ${n.summary}${n.reminder_type ? ` (due ${n.reminder_message})` : ''}`).join('\n')}\n\nLet me know which ones you've completed or if you want me to remind you later! 🙂`;
 
       try {
-        const sent = await sendWhatsAppMessage(profile.phone_number, reminderText);
+        // Smart send: template outside 24h window, text inside
+        const sent = await smartSendReminder(
+          profile.phone_number,
+          reminderText,
+          profile.display_name,
+          profile.last_user_message_at
+        );
 
         if (!sent) {
           errors.push(`User ${authorId}: Meta API error`);
@@ -230,8 +340,8 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ 
-        message: 'Reminders processed', 
+      JSON.stringify({
+        message: 'Reminders processed',
         sent: sentCount,
         total: allReminders.length,
         errors: errors.length > 0 ? errors : undefined

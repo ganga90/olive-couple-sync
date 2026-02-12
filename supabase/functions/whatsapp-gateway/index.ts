@@ -9,6 +9,7 @@
  * - Quiet hours enforcement
  * - Rate limiting (max messages per day)
  * - Message queuing and delivery tracking
+ * - 24h window detection: free-form text inside window, templates outside
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -53,8 +54,42 @@ interface MetaSendResult {
   error?: string;
 }
 
+interface UserProfile {
+  phone_number: string;
+  display_name: string | null;
+  last_user_message_at: string | null;
+}
+
+// ─── Template Configuration ───────────────────────────────────────────────────
+// Maps message_type → Meta-approved template name
+// These templates must be created and approved in Meta Business Manager first.
+const TEMPLATE_MAP: Record<string, string> = {
+  morning_briefing: 'olive_daily_summary',
+  evening_review: 'olive_evening_review',
+  weekly_summary: 'olive_weekly_summary',
+  reminder: 'olive_task_reminder',
+  task_update: 'olive_task_reminder',
+  proactive_nudge: 'olive_daily_summary',
+  system_alert: 'olive_welcome',
+  partner_notification: 'olive_task_reminder',
+};
+
+// 24h window (in milliseconds)
+const WINDOW_24H_MS = 24 * 60 * 60 * 1000;
+
 /**
- * Send a WhatsApp message via Meta Cloud API
+ * Check if user is within the 24h messaging window
+ * (i.e., they've messaged Olive within the last 24 hours)
+ */
+function isWithin24hWindow(lastUserMessageAt: string | null): boolean {
+  if (!lastUserMessageAt) return false;
+  const lastMsg = new Date(lastUserMessageAt).getTime();
+  const now = Date.now();
+  return (now - lastMsg) < WINDOW_24H_MS;
+}
+
+/**
+ * Send a free-form WhatsApp text message via Meta Cloud API
  */
 async function sendMetaMessage(
   to: string,
@@ -97,9 +132,9 @@ async function sendMetaMessage(
 
   try {
     const apiUrl = `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
-    
-    console.log('[Meta Gateway] Sending to:', cleanNumber, 'length:', body.length);
-    
+
+    console.log('[Meta Gateway] Sending text to:', cleanNumber, 'length:', body.length);
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -123,6 +158,177 @@ async function sendMetaMessage(
     console.error('[Meta Gateway] Error:', error);
     return { success: false, error: String(error) };
   }
+}
+
+/**
+ * Send a WhatsApp template message via Meta Cloud API.
+ * Used when outside the 24h customer service window.
+ *
+ * @param to - Recipient phone number
+ * @param templateName - Approved template name (e.g., 'olive_daily_summary')
+ * @param parameters - Array of string values for {{1}}, {{2}}, etc. in the template body
+ * @param language - Template language code (default: 'en')
+ */
+async function sendMetaTemplateMessage(
+  to: string,
+  templateName: string,
+  parameters: string[],
+  language: string = 'en'
+): Promise<MetaSendResult> {
+  const WHATSAPP_ACCESS_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
+  const WHATSAPP_PHONE_NUMBER_ID = Deno.env.get('WHATSAPP_PHONE_NUMBER_ID');
+
+  if (!WHATSAPP_ACCESS_TOKEN || !WHATSAPP_PHONE_NUMBER_ID) {
+    return { success: false, error: 'Meta WhatsApp credentials not configured' };
+  }
+
+  const cleanNumber = to.replace(/\D/g, '');
+
+  // Build components array with body parameters
+  const components: any[] = [];
+  if (parameters.length > 0) {
+    components.push({
+      type: 'body',
+      parameters: parameters.map(text => ({ type: 'text', text })),
+    });
+  }
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: cleanNumber,
+    type: 'template',
+    template: {
+      name: templateName,
+      language: { code: language },
+      components,
+    },
+  };
+
+  try {
+    const apiUrl = `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
+
+    console.log('[Meta Gateway] Sending template:', templateName, 'to:', cleanNumber, 'params:', parameters.length);
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Meta Gateway] Template send failed:', response.status, errorText);
+      return { success: false, error: `Meta API template ${response.status}: ${errorText}` };
+    }
+
+    const data = await response.json();
+    const messageId = data.messages?.[0]?.id || '';
+    console.log('[Meta Gateway] Template sent, id:', messageId);
+    return { success: true, message_id: messageId };
+  } catch (error) {
+    console.error('[Meta Gateway] Template error:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * Build template parameters from message type and content.
+ * Extracts the user's display name and content summary for template variables.
+ */
+function buildTemplateParams(
+  messageType: MessageType,
+  content: string,
+  displayName: string | null
+): string[] {
+  const name = displayName || 'there';
+  // Truncate content to fit Meta's 1024 char body limit (leave room for template text)
+  const maxContentLen = 800;
+  const truncatedContent = content.length > maxContentLen
+    ? content.substring(0, maxContentLen) + '...'
+    : content;
+
+  switch (messageType) {
+    case 'morning_briefing':
+    case 'proactive_nudge':
+      // olive_daily_summary: {{1}} = name, {{2}} = summary content
+      return [name, truncatedContent];
+
+    case 'evening_review':
+      // olive_evening_review: {{1}} = name, {{2}} = recap content
+      return [name, truncatedContent];
+
+    case 'weekly_summary':
+      // olive_weekly_summary: {{1}} = name, {{2}} = summary content
+      return [name, truncatedContent];
+
+    case 'reminder':
+    case 'task_update':
+    case 'partner_notification':
+      // olive_task_reminder: {{1}} = task name/summary, {{2}} = details
+      return [truncatedContent.split('\n')[0] || 'Task', truncatedContent];
+
+    case 'system_alert':
+      // olive_welcome: {{1}} = name
+      return [name];
+
+    default:
+      return [name, truncatedContent];
+  }
+}
+
+/**
+ * Smart send: tries free-form text first (if within 24h window),
+ * falls back to template if outside window or if text send fails with 131047 error.
+ */
+async function smartSend(
+  phoneNumber: string,
+  message: OutboundMessage,
+  displayName: string | null,
+  lastUserMessageAt: string | null
+): Promise<MetaSendResult> {
+  const withinWindow = isWithin24hWindow(lastUserMessageAt);
+
+  if (withinWindow) {
+    // Inside 24h window → send free-form text
+    console.log('[Meta Gateway] Within 24h window, sending free-form text');
+    const result = await sendMetaMessage(phoneNumber, message.content, message.media_url);
+
+    // If Meta returns error 131047 (re-engagement required), the window may have closed
+    // Fall back to template
+    if (!result.success && result.error?.includes('131047')) {
+      console.log('[Meta Gateway] 131047 error — window expired, falling back to template');
+      return sendAsTemplate(phoneNumber, message, displayName);
+    }
+
+    return result;
+  }
+
+  // Outside 24h window → must use template
+  console.log('[Meta Gateway] Outside 24h window, sending template');
+  return sendAsTemplate(phoneNumber, message, displayName);
+}
+
+/**
+ * Send a message using the appropriate Meta template
+ */
+async function sendAsTemplate(
+  phoneNumber: string,
+  message: OutboundMessage,
+  displayName: string | null
+): Promise<MetaSendResult> {
+  const templateName = TEMPLATE_MAP[message.message_type];
+  if (!templateName) {
+    console.error('[Meta Gateway] No template mapped for message_type:', message.message_type);
+    // Fall back to olive_welcome as a generic template
+    const params = buildTemplateParams('system_alert', message.content, displayName);
+    return sendMetaTemplateMessage(phoneNumber, 'olive_welcome', params);
+  }
+
+  const params = buildTemplateParams(message.message_type, message.content, displayName);
+  return sendMetaTemplateMessage(phoneNumber, templateName, params);
 }
 
 /**
@@ -184,21 +390,25 @@ async function canSendProactive(supabase: any, userId: string): Promise<boolean>
 }
 
 /**
- * Get user's phone number from their profile
+ * Get user's profile including phone number and 24h window info
  */
-async function getUserPhoneNumber(supabase: any, userId: string): Promise<string | null> {
+async function getUserProfile(supabase: any, userId: string): Promise<UserProfile | null> {
   const { data: profile, error } = await supabase
     .from('clerk_profiles')
-    .select('phone_number')
+    .select('phone_number, display_name, last_user_message_at')
     .eq('id', userId)
     .single();
 
   if (error || !profile?.phone_number) {
-    console.error('Failed to get user phone number:', error);
+    console.error('Failed to get user profile:', error);
     return null;
   }
 
-  return profile.phone_number;
+  return {
+    phone_number: profile.phone_number,
+    display_name: profile.display_name,
+    last_user_message_at: profile.last_user_message_at,
+  };
 }
 
 /**
@@ -333,14 +543,20 @@ async function processQueue(supabase: any): Promise<{ processed: number; errors:
         }
       }
 
-      const phoneNumber = await getUserPhoneNumber(supabase, msg.user_id);
-      if (!phoneNumber) {
+      const userProfile = await getUserProfile(supabase, msg.user_id);
+      if (!userProfile) {
         await supabase.from('olive_outbound_queue').update({ status: 'failed', error_message: 'No phone number' }).eq('id', msg.id);
         errors++;
         continue;
       }
 
-      const result = await sendMetaMessage(phoneNumber, msg.content, msg.media_url);
+      // Use smart send: free-form text inside 24h window, template outside
+      const result = await smartSend(
+        userProfile.phone_number,
+        msg,
+        userProfile.display_name,
+        userProfile.last_user_message_at
+      );
 
       if (!result.success) {
         await supabase.from('olive_outbound_queue')
@@ -375,7 +591,7 @@ async function processQueue(supabase: any): Promise<{ processed: number; errors:
 }
 
 /**
- * Send a message immediately (with all checks)
+ * Send a message immediately (with all checks + 24h window auto-detection)
  */
 async function sendMessage(
   supabase: any,
@@ -396,12 +612,18 @@ async function sendMessage(
     }
   }
 
-  const phoneNumber = await getUserPhoneNumber(supabase, message.user_id);
-  if (!phoneNumber) {
+  const userProfile = await getUserProfile(supabase, message.user_id);
+  if (!userProfile) {
     return { success: false, error: 'User has no WhatsApp number linked' };
   }
 
-  const result = await sendMetaMessage(phoneNumber, message.content, message.media_url);
+  // Smart send: auto-detect 24h window → text or template
+  const result = await smartSend(
+    userProfile.phone_number,
+    message,
+    userProfile.display_name,
+    userProfile.last_user_message_at
+  );
 
   if (!result.success) {
     return { success: false, error: result.error };
