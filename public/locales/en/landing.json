@@ -1,59 +1,60 @@
 {
   "nav": {
+    "features": "How It Works",
     "pricing": "Pricing",
     "login": "Login",
     "cta": "Try Olive Free",
-    "microCopy": "No app download required"
+    "microCopy": "No app download needed"
   },
   "hero": {
-    "eyebrow": "Your texts deserve better",
-    "headline": "Stop texting yourself into the void.",
-    "subheadline": "Gate codes, grocery lists, brilliant ideas — all dying in a chat with yourself. Olive catches every text, voice note, and photo, then turns them into organized actions.",
-    "ctaPrimary": "Try Olive Free",
+    "eyebrow": "Meet your personal assistant",
+    "headline": "She remembers, so you don't have to.",
+    "subheadline": "Gate codes, grocery lists, brilliant ideas — drop anything to Olive. She organizes it all and gives it back to you, clean and sorted, whenever you need it.",
+    "ctaPrimary": "Start Using Olive — Free",
     "ctaSecondary": "See How It Works",
-    "trustSignal": "Trusted by 500+ beta users"
+    "trustSignal": "Loved by 500+ people who stopped losing things"
   },
   "chooseMode": {
-    "headline": "Olive adapts to you.",
-    "subheadline": "Whether you're flying solo, syncing with a partner, or running a business.",
-    "waitlistCta": "Join the Beta Waitlist",
+    "headline": "Olive fits your life.",
+    "subheadline": "Whether you're keeping your own life together, syncing with a partner, or running a business — Olive adapts.",
+    "waitlistCta": "Start Organizing for Free",
     "personal": {
-      "headline": "For the Organized Individual.",
-      "painPoint": "You text yourself reminders, links, and ideas. They vanish. Olive catches them all.",
-      "feature1": "Auto-sort notes by category",
-      "feature2": "Smart reminders from your texts",
+      "headline": "For You.",
+      "painPoint": "You text yourself reminders, links, and ideas. They disappear into the void. Olive catches them all and puts them where they belong.",
+      "feature1": "Auto-sorts notes by category",
+      "feature2": "Smart reminders from your messages",
       "feature3": "Voice note transcription"
     },
     "partner": {
-      "headline": "Stop the Nagging. Share the Load.",
-      "painPoint": "One of you remembers everything. The other is chaotic. Olive bridges the gap.",
+      "headline": "For You & Your Partner.",
+      "painPoint": "One of you remembers everything. The other forgets. Olive keeps you both on the same page — no nagging required.",
       "feature1": "Shared lists and budgets",
-      "feature2": "Partner notifications",
-      "feature3": "Memory vault for both"
+      "feature2": "Partner nudges & reminders",
+      "feature3": "Shared memory vault"
     },
     "business": {
-      "headline": "The Headless CRM.",
-      "painPoint": "Update Salesforce via WhatsApp. Log decisions without opening another tab.",
+      "headline": "For Your Business.",
+      "painPoint": "Log decisions, scan receipts, and track expenses — all from your phone. No spreadsheets, no forgotten context.",
       "feature1": "Receipt scanning & expenses",
       "feature2": "Decision logging",
-      "feature3": "Export to CSV / integrations"
+      "feature3": "Export to CSV & integrations"
     }
   },
   "superpowers": {
     "eyebrow": "How It Works",
     "headline": "You already do the work. Olive makes it count.",
-    "subheadline": "Don't change your habits. Just let Olive turn your texts into action.",
+    "subheadline": "Don't change your habits. Just let Olive turn your messages into organized actions.",
     "capture": {
-      "title": "Capture",
-      "description": "Don't change your habits. Just forward that voice note, photo, or link to Olive on WhatsApp. She catches everything."
+      "title": "Drop It",
+      "description": "Text, voice note, photo, link — just send it to Olive on WhatsApp. Don't format it. Don't organize it. Just dump it."
     },
     "organize": {
-      "title": "Organize",
-      "description": "Olive sorts the chaos. She files receipts, schedules dates, and remembers context — automatically."
+      "title": "She Organizes",
+      "description": "Olive reads the chaos and files it for you. Groceries go to your grocery list. Dates go to your calendar. Ideas get saved. Automatically."
     },
     "act": {
-      "title": "Act",
-      "description": "The Agentic Layer. Olive doesn't just store data; she saves events to your calendar, researches for you, and nags your partner so you don't have to."
+      "title": "You Find It",
+      "description": "Everything is clean, searchable, and shareable. Ask Olive anything — she remembers it all. She can even remind your partner for you."
     }
   },
   "whatsappFirst": {
@@ -68,39 +69,39 @@
     }
   },
   "testimonials": {
-    "eyebrow": "Beta Users",
-    "headline": "From people who stopped texting themselves.",
+    "eyebrow": "People who stopped losing things",
+    "headline": "\"I finally have a second brain.\"",
     "items": [
       {
-        "quote": "I used to text myself 10 things a day. Now I text Olive and everything just... works.",
-        "author": "Sarah",
-        "role": "Beta User"
+        "quote": "I used to text myself 10 things a day. Now I text Olive and everything just... appears organized. It's like magic.",
+        "author": "Sarah K.",
+        "role": "Busy Mom & Freelancer"
       },
       {
-        "quote": "We raised our seed round while juggling a million receipts. Olive saved us hours every week.",
+        "quote": "We stopped fighting about who forgot what. Olive is the neutral third party every couple needs.",
         "author": "Marcus & Jen",
-        "role": "Co-Founders"
+        "role": "Couple, NYC"
       },
       {
-        "quote": "Finally stopped fighting about who forgot what. Olive is the neutral third party we needed.",
-        "author": "David",
-        "role": "Beta User"
+        "quote": "I run my whole side business through Olive. Receipts, notes, client details — all organized without me lifting a finger.",
+        "author": "David R.",
+        "role": "Small Business Owner"
       }
     ]
   },
   "pricing": {
-    "headline": "Simple, transparent pricing.",
-    "subheadline": "Start free. Upgrade when you're ready.",
+    "headline": "Simple pricing. Start free.",
+    "subheadline": "No credit card. No commitment. Just start dropping things to Olive.",
     "mostPopular": "Most Popular",
-    "trustNote": "Cancel anytime. No credit card required for free tier.",
+    "trustNote": "Cancel anytime. No credit card required to start.",
     "personal": {
-      "name": "Personal",
-      "tagline": "For the organized individual",
+      "name": "Starter",
+      "tagline": "For getting your life together",
       "period": "forever",
       "feature1": "Unlimited text capture",
       "feature2": "5 voice notes/month",
       "feature3": "WhatsApp integration",
-      "cta": "Get Started"
+      "cta": "Get Started Free"
     },
     "partner": {
       "name": "Partner",
@@ -125,10 +126,10 @@
     }
   },
   "footerCta": {
-    "headline": "Your texts deserve better than the void.",
-    "subheadline": "Join thousands who stopped texting themselves and started texting Olive.",
-    "cta": "Try Olive Free",
-    "trustNote": "Free to start. No credit card required."
+    "headline": "Your ideas deserve better than dying in a chat with yourself.",
+    "subheadline": "Join thousands of people who stopped losing track and started using Olive.",
+    "cta": "Start Using Olive — Free",
+    "trustNote": "Free forever to start. No credit card."
   },
   "footer": {
     "pricing": "Pricing",

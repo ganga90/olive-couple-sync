@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
-import { MessageCircle, FolderOpen, Zap, ArrowRight } from "lucide-react";
+import { Send, Sparkles, Search, ArrowRight } from "lucide-react";
 import { Bell, Check } from "lucide-react";
 
 export const SuperpowersGrid = () => {
@@ -9,7 +9,7 @@ export const SuperpowersGrid = () => {
   const superpowers = [
     {
       id: 'capture',
-      icon: MessageCircle,
+      icon: Send,
       title: t('superpowers.capture.title'),
       description: t('superpowers.capture.description'),
       visual: 'capture',
@@ -18,7 +18,7 @@ export const SuperpowersGrid = () => {
     },
     {
       id: 'organize',
-      icon: FolderOpen,
+      icon: Sparkles,
       title: t('superpowers.organize.title'),
       description: t('superpowers.organize.description'),
       visual: 'organize',
@@ -27,7 +27,7 @@ export const SuperpowersGrid = () => {
     },
     {
       id: 'act',
-      icon: Zap,
+      icon: Search,
       title: t('superpowers.act.title'),
       description: t('superpowers.act.description'),
       visual: 'act',
@@ -79,9 +79,14 @@ export const SuperpowersGrid = () => {
                     {power.visual === 'act' && <ActVisual />}
                   </div>
 
-                  {/* Icon */}
-                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-r ${power.gradient} flex items-center justify-center mb-4 shadow-lg`}>
-                    <Icon className="w-6 h-6 text-white" />
+                  {/* Step Number */}
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className={`w-8 h-8 rounded-full bg-gradient-to-r ${power.gradient} flex items-center justify-center text-white text-sm font-bold`}>
+                      {index + 1}
+                    </div>
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-r ${power.gradient} flex items-center justify-center shadow-lg`}>
+                      <Icon className="w-5 h-5 text-white" />
+                    </div>
                   </div>
 
                   {/* Content */}
@@ -104,7 +109,6 @@ export const SuperpowersGrid = () => {
 // Visual Components
 const CaptureVisual = () => (
   <div className="relative w-full h-full flex items-center justify-center">
-    {/* Scattered message bubbles */}
     <motion.div
       initial={{ opacity: 0, y: -10, rotate: -6 }}
       whileInView={{ opacity: 1, y: 0, rotate: -6 }}
@@ -123,7 +127,7 @@ const CaptureVisual = () => (
       className="absolute right-1 top-2"
     >
       <div className="bg-white rounded-xl rounded-br-sm px-3 py-2 shadow-md">
-        <p className="text-[10px] text-violet-600 font-medium">bit.ly/recipe-link</p>
+        <p className="text-[10px] text-violet-600 font-medium">🎤 Voice note — 0:32</p>
       </div>
     </motion.div>
 
@@ -138,7 +142,6 @@ const CaptureVisual = () => (
       </div>
     </motion.div>
 
-    {/* Funnel arrow pointing down */}
     <motion.div
       initial={{ opacity: 0, scale: 0.5 }}
       whileInView={{ opacity: 1, scale: 1 }}
@@ -161,9 +164,10 @@ const OrganizeVisual = () => (
       className="bg-white rounded-xl px-4 py-2.5 shadow-md flex items-center gap-3"
     >
       <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center text-sm">
-        🥬
+        🛒
       </div>
       <p className="text-xs font-semibold text-stone-700">Groceries</p>
+      <span className="ml-auto text-[10px] text-stone-400">Auto-sorted</span>
     </motion.div>
 
     <motion.div
@@ -173,9 +177,10 @@ const OrganizeVisual = () => (
       className="bg-white rounded-xl px-4 py-2.5 shadow-md flex items-center gap-3"
     >
       <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center text-sm">
-        📅
+        🔑
       </div>
-      <p className="text-xs font-semibold text-stone-700">Calendar</p>
+      <p className="text-xs font-semibold text-stone-700">Access Codes</p>
+      <span className="ml-auto text-[10px] text-stone-400">Auto-sorted</span>
     </motion.div>
 
     <motion.div
@@ -188,6 +193,7 @@ const OrganizeVisual = () => (
         💡
       </div>
       <p className="text-xs font-semibold text-stone-700">Ideas</p>
+      <span className="ml-auto text-[10px] text-stone-400">Auto-sorted</span>
     </motion.div>
   </div>
 );
@@ -203,9 +209,9 @@ const ActVisual = () => (
         <Bell className="w-5 h-5 text-emerald-600" />
       </div>
       <div className="flex-1">
-        <p className="text-xs font-semibold text-stone-800">Reminder sent to partner</p>
+        <p className="text-xs font-semibold text-stone-800">Olive found it for you</p>
         <p className="text-[10px] text-stone-500 mt-0.5">
-          Pick up groceries on the way home
+          "Gate code is 4821#. Saved 3 weeks ago."
         </p>
         <motion.div
           initial={{ scale: 0 }}
@@ -216,7 +222,7 @@ const ActVisual = () => (
           <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
             <Check className="w-3 h-3 text-white" />
           </div>
-          <span className="text-[10px] font-medium text-emerald-600">Sent</span>
+          <span className="text-[10px] font-medium text-emerald-600">Instant recall</span>
         </motion.div>
       </div>
     </div>
