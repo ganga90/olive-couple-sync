@@ -251,6 +251,7 @@
     "step2": "The token message will be pre-filled",
     "step3": "Send the message to complete linking",
     "generateNew": "Generate New Token",
+    "iLinkedMyAccount": "I've linked my account",
     "linkGenerated": "WhatsApp Link Generated",
     "linkGeneratedDesc": "Click the link below to connect your WhatsApp account.",
     "tokenCopied": "Token Copied",

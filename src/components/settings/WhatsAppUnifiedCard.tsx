@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Phone, MessageCircle, ExternalLink, Check, CheckCircle2, Send } from 'lucide-react';
+import { Loader2, Phone, MessageCircle, ExternalLink, Check, CheckCircle2, Send, RefreshCw } from 'lucide-react';
 import { toast as sonnerToast } from 'sonner';
 
 export const WhatsAppUnifiedCard: React.FC = () => {
@@ -16,12 +16,12 @@ export const WhatsAppUnifiedCard: React.FC = () => {
   const { user } = useAuth();
   const userId = user?.id;
   const { toast } = useToast();
-  
+
   // Phone number state
   const [phoneNumber, setPhoneNumber] = useState("");
   const [isPhoneLoading, setIsPhoneLoading] = useState(true);
   const [isPhoneSaving, setIsPhoneSaving] = useState(false);
-  
+
   // WhatsApp link state
   const [isLinkLoading, setIsLinkLoading] = useState(false);
   const [linkData, setLinkData] = useState<{ token: string; whatsappLink: string; expiresAt: string } | null>(null);
@@ -115,7 +115,7 @@ export const WhatsAppUnifiedCard: React.FC = () => {
           message: {
             user_id: userId,
             message_type: 'system_alert',
-            content: '👋 Hello from Olive! This is a test message to verify your WhatsApp integration is working correctly. You can reply to this message to start chatting with Olive AI!',
+            content: "Hey, it's Olive here! 🫒 How can I help you? You can send me tasks, reminders, or just chat — I'm here to help you stay organized!",
             priority: 'high',
           },
         },
@@ -136,6 +136,12 @@ export const WhatsAppUnifiedCard: React.FC = () => {
     }
   };
 
+  const handleLinkCompleted = async () => {
+    // Refresh phone number from DB after user completes the linking flow
+    await fetchPhoneNumber();
+    setLinkData(null);
+  };
+
   const copyToken = () => {
     if (linkData) {
       navigator.clipboard.writeText(linkData.token);
@@ -154,7 +160,7 @@ export const WhatsAppUnifiedCard: React.FC = () => {
     );
   }
 
-  const isConnected = phoneNumber && phoneNumber.length > 5;
+  const isLinked = phoneNumber && phoneNumber.length > 5;
 
   return (
     <div className="space-y-6">
@@ -163,7 +169,7 @@ export const WhatsAppUnifiedCard: React.FC = () => {
       </p>
 
       {/* Connection Status */}
-      {isConnected && (
+      {isLinked && (
         <div className="flex items-center gap-3 p-3 rounded-xl bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/20">
           <CheckCircle2 className="h-5 w-5 text-[hsl(var(--success))]" />
           <div className="flex-1">
@@ -175,51 +181,107 @@ export const WhatsAppUnifiedCard: React.FC = () => {
         </div>
       )}
 
-      {/* Phone Number Section */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Phone className="h-4 w-4 text-primary" />
-          <Label className="text-sm font-medium">
-            {t('profile:whatsapp.phoneTitle', 'Notification Number')}
-          </Label>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {t('profile:whatsapp.phoneDescription', 'Receive task reminders and updates on this number.')}
-        </p>
-        <Input 
-          type="tel" 
-          placeholder={t('profile:phoneField.placeholder')} 
-          value={phoneNumber} 
-          onChange={e => setPhoneNumber(e.target.value)} 
-          className="border-border focus:border-primary" 
-        />
-        <p className="text-xs text-muted-foreground">
-          {t('profile:phoneField.hint')}
-        </p>
-        <Button 
-          onClick={handleSavePhone} 
-          disabled={isPhoneSaving} 
-          className="w-full"
-          size="sm"
-        >
-          {isPhoneSaving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {t('profile:phoneField.saving')}
-            </>
-          ) : (
-            <>
-              <Check className="mr-2 h-4 w-4" />
-              {t('profile:phoneField.save')}
-            </>
-          )}
-        </Button>
-      </div>
+      {/* WhatsApp AI Link Section — shown first when not linked */}
+      {!isLinked && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <MessageCircle className="h-4 w-4 text-[hsl(var(--success))]" />
+            <Label className="text-sm font-medium">
+              {t('profile:whatsapp.aiTitle', 'AI Chat Link')}
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t('profile:whatsappLink.description')}
+          </p>
 
-      {/* Send Test Message Section */}
-      {isConnected && (
+          {!linkData ? (
+            <Button
+              onClick={generateLink}
+              disabled={isLinkLoading}
+              className="w-full"
+              variant="default"
+            >
+              {isLinkLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {t('profile:whatsappLink.generating')}
+                </>
+              ) : (
+                <>
+                  <MessageCircle className="mr-2 h-4 w-4" />
+                  {t('profile:whatsappLink.generateButton')}
+                </>
+              )}
+            </Button>
+          ) : (
+            <div className="space-y-3">
+              <Alert>
+                <MessageCircle className="h-4 w-4" />
+                <AlertDescription>
+                  {t('profile:whatsappLink.tokenExpires')}
+                </AlertDescription>
+              </Alert>
+
+              <div className="p-3 bg-muted rounded-xl space-y-2">
+                <p className="text-xs font-medium text-foreground">{t('profile:whatsappLink.yourToken')}</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-sm font-mono bg-background px-3 py-2 rounded border overflow-x-auto">
+                    {linkData.token}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={copyToken}
+                  >
+                    {t('profile:whatsappLink.copy')}
+                  </Button>
+                </div>
+              </div>
+
+              <Button
+                onClick={() => window.open(linkData.whatsappLink, '_blank')}
+                className="w-full"
+                variant="default"
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                {t('profile:whatsappLink.openWhatsapp')}
+              </Button>
+
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p className="font-medium">{t('profile:whatsappLink.instructions')}</p>
+                <ol className="list-decimal list-inside space-y-1 ml-2">
+                  <li>{t('profile:whatsappLink.step1')}</li>
+                  <li>{t('profile:whatsappLink.step2')}</li>
+                  <li>{t('profile:whatsappLink.step3')}</li>
+                </ol>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLinkCompleted}
+                className="w-full"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                {t('profile:whatsappLink.iLinkedMyAccount', "I've linked my account")}
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setLinkData(null)}
+                className="w-full"
+              >
+                {t('profile:whatsappLink.generateNew')}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Send Test Message Section — shown only after WhatsApp is linked */}
+      {isLinked && (
         <>
-          <Separator />
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Send className="h-4 w-4 text-primary" />
@@ -255,96 +317,143 @@ export const WhatsAppUnifiedCard: React.FC = () => {
               )}
             </Button>
           </div>
+
+          <Separator />
         </>
       )}
 
-      <Separator />
-
-      {/* WhatsApp AI Link Section */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <MessageCircle className="h-4 w-4 text-[hsl(var(--success))]" />
-          <Label className="text-sm font-medium">
-            {t('profile:whatsapp.aiTitle', 'AI Chat Link')}
-          </Label>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {t('profile:whatsappLink.description')}
-        </p>
-
-        {!linkData ? (
-          <Button 
-            onClick={generateLink} 
-            disabled={isLinkLoading}
-            className="w-full"
-            variant="outline"
-          >
-            {isLinkLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t('profile:whatsappLink.generating')}
-              </>
-            ) : (
-              <>
-                <MessageCircle className="mr-2 h-4 w-4" />
-                {t('profile:whatsappLink.generateButton')}
-              </>
-            )}
-          </Button>
-        ) : (
+      {/* Phone Number Section — shown after linked, for manual management */}
+      {isLinked && (
+        <>
           <div className="space-y-3">
-            <Alert>
-              <MessageCircle className="h-4 w-4" />
-              <AlertDescription>
-                {t('profile:whatsappLink.tokenExpires')}
-              </AlertDescription>
-            </Alert>
-
-            <div className="p-3 bg-muted rounded-xl space-y-2">
-              <p className="text-xs font-medium text-foreground">{t('profile:whatsappLink.yourToken')}</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 text-sm font-mono bg-background px-3 py-2 rounded border overflow-x-auto">
-                  {linkData.token}
-                </code>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={copyToken}
-                >
-                  {t('profile:whatsappLink.copy')}
-                </Button>
-              </div>
+            <div className="flex items-center gap-2">
+              <Phone className="h-4 w-4 text-primary" />
+              <Label className="text-sm font-medium">
+                {t('profile:whatsapp.phoneTitle', 'Notification Number')}
+              </Label>
             </div>
-
+            <p className="text-xs text-muted-foreground">
+              {t('profile:whatsapp.phoneDescription', 'Receive task reminders and updates on this number.')}
+            </p>
+            <Input
+              type="tel"
+              placeholder={t('profile:phoneField.placeholder')}
+              value={phoneNumber}
+              onChange={e => setPhoneNumber(e.target.value)}
+              className="border-border focus:border-primary"
+            />
+            <p className="text-xs text-muted-foreground">
+              {t('profile:phoneField.hint')}
+            </p>
             <Button
-              onClick={() => window.open(linkData.whatsappLink, '_blank')}
+              onClick={handleSavePhone}
+              disabled={isPhoneSaving}
               className="w-full"
-              variant="default"
-            >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              {t('profile:whatsappLink.openWhatsapp')}
-            </Button>
-
-            <div className="text-xs text-muted-foreground space-y-1">
-              <p className="font-medium">{t('profile:whatsappLink.instructions')}</p>
-              <ol className="list-decimal list-inside space-y-1 ml-2">
-                <li>{t('profile:whatsappLink.step1')}</li>
-                <li>{t('profile:whatsappLink.step2')}</li>
-                <li>{t('profile:whatsappLink.step3')}</li>
-              </ol>
-            </div>
-
-            <Button
-              variant="ghost"
               size="sm"
-              onClick={() => setLinkData(null)}
-              className="w-full"
             >
-              {t('profile:whatsappLink.generateNew')}
+              {isPhoneSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {t('profile:phoneField.saving')}
+                </>
+              ) : (
+                <>
+                  <Check className="mr-2 h-4 w-4" />
+                  {t('profile:phoneField.save')}
+                </>
+              )}
             </Button>
           </div>
-        )}
-      </div>
+
+          <Separator />
+
+          {/* Re-link WhatsApp section for already-linked users */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <MessageCircle className="h-4 w-4 text-[hsl(var(--success))]" />
+              <Label className="text-sm font-medium">
+                {t('profile:whatsapp.aiTitle', 'AI Chat Link')}
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t('profile:whatsappLink.description')}
+            </p>
+
+            {!linkData ? (
+              <Button
+                onClick={generateLink}
+                disabled={isLinkLoading}
+                className="w-full"
+                variant="outline"
+              >
+                {isLinkLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t('profile:whatsappLink.generating')}
+                  </>
+                ) : (
+                  <>
+                    <MessageCircle className="mr-2 h-4 w-4" />
+                    {t('profile:whatsappLink.generateButton')}
+                  </>
+                )}
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                <Alert>
+                  <MessageCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    {t('profile:whatsappLink.tokenExpires')}
+                  </AlertDescription>
+                </Alert>
+
+                <div className="p-3 bg-muted rounded-xl space-y-2">
+                  <p className="text-xs font-medium text-foreground">{t('profile:whatsappLink.yourToken')}</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-sm font-mono bg-background px-3 py-2 rounded border overflow-x-auto">
+                      {linkData.token}
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={copyToken}
+                    >
+                      {t('profile:whatsappLink.copy')}
+                    </Button>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={() => window.open(linkData.whatsappLink, '_blank')}
+                  className="w-full"
+                  variant="default"
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  {t('profile:whatsappLink.openWhatsapp')}
+                </Button>
+
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p className="font-medium">{t('profile:whatsappLink.instructions')}</p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2">
+                    <li>{t('profile:whatsappLink.step1')}</li>
+                    <li>{t('profile:whatsappLink.step2')}</li>
+                    <li>{t('profile:whatsappLink.step3')}</li>
+                  </ol>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setLinkData(null)}
+                  className="w-full"
+                >
+                  {t('profile:whatsappLink.generateNew')}
+                </Button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 };

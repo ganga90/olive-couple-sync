@@ -223,6 +223,7 @@
     "step2": "El mensaje con el token estará pre-completado",
     "step3": "Envía el mensaje para completar la vinculación",
     "generateNew": "Generar Nuevo Token",
+    "iLinkedMyAccount": "Ya vinculé mi cuenta",
     "linkGenerated": "Enlace de WhatsApp Generado",
     "linkGeneratedDesc": "Haz clic en el enlace de abajo para conectar tu cuenta de WhatsApp.",
     "tokenCopied": "Token Copiado",
