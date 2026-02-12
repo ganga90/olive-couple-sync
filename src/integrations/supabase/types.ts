@@ -460,6 +460,7 @@ export type Database = {
           display_name: string | null
           id: string
           language_preference: string | null
+          last_user_message_at: string | null
           note_style: string | null
           phone_number: string | null
           timezone: string | null
@@ -470,6 +471,7 @@ export type Database = {
           display_name?: string | null
           id: string
           language_preference?: string | null
+          last_user_message_at?: string | null
           note_style?: string | null
           phone_number?: string | null
           timezone?: string | null
@@ -480,6 +482,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           language_preference?: string | null
+          last_user_message_at?: string | null
           note_style?: string | null
           phone_number?: string | null
           timezone?: string | null
