@@ -26,13 +26,19 @@ export const NewLandingNav = () => {
             <div className="w-8 h-8 bg-gradient-to-br from-olive to-olive/80 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">O</span>
             </div>
-            <span className="text-xl font-bold text-stone-900">Olive Assistant</span>
+            <span className="text-xl font-bold text-stone-900">Olive</span>
           </Link>
 
           {/* Right Side Navigation */}
           <div className="flex items-center gap-6">
             {/* Desktop Links */}
             <div className="hidden md:flex items-center gap-6">
+              <button 
+                onClick={() => scrollToSection('superpowers')}
+                className="text-stone-600 hover:text-stone-900 transition-colors text-sm font-medium"
+              >
+                {t('nav.features')}
+              </button>
               <button 
                 onClick={() => scrollToSection('pricing')}
                 className="text-stone-600 hover:text-stone-900 transition-colors text-sm font-medium"
@@ -47,20 +53,15 @@ export const NewLandingNav = () => {
               </Link>
             </div>
 
-            {/* CTA with micro-copy */}
-            <div className="flex items-center gap-3">
-              <Link to={getLocalizedPath("/sign-up")}>
-                <Button 
-                  size="sm"
-                  className="bg-olive hover:bg-olive/90 text-white font-semibold px-4 py-2 rounded-full shadow-lg shadow-olive/20"
-                >
-                  {t('nav.cta')}
-                </Button>
-              </Link>
-              <span className="hidden lg:block text-xs text-stone-500 max-w-[120px] leading-tight">
-                {t('nav.microCopy')}
-              </span>
-            </div>
+            {/* CTA */}
+            <Link to={getLocalizedPath("/sign-up")}>
+              <Button 
+                size="sm"
+                className="bg-olive hover:bg-olive/90 text-white font-semibold px-4 py-2 rounded-full shadow-lg shadow-olive/20"
+              >
+                {t('nav.cta')}
+              </Button>
+            </Link>
           </div>
         </div>
       </div>

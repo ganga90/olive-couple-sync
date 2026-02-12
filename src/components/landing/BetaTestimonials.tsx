@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
+import { Star } from "lucide-react";
 
 export const BetaTestimonials = () => {
   const { t } = useTranslation('landing');
@@ -15,13 +16,13 @@ export const BetaTestimonials = () => {
       quote: t('testimonials.items.1.quote'),
       author: t('testimonials.items.1.author'),
       role: t('testimonials.items.1.role'),
-      avatar: '👨‍💻',
+      avatar: '❤️',
     },
     {
       quote: t('testimonials.items.2.quote'),
       author: t('testimonials.items.2.author'),
       role: t('testimonials.items.2.role'),
-      avatar: '👩‍🎨',
+      avatar: '💼',
     },
   ];
 
@@ -54,8 +55,15 @@ export const BetaTestimonials = () => {
               transition={{ delay: index * 0.1 }}
               className="bg-white rounded-2xl p-6 shadow-lg"
             >
+              {/* Stars */}
+              <div className="flex gap-1 mb-4">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
+                ))}
+              </div>
+
               {/* Quote */}
-              <p className="text-stone-700 leading-relaxed mb-6 italic">
+              <p className="text-stone-700 leading-relaxed mb-6">
                 "{testimonial.quote}"
               </p>
 

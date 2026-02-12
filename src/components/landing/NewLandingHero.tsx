@@ -77,7 +77,7 @@ export const NewLandingHero = () => {
               className="flex items-center gap-4 pt-4"
             >
               <div className="flex -space-x-2">
-                {['👩‍💼', '👨‍💻', '👩‍🎨', '👨‍🔬'].map((emoji, i) => (
+                {['😊', '🙌', '💪', '✨'].map((emoji, i) => (
                   <div 
                     key={i}
                     className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-sm border-2 border-white"

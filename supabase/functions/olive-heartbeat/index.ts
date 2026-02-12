@@ -38,7 +38,7 @@ interface HeartbeatJob {
 }
 
 interface HeartbeatRequest {
-  action: 'tick' | 'schedule_job' | 'get_pending' | 'generate_briefing' | 'check_reminders';
+  action: 'tick' | 'schedule_job' | 'get_pending' | 'generate_briefing' | 'check_reminders' | 'test_briefing';
   user_id?: string;
   job_type?: JobType;
   payload?: Record<string, any>;

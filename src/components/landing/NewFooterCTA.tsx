@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Heart } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 
@@ -26,7 +26,7 @@ export const NewFooterCTA = () => {
             transition={{ type: "spring", delay: 0.2 }}
             className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-olive/20"
           >
-            <Heart className="w-8 h-8 text-olive fill-olive/30" />
+            <Sparkles className="w-8 h-8 text-olive" />
           </motion.div>
 
           {/* Headline */}

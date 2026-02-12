@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
-import { Heart, Rocket, Check, User, ArrowRight } from "lucide-react";
+import { Heart, Briefcase, Check, User, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
@@ -46,8 +46,8 @@ export const ChooseYourMode = () => {
     },
     {
       id: 'business' as const,
-      icon: Rocket,
-      emoji: '🚀',
+      icon: Briefcase,
+      emoji: '💼',
       headline: t('chooseMode.business.headline'),
       painPoint: t('chooseMode.business.painPoint'),
       features: [
@@ -102,7 +102,6 @@ export const ChooseYourMode = () => {
                   }
                 `}
               >
-                {/* Active Indicator */}
                 {isActive && (
                   <motion.div
                     layoutId="activeIndicator"
@@ -112,7 +111,6 @@ export const ChooseYourMode = () => {
                   </motion.div>
                 )}
 
-                {/* Icon */}
                 <div className={`
                   w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-6
                   ${isActive
@@ -127,17 +125,14 @@ export const ChooseYourMode = () => {
                   )}
                 </div>
 
-                {/* Headline */}
                 <h3 className={`text-2xl font-bold mb-3 ${isActive ? mode.textColor : 'text-stone-700'}`}>
                   {mode.headline}
                 </h3>
 
-                {/* Pain Point */}
                 <p className="text-stone-600 mb-6 leading-relaxed">
                   {mode.painPoint}
                 </p>
 
-                {/* Features */}
                 <div className="space-y-3">
                   {mode.features.map((feature, i) => (
                     <div key={i} className="flex items-center gap-3">
