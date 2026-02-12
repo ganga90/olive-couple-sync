@@ -306,9 +306,24 @@ async function smartSend(
     return result;
   }
 
-  // Outside 24h window → must use template
-  console.log('[Meta Gateway] Outside 24h window, sending template');
-  return sendAsTemplate(phoneNumber, message, displayName);
+  // Outside 24h window (or unknown) → try template first, then try free-form as fallback
+  console.log('[Meta Gateway] Outside 24h window (or unknown), trying template first');
+  const templateResult = await sendAsTemplate(phoneNumber, message, displayName);
+
+  if (!templateResult.success) {
+    // Template failed (maybe not approved yet) — try free-form as last resort
+    // This will work if user actually messaged recently but we couldn't track it
+    console.log('[Meta Gateway] Template failed, trying free-form text as fallback:', templateResult.error);
+    const freeFormResult = await sendMetaMessage(phoneNumber, message.content, message.media_url);
+    if (freeFormResult.success) {
+      return freeFormResult;
+    }
+    // Both failed — return the original template error
+    console.error('[Meta Gateway] Both template and free-form failed');
+    return templateResult;
+  }
+
+  return templateResult;
 }
 
 /**
@@ -393,11 +408,24 @@ async function canSendProactive(supabase: any, userId: string): Promise<boolean>
  * Get user's profile including phone number and 24h window info
  */
 async function getUserProfile(supabase: any, userId: string): Promise<UserProfile | null> {
-  const { data: profile, error } = await supabase
+  // Try with last_user_message_at first, fall back without it if column doesn't exist yet
+  let { data: profile, error } = await supabase
     .from('clerk_profiles')
     .select('phone_number, display_name, last_user_message_at')
     .eq('id', userId)
     .single();
+
+  if (error && error.code === '42703') {
+    // Column doesn't exist yet — query without it
+    console.log('[getUserProfile] last_user_message_at column not found, querying without it');
+    const fallback = await supabase
+      .from('clerk_profiles')
+      .select('phone_number, display_name')
+      .eq('id', userId)
+      .single();
+    profile = fallback.data;
+    error = fallback.error;
+  }
 
   if (error || !profile?.phone_number) {
     console.error('Failed to get user profile:', error);
@@ -407,7 +435,7 @@ async function getUserProfile(supabase: any, userId: string): Promise<UserProfil
   return {
     phone_number: profile.phone_number,
     display_name: profile.display_name,
-    last_user_message_at: profile.last_user_message_at,
+    last_user_message_at: profile.last_user_message_at || null,
   };
 }
 

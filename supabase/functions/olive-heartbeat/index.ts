@@ -906,6 +906,73 @@ serve(async (req) => {
         );
       }
 
+      case 'test_briefing': {
+        // Test action: look up user by phone number, generate briefing, and send it
+        const phoneNumber = body.payload?.phone_number;
+        if (!phoneNumber) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'payload.phone_number required' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Normalize phone number for lookup
+        const cleanPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
+        console.log('[Heartbeat] Test briefing — looking up phone:', cleanPhone);
+
+        // Find user by phone number
+        const { data: profiles, error: profileErr } = await supabase
+          .from('clerk_profiles')
+          .select('id, display_name, phone_number')
+          .eq('phone_number', cleanPhone)
+          .limit(1);
+
+        if (profileErr || !profiles || profiles.length === 0) {
+          console.error('[Heartbeat] Profile lookup failed:', profileErr);
+          return new Response(
+            JSON.stringify({ success: false, error: 'User not found for phone: ' + cleanPhone, details: profileErr }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const testUserId = profiles[0].id;
+        const testUserName = profiles[0].display_name;
+        console.log('[Heartbeat] Found user:', testUserId, testUserName);
+
+        // Generate briefing
+        const testBriefing = await generateMorningBriefing(supabase, testUserId);
+        console.log('[Heartbeat] Generated briefing:', testBriefing.substring(0, 100));
+
+        // Send via WhatsApp gateway
+        const sent = await sendWhatsAppMessage(
+          supabase,
+          testUserId,
+          'morning_briefing',
+          testBriefing,
+          'high' // high priority to bypass quiet hours for testing
+        );
+
+        // Log it
+        await supabase.from('olive_heartbeat_log').insert({
+          user_id: testUserId,
+          job_type: 'morning_briefing',
+          status: sent ? 'sent' : 'failed',
+          message_preview: testBriefing.substring(0, 200),
+          channel: 'whatsapp',
+        });
+
+        return new Response(
+          JSON.stringify({
+            success: sent,
+            user_id: testUserId,
+            user_name: testUserName,
+            briefing_preview: testBriefing.substring(0, 300),
+            message: sent ? 'Briefing sent successfully!' : 'Failed to send briefing',
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: 'Unknown action' }),

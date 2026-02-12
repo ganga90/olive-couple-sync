@@ -1326,10 +1326,14 @@ serve(async (req) => {
     const userId = profile.id;
 
     // Track last user message timestamp for 24h template window
-    await supabase
-      .from('clerk_profiles')
-      .update({ last_user_message_at: new Date().toISOString() })
-      .eq('id', userId);
+    try {
+      await supabase
+        .from('clerk_profiles')
+        .update({ last_user_message_at: new Date().toISOString() })
+        .eq('id', userId);
+    } catch (e) {
+      console.log('[Webhook] Could not update last_user_message_at (column may not exist yet):', e);
+    }
 
     // Get or create session
     let { data: session } = await supabase
