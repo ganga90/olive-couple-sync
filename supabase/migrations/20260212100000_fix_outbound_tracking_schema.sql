@@ -132,3 +132,15 @@ END $$;
 -- Index for quick lookups of recent outbound by user
 CREATE INDEX IF NOT EXISTS idx_heartbeat_log_user_status
   ON public.olive_heartbeat_log(user_id, status, created_at DESC);
+
+-- ============================================================
+-- 3. clerk_profiles: Add last_outbound_context JSONB column
+-- This is the RELIABLE approach — store last outbound context
+-- directly in the profile, avoiding olive_outbound_queue issues.
+-- ============================================================
+DO $$
+BEGIN
+  ALTER TABLE public.clerk_profiles ADD COLUMN last_outbound_context JSONB;
+EXCEPTION WHEN duplicate_column THEN
+  RAISE NOTICE 'last_outbound_context column already exists';
+END $$;

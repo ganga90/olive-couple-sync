@@ -489,6 +489,26 @@ async function logOutboundMessage(
   status: string,
   phoneNumber?: string
 ): Promise<void> {
+  // Primary: Store last outbound context in clerk_profiles (reliable, no schema issues)
+  const outboundContext = {
+    message_type: messageType,
+    content: content.substring(0, 500),
+    sent_at: new Date().toISOString(),
+    status,
+  };
+
+  const { error: profileErr } = await supabase
+    .from('clerk_profiles')
+    .update({ last_outbound_context: outboundContext })
+    .eq('id', userId);
+
+  if (profileErr) {
+    console.error('[Gateway] Failed to save outbound context to profile:', profileErr.message);
+  } else {
+    console.log('[Gateway] Saved outbound context to profile:', messageType, 'for user', userId);
+  }
+
+  // Secondary: Also try olive_outbound_queue (may fail due to schema constraints)
   const { error } = await supabase.from('olive_outbound_queue').insert({
     user_id: userId,
     message_type: messageType,
@@ -498,9 +518,7 @@ async function logOutboundMessage(
     sent_at: new Date().toISOString(),
   });
   if (error) {
-    console.error('[Gateway] Failed to log outbound message:', error.message, error.details);
-  } else {
-    console.log('[Gateway] Logged outbound message:', messageType, 'for user', userId);
+    console.error('[Gateway] olive_outbound_queue insert failed (non-critical):', error.message);
   }
 }
 

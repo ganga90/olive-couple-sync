@@ -186,54 +186,77 @@ async function getRecentOutboundMessages(supabase: any, userId: string): Promise
   const results: RecentOutbound[] = [];
 
   try {
-    // Query outbound queue (reminders, proactive messages)
-    // Select both 'content' and 'message' columns since schema may have either
-    const { data: queueMsgs, error: queueErr } = await supabase
-      .from('olive_outbound_queue')
-      .select('message_type, content, message, sent_at')
-      .eq('user_id', userId)
-      .eq('status', 'sent')
-      .gte('sent_at', sixtyMinAgo)
-      .order('sent_at', { ascending: false })
-      .limit(3);
+    // PRIMARY SOURCE: Read last_outbound_context from clerk_profiles
+    // This is the most reliable source — stored directly by the gateway after sending
+    const { data: profile, error: profileErr } = await supabase
+      .from('clerk_profiles')
+      .select('last_outbound_context')
+      .eq('id', userId)
+      .single();
 
-    if (queueErr) {
-      console.log('[Context] outbound_queue query error:', queueErr.message);
+    if (profileErr) {
+      console.log('[Context] Profile query error:', profileErr.message);
     }
 
-    if (queueMsgs) {
-      for (const msg of queueMsgs) {
+    if (profile?.last_outbound_context) {
+      const ctx = profile.last_outbound_context;
+      const sentAt = ctx.sent_at || '';
+      // Only use if sent within last 60 minutes
+      if (sentAt && new Date(sentAt).getTime() > Date.now() - 60 * 60 * 1000) {
+        console.log('[Context] Found outbound context in profile:', ctx.message_type, ctx.content?.substring(0, 80));
         results.push({
-          type: msg.message_type || 'unknown',
-          content: msg.content || msg.message || '',
-          sent_at: msg.sent_at,
+          type: ctx.message_type || 'unknown',
+          content: ctx.content || '',
+          sent_at: sentAt,
           source: 'queue',
         });
+      } else {
+        console.log('[Context] Profile outbound context is stale (>60min)');
       }
+    } else {
+      console.log('[Context] No last_outbound_context in profile');
     }
 
-    // Query heartbeat log (briefings, nudges, reviews)
-    const { data: heartbeatMsgs, error: heartbeatErr } = await supabase
-      .from('olive_heartbeat_log')
-      .select('job_type, message_preview, created_at')
-      .eq('user_id', userId)
-      .eq('status', 'sent')
-      .gte('created_at', sixtyMinAgo)
-      .order('created_at', { ascending: false })
-      .limit(3);
+    // SECONDARY: Also check olive_outbound_queue and olive_heartbeat_log (may be empty)
+    if (results.length === 0) {
+      const { data: queueMsgs } = await supabase
+        .from('olive_outbound_queue')
+        .select('message_type, content, message, sent_at')
+        .eq('user_id', userId)
+        .eq('status', 'sent')
+        .gte('sent_at', sixtyMinAgo)
+        .order('sent_at', { ascending: false })
+        .limit(3);
 
-    if (heartbeatErr) {
-      console.log('[Context] heartbeat_log query error:', heartbeatErr.message);
-    }
+      if (queueMsgs) {
+        for (const msg of queueMsgs) {
+          results.push({
+            type: msg.message_type || 'unknown',
+            content: msg.content || msg.message || '',
+            sent_at: msg.sent_at,
+            source: 'queue',
+          });
+        }
+      }
 
-    if (heartbeatMsgs) {
-      for (const msg of heartbeatMsgs) {
-        results.push({
-          type: msg.job_type || 'unknown',
-          content: msg.message_preview || '',
-          sent_at: msg.created_at,
-          source: 'heartbeat',
-        });
+      const { data: heartbeatMsgs } = await supabase
+        .from('olive_heartbeat_log')
+        .select('job_type, message_preview, created_at')
+        .eq('user_id', userId)
+        .eq('status', 'sent')
+        .gte('created_at', sixtyMinAgo)
+        .order('created_at', { ascending: false })
+        .limit(3);
+
+      if (heartbeatMsgs) {
+        for (const msg of heartbeatMsgs) {
+          results.push({
+            type: msg.job_type || 'unknown',
+            content: msg.message_preview || '',
+            sent_at: msg.created_at,
+            source: 'heartbeat',
+          });
+        }
       }
     }
   } catch (e) {
@@ -695,6 +718,52 @@ function standardizePhoneNumber(rawNumber: string): string {
   let cleaned = rawNumber.replace(/\D/g, '');
   if (!cleaned.startsWith('+')) cleaned = '+' + cleaned;
   return cleaned;
+}
+
+/**
+ * Format a date/time string into a friendly readable format
+ * e.g. "Friday, February 20th at 12:00 PM"
+ */
+function formatFriendlyDate(dateStr: string, includeTime: boolean = true): string {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const months = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+
+  const dayName = days[d.getUTCDay()];
+  const monthName = months[d.getUTCMonth()];
+  const dayNum = d.getUTCDate();
+  const year = d.getUTCFullYear();
+
+  // Ordinal suffix
+  const suffix = (dayNum === 1 || dayNum === 21 || dayNum === 31) ? 'st'
+    : (dayNum === 2 || dayNum === 22) ? 'nd'
+    : (dayNum === 3 || dayNum === 23) ? 'rd' : 'th';
+
+  let result = `${dayName}, ${monthName} ${dayNum}${suffix}`;
+
+  // Include year if not current year
+  const now = new Date();
+  if (year !== now.getUTCFullYear()) {
+    result += ` ${year}`;
+  }
+
+  // Include time if not midnight/noon placeholder
+  if (includeTime) {
+    const hours = d.getUTCHours();
+    const minutes = d.getUTCMinutes();
+    // Skip time display if it's exactly midnight (00:00) — likely date-only
+    if (hours !== 0 || minutes !== 0) {
+      const h12 = hours % 12 || 12;
+      const ampm = hours < 12 ? 'AM' : 'PM';
+      const minStr = minutes.toString().padStart(2, '0');
+      result += ` at ${h12}:${minStr} ${ampm}`;
+    }
+  }
+
+  return result;
 }
 
 // Call Lovable AI
@@ -1978,7 +2047,7 @@ serve(async (req) => {
         const itemsList = relevantTasks.map((t, i) => {
           const items = t.items && t.items.length > 0 ? `\n  ${t.items.join('\n  ')}` : '';
           const priority = t.priority === 'high' ? ' 🔥' : '';
-          const dueInfo = t.due_date ? ` (Due: ${new Date(t.due_date).toLocaleDateString()})` : '';
+          const dueInfo = t.due_date ? ` (Due: ${formatFriendlyDate(t.due_date)})` : '';
           return `${i + 1}. ${t.summary}${priority}${dueInfo}${items}`;
         }).join('\n\n');
         
@@ -2021,7 +2090,7 @@ serve(async (req) => {
         }
         
         const urgentList = urgentTasks.slice(0, 8).map((t, i) => {
-          const dueInfo = t.due_date ? ` (Due: ${new Date(t.due_date).toLocaleDateString()})` : '';
+          const dueInfo = t.due_date ? ` (Due: ${formatFriendlyDate(t.due_date)})` : '';
           return `${i + 1}. ${t.summary}${dueInfo}`;
         }).join('\n');
         
@@ -2171,7 +2240,7 @@ serve(async (req) => {
         if (dueThisWeekTasks.length > 0) {
           const weekList = dueThisWeekTasks.slice(0, 10).map((t, i) => {
             const priority = t.priority === 'high' ? ' 🔥' : '';
-            const dueDate = t.due_date ? new Date(t.due_date).toLocaleDateString('en-US', { weekday: 'short' }) : '';
+            const dueDate = t.due_date ? formatFriendlyDate(t.due_date, false) : '';
             return `${i + 1}. ${t.summary}${priority}${dueDate ? ` (${dueDate})` : ''}`;
           }).join('\n');
           const moreText = dueThisWeekTasks.length > 10 ? `\n...and ${dueThisWeekTasks.length - 10} more` : '';
@@ -2701,7 +2770,7 @@ Description: "${description}"`;
         tasks.slice(0, 20).forEach(task => {
           const status = task.completed ? '✓' : '○';
           const priority = task.priority === 'high' ? ' 🔥' : '';
-          const dueInfo = task.due_date ? ` (Due: ${new Date(task.due_date).toLocaleDateString()})` : '';
+          const dueInfo = task.due_date ? ` (Due: ${formatFriendlyDate(task.due_date)})` : '';
           savedItemsContext += `- ${status} ${task.summary}${priority}${dueInfo}\n`;
           
           if (task.items && task.items.length > 0) {
@@ -2740,6 +2809,7 @@ CRITICAL INSTRUCTIONS:
 4. If you can't find what they're looking for in their data, say so clearly
 5. Be concise (max 400 chars for WhatsApp) but helpful
 6. Use emojis sparingly for warmth
+7. When mentioning dates, always include the day of the week and time if available (e.g. "Friday, February 20th at 12:00 PM"), never just a bare date
 
 ${savedItemsContext}
 ${memoryContext}
