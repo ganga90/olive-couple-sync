@@ -803,6 +803,7 @@ export type Database = {
       }
       olive_heartbeat_log: {
         Row: {
+          channel: string | null
           created_at: string | null
           execution_time_ms: number | null
           id: string
@@ -812,6 +813,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          channel?: string | null
           created_at?: string | null
           execution_time_ms?: number | null
           id?: string
@@ -821,6 +823,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          channel?: string | null
           created_at?: string | null
           execution_time_ms?: number | null
           id?: string
