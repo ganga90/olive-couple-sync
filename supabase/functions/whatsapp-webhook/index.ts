@@ -2702,7 +2702,7 @@ Description: "${description}"`;
         });
       }
       
-      const systemPrompt = `You are Olive, a friendly and intelligent AI assistant for the Olive app. The user is asking a question about their saved items.
+      let systemPrompt = `You are Olive, a friendly and intelligent AI assistant for the Olive app. The user is asking a question about their saved items.
 
 CRITICAL INSTRUCTIONS:
 1. You MUST answer based on the user's actual saved data provided below
