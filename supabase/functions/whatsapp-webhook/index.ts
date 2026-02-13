@@ -14,7 +14,254 @@ const corsHeaders = {
 // CREATE: Everything else (default)
 // ============================================================================
 
-type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'TASK_ACTION'; isUrgent?: boolean; cleanMessage?: string };
+type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'TASK_ACTION' | 'EXPENSE'; isUrgent?: boolean; cleanMessage?: string };
+
+// ============================================================================
+// RECENT OUTBOUND MESSAGE CONTEXT
+// ============================================================================
+interface RecentOutbound {
+  type: string;        // 'reminder' | 'morning_briefing' | 'proactive_nudge' | etc.
+  content: string;     // The message content sent to the user
+  sent_at: string;     // ISO timestamp
+  source: 'queue' | 'heartbeat';
+}
+
+// ============================================================================
+// WHATSAPP SHORTCUT VOCABULARY (prefix-based power user commands)
+// ============================================================================
+const SHORTCUTS: Record<string, { intent: string; options?: Record<string, any>; label: string }> = {
+  '?': { intent: 'SEARCH', label: 'Search' },
+  '!': { intent: 'CREATE', options: { isUrgent: true }, label: 'Urgent task' },
+  '+': { intent: 'CREATE', label: 'New task' },
+  '/': { intent: 'CHAT', options: { chatType: 'general' }, label: 'Chat with Olive' },
+  '$': { intent: 'EXPENSE', label: 'Log expense' },
+  '@': { intent: 'TASK_ACTION', options: { actionType: 'assign' }, label: 'Assign to partner' },
+};
+
+// ============================================================================
+// MULTILINGUAL RESPONSE TEMPLATES
+// ============================================================================
+const LANG_NAMES: Record<string, string> = {
+  'en': 'English',
+  'es-ES': 'Spanish',
+  'es': 'Spanish',
+  'it-IT': 'Italian',
+  'it': 'Italian',
+};
+
+const RESPONSES: Record<string, Record<string, string>> = {
+  task_completed: {
+    en: '✅ Done! Marked "{task}" as complete. Great job! 🎉',
+    'es': '✅ ¡Hecho! "{task}" marcada como completada. ¡Buen trabajo! 🎉',
+    'it': '✅ Fatto! "{task}" segnata come completata. Ottimo lavoro! 🎉',
+  },
+  task_not_found: {
+    en: 'I couldn\'t find a task matching "{query}". Try "show my tasks" to see your list.',
+    'es': 'No encontré una tarea que coincida con "{query}". Prueba "mostrar mis tareas".',
+    'it': 'Non ho trovato un\'attività corrispondente a "{query}". Prova "mostra le mie attività".',
+  },
+  task_need_target: {
+    en: 'I need to know which task you want to modify. Try "done with buy milk" or "make groceries urgent".',
+    'es': 'Necesito saber qué tarea quieres modificar. Prueba "hecho con comprar leche" o "hacer urgente compras".',
+    'it': 'Devo sapere quale attività vuoi modificare. Prova "fatto con comprare latte" o "rendi urgente la spesa".',
+  },
+  context_completed: {
+    en: '✅ Done! Marked "{task}" as complete (from your recent reminder). Great job! 🎉',
+    'es': '✅ ¡Hecho! "{task}" completada (de tu recordatorio reciente). ¡Buen trabajo! 🎉',
+    'it': '✅ Fatto! "{task}" completata (dal tuo promemoria recente). Ottimo lavoro! 🎉',
+  },
+  expense_logged: {
+    en: '💰 Logged: {amount} at {merchant} ({category})',
+    'es': '💰 Registrado: {amount} en {merchant} ({category})',
+    'it': '💰 Registrato: {amount} da {merchant} ({category})',
+  },
+  expense_budget_warning: {
+    en: '⚠️ Warning: You\'re at {percentage}% of your {category} budget ({spent}/{limit})',
+    'es': '⚠️ Aviso: Estás al {percentage}% de tu presupuesto de {category} ({spent}/{limit})',
+    'it': '⚠️ Attenzione: Sei al {percentage}% del tuo budget {category} ({spent}/{limit})',
+  },
+  expense_over_budget: {
+    en: '🚨 Over budget! {category}: {spent}/{limit}',
+    'es': '🚨 ¡Presupuesto excedido! {category}: {spent}/{limit}',
+    'it': '🚨 Budget superato! {category}: {spent}/{limit}',
+  },
+  expense_need_amount: {
+    en: 'Please include an amount, e.g. "$25 coffee at Starbucks"',
+    'es': 'Incluye un monto, ej. "$25 café en Starbucks"',
+    'it': 'Includi un importo, es. "$25 caffè da Starbucks"',
+  },
+  action_cancelled: {
+    en: '👍 No problem, I cancelled that action.',
+    'es': '👍 Sin problema, cancelé esa acción.',
+    'it': '👍 Nessun problema, ho annullato quell\'azione.',
+  },
+  confirm_unclear: {
+    en: 'I didn\'t understand. Please reply "yes" to confirm or "no" to cancel.',
+    'es': 'No entendí. Responde "sí" para confirmar o "no" para cancelar.',
+    'it': 'Non ho capito. Rispondi "sì" per confermare o "no" per annullare.',
+  },
+  priority_updated: {
+    en: '{emoji} Updated! "{task}" is now {priority} priority.',
+    'es': '{emoji} ¡Actualizado! "{task}" ahora tiene prioridad {priority}.',
+    'it': '{emoji} Aggiornato! "{task}" ora ha priorità {priority}.',
+  },
+  error_generic: {
+    en: 'Sorry, something went wrong. Please try again.',
+    'es': 'Lo siento, algo salió mal. Inténtalo de nuevo.',
+    'it': 'Mi dispiace, qualcosa è andato storto. Riprova.',
+  },
+  help_text: {
+    en: `🫒 *Olive Quick Commands*
+
+*Shortcuts:*
++ New task: +Buy milk tomorrow
+! Urgent: !Call doctor now
+$ Expense: $45 lunch at Chipotle
+? Search: ?groceries
+/ Chat: /what should I focus on?
+@ Assign: @partner pick up kids
+
+*Natural language also works:*
+• Just send any text to save a task
+• "done with X" to complete tasks
+• "what's urgent?" to see priorities
+• "summarize my week" for insights
+
+🔗 Manage: https://witholive.app`,
+    'es': `🫒 *Comandos Rápidos de Olive*
+
+*Atajos:*
++ Nueva tarea: +Comprar leche mañana
+! Urgente: !Llamar al doctor
+$ Gasto: $45 almuerzo en Chipotle
+? Buscar: ?compras
+/ Chat: /¿en qué debo enfocarme?
+@ Asignar: @pareja recoger niños
+
+*También funciona lenguaje natural:*
+• Envía cualquier texto para guardar una tarea
+• "hecho con X" para completar tareas
+• "¿qué es urgente?" para ver prioridades
+• "resumen de mi semana" para insights
+
+🔗 Gestionar: https://witholive.app`,
+    'it': `🫒 *Comandi Rapidi di Olive*
+
+*Scorciatoie:*
++ Nuova attività: +Comprare latte domani
+! Urgente: !Chiamare il dottore
+$ Spesa: $45 pranzo da Chipotle
+? Cerca: ?spesa
+/ Chat: /su cosa dovrei concentrarmi?
+@ Assegna: @partner prendere i bambini
+
+*Funziona anche il linguaggio naturale:*
+• Invia qualsiasi testo per salvare un'attività
+• "fatto con X" per completare attività
+• "cosa è urgente?" per vedere priorità
+• "riassunto della settimana" per approfondimenti
+
+🔗 Gestisci: https://witholive.app`,
+  },
+};
+
+function t(key: string, lang: string, vars?: Record<string, string>): string {
+  // Normalize language code: es-ES → es, it-IT → it, en → en
+  const shortLang = lang.split('-')[0];
+  const template = RESPONSES[key]?.[lang] || RESPONSES[key]?.[shortLang] || RESPONSES[key]?.['en'] || key;
+  if (!vars) return template;
+  return Object.entries(vars).reduce((s, [k, v]) => s.replace(new RegExp(`\\{${k}\\}`, 'g'), v), template);
+}
+
+// ============================================================================
+// RECENT OUTBOUND CONTEXT HELPERS
+// ============================================================================
+
+/**
+ * Fetch recent outbound messages sent to this user (last 60 min)
+ * Combines olive_outbound_queue + olive_heartbeat_log for full picture
+ */
+async function getRecentOutboundMessages(supabase: any, userId: string): Promise<RecentOutbound[]> {
+  const sixtyMinAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const results: RecentOutbound[] = [];
+
+  try {
+    // Query outbound queue (reminders, proactive messages)
+    const { data: queueMsgs } = await supabase
+      .from('olive_outbound_queue')
+      .select('message_type, content, sent_at')
+      .eq('user_id', userId)
+      .eq('status', 'sent')
+      .gte('sent_at', sixtyMinAgo)
+      .order('sent_at', { ascending: false })
+      .limit(3);
+
+    if (queueMsgs) {
+      for (const msg of queueMsgs) {
+        results.push({
+          type: msg.message_type || 'unknown',
+          content: msg.content || '',
+          sent_at: msg.sent_at,
+          source: 'queue',
+        });
+      }
+    }
+
+    // Query heartbeat log (briefings, nudges, reviews)
+    const { data: heartbeatMsgs } = await supabase
+      .from('olive_heartbeat_log')
+      .select('job_type, message_preview, created_at')
+      .eq('user_id', userId)
+      .eq('status', 'sent')
+      .gte('created_at', sixtyMinAgo)
+      .order('created_at', { ascending: false })
+      .limit(3);
+
+    if (heartbeatMsgs) {
+      for (const msg of heartbeatMsgs) {
+        results.push({
+          type: msg.job_type || 'unknown',
+          content: msg.message_preview || '',
+          sent_at: msg.created_at,
+          source: 'heartbeat',
+        });
+      }
+    }
+  } catch (e) {
+    console.log('[Context] Could not fetch recent outbound:', e);
+  }
+
+  // Sort by most recent first
+  results.sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
+  return results.slice(0, 5);
+}
+
+/**
+ * Extract task summary/name from a recent outbound message
+ * Parses reminder, briefing, and nudge formats
+ */
+function extractTaskFromOutbound(message: RecentOutbound): string | null {
+  const content = message.content;
+  if (!content) return null;
+
+  // Reminder: "⏰ Reminder: "Answer email from CHAI" is due in 24 hours"
+  const reminderMatch = content.match(/Reminder:\s*"?([^"""\n]+)"?/i);
+  if (reminderMatch) return reminderMatch[1].trim();
+
+  // Reminder alt: "⏰ Reminder: Answer email from CHAI"
+  const reminderAlt = content.match(/^⏰\s*Reminder:\s*(.+?)(?:\n|$)/i);
+  if (reminderAlt) return reminderAlt[1].replace(/is due.*$/i, '').replace(/["""]/g, '').trim();
+
+  // Nudge: "• Buy Christmas gifts\n"
+  const nudgeMatch = content.match(/•\s*(.+?)(?:\n|$)/);
+  if (nudgeMatch) return nudgeMatch[1].trim();
+
+  // Briefing numbered: "1. Buy groceries 🔥"
+  const briefingMatch = content.match(/\d+\.\s*(.+?)(?:\s*🔥)?\s*(?:\n|$)/);
+  if (briefingMatch) return briefingMatch[1].trim();
+
+  return null;
+}
 
 // Task action types for management commands
 type TaskActionType = 
@@ -170,19 +417,16 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
   // QUICK-SEARCH SYNTAX - Power user shortcuts
   // ============================================================================
   
-  if (normalized.startsWith('?')) {
-    console.log('[Intent Detection] Matched: ? prefix (forced SEARCH)');
-    return { intent: 'SEARCH', cleanMessage: normalized.slice(1).trim() };
-  }
-  
-  if (normalized.startsWith('!')) {
-    console.log('[Intent Detection] Matched: ! prefix (forced URGENT CREATE)');
-    return { intent: 'CREATE', isUrgent: true, cleanMessage: normalized.slice(1).trim() };
-  }
-  
-  if (normalized.startsWith('/')) {
-    console.log('[Intent Detection] Matched: / prefix (forced CREATE)');
-    return { intent: 'CREATE', cleanMessage: normalized.slice(1).trim() };
+  // Config-driven shortcut system
+  const firstChar = normalized.charAt(0);
+  if (SHORTCUTS[firstChar]) {
+    const shortcut = SHORTCUTS[firstChar];
+    console.log(`[Intent Detection] Matched: ${firstChar} prefix (${shortcut.label})`);
+    return {
+      intent: shortcut.intent as any,
+      cleanMessage: normalized.slice(1).trim(),
+      ...(shortcut.options || {}),
+    };
   }
   
   // MERGE: exact match only
@@ -1304,7 +1548,7 @@ serve(async (req) => {
     // Authenticate user by WhatsApp number
     const { data: profiles, error: profileError } = await supabase
       .from('clerk_profiles')
-      .select('id, display_name, timezone')
+      .select('id, display_name, timezone, language_preference')
       .eq('phone_number', fromNumber)
       .limit(1);
 
@@ -1324,6 +1568,13 @@ serve(async (req) => {
 
     console.log('Authenticated user:', profile.id, profile.display_name);
     const userId = profile.id;
+    const userLang = profile.language_preference || 'en';
+
+    // Fetch recent outbound messages for conversation context (last 60 min)
+    const recentOutbound = await getRecentOutboundMessages(supabase, userId);
+    if (recentOutbound.length > 0) {
+      console.log(`[Context] Found ${recentOutbound.length} recent outbound messages for user`);
+    }
 
     // Track last user message timestamp for 24h template window
     try {
@@ -1383,11 +1634,11 @@ serve(async (req) => {
         .eq('id', session.id);
 
       if (isNegative) {
-        return reply('👍 No problem, I cancelled that action.');
+        return reply(t('action_cancelled', userLang));
       }
 
       if (!isAffirmative) {
-        return reply('I didn\'t understand. Please reply "yes" to confirm or "no" to cancel.');
+        return reply(t('confirm_unclear', userLang));
       }
 
       // Execute the pending action
@@ -1456,6 +1707,68 @@ serve(async (req) => {
       }
 
       return reply('Something went wrong with the confirmation. Please try again.');
+    }
+
+    // ========================================================================
+    // CONTEXTUAL BARE-REPLY DETECTION
+    // If user sends "Completed!", "Done!", "Finished!" etc. with no task name,
+    // and Olive recently sent a reminder about a specific task, auto-complete it.
+    // ========================================================================
+    const bareReplyMatch = messageBody?.trim().match(
+      /^(completed!?|done!?|finished!?|got it!?|did it!?|hecho!?|fatto!?|terminado!?|finito!?)$/i
+    );
+    if (bareReplyMatch && recentOutbound.length > 0) {
+      // Find the most recent reminder-like message
+      const recentReminder = recentOutbound.find(m =>
+        m.type === 'reminder' || m.type === 'task_reminder' ||
+        m.content.includes('Reminder:') || m.content.includes('⏰')
+      );
+
+      if (recentReminder) {
+        const extractedTask = extractTaskFromOutbound(recentReminder);
+        if (extractedTask) {
+          console.log('[Context] Bare reply detected, matching to recent reminder task:', extractedTask);
+
+          // Search for the task
+          const keywords = extractedTask.split(/\s+/).filter((w: string) => w.length > 2);
+          const foundTask = await searchTaskByKeywords(supabase, userId, coupleId, keywords);
+
+          if (foundTask) {
+            const { error } = await supabase
+              .from('clerk_notes')
+              .update({ completed: true, updated_at: new Date().toISOString() })
+              .eq('id', foundTask.id);
+
+            if (!error) {
+              return reply(t('context_completed', userLang, { task: foundTask.summary }));
+            }
+          }
+        }
+      }
+
+      // Also check if there's a recent briefing with tasks — complete the first one mentioned
+      const recentBriefing = recentOutbound.find(m =>
+        m.type === 'morning_briefing' || m.type === 'proactive_nudge' || m.type === 'overdue_nudge'
+      );
+      if (recentBriefing) {
+        const extractedTask = extractTaskFromOutbound(recentBriefing);
+        if (extractedTask) {
+          console.log('[Context] Bare reply — trying briefing task:', extractedTask);
+          const keywords = extractedTask.split(/\s+/).filter((w: string) => w.length > 2);
+          const foundTask = await searchTaskByKeywords(supabase, userId, coupleId, keywords);
+          if (foundTask) {
+            const { error } = await supabase
+              .from('clerk_notes')
+              .update({ completed: true, updated_at: new Date().toISOString() })
+              .eq('id', foundTask.id);
+            if (!error) {
+              return reply(t('context_completed', userLang, { task: foundTask.summary }));
+            }
+          }
+        }
+      }
+      // If no recent context found, fall through to normal intent detection
+      console.log('[Context] Bare reply but no matching context found, continuing with normal routing');
     }
 
     // ========================================================================
@@ -1922,14 +2235,31 @@ serve(async (req) => {
       console.log('[WhatsApp] Processing TASK_ACTION:', actionType, 'target:', actionTarget);
       
       if (!actionTarget) {
-        return reply('I need to know which task you want to modify. Try "done with buy milk" or "make groceries urgent".');
+        return reply(t('task_need_target', userLang));
       }
-      
+
       const keywords = actionTarget.split(/\s+/).filter(w => w.length > 2);
-      const foundTask = await searchTaskByKeywords(supabase, userId, coupleId, keywords);
-      
+      let foundTask = await searchTaskByKeywords(supabase, userId, coupleId, keywords);
+
+      // If no match found, try using recent outbound context
+      if (!foundTask && recentOutbound.length > 0) {
+        console.log('[Context] Task not found by keywords, checking recent outbound context...');
+        for (const outMsg of recentOutbound) {
+          const extracted = extractTaskFromOutbound(outMsg);
+          if (extracted) {
+            const contextKeywords = extracted.split(/\s+/).filter((w: string) => w.length > 2);
+            const contextTask = await searchTaskByKeywords(supabase, userId, coupleId, contextKeywords);
+            if (contextTask) {
+              console.log('[Context] Found task via outbound context:', contextTask.summary);
+              foundTask = contextTask;
+              break;
+            }
+          }
+        }
+      }
+
       if (!foundTask) {
-        return reply(`I couldn't find a task matching "${actionTarget}". Try "show my tasks" to see your list.`);
+        return reply(t('task_not_found', userLang, { query: actionTarget }));
       }
       
       switch (actionType) {
@@ -1938,14 +2268,14 @@ serve(async (req) => {
             .from('clerk_notes')
             .update({ completed: true, updated_at: new Date().toISOString() })
             .eq('id', foundTask.id);
-          
+
           if (error) {
-            return reply('Sorry, I couldn\'t complete that task. Please try again.');
+            return reply(t('error_generic', userLang));
           }
-          
-          return reply(`✅ Done! Marked "${foundTask.summary}" as complete. Great job! 🎉`);
+
+          return reply(t('task_completed', userLang, { task: foundTask.summary }));
         }
-        
+
         case 'set_priority': {
           const msgLower = (effectiveMessage || '').toLowerCase();
           const newPriority = msgLower.includes('low') ? 'low' : 'high';
@@ -1953,13 +2283,13 @@ serve(async (req) => {
             .from('clerk_notes')
             .update({ priority: newPriority, updated_at: new Date().toISOString() })
             .eq('id', foundTask.id);
-          
+
           if (error) {
-            return reply('Sorry, I couldn\'t update the priority. Please try again.');
+            return reply(t('error_generic', userLang));
           }
-          
+
           const emoji = newPriority === 'high' ? '🔥' : '📌';
-          return reply(`${emoji} Updated! "${foundTask.summary}" is now ${newPriority} priority.`);
+          return reply(t('priority_updated', userLang, { emoji, task: foundTask.summary, priority: newPriority }));
         }
         
         case 'set_due': {
@@ -2157,6 +2487,143 @@ serve(async (req) => {
     }
 
     // ========================================================================
+    // EXPENSE HANDLER - Quick expense logging via $ prefix
+    // ========================================================================
+    if (intent === 'EXPENSE') {
+      console.log('[WhatsApp] Processing EXPENSE:', effectiveMessage?.substring(0, 80));
+      const expenseText = effectiveMessage || '';
+
+      // If media attached with $ prefix, route to process-receipt
+      if (mediaUrls.length > 0) {
+        console.log('[Expense] Media attached — routing to process-receipt');
+        try {
+          const { data: receiptResult } = await supabase.functions.invoke('process-receipt', {
+            body: {
+              image_url: mediaUrls[0],
+              user_id: userId,
+              couple_id: coupleId,
+              caption: expenseText || undefined,
+            },
+          });
+          if (receiptResult?.transaction) {
+            const tx = receiptResult.transaction;
+            let response = t('expense_logged', userLang, {
+              amount: `$${Number(tx.amount).toFixed(2)}`,
+              merchant: tx.merchant || 'Unknown',
+              category: tx.category || 'Other',
+            });
+            if (receiptResult.budget_status === 'over_limit') {
+              response += '\n' + t('expense_over_budget', userLang, {
+                category: tx.category,
+                spent: `$${receiptResult.period_spending || '?'}`,
+                limit: `$${receiptResult.budget_limit || '?'}`,
+              });
+            }
+            return reply(response);
+          }
+          return reply(receiptResult?.message || t('error_generic', userLang));
+        } catch (e) {
+          console.error('[Expense] Receipt processing error:', e);
+          return reply(t('error_generic', userLang));
+        }
+      }
+
+      // Parse text-based expense: "$45.50 lunch at Chipotle"
+      const expenseMatch = expenseText.match(/^(\d+\.?\d*)\s+(.+)$/);
+      if (!expenseMatch) {
+        return reply(t('expense_need_amount', userLang));
+      }
+
+      const amount = parseFloat(expenseMatch[1]);
+      const description = expenseMatch[2].trim();
+
+      // Use AI to categorize the expense
+      let merchant = description;
+      let category = 'other';
+      try {
+        const categorizationPrompt = `Extract the merchant name and expense category from this description.
+Respond with ONLY valid JSON: {"merchant": "name", "category": "one_of_these"}
+Categories: food, transport, shopping, entertainment, utilities, health, groceries, travel, personal, education, subscriptions, other
+
+Description: "${description}"`;
+        const aiResult = await callAI(categorizationPrompt, description, 0.3);
+        const parsed = JSON.parse(aiResult.replace(/```json?|```/g, '').trim());
+        if (parsed.merchant) merchant = parsed.merchant;
+        if (parsed.category) category = parsed.category;
+      } catch (e) {
+        console.log('[Expense] AI categorization failed, using defaults:', e);
+        // Simple heuristic: check for "at" to extract merchant
+        const atMatch = description.match(/(?:at|from|@)\s+(.+)$/i);
+        if (atMatch) {
+          merchant = atMatch[1].trim();
+        }
+      }
+
+      // Insert transaction
+      try {
+        const { data: txData, error: txError } = await supabase
+          .from('transactions')
+          .insert({
+            user_id: userId,
+            couple_id: coupleId,
+            amount,
+            merchant,
+            category,
+            transaction_date: new Date().toISOString(),
+            confidence: 0.8,
+            metadata: { source: 'whatsapp_shortcut', raw_text: expenseText },
+          })
+          .select()
+          .single();
+
+        if (txError) {
+          console.error('[Expense] Insert error:', txError);
+          return reply(t('error_generic', userLang));
+        }
+
+        let response = t('expense_logged', userLang, {
+          amount: `$${amount.toFixed(2)}`,
+          merchant,
+          category,
+        });
+
+        // Check budget status
+        try {
+          const { data: budgetCheck } = await supabase.rpc('check_budget_status', {
+            p_user_id: userId,
+            p_category: category,
+            p_amount: amount,
+          });
+          if (budgetCheck && budgetCheck.length > 0) {
+            const budget = budgetCheck[0];
+            if (budget.status === 'over_limit') {
+              response += '\n' + t('expense_over_budget', userLang, {
+                category,
+                spent: `$${Number(budget.new_total).toFixed(2)}`,
+                limit: `$${Number(budget.limit_amount).toFixed(2)}`,
+              });
+            } else if (budget.status === 'warning') {
+              response += '\n' + t('expense_budget_warning', userLang, {
+                category,
+                percentage: String(Math.round(budget.percentage)),
+                spent: `$${Number(budget.new_total).toFixed(2)}`,
+                limit: `$${Number(budget.limit_amount).toFixed(2)}`,
+              });
+            }
+          }
+        } catch (e) {
+          console.log('[Expense] Budget check skipped:', e);
+        }
+
+        response += '\n\n🔗 Manage: https://witholive.app';
+        return reply(response);
+      } catch (e) {
+        console.error('[Expense] Error:', e);
+        return reply(t('error_generic', userLang));
+      }
+    }
+
+    // ========================================================================
     // CONTEXTUAL ASK HANDLER - AI-powered semantic search
     // ========================================================================
     if (intent === 'CONTEXTUAL_ASK') {
@@ -2251,6 +2718,12 @@ ${memoryContext}
 USER'S QUESTION: ${effectiveMessage}
 
 Respond with helpful, specific information from their saved items. If asking for a restaurant, book, or recommendation, check their lists first!`;
+
+      // Inject language instruction
+      const ctxLangName = LANG_NAMES[userLang] || LANG_NAMES[userLang.split('-')[0]] || 'English';
+      if (ctxLangName !== 'English') {
+        systemPrompt += `\n\nIMPORTANT: Respond entirely in ${ctxLangName}.`;
+      }
 
       try {
         const response = await callAI(systemPrompt, effectiveMessage || '', 0.7);
@@ -2601,6 +3074,14 @@ ${skillContext}
 - Overdue tasks: ${topOverdueTasks.join(', ') || 'None'}
 - Due today: ${topTodayTasks.join(', ') || 'None'}
 - Due tomorrow: ${dueTomorrowTasks.slice(0, 3).map(t => t.summary).join(', ') || 'None'}
+
+## Recent Messages from Olive (last hour):
+${recentOutbound.length > 0
+  ? recentOutbound.map(m => {
+      const ago = Math.round((Date.now() - new Date(m.sent_at).getTime()) / 60000);
+      return `- [${ago}min ago, ${m.type}]: ${m.content.substring(0, 200)}`;
+    }).join('\n')
+  : 'No recent messages sent'}
 `;
       
       switch (chatType) {
@@ -2739,21 +3220,8 @@ Be natural and personable.`;
           break;
           
         case 'help':
-          systemPrompt = `You are Olive, explaining your capabilities.
-
-Context: The user wants to know what you can do.
-
-Response (under 400 chars):
-Explain you can:
-• Save tasks via brain dumps
-• Track urgent/overdue items
-• Summarize their week
-• Give personalized focus recommendations
-• Provide productivity tips
-• Set reminders
-
-Suggest trying: "What's urgent?", "Summarize my week", or "What should I focus on?"`;
-          break;
+          // Return help text directly — no AI call needed
+          return reply(t('help_text', userLang));
           
         default: // 'general'
           systemPrompt = `You are Olive, a warm and helpful AI assistant for personal organization.
@@ -2771,8 +3239,14 @@ Guidelines:
       
       try {
         const enhancedMessage = (effectiveMessage || '') + userPromptEnhancement;
-        console.log('[WhatsApp Chat] Calling AI for chatType:', chatType);
-        
+        console.log('[WhatsApp Chat] Calling AI for chatType:', chatType, 'lang:', userLang);
+
+        // Inject language instruction into AI prompt
+        const langName = LANG_NAMES[userLang] || LANG_NAMES[userLang.split('-')[0]] || 'English';
+        if (langName !== 'English') {
+          systemPrompt += `\n\nIMPORTANT: Respond entirely in ${langName}.`;
+        }
+
         const chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7);
         
         return reply(chatResponse.slice(0, 1500));
