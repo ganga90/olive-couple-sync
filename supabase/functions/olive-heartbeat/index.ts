@@ -457,13 +457,14 @@ async function checkTaskReminders(supabase: any): Promise<number> {
         .eq('id', task.id);
 
       // Log to heartbeat
-      await supabase.from('olive_heartbeat_log').insert({
+      const { error: logErr } = await supabase.from('olive_heartbeat_log').insert({
         user_id: task.author_id,
         job_type: 'task_reminder',
         status: 'sent',
         message_preview: task.summary.substring(0, 100),
         channel: 'whatsapp',
       });
+      if (logErr) console.error('[Heartbeat] Failed to log task_reminder:', logErr.message);
 
       sentCount++;
     }
@@ -550,13 +551,14 @@ async function checkOverdueNudges(supabase: any): Promise<number> {
     );
 
     if (sent) {
-      await supabase.from('olive_heartbeat_log').insert({
+      const { error: logErr } = await supabase.from('olive_heartbeat_log').insert({
         user_id,
         job_type: 'overdue_nudge',
         status: 'sent',
         message_preview: `${overdueTasks.length} overdue tasks`,
         channel: 'whatsapp',
       });
+      if (logErr) console.error('[Heartbeat] Failed to log overdue_nudge:', logErr.message);
 
       nudgeCount++;
     }
@@ -631,13 +633,14 @@ async function processHeartbeatJobs(supabase: any): Promise<{ processed: number;
             .update({ status: 'completed', completed_at: now.toISOString() })
             .eq('id', job.id);
 
-          await supabase.from('olive_heartbeat_log').insert({
+          const { error: logErr } = await supabase.from('olive_heartbeat_log').insert({
             user_id: job.user_id,
             job_type: job.job_type,
             status: 'sent',
             message_preview: content.substring(0, 200),
             channel: 'whatsapp',
           });
+          if (logErr) console.error('[Heartbeat] Failed to log job:', logErr.message);
 
           processed++;
         } else {
@@ -652,13 +655,13 @@ async function processHeartbeatJobs(supabase: any): Promise<{ processed: number;
         .update({ status: 'failed', error: String(err) })
         .eq('id', job.id);
 
-      await supabase.from('olive_heartbeat_log').insert({
+      const { error: logErr2 } = await supabase.from('olive_heartbeat_log').insert({
         user_id: job.user_id,
         job_type: job.job_type,
         status: 'failed',
-        error: String(err),
         channel: 'whatsapp',
       });
+      if (logErr2) console.error('[Heartbeat] Failed to log error:', logErr2.message);
 
       failed++;
     }
@@ -953,13 +956,14 @@ serve(async (req) => {
         );
 
         // Log it
-        await supabase.from('olive_heartbeat_log').insert({
+        const { error: logErr } = await supabase.from('olive_heartbeat_log').insert({
           user_id: testUserId,
           job_type: 'morning_briefing',
           status: sent ? 'sent' : 'failed',
           message_preview: testBriefing.substring(0, 200),
           channel: 'whatsapp',
         });
+        if (logErr) console.error('[Heartbeat] Failed to log test_briefing:', logErr.message);
 
         return new Response(
           JSON.stringify({

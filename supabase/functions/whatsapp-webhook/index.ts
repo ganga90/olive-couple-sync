@@ -187,20 +187,25 @@ async function getRecentOutboundMessages(supabase: any, userId: string): Promise
 
   try {
     // Query outbound queue (reminders, proactive messages)
-    const { data: queueMsgs } = await supabase
+    // Select both 'content' and 'message' columns since schema may have either
+    const { data: queueMsgs, error: queueErr } = await supabase
       .from('olive_outbound_queue')
-      .select('message_type, content, sent_at')
+      .select('message_type, content, message, sent_at')
       .eq('user_id', userId)
       .eq('status', 'sent')
       .gte('sent_at', sixtyMinAgo)
       .order('sent_at', { ascending: false })
       .limit(3);
 
+    if (queueErr) {
+      console.log('[Context] outbound_queue query error:', queueErr.message);
+    }
+
     if (queueMsgs) {
       for (const msg of queueMsgs) {
         results.push({
           type: msg.message_type || 'unknown',
-          content: msg.content || '',
+          content: msg.content || msg.message || '',
           sent_at: msg.sent_at,
           source: 'queue',
         });
@@ -208,7 +213,7 @@ async function getRecentOutboundMessages(supabase: any, userId: string): Promise
     }
 
     // Query heartbeat log (briefings, nudges, reviews)
-    const { data: heartbeatMsgs } = await supabase
+    const { data: heartbeatMsgs, error: heartbeatErr } = await supabase
       .from('olive_heartbeat_log')
       .select('job_type, message_preview, created_at')
       .eq('user_id', userId)
@@ -216,6 +221,10 @@ async function getRecentOutboundMessages(supabase: any, userId: string): Promise
       .gte('created_at', sixtyMinAgo)
       .order('created_at', { ascending: false })
       .limit(3);
+
+    if (heartbeatErr) {
+      console.log('[Context] heartbeat_log query error:', heartbeatErr.message);
+    }
 
     if (heartbeatMsgs) {
       for (const msg of heartbeatMsgs) {
@@ -446,10 +455,20 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
   // ============================================================================
   
   // Complete/Done patterns
+  // First check if it's JUST "done!", "completed!", "finished!" with no task name
+  // These bare completions need context awareness, so skip them if there's no target
+  const bareCompletionMatch = lower.match(/^(?:done|complete|completed|finished|did it|got it)[!.]*$/i);
+  if (bareCompletionMatch) {
+    console.log('[Intent Detection] Matched: bare completion (no task target)');
+    // Return TASK_ACTION with empty target — the handler will try context fallback
+    return { intent: 'TASK_ACTION', actionType: 'complete', actionTarget: '' };
+  }
+
   const completeMatch = lower.match(/^(?:done|complete|completed|finished|mark(?:ed)?\s+(?:as\s+)?(?:done|complete)|checked? off)\s*(?:with\s+)?(?:the\s+)?(.+)?$/i);
   if (completeMatch) {
-    console.log('[Intent Detection] Matched: complete action');
-    return { intent: 'TASK_ACTION', actionType: 'complete', actionTarget: completeMatch[1]?.trim() };
+    const target = completeMatch[1]?.replace(/[!.]+$/, '').trim();
+    console.log('[Intent Detection] Matched: complete action, target:', target);
+    return { intent: 'TASK_ACTION', actionType: 'complete', actionTarget: target || '' };
   }
   
   // Priority patterns
@@ -1573,7 +1592,10 @@ serve(async (req) => {
     // Fetch recent outbound messages for conversation context (last 60 min)
     const recentOutbound = await getRecentOutboundMessages(supabase, userId);
     if (recentOutbound.length > 0) {
-      console.log(`[Context] Found ${recentOutbound.length} recent outbound messages for user`);
+      console.log(`[Context] Found ${recentOutbound.length} recent outbound messages for user:`,
+        recentOutbound.map(m => `[${m.source}:${m.type}] ${m.content?.substring(0, 80)}`));
+    } else {
+      console.log('[Context] No recent outbound messages found for user', userId);
     }
 
     // Track last user message timestamp for 24h template window
@@ -2234,16 +2256,19 @@ serve(async (req) => {
       const actionTarget = (intentResult as any).actionTarget as string;
       console.log('[WhatsApp] Processing TASK_ACTION:', actionType, 'target:', actionTarget);
       
-      if (!actionTarget) {
-        return reply(t('task_need_target', userLang));
+      // If no target specified, try context-aware fallback first
+      let foundTask = null;
+
+      if (actionTarget) {
+        const keywords = actionTarget.split(/\s+/).filter(w => w.length > 2);
+        if (keywords.length > 0) {
+          foundTask = await searchTaskByKeywords(supabase, userId, coupleId, keywords);
+        }
       }
 
-      const keywords = actionTarget.split(/\s+/).filter(w => w.length > 2);
-      let foundTask = await searchTaskByKeywords(supabase, userId, coupleId, keywords);
-
-      // If no match found, try using recent outbound context
+      // If no match found (or no target), try using recent outbound context
       if (!foundTask && recentOutbound.length > 0) {
-        console.log('[Context] Task not found by keywords, checking recent outbound context...');
+        console.log('[Context] No task found by target, checking recent outbound context...');
         for (const outMsg of recentOutbound) {
           const extracted = extractTaskFromOutbound(outMsg);
           if (extracted) {
@@ -2256,6 +2281,10 @@ serve(async (req) => {
             }
           }
         }
+      }
+
+      if (!foundTask && !actionTarget) {
+        return reply(t('task_need_target', userLang));
       }
 
       if (!foundTask) {

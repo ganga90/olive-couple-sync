@@ -486,15 +486,22 @@ async function logOutboundMessage(
   messageType: MessageType,
   content: string,
   metaMessageId: string,
-  status: string
+  status: string,
+  phoneNumber?: string
 ): Promise<void> {
-  await supabase.from('olive_outbound_queue').insert({
+  const { error } = await supabase.from('olive_outbound_queue').insert({
     user_id: userId,
     message_type: messageType,
     content,
+    phone_number: phoneNumber || null,
     status: status === 'sent' ? 'sent' : 'failed',
     sent_at: new Date().toISOString(),
   });
+  if (error) {
+    console.error('[Gateway] Failed to log outbound message:', error.message, error.details);
+  } else {
+    console.log('[Gateway] Logged outbound message:', messageType, 'for user', userId);
+  }
 }
 
 /**
@@ -662,7 +669,8 @@ async function sendMessage(
     message.message_type,
     message.content,
     result.message_id || '',
-    'sent'
+    'sent',
+    userProfile.phone_number
   );
 
   return { success: true, message_id: result.message_id };
