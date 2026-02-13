@@ -280,8 +280,14 @@ function buildTemplateParams(
 }
 
 /**
- * Smart send: tries free-form text first (if within 24h window),
- * falls back to template if outside window or if text send fails with 131047 error.
+ * Smart send: ALWAYS tries free-form text first (it's free!),
+ * only falls back to paid templates ($0.01/msg) when Meta rejects
+ * with error 131047 (outside 24h window).
+ *
+ * Cost optimization strategy:
+ * - Free-form text: $0.00 (works within 24h of last user message)
+ * - Template message: $0.01 per message (required outside 24h window)
+ * - Always attempt free-form first to minimize template usage
  */
 async function smartSend(
   phoneNumber: string,
@@ -289,41 +295,34 @@ async function smartSend(
   displayName: string | null,
   lastUserMessageAt: string | null
 ): Promise<MetaSendResult> {
-  const withinWindow = isWithin24hWindow(lastUserMessageAt);
+  // ALWAYS try free-form text first — it's free
+  console.log('[Meta Gateway] Attempting free-form text first (cost: $0.00)');
+  const freeFormResult = await sendMetaMessage(phoneNumber, message.content, message.media_url);
 
-  if (withinWindow) {
-    // Inside 24h window → send free-form text
-    console.log('[Meta Gateway] Within 24h window, sending free-form text');
-    const result = await sendMetaMessage(phoneNumber, message.content, message.media_url);
-
-    // If Meta returns error 131047 (re-engagement required), the window may have closed
-    // Fall back to template
-    if (!result.success && result.error?.includes('131047')) {
-      console.log('[Meta Gateway] 131047 error — window expired, falling back to template');
-      return sendAsTemplate(phoneNumber, message, displayName);
-    }
-
-    return result;
+  if (freeFormResult.success) {
+    console.log('[Meta Gateway] Free-form text sent successfully — no template cost');
+    return freeFormResult;
   }
 
-  // Outside 24h window (or unknown) → try template first, then try free-form as fallback
-  console.log('[Meta Gateway] Outside 24h window (or unknown), trying template first');
+  // Free-form failed — check if it's a 131047 (outside 24h window)
+  if (freeFormResult.error?.includes('131047')) {
+    // Outside 24h window → must use paid template
+    console.log('[Meta Gateway] 131047 error — outside 24h window, using template ($0.01)');
+    return sendAsTemplate(phoneNumber, message, displayName);
+  }
+
+  // Other error (not window-related) — still try template as last resort
+  console.log('[Meta Gateway] Free-form failed with non-window error:', freeFormResult.error);
+  console.log('[Meta Gateway] Trying template as fallback');
   const templateResult = await sendAsTemplate(phoneNumber, message, displayName);
 
-  if (!templateResult.success) {
-    // Template failed (maybe not approved yet) — try free-form as last resort
-    // This will work if user actually messaged recently but we couldn't track it
-    console.log('[Meta Gateway] Template failed, trying free-form text as fallback:', templateResult.error);
-    const freeFormResult = await sendMetaMessage(phoneNumber, message.content, message.media_url);
-    if (freeFormResult.success) {
-      return freeFormResult;
-    }
-    // Both failed — return the original template error
-    console.error('[Meta Gateway] Both template and free-form failed');
+  if (templateResult.success) {
     return templateResult;
   }
 
-  return templateResult;
+  // Both failed
+  console.error('[Meta Gateway] Both free-form and template failed');
+  return freeFormResult; // Return original error
 }
 
 /**

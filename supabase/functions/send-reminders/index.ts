@@ -130,7 +130,8 @@ async function sendWhatsAppTemplate(
 }
 
 /**
- * Smart send: use free-form text inside 24h window, template outside
+ * Smart send: ALWAYS tries free-form text first (free!),
+ * only uses paid template ($0.01) when Meta rejects with 131047.
  */
 async function smartSendReminder(
   phoneNumber: string,
@@ -138,16 +139,16 @@ async function smartSendReminder(
   displayName: string | null,
   lastUserMessageAt: string | null
 ): Promise<boolean> {
-  if (isWithin24hWindow(lastUserMessageAt)) {
-    console.log('[Meta Reminders] Within 24h window, sending free-form text');
-    const sent = await sendWhatsAppMessage(phoneNumber, reminderText);
-    if (sent) return true;
-    // If text fails (possible window expiry), fall through to template
-    console.log('[Meta Reminders] Free-form failed, trying template fallback');
+  // Always try free-form first — it's free
+  console.log('[Meta Reminders] Trying free-form text first (cost: $0.00)');
+  const sent = await sendWhatsAppMessage(phoneNumber, reminderText);
+  if (sent) {
+    console.log('[Meta Reminders] Free-form sent — no template cost');
+    return true;
   }
 
-  // Outside 24h window or free-form failed → send template
-  console.log('[Meta Reminders] Sending olive_task_reminder template');
+  // Free-form failed → use paid template as last resort
+  console.log('[Meta Reminders] Free-form failed, using template fallback ($0.01)');
   const name = displayName || 'there';
   const truncated = reminderText.length > 800
     ? reminderText.substring(0, 800) + '...'
