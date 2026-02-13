@@ -1,0 +1,1 @@
+ALTER TABLE public.clerk_profiles ADD COLUMN last_outbound_context JSONB;
