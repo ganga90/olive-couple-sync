@@ -13,6 +13,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@1.0.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -250,6 +251,282 @@ function buildRAGContext(documents: RAGDocument[]): string {
 }
 
 // ============================================================================
+// AI INTENT CLASSIFICATION (for web chat task actions)
+// Same pattern as whatsapp-webhook classifyIntent()
+// ============================================================================
+
+interface ClassifiedIntent {
+  intent: string;
+  target_task_id: string | null;
+  target_task_name: string | null;
+  matched_skill_id: string | null;
+  parameters: {
+    priority: string | null;
+    due_date_expression: string | null;
+    query_type: string | null;
+    chat_type: string | null;
+    list_name: string | null;
+    amount: number | null;
+    expense_description: string | null;
+    is_urgent: boolean | null;
+  };
+  confidence: number;
+  reasoning: string;
+}
+
+interface ActionResult {
+  type: string;
+  task_id?: string;
+  task_summary?: string;
+  success: boolean;
+  details?: Record<string, any>;
+}
+
+const intentClassificationSchema = {
+  type: Type.OBJECT,
+  properties: {
+    intent: {
+      type: Type.STRING,
+      enum: ['search', 'create', 'complete', 'set_priority', 'set_due', 'delete', 'move', 'assign', 'remind', 'expense', 'chat', 'contextual_ask'],
+    },
+    target_task_id: { type: Type.STRING, nullable: true },
+    target_task_name: { type: Type.STRING, nullable: true },
+    matched_skill_id: { type: Type.STRING, nullable: true },
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        priority: { type: Type.STRING, nullable: true },
+        due_date_expression: { type: Type.STRING, nullable: true },
+        query_type: { type: Type.STRING, nullable: true },
+        chat_type: { type: Type.STRING, nullable: true },
+        list_name: { type: Type.STRING, nullable: true },
+        amount: { type: Type.NUMBER, nullable: true },
+        expense_description: { type: Type.STRING, nullable: true },
+        is_urgent: { type: Type.BOOLEAN, nullable: true },
+      },
+      required: [],
+    },
+    confidence: { type: Type.NUMBER },
+    reasoning: { type: Type.STRING },
+  },
+  required: ['intent', 'confidence', 'reasoning'],
+};
+
+async function classifyIntentForChat(
+  message: string,
+  conversationHistory: Array<{ role: string; content: string }>,
+  activeTasks: Array<{ id: string; summary: string; due_date: string | null; priority: string }>,
+  userMemories: Array<{ title: string; content: string; category: string }>,
+  activatedSkills: Array<{ skill_id: string; name: string }>,
+): Promise<ClassifiedIntent | null> {
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+  if (!GEMINI_API_KEY) {
+    console.warn('[classifyIntentForChat] No GEMINI_API_KEY');
+    return null;
+  }
+
+  try {
+    const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+    const recentConvo = conversationHistory.slice(-6).map(msg =>
+      `${msg.role === 'user' ? 'User' : 'Olive'}: ${msg.content}`
+    ).join('\n');
+
+    const taskList = activeTasks.slice(0, 30).map(t =>
+      `- [${t.id}] "${t.summary}" (due: ${t.due_date || 'none'}, priority: ${t.priority})`
+    ).join('\n');
+
+    const memoryList = userMemories.slice(0, 10).map(m =>
+      `- [${m.category}] ${m.title}: ${m.content}`
+    ).join('\n');
+
+    const skillsList = activatedSkills.map(s => `- ${s.skill_id}: ${s.name}`).join('\n');
+
+    const systemPrompt = `You are an intent classifier for Olive, a personal task assistant. Classify the user's message into exactly ONE intent. Return structured JSON.
+
+## INTENTS:
+- "search": User wants to see/find/list tasks (e.g., "what's urgent?", "show my tasks")
+- "create": User wants to create a new task/note (e.g., "buy milk", "call mom tomorrow")
+- "complete": User wants to mark a task as done (e.g., "done with groceries", "complete dental milka")
+- "set_priority": User wants to change a task's priority (e.g., "make it urgent")
+- "set_due": User wants to change a task's due date/time (e.g., "change it to 7:30 AM")
+- "delete": User wants to remove a task (e.g., "delete the dentist task")
+- "move": User wants to move a task to a different list
+- "assign": User wants to assign a task to someone
+- "remind": User wants to set a reminder
+- "expense": User wants to log an expense
+- "chat": User wants to chat (e.g., "morning briefing", "how am I doing?")
+- "contextual_ask": User is asking a question about their data (e.g., "when is dental?")
+
+## RULES:
+1. Use CONVERSATION HISTORY to resolve pronouns ("it", "that", "this"). If the user says "change it to 7 AM" after discussing a task, the target is that task.
+2. Use ACTIVE TASKS to identify which task the user refers to. Return the exact task UUID in target_task_id when confident.
+3. Use MEMORIES to understand personal context (names, preferences, relationships).
+4. If the user's message naturally aligns with an ACTIVATED SKILL, return its skill_id in matched_skill_id.
+5. For time/date expressions, preserve the EXACT user phrasing in due_date_expression.
+6. If the message is a new thought or brain-dump, classify as "create".
+7. Confidence: 0.9+ for clear intents, 0.7-0.9 for moderate, 0.5-0.7 for uncertain.
+8. For conversational messages, questions about data, or when unsure, use "chat" or "contextual_ask".
+
+## CONVERSATION HISTORY:
+${recentConvo || 'No previous conversation.'}
+
+## USER'S ACTIVE TASKS:
+${taskList || 'No active tasks.'}
+
+## USER'S MEMORIES:
+${memoryList || 'No memories stored.'}
+
+## USER'S ACTIVATED SKILLS:
+${skillsList || 'No skills activated.'}`;
+
+    const response = await genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `Classify this message: "${message}"`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: intentClassificationSchema,
+        temperature: 0.1,
+        maxOutputTokens: 500,
+      },
+      systemInstruction: systemPrompt,
+    });
+
+    const responseText = response.text || '';
+    console.log('[classifyIntentForChat] Raw response:', responseText);
+
+    const result: ClassifiedIntent = JSON.parse(responseText);
+    console.log(`[classifyIntentForChat] intent=${result.intent}, confidence=${result.confidence}, task_id=${result.target_task_id}, reasoning=${result.reasoning}`);
+
+    return result;
+  } catch (error) {
+    console.error('[classifyIntentForChat] Error:', error);
+    return null;
+  }
+}
+
+// Execute a task action server-side and return the result
+async function executeTaskAction(
+  supabase: SupabaseClient,
+  intent: ClassifiedIntent,
+  userId: string,
+  coupleId: string | null
+): Promise<ActionResult | null> {
+  const taskActions = ['complete', 'set_priority', 'set_due', 'delete'];
+  if (!taskActions.includes(intent.intent)) return null;
+  if (intent.confidence < 0.7) return null;
+
+  try {
+    // Find the target task
+    let taskId = intent.target_task_id;
+    let taskSummary = intent.target_task_name;
+
+    if (!taskId && taskSummary) {
+      // Search by name if no UUID provided
+      const { data: tasks } = await supabase
+        .from('clerk_notes')
+        .select('id, summary, due_date, priority')
+        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+        .eq('completed', false)
+        .ilike('summary', `%${taskSummary}%`)
+        .limit(1);
+
+      if (tasks && tasks.length > 0) {
+        taskId = tasks[0].id;
+        taskSummary = tasks[0].summary;
+      }
+    }
+
+    if (!taskId) {
+      console.warn('[executeTaskAction] No task found for:', taskSummary);
+      return null;
+    }
+
+    switch (intent.intent) {
+      case 'complete': {
+        const { error } = await supabase
+          .from('clerk_notes')
+          .update({ completed: true, updated_at: new Date().toISOString() })
+          .eq('id', taskId);
+
+        if (error) throw error;
+        console.log('[executeTaskAction] Completed task:', taskSummary);
+        return { type: 'complete', task_id: taskId, task_summary: taskSummary || '', success: true };
+      }
+
+      case 'set_priority': {
+        const newPriority = intent.parameters?.priority?.toLowerCase() === 'low' ? 'low' : 'high';
+        const { error } = await supabase
+          .from('clerk_notes')
+          .update({ priority: newPriority, updated_at: new Date().toISOString() })
+          .eq('id', taskId);
+
+        if (error) throw error;
+        console.log('[executeTaskAction] Set priority:', taskSummary, '→', newPriority);
+        return { type: 'set_priority', task_id: taskId, task_summary: taskSummary || '', success: true, details: { new_priority: newPriority } };
+      }
+
+      case 'set_due': {
+        const dateExpr = intent.parameters?.due_date_expression;
+        if (!dateExpr) return null;
+
+        // Simple date parsing for common expressions
+        const now = new Date();
+        let targetDate: Date | null = null;
+
+        const lower = dateExpr.toLowerCase();
+        if (lower.includes('tomorrow')) {
+          targetDate = new Date(now);
+          targetDate.setDate(targetDate.getDate() + 1);
+          targetDate.setHours(9, 0, 0, 0);
+        } else if (lower.includes('today')) {
+          targetDate = new Date(now);
+          targetDate.setHours(18, 0, 0, 0);
+        } else {
+          // Try to parse time expression like "7:30 AM", "7.30am"
+          const timeMatch = lower.match(/(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)/i);
+          if (timeMatch) {
+            targetDate = new Date(now);
+            let hours = parseInt(timeMatch[1]);
+            const mins = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+            if (timeMatch[3].toLowerCase() === 'pm' && hours < 12) hours += 12;
+            if (timeMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
+            targetDate.setHours(hours, mins, 0, 0);
+          }
+        }
+
+        if (!targetDate) return null;
+
+        const { error } = await supabase
+          .from('clerk_notes')
+          .update({ due_date: targetDate.toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', taskId);
+
+        if (error) throw error;
+        console.log('[executeTaskAction] Set due date:', taskSummary, '→', targetDate.toISOString());
+        return { type: 'set_due', task_id: taskId, task_summary: taskSummary || '', success: true, details: { new_due_date: targetDate.toISOString() } };
+      }
+
+      case 'delete': {
+        const { error } = await supabase
+          .from('clerk_notes')
+          .delete()
+          .eq('id', taskId);
+
+        if (error) throw error;
+        console.log('[executeTaskAction] Deleted task:', taskSummary);
+        return { type: 'delete', task_id: taskId, task_summary: taskSummary || '', success: true };
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('[executeTaskAction] Error:', error);
+    return null;
+  }
+}
+
+// ============================================================================
 // MAIN HANDLER
 // ============================================================================
 
@@ -342,6 +619,74 @@ serve(async (req) => {
       }
     }
 
+    // =========================================================================
+    // AI INTENT CLASSIFICATION + ACTION EXECUTION (global chat only)
+    // =========================================================================
+    let actionResult: ActionResult | null = null;
+
+    if (isGlobalChat && supabase && actualUserId && actualMessage) {
+      try {
+        const conversationHist = context?.conversation_history || [];
+
+        // Fetch context for AI router (parallel lightweight queries)
+        const [tasksRes, memoriesRes, skillsRes] = await Promise.all([
+          supabase
+            .from('clerk_notes')
+            .select('id, summary, due_date, priority')
+            .or(`author_id.eq.${actualUserId}${actualCoupleId ? `,couple_id.eq.${actualCoupleId}` : ''}`)
+            .eq('completed', false)
+            .order('created_at', { ascending: false })
+            .limit(30),
+          supabase
+            .from('user_memories')
+            .select('title, content, category')
+            .eq('user_id', actualUserId)
+            .eq('is_active', true)
+            .order('importance', { ascending: false })
+            .limit(10),
+          supabase
+            .from('olive_user_skills')
+            .select('skill_id')
+            .eq('user_id', actualUserId)
+            .eq('enabled', true)
+            .then(async (userSkillsRes: any) => {
+              if (!userSkillsRes.data || userSkillsRes.data.length === 0) return { data: [] };
+              const skillIds = userSkillsRes.data.map((s: any) => s.skill_id);
+              return supabase
+                .from('olive_skills')
+                .select('skill_id, name')
+                .in('skill_id', skillIds)
+                .eq('is_active', true);
+            }),
+        ]);
+
+        const activeTasks = tasksRes.data || [];
+        const userMems = memoriesRes.data || [];
+        const activeSkills = skillsRes.data || [];
+
+        // Classify intent
+        const aiResult = await classifyIntentForChat(
+          actualMessage,
+          conversationHist,
+          activeTasks,
+          userMems,
+          activeSkills,
+        );
+
+        // Execute task actions server-side (complete, set_priority, set_due, delete)
+        if (aiResult && aiResult.confidence >= 0.7) {
+          const taskActions = ['complete', 'set_priority', 'set_due', 'delete'];
+          if (taskActions.includes(aiResult.intent)) {
+            console.log(`[Ask Olive Individual] Task action detected: ${aiResult.intent} (confidence: ${aiResult.confidence})`);
+            actionResult = await executeTaskAction(supabase, aiResult, actualUserId, actualCoupleId);
+          }
+        }
+      } catch (err) {
+        console.warn('[Ask Olive Individual] Intent classification error (non-fatal):', err);
+        // Continue with normal conversational response
+      }
+    }
+
     // Build the full context based on the chat mode
     let fullContext = '';
 
@@ -377,9 +722,22 @@ serve(async (req) => {
 
       fullContext += `Current User Question: ${actualMessage}`;
 
+      // If an action was executed, tell Gemini so it responds naturally
+      if (actionResult && actionResult.success) {
+        const actionVerbs: Record<string, string> = {
+          complete: 'marked as complete',
+          set_priority: `changed the priority to ${actionResult.details?.new_priority || 'updated'}`,
+          set_due: `updated the due date/time to ${actionResult.details?.new_due_date ? new Date(actionResult.details.new_due_date).toLocaleString() : 'updated'}`,
+          delete: 'deleted',
+        };
+        const verb = actionVerbs[actionResult.type] || actionResult.type;
+        fullContext += `\n\nACTION PERFORMED: You just ${verb} the task "${actionResult.task_summary}". Acknowledge this naturally in your response and confirm what you did. Be concise and friendly.`;
+      }
+
       console.log('[Ask Olive Individual] Built global chat context, length:', fullContext.length);
       console.log('[Ask Olive Individual] Has saved items context:', !!savedItemsContext);
       console.log('[Ask Olive Individual] Has RAG context:', !!ragContext);
+      console.log('[Ask Olive Individual] Action result:', actionResult ? `${actionResult.type} (success: ${actionResult.success})` : 'none');
     } else {
       // Note-specific chat mode (legacy)
       fullContext = `${memoryContext ? memoryContext + '\n\n' : ''}`;
@@ -432,7 +790,7 @@ User's Question: ${actualMessage}`;
 
       // Fallback to standard generateContent if Interactions API fails
       console.log('[Ask Olive Individual] Falling back to standard generateContent...');
-      return await fallbackToGenerateContent(geminiApiKey, fullContext, corsHeaders, citations);
+      return await fallbackToGenerateContent(geminiApiKey, fullContext, corsHeaders, citations, actionResult);
     }
 
     const data = await response.json();
@@ -453,6 +811,7 @@ User's Question: ${actualMessage}`;
         facts: citations.filter(c => c.type === 'fact').length,
         memories: citations.filter(c => c.type === 'memory').length
       } : undefined,
+      action: actionResult || undefined, // Task action result for frontend
       success: true
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -502,7 +861,8 @@ async function fallbackToGenerateContent(
   apiKey: string,
   fullContext: string,
   corsHeaders: Record<string, string>,
-  citations: Citation[] = []
+  citations: Citation[] = [],
+  actionResult: ActionResult | null = null
 ): Promise<Response> {
   try {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
@@ -544,6 +904,7 @@ async function fallbackToGenerateContent(
         facts: citations.filter(c => c.type === 'fact').length,
         memories: citations.filter(c => c.type === 'memory').length
       } : undefined,
+      action: actionResult || undefined, // Task action result for frontend
       success: true
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

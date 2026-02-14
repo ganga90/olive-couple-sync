@@ -13,6 +13,14 @@ import { useSupabaseNotes, type SupabaseNote } from "@/hooks/useSupabaseNotes";
 import { useSupabaseLists, type SupabaseList } from "@/hooks/useSupabaseLists";
 import { CitationBadges, type Citation, type SourcesUsed } from "@/components/chat/CitationBadges";
 
+interface TaskAction {
+  type: string;
+  task_id?: string;
+  task_summary?: string;
+  success: boolean;
+  details?: Record<string, any>;
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant";
@@ -20,6 +28,7 @@ interface Message {
   timestamp: Date;
   citations?: Citation[];
   sourcesUsed?: SourcesUsed;
+  action?: TaskAction;
 }
 
 interface AskOliveChatGlobalProps {
@@ -164,7 +173,7 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
   const { t } = useTranslation("common");
 
   // Fetch user's notes and lists for context
-  const { notes, loading: notesLoading } = useSupabaseNotes(currentCouple?.id);
+  const { notes, loading: notesLoading, refetch: refetchNotes } = useSupabaseNotes(currentCouple?.id);
   const { lists, loading: listsLoading } = useSupabaseLists(currentCouple?.id);
 
   // Memoize the formatted context to avoid recalculating on every render
@@ -269,9 +278,16 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
         // Include RAG citations if present
         citations: data?.citations,
         sourcesUsed: data?.sources_used,
+        // Include task action result if present
+        action: data?.action,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // If a task action was executed successfully, refetch notes to update the UI
+      if (data?.action?.success) {
+        refetchNotes?.();
+      }
     } catch (error) {
       console.error("Ask Olive error:", error);
       const errorMessage: Message = {
@@ -329,6 +345,21 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
                         compact
                         className="pt-2 border-t border-border/50"
                       />
+                    )}
+                    {/* Show task action badge if an action was performed */}
+                    {message.action && message.action.success && (
+                      <div className="mt-2 pt-2 border-t border-border/50">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          ✅ {message.action.type === 'complete' ? 'Task completed' :
+                              message.action.type === 'set_due' ? 'Due date updated' :
+                              message.action.type === 'set_priority' ? 'Priority updated' :
+                              message.action.type === 'delete' ? 'Task deleted' :
+                              'Action completed'}
+                          {message.action.task_summary && (
+                            <span className="font-medium">— {message.action.task_summary}</span>
+                          )}
+                        </span>
+                      </div>
                     )}
                   </div>
                 ) : (
