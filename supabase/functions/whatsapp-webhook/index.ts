@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@1.0.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -436,6 +437,312 @@ function detectChatType(message: string): ChatType {
   
   return 'general';
 }
+
+// ============================================================================
+// CONVERSATIONAL CONTEXT - Types, pronoun detection, TTL
+// ============================================================================
+
+interface ConversationContext {
+  pending_action?: any; // existing, for AWAITING_CONFIRMATION
+  last_referenced_entity?: {
+    type: 'task' | 'event';
+    id: string;
+    summary: string;
+    due_date?: string;
+    list_id?: string;
+    priority?: string;
+  };
+  entity_referenced_at?: string; // ISO timestamp for TTL
+  conversation_history?: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: string;
+  }>;
+}
+
+// ============================================================================
+// AI-POWERED INTENT CLASSIFICATION
+// Replaces regex-based determineIntent() with Gemini structured output
+// ============================================================================
+interface ClassifiedIntent {
+  intent: string;
+  target_task_id: string | null;
+  target_task_name: string | null;
+  matched_skill_id: string | null;
+  parameters: {
+    priority: string | null;
+    due_date_expression: string | null;
+    query_type: string | null;
+    chat_type: string | null;
+    list_name: string | null;
+    amount: number | null;
+    expense_description: string | null;
+    is_urgent: boolean | null;
+  };
+  confidence: number;
+  reasoning: string;
+}
+
+const intentClassificationSchema = {
+  type: Type.OBJECT,
+  properties: {
+    intent: {
+      type: Type.STRING,
+      enum: ['search', 'create', 'complete', 'set_priority', 'set_due', 'delete', 'move', 'assign', 'remind', 'expense', 'chat', 'contextual_ask', 'merge'],
+    },
+    target_task_id: { type: Type.STRING, nullable: true },
+    target_task_name: { type: Type.STRING, nullable: true },
+    matched_skill_id: { type: Type.STRING, nullable: true },
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        priority: { type: Type.STRING, nullable: true },
+        due_date_expression: { type: Type.STRING, nullable: true },
+        query_type: { type: Type.STRING, nullable: true, enum: ['urgent', 'today', 'tomorrow', 'this_week', 'recent', 'overdue', 'general'] },
+        chat_type: { type: Type.STRING, nullable: true, enum: ['briefing', 'weekly_summary', 'daily_focus', 'productivity_tips', 'progress_check', 'motivation', 'planning', 'greeting', 'general'] },
+        list_name: { type: Type.STRING, nullable: true },
+        amount: { type: Type.NUMBER, nullable: true },
+        expense_description: { type: Type.STRING, nullable: true },
+        is_urgent: { type: Type.BOOLEAN, nullable: true },
+      },
+      required: [],
+    },
+    confidence: { type: Type.NUMBER },
+    reasoning: { type: Type.STRING },
+  },
+  required: ['intent', 'confidence', 'reasoning'],
+};
+
+async function classifyIntent(
+  message: string,
+  conversationHistory: Array<{ role: string; content: string; timestamp: string }>,
+  recentOutboundMessages: string[],
+  activeTasks: Array<{ id: string; summary: string; due_date: string | null; priority: string }>,
+  userMemories: Array<{ title: string; content: string; category: string }>,
+  activatedSkills: Array<{ skill_id: string; name: string }>,
+  userLanguage: string
+): Promise<ClassifiedIntent | null> {
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+  if (!GEMINI_API_KEY) {
+    console.warn('[classifyIntent] No GEMINI_API_KEY, falling back to regex');
+    return null;
+  }
+
+  try {
+    const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+    // Build conversation context (last 3 exchanges)
+    const recentConvo = conversationHistory.slice(-6).map(msg =>
+      `${msg.role === 'user' ? 'User' : 'Olive'}: ${msg.content}`
+    ).join('\n');
+
+    // Build task list (compact)
+    const taskList = activeTasks.slice(0, 30).map(t =>
+      `- [${t.id}] "${t.summary}" (due: ${t.due_date || 'none'}, priority: ${t.priority})`
+    ).join('\n');
+
+    // Build memory context (compact)
+    const memoryList = userMemories.slice(0, 10).map(m =>
+      `- [${m.category}] ${m.title}: ${m.content}`
+    ).join('\n');
+
+    // Build skills context (just names)
+    const skillsList = activatedSkills.map(s => `- ${s.skill_id}: ${s.name}`).join('\n');
+
+    // Build outbound context
+    const outboundCtx = recentOutboundMessages.slice(0, 3).map(m => `- Olive said: "${m}"`).join('\n');
+
+    const systemPrompt = `You are an intent classifier for Olive, a personal task assistant. Classify the user's WhatsApp message into exactly ONE intent. Return structured JSON.
+
+## INTENTS:
+- "search": User wants to see/find/list tasks (e.g., "what's urgent?", "show my tasks", "what's due today?")
+- "create": User wants to create a new task/note (e.g., "buy milk", "call mom tomorrow")
+- "complete": User wants to mark a task as done (e.g., "done with groceries", "finish the report")
+- "set_priority": User wants to change a task's priority (e.g., "make it urgent", "set it to low priority")
+- "set_due": User wants to change a task's due date/time (e.g., "change it to 7:30 AM", "postpone to Friday")
+- "delete": User wants to remove a task (e.g., "delete the dentist task", "remove it")
+- "move": User wants to move a task to a different list (e.g., "move it to groceries")
+- "assign": User wants to assign a task to someone (e.g., "assign it to my partner")
+- "remind": User wants to set a reminder (e.g., "remind me at 5 PM")
+- "expense": User wants to log an expense (e.g., "spent $45 on dinner", "log $20 for gas")
+- "chat": User wants to chat with Olive (e.g., "morning briefing", "give me tips", "how am I doing?")
+- "contextual_ask": User is asking a question about their data (e.g., "when is dental?", "what did I save about restaurants?")
+- "merge": User wants to merge recent tasks (exactly "merge")
+
+## RULES:
+1. Use CONVERSATION HISTORY to resolve pronouns ("it", "that", "this", "lo", "eso", "quello"). If the user says "change it to 7 AM" after discussing "Dental Milka", the target is "Dental Milka".
+2. Use ACTIVE TASKS to identify which task the user refers to. Return the exact task UUID in target_task_id when you can match with high confidence.
+3. Use MEMORIES to understand personal context: names, places, preferences, relationships. E.g., if memories mention "Milka is my dog", then "dental Milka" is a vet appointment.
+4. If the user references a list name from memories, set list_name in parameters.
+5. Use ACTIVATED SKILLS to detect domain-specific intents. If the message aligns with an activated skill, return its skill_id in matched_skill_id. Only match skills the user has enabled. Do NOT force skill matches.
+6. For time/date expressions, preserve the EXACT user phrasing in due_date_expression (e.g., "7.30am", "tomorrow at 3 PM", "next Friday").
+7. For expenses, extract amount and description from the message.
+8. For search queries, set query_type based on what the user is looking for.
+9. For chat messages, set chat_type based on the conversation style.
+10. If the message is a new thought, idea, or brain-dump with no action intent, classify as "create".
+11. Confidence: 0.9+ for clear intents, 0.7-0.9 for moderate confidence, 0.5-0.7 for uncertain.
+12. The user's language is: ${userLanguage}. Understand messages in this language natively.
+
+## CONVERSATION HISTORY:
+${recentConvo || 'No previous conversation.'}
+
+## RECENT OLIVE MESSAGES:
+${outboundCtx || 'None.'}
+
+## USER'S ACTIVE TASKS:
+${taskList || 'No active tasks.'}
+
+## USER'S MEMORIES:
+${memoryList || 'No memories stored.'}
+
+## USER'S ACTIVATED SKILLS:
+${skillsList || 'No skills activated.'}`;
+
+    const response = await genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `Classify this message: "${message}"`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: intentClassificationSchema,
+        temperature: 0.1,
+        maxOutputTokens: 500,
+      },
+      systemInstruction: systemPrompt,
+    });
+
+    const responseText = response.text || '';
+    console.log('[classifyIntent] Raw response:', responseText);
+
+    const result: ClassifiedIntent = JSON.parse(responseText);
+    console.log(`[classifyIntent] intent=${result.intent}, confidence=${result.confidence}, task_id=${result.target_task_id}, skill=${result.matched_skill_id}, reasoning=${result.reasoning}`);
+
+    return result;
+  } catch (error) {
+    console.error('[classifyIntent] Error, falling back to regex:', error);
+    return null;
+  }
+}
+
+// Bridge: Convert AI ClassifiedIntent → existing IntentResult format
+function mapAIResultToIntentResult(
+  ai: ClassifiedIntent
+): IntentResult & { queryType?: string; chatType?: string; actionType?: string; actionTarget?: string; cleanMessage?: string; _aiTaskId?: string; _aiSkillId?: string } {
+  const params = ai.parameters || {};
+
+  switch (ai.intent) {
+    case 'search':
+      return {
+        intent: 'SEARCH',
+        queryType: params.query_type || 'general',
+        cleanMessage: ai.target_task_name || undefined,
+      };
+
+    case 'complete':
+      return {
+        intent: 'TASK_ACTION',
+        actionType: 'complete',
+        actionTarget: ai.target_task_name || undefined,
+        _aiTaskId: ai.target_task_id || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'set_priority':
+      return {
+        intent: 'TASK_ACTION',
+        actionType: 'set_priority',
+        actionTarget: ai.target_task_name || undefined,
+        cleanMessage: params.priority || undefined,
+        _aiTaskId: ai.target_task_id || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'set_due':
+      return {
+        intent: 'TASK_ACTION',
+        actionType: 'set_due',
+        actionTarget: ai.target_task_name || undefined,
+        cleanMessage: params.due_date_expression || undefined,
+        _aiTaskId: ai.target_task_id || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'delete':
+      return {
+        intent: 'TASK_ACTION',
+        actionType: 'delete',
+        actionTarget: ai.target_task_name || undefined,
+        _aiTaskId: ai.target_task_id || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'move':
+      return {
+        intent: 'TASK_ACTION',
+        actionType: 'move',
+        actionTarget: ai.target_task_name || undefined,
+        cleanMessage: params.list_name || undefined,
+        _aiTaskId: ai.target_task_id || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'assign':
+      return {
+        intent: 'TASK_ACTION',
+        actionType: 'assign',
+        actionTarget: ai.target_task_name || undefined,
+        _aiTaskId: ai.target_task_id || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'remind':
+      return {
+        intent: 'TASK_ACTION',
+        actionType: 'set_due',
+        actionTarget: ai.target_task_name || undefined,
+        cleanMessage: params.due_date_expression || undefined,
+        _aiTaskId: ai.target_task_id || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'expense':
+      return {
+        intent: 'EXPENSE',
+        cleanMessage: params.expense_description
+          ? `${params.amount ? '$' + params.amount + ' ' : ''}${params.expense_description}`
+          : undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'chat':
+      return {
+        intent: 'CHAT',
+        chatType: params.chat_type || 'general',
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'contextual_ask':
+      return {
+        intent: 'CONTEXTUAL_ASK',
+        cleanMessage: ai.target_task_name || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'merge':
+      return { intent: 'MERGE' };
+
+    case 'create':
+    default:
+      return {
+        intent: 'CREATE',
+        isUrgent: params.is_urgent || false,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+  }
+}
+
+// NOTE: detectPronounReference() and isContextExpired() were removed —
+// AI-powered classifyIntent() handles pronoun resolution natively via
+// conversation history + memories in the prompt. No regex needed.
 
 function determineIntent(message: string, hasMedia: boolean): IntentResult & { queryType?: QueryType; chatType?: ChatType; actionType?: TaskActionType; actionTarget?: string } {
   const trimmed = message.trim();
@@ -1124,7 +1431,7 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
   let hours: number | null = null;
   let minutes: number = 0;
   
-  const timeMatch = lowerExpr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  const timeMatch = lowerExpr.match(/(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?/i);
   if (timeMatch) {
     const potentialHour = parseInt(timeMatch[1]);
     const meridiem = timeMatch[3]?.toLowerCase();
@@ -1298,6 +1605,83 @@ async function searchTaskByKeywords(
   }
   
   return null;
+}
+
+// Semantic task search using hybrid_search_notes RPC (vector + full-text)
+// Replaces searchTaskByKeywords for AI-routed flows
+async function semanticTaskSearch(
+  supabase: any,
+  userId: string,
+  coupleId: string | null,
+  queryString: string
+): Promise<any | null> {
+  try {
+    console.log('[semanticTaskSearch] Searching for:', queryString);
+
+    // Generate embedding for semantic search
+    const embedding = await generateEmbedding(queryString);
+
+    if (embedding) {
+      // Use hybrid search: 70% vector similarity + 30% full-text
+      const { data, error } = await supabase.rpc('hybrid_search_notes', {
+        p_user_id: userId,
+        p_couple_id: coupleId,
+        p_query: queryString,
+        p_query_embedding: JSON.stringify(embedding),
+        p_vector_weight: 0.7,
+        p_limit: 5
+      });
+
+      if (!error && data && data.length > 0) {
+        // Return first non-completed match
+        const match = data.find((t: any) => !t.completed);
+        if (match) {
+          console.log('[semanticTaskSearch] Hybrid match:', match.summary, 'score:', match.score);
+          return match;
+        }
+      }
+
+      if (error) {
+        console.warn('[semanticTaskSearch] Hybrid search error:', error);
+      }
+    }
+
+    // Fallback: text-only search (vector_weight = 0.0)
+    console.log('[semanticTaskSearch] Falling back to text-only search');
+    const { data: textData, error: textError } = await supabase.rpc('hybrid_search_notes', {
+      p_user_id: userId,
+      p_couple_id: coupleId,
+      p_query: queryString,
+      p_query_embedding: JSON.stringify(new Array(1536).fill(0)),
+      p_vector_weight: 0.0,
+      p_limit: 5
+    });
+
+    if (!textError && textData && textData.length > 0) {
+      const match = textData.find((t: any) => !t.completed);
+      if (match) {
+        console.log('[semanticTaskSearch] Text-only match:', match.summary, 'score:', match.score);
+        return match;
+      }
+    }
+
+    // Final fallback: use legacy keyword search
+    console.log('[semanticTaskSearch] No semantic match, falling back to keyword search');
+    const keywords = queryString.split(/\s+/).filter(w => w.length > 2);
+    if (keywords.length > 0) {
+      return await searchTaskByKeywords(supabase, userId, coupleId, keywords);
+    }
+
+    return null;
+  } catch (error) {
+    console.error('[semanticTaskSearch] Error:', error);
+    // Fallback to keyword search on any error
+    const keywords = queryString.split(/\s+/).filter(w => w.length > 2);
+    if (keywords.length > 0) {
+      return await searchTaskByKeywords(supabase, userId, coupleId, keywords);
+    }
+    return null;
+  }
 }
 
 // Find similar notes using embedding similarity
@@ -1711,6 +2095,56 @@ serve(async (req) => {
     const coupleId = coupleMember?.couple_id || null;
 
     // ========================================================================
+    // HELPER: Save referenced entity to session for pronoun resolution
+    // ========================================================================
+    async function saveReferencedEntity(
+      task: { id: string; summary: string; due_date?: string; list_id?: string; priority?: string } | null,
+      oliveResponse: string
+    ) {
+      try {
+        const currentContext = (session.context_data || {}) as ConversationContext;
+        const existingHistory = currentContext.conversation_history || [];
+        const updatedHistory = [
+          ...existingHistory,
+          { role: 'user' as const, content: (messageBody || '').substring(0, 500), timestamp: new Date().toISOString() },
+          { role: 'assistant' as const, content: oliveResponse.substring(0, 500), timestamp: new Date().toISOString() },
+        ].slice(-6); // Keep last 3 exchanges
+
+        const updatedContext: ConversationContext = {
+          ...currentContext,
+          conversation_history: updatedHistory,
+        };
+
+        // Only update entity if a task was identified
+        if (task) {
+          updatedContext.last_referenced_entity = {
+            type: 'task',
+            id: task.id,
+            summary: task.summary,
+            due_date: task.due_date,
+            list_id: task.list_id,
+            priority: task.priority,
+          };
+          updatedContext.entity_referenced_at = new Date().toISOString();
+        }
+
+        await supabase
+          .from('user_sessions')
+          .update({
+            context_data: updatedContext,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', session.id);
+
+        if (task) {
+          console.log('[Context] Saved referenced entity:', task.summary);
+        }
+      } catch (e) {
+        console.warn('[Context] Failed to save entity context:', e);
+      }
+    }
+
+    // ========================================================================
     // HANDLE AWAITING_CONFIRMATION STATE
     // ========================================================================
     if (session.conversation_state === 'AWAITING_CONFIRMATION') {
@@ -1718,10 +2152,20 @@ serve(async (req) => {
       const isAffirmative = /^(yes|yeah|yep|sure|ok|okay|confirm|si|sí|do it|go ahead|please|y)$/i.test(messageBody!.trim());
       const isNegative = /^(no|nope|nah|cancel|nevermind|never mind|n)$/i.test(messageBody!.trim());
 
-      // Reset session state first
+      // Reset session state — preserve conversation context, only clear pending_action
+      const preservedContext = (contextData || {}) as ConversationContext;
       await supabase
         .from('user_sessions')
-        .update({ conversation_state: 'IDLE', context_data: null, updated_at: new Date().toISOString() })
+        .update({
+          conversation_state: 'IDLE',
+          context_data: {
+            last_referenced_entity: preservedContext.last_referenced_entity,
+            entity_referenced_at: preservedContext.entity_referenced_at,
+            conversation_history: preservedContext.conversation_history,
+            // pending_action intentionally omitted (cleared)
+          },
+          updated_at: new Date().toISOString()
+        })
         .eq('id', session.id);
 
       if (isNegative) {
@@ -1820,9 +2264,8 @@ serve(async (req) => {
         if (extractedTask) {
           console.log('[Context] Bare reply detected, matching to recent reminder task:', extractedTask);
 
-          // Search for the task
-          const keywords = extractedTask.split(/\s+/).filter((w: string) => w.length > 2);
-          const foundTask = await searchTaskByKeywords(supabase, userId, coupleId, keywords);
+          // Search for the task using semantic search
+          const foundTask = await semanticTaskSearch(supabase, userId, coupleId, extractedTask);
 
           if (foundTask) {
             const { error } = await supabase
@@ -1845,8 +2288,7 @@ serve(async (req) => {
         const extractedTask = extractTaskFromOutbound(recentBriefing);
         if (extractedTask) {
           console.log('[Context] Bare reply — trying briefing task:', extractedTask);
-          const keywords = extractedTask.split(/\s+/).filter((w: string) => w.length > 2);
-          const foundTask = await searchTaskByKeywords(supabase, userId, coupleId, keywords);
+          const foundTask = await semanticTaskSearch(supabase, userId, coupleId, extractedTask);
           if (foundTask) {
             const { error } = await supabase
               .from('clerk_notes')
@@ -1863,12 +2305,83 @@ serve(async (req) => {
     }
 
     // ========================================================================
-    // DETERMINISTIC ROUTING - "Strict Gatekeeper"
+    // AI-POWERED INTENT CLASSIFICATION (with regex fallback)
     // ========================================================================
-    const intentResult = determineIntent(messageBody || '', mediaUrls.length > 0);
+    const sessionContext = (session.context_data || {}) as ConversationContext;
+    const conversationHistory = sessionContext.conversation_history || [];
+
+    // Fetch context for AI router (parallel lightweight queries)
+    const [taskListResult, memoriesResult, skillsResult] = await Promise.all([
+      // 30 most recent active tasks (id + summary + due_date + priority)
+      supabase
+        .from('clerk_notes')
+        .select('id, summary, due_date, priority')
+        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+        .eq('completed', false)
+        .order('created_at', { ascending: false })
+        .limit(30),
+      // Top 10 memories by importance
+      supabase
+        .from('user_memories')
+        .select('title, content, category')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('importance', { ascending: false })
+        .limit(10),
+      // User's activated skills (just id + name)
+      supabase
+        .from('olive_user_skills')
+        .select('skill_id')
+        .eq('user_id', userId)
+        .eq('enabled', true)
+        .then(async (userSkillsRes: any) => {
+          if (!userSkillsRes.data || userSkillsRes.data.length === 0) return { data: [] };
+          const skillIds = userSkillsRes.data.map((s: any) => s.skill_id);
+          return supabase
+            .from('olive_skills')
+            .select('skill_id, name')
+            .in('skill_id', skillIds)
+            .eq('is_active', true);
+        }),
+    ]);
+
+    const activeTasks = taskListResult.data || [];
+    const userMemories = memoriesResult.data || [];
+    const activatedSkills = skillsResult.data || [];
+
+    // Build outbound context strings for AI
+    const outboundContextStrings = recentOutbound.map(m => m.content).filter(Boolean);
+
+    // Call AI classifier
+    const aiResult = await classifyIntent(
+      messageBody || '',
+      conversationHistory,
+      outboundContextStrings,
+      activeTasks,
+      userMemories,
+      activatedSkills,
+      userLang
+    );
+
+    let intentResult: IntentResult & { queryType?: string; chatType?: string; actionType?: string; actionTarget?: string; cleanMessage?: string; _aiTaskId?: string; _aiSkillId?: string };
+
+    if (aiResult && aiResult.confidence >= 0.5) {
+      // AI classification succeeded with sufficient confidence
+      intentResult = mapAIResultToIntentResult(aiResult);
+      console.log(`[AI Router] Using AI result: intent=${intentResult.intent}, confidence=${aiResult.confidence}, aiTaskId=${intentResult._aiTaskId || 'none'}, skill=${intentResult._aiSkillId || 'none'}`);
+    } else {
+      // Fallback to deterministic regex routing
+      if (aiResult) {
+        console.log(`[AI Router] Low confidence (${aiResult.confidence}), falling back to regex. AI suggested: ${aiResult.intent}`);
+      } else {
+        console.log('[AI Router] AI classification failed, falling back to regex');
+      }
+      intentResult = determineIntent(messageBody || '', mediaUrls.length > 0);
+    }
+
     const { intent, isUrgent, cleanMessage } = intentResult;
     const effectiveMessage = cleanMessage ?? messageBody;
-    console.log('Deterministic intent:', intent, 'isUrgent:', isUrgent, 'for message:', effectiveMessage?.substring(0, 50));
+    console.log('Final intent:', intent, 'isUrgent:', isUrgent, 'for message:', effectiveMessage?.substring(0, 50));
 
     // ========================================================================
     // MERGE COMMAND HANDLER
@@ -2323,26 +2836,38 @@ serve(async (req) => {
     if (intent === 'TASK_ACTION') {
       const actionType = (intentResult as any).actionType as TaskActionType;
       const actionTarget = (intentResult as any).actionTarget as string;
-      console.log('[WhatsApp] Processing TASK_ACTION:', actionType, 'target:', actionTarget);
-      
-      // If no target specified, try context-aware fallback first
+      const aiTaskId = (intentResult as any)._aiTaskId as string | undefined;
+      console.log('[WhatsApp] Processing TASK_ACTION:', actionType, 'target:', actionTarget, 'aiTaskId:', aiTaskId);
+
+      // Task resolution: AI-provided ID → semantic search → outbound context
       let foundTask = null;
 
-      if (actionTarget) {
-        const keywords = actionTarget.split(/\s+/).filter(w => w.length > 2);
-        if (keywords.length > 0) {
-          foundTask = await searchTaskByKeywords(supabase, userId, coupleId, keywords);
+      // 1. If AI provided a specific task UUID, look it up directly (fastest, most accurate)
+      if (aiTaskId) {
+        const { data: directTask } = await supabase
+          .from('clerk_notes')
+          .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time')
+          .eq('id', aiTaskId)
+          .maybeSingle();
+
+        if (directTask) {
+          console.log('[TASK_ACTION] Direct AI task match:', directTask.summary);
+          foundTask = directTask;
         }
       }
 
-      // If no match found (or no target), try using recent outbound context
+      // 2. If no direct match, use semantic search
+      if (!foundTask && actionTarget) {
+        foundTask = await semanticTaskSearch(supabase, userId, coupleId, actionTarget);
+      }
+
+      // 3. If still no match, try using recent outbound context
       if (!foundTask && recentOutbound.length > 0) {
         console.log('[Context] No task found by target, checking recent outbound context...');
         for (const outMsg of recentOutbound) {
           const extracted = extractTaskFromOutbound(outMsg);
           if (extracted) {
-            const contextKeywords = extracted.split(/\s+/).filter((w: string) => w.length > 2);
-            const contextTask = await searchTaskByKeywords(supabase, userId, coupleId, contextKeywords);
+            const contextTask = await semanticTaskSearch(supabase, userId, coupleId, extracted);
             if (contextTask) {
               console.log('[Context] Found task via outbound context:', contextTask.summary);
               foundTask = contextTask;
@@ -2371,7 +2896,9 @@ serve(async (req) => {
             return reply(t('error_generic', userLang));
           }
 
-          return reply(t('task_completed', userLang, { task: foundTask.summary }));
+          const completeResponse = t('task_completed', userLang, { task: foundTask.summary });
+          await saveReferencedEntity(foundTask, completeResponse);
+          return reply(completeResponse);
         }
 
         case 'set_priority': {
@@ -2387,22 +2914,59 @@ serve(async (req) => {
           }
 
           const emoji = newPriority === 'high' ? '🔥' : '📌';
-          return reply(t('priority_updated', userLang, { emoji, task: foundTask.summary, priority: newPriority }));
+          const priorityResponse = t('priority_updated', userLang, { emoji, task: foundTask.summary, priority: newPriority });
+          await saveReferencedEntity({ ...foundTask, priority: newPriority }, priorityResponse);
+          return reply(priorityResponse);
         }
         
         case 'set_due': {
           const dateExpr = effectiveMessage || 'tomorrow';
           const parsed = parseNaturalDate(dateExpr, profile.timezone || 'America/New_York');
-          
+
+          // Handle time-only updates: "change it to 7 AM" → keep existing date, update time
+          if (!parsed.date && foundTask.due_date) {
+            const timeOnlyMatch = dateExpr.match(/(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)/i);
+            if (timeOnlyMatch) {
+              const existingDate = new Date(foundTask.due_date);
+              let hours = parseInt(timeOnlyMatch[1]);
+              const mins = timeOnlyMatch[2] ? parseInt(timeOnlyMatch[2]) : 0;
+              if (timeOnlyMatch[3].toLowerCase() === 'pm' && hours < 12) hours += 12;
+              if (timeOnlyMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
+              existingDate.setUTCHours(hours, mins, 0, 0);
+              parsed.date = existingDate.toISOString();
+              parsed.readable = formatFriendlyDate(parsed.date);
+              console.log('[Context] Time-only update: keeping date from task, setting time to', hours + ':' + mins);
+            }
+          }
+
+          // If still no date and no existing due_date, try using today + parsed time
+          if (!parsed.date) {
+            const timeOnlyMatch = dateExpr.match(/(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)/i);
+            if (timeOnlyMatch) {
+              const today = new Date();
+              let hours = parseInt(timeOnlyMatch[1]);
+              const mins = timeOnlyMatch[2] ? parseInt(timeOnlyMatch[2]) : 0;
+              if (timeOnlyMatch[3].toLowerCase() === 'pm' && hours < 12) hours += 12;
+              if (timeOnlyMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
+              today.setHours(hours, mins, 0, 0);
+              parsed.date = today.toISOString();
+              parsed.readable = formatFriendlyDate(parsed.date);
+              console.log('[Context] Time-only update: using today with time', hours + ':' + mins);
+            }
+          }
+
           if (!parsed.date) {
             return reply(`I couldn't understand the date "${dateExpr}". Try "tomorrow", "monday", or "next week".`);
           }
-          
+
+          // Preserve conversation context alongside pending_action
+          const currentCtx = (session.context_data || {}) as ConversationContext;
           await supabase
             .from('user_sessions')
-            .update({ 
-              conversation_state: 'AWAITING_CONFIRMATION', 
+            .update({
+              conversation_state: 'AWAITING_CONFIRMATION',
               context_data: {
+                ...currentCtx,
                 pending_action: {
                   type: 'set_due_date',
                   task_id: foundTask.id,
@@ -2411,11 +2975,12 @@ serve(async (req) => {
                   readable: parsed.readable
                 }
               },
-              updated_at: new Date().toISOString() 
+              updated_at: new Date().toISOString()
             })
             .eq('id', session.id);
-          
-          return reply(`📅 Set "${foundTask.summary}" due ${parsed.readable}?\n\nReply "yes" to confirm.`);
+
+          const setDueResponse = `📅 Set "${foundTask.summary}" due ${parsed.readable}?\n\nReply "yes" to confirm.`;
+          return reply(setDueResponse);
         }
         
         case 'assign': {
@@ -2444,11 +3009,13 @@ serve(async (req) => {
           const isCreator = coupleData?.created_by === userId;
           const partnerName = isCreator ? (coupleData?.partner_name || 'Partner') : (coupleData?.you_name || 'Partner');
           
+          const assignCtx = (session.context_data || {}) as ConversationContext;
           await supabase
             .from('user_sessions')
-            .update({ 
-              conversation_state: 'AWAITING_CONFIRMATION', 
+            .update({
+              conversation_state: 'AWAITING_CONFIRMATION',
               context_data: {
+                ...assignCtx,
                 pending_action: {
                   type: 'assign',
                   task_id: foundTask.id,
@@ -2457,29 +3024,31 @@ serve(async (req) => {
                   target_name: partnerName
                 }
               },
-              updated_at: new Date().toISOString() 
+              updated_at: new Date().toISOString()
             })
             .eq('id', session.id);
-          
+
           return reply(`🤝 Assign "${foundTask.summary}" to ${partnerName}?\n\nReply "yes" to confirm.`);
         }
-        
+
         case 'delete': {
+          const deleteCtx = (session.context_data || {}) as ConversationContext;
           await supabase
             .from('user_sessions')
-            .update({ 
-              conversation_state: 'AWAITING_CONFIRMATION', 
+            .update({
+              conversation_state: 'AWAITING_CONFIRMATION',
               context_data: {
+                ...deleteCtx,
                 pending_action: {
                   type: 'delete',
                   task_id: foundTask.id,
                   task_summary: foundTask.summary
                 }
               },
-              updated_at: new Date().toISOString() 
+              updated_at: new Date().toISOString()
             })
             .eq('id', session.id);
-          
+
           return reply(`🗑️ Delete "${foundTask.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`);
         }
         
@@ -2499,9 +3068,11 @@ serve(async (req) => {
               .from('clerk_notes')
               .update({ list_id: existingList.id, updated_at: new Date().toISOString() })
               .eq('id', foundTask.id);
-            
+
             if (!error) {
-              return reply(`📂 Moved "${foundTask.summary}" to ${existingList.name}!`);
+              const moveResponse = `📂 Moved "${foundTask.summary}" to ${existingList.name}!`;
+              await saveReferencedEntity({ ...foundTask, list_id: existingList.id }, moveResponse);
+              return reply(moveResponse);
             }
           }
           
@@ -2531,13 +3102,15 @@ serve(async (req) => {
         case 'remind': {
           const reminderExpr = actionTarget;
           const parsed = parseNaturalDate(reminderExpr, profile.timezone || 'America/New_York');
-          
+          const remindCtx = (session.context_data || {}) as ConversationContext;
+
           if (parsed.date) {
             await supabase
               .from('user_sessions')
-              .update({ 
-                conversation_state: 'AWAITING_CONFIRMATION', 
+              .update({
+                conversation_state: 'AWAITING_CONFIRMATION',
                 context_data: {
+                  ...remindCtx,
                   pending_action: {
                     type: 'set_reminder',
                     task_id: foundTask.id,
@@ -2547,22 +3120,23 @@ serve(async (req) => {
                     has_due_date: !!foundTask.due_date
                   }
                 },
-                updated_at: new Date().toISOString() 
+                updated_at: new Date().toISOString()
               })
               .eq('id', session.id);
-            
+
             return reply(`⏰ Set reminder for "${foundTask.summary}" ${parsed.readable}?\n\nReply "yes" to confirm.`);
           }
-          
+
           const tomorrowReminder = new Date();
           tomorrowReminder.setDate(tomorrowReminder.getDate() + 1);
           tomorrowReminder.setHours(9, 0, 0, 0);
-          
+
           await supabase
             .from('user_sessions')
-            .update({ 
-              conversation_state: 'AWAITING_CONFIRMATION', 
+            .update({
+              conversation_state: 'AWAITING_CONFIRMATION',
               context_data: {
+                ...remindCtx,
                 pending_action: {
                   type: 'set_reminder',
                   task_id: foundTask.id,
@@ -2572,10 +3146,10 @@ serve(async (req) => {
                   has_due_date: !!foundTask.due_date
                 }
               },
-              updated_at: new Date().toISOString() 
+              updated_at: new Date().toISOString()
             })
             .eq('id', session.id);
-          
+
           return reply(`⏰ Set reminder for "${foundTask.summary}" tomorrow at 9:00 AM?\n\nReply "yes" to confirm.`);
         }
         
@@ -2800,6 +3374,18 @@ Description: "${description}"`;
         });
       }
       
+      // Build conversation history context for pronoun resolution
+      let conversationHistoryContext = '';
+      if (sessionContext.conversation_history && sessionContext.conversation_history.length > 0) {
+        conversationHistoryContext = '\n## RECENT CONVERSATION (for resolving references like "it", "that", "this task"):\n';
+        sessionContext.conversation_history.forEach((msg) => {
+          conversationHistoryContext += `${msg.role === 'user' ? 'User' : 'Olive'}: ${msg.content}\n`;
+        });
+      }
+
+      // Entity context is now handled by AI router via conversation history
+      const entityContext = '';
+
       let systemPrompt = `You are Olive, a friendly and intelligent AI assistant for the Olive app. The user is asking a question about their saved items.
 
 CRITICAL INSTRUCTIONS:
@@ -2810,9 +3396,12 @@ CRITICAL INSTRUCTIONS:
 5. Be concise (max 400 chars for WhatsApp) but helpful
 6. Use emojis sparingly for warmth
 7. When mentioning dates, always include the day of the week and time if available (e.g. "Friday, February 20th at 12:00 PM"), never just a bare date
+8. When the user uses pronouns like "it", "that", "this task", refer to the RECENT CONVERSATION and CURRENTLY REFERENCED ENTITY sections to understand what they mean
 
 ${savedItemsContext}
 ${memoryContext}
+${conversationHistoryContext}
+${entityContext}
 
 USER'S QUESTION: ${effectiveMessage}
 
@@ -2826,24 +3415,41 @@ Respond with helpful, specific information from their saved items. If asking for
 
       try {
         const response = await callAI(systemPrompt, effectiveMessage || '', 0.7);
-        
+
+        // Store conversation context: identify which task/event was discussed
+        try {
+          const questionLower = (effectiveMessage || '').toLowerCase();
+          const matchingTask = allTasks?.find(task => {
+            const summaryLower = task.summary.toLowerCase();
+            // Check if the question contains significant words from the task summary
+            const taskWords = summaryLower.split(/\s+/).filter((w: string) => w.length > 3);
+            const matchCount = taskWords.filter((w: string) => questionLower.includes(w)).length;
+            return matchCount >= Math.min(2, taskWords.length) ||
+                   questionLower.includes(summaryLower);
+          });
+
+          await saveReferencedEntity(matchingTask || null, response);
+        } catch (ctxErr) {
+          console.warn('[Context] Error saving context after CONTEXTUAL_ASK:', ctxErr);
+        }
+
         return reply(response.slice(0, 1500));
       } catch (error) {
         console.error('[WhatsApp] Contextual AI error:', error);
-        
+
         const searchTerms = (effectiveMessage || '').toLowerCase().split(/\s+/);
-        const matchingTasks = allTasks?.filter(t => 
-          searchTerms.some(term => 
-            t.summary.toLowerCase().includes(term) || 
+        const matchingTasks = allTasks?.filter(t =>
+          searchTerms.some(term =>
+            t.summary.toLowerCase().includes(term) ||
             t.items?.some((i: string) => i.toLowerCase().includes(term))
           )
         ).slice(0, 5);
-        
+
         if (matchingTasks && matchingTasks.length > 0) {
           const results = matchingTasks.map(t => `• ${t.summary}`).join('\n');
           return reply(`📋 Found these matching items:\n\n${results}\n\n🔗 Manage: https://witholive.app`);
         }
-        
+
         return reply('I couldn\'t find matching items in your lists. Try "show my tasks" to see everything.');
       }
     }
@@ -3111,11 +3717,43 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
       const topTodayTasks = dueTodayTasks.slice(0, 3).map(t => t.summary);
       
       // ================================================================
-      // OLIVE SKILLS MATCHING
+      // OLIVE SKILLS MATCHING (AI-provided skill match preferred)
       // ================================================================
-      const skillMatch = await matchUserSkills(supabase, userId, effectiveMessage || '');
+      const aiSkillId = (intentResult as any)._aiSkillId as string | undefined;
+      let skillMatch: SkillMatch = { matched: false };
+
+      if (aiSkillId) {
+        // AI router identified a matching skill — direct lookup by ID
+        console.log(`[WhatsApp Chat] AI-provided skill match: ${aiSkillId}`);
+        const { data: aiSkill } = await supabase
+          .from('olive_skills')
+          .select('skill_id, name, content, category')
+          .eq('skill_id', aiSkillId)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (aiSkill) {
+          skillMatch = {
+            matched: true,
+            skill: {
+              skill_id: aiSkill.skill_id,
+              name: aiSkill.name,
+              content: aiSkill.content,
+              category: aiSkill.category || 'general',
+            },
+            trigger_type: 'keyword', // For tracking purposes
+            matched_value: 'ai-router',
+          };
+        }
+      }
+
+      // Fallback to keyword-based skill matching if AI didn't provide a match
+      if (!skillMatch.matched) {
+        skillMatch = await matchUserSkills(supabase, userId, effectiveMessage || '');
+      }
+
       let skillContext = '';
-      
+
       if (skillMatch.matched && skillMatch.skill) {
         console.log(`[WhatsApp Chat] Skill matched: ${skillMatch.skill.name} via ${skillMatch.trigger_type}: ${skillMatch.matched_value}`);
         skillContext = `
@@ -3124,7 +3762,7 @@ ${skillMatch.skill.content}
 
 IMPORTANT: Use the above skill knowledge to enhance your response with domain-specific expertise.
 `;
-        
+
         try {
           await supabase
             .from('olive_user_skills')
@@ -3181,6 +3819,11 @@ ${recentOutbound.length > 0
       return `- [${ago}min ago, ${m.type}]: ${m.content.substring(0, 200)}`;
     }).join('\n')
   : 'No recent messages sent'}
+
+## Recent Conversation History:
+${sessionContext.conversation_history && sessionContext.conversation_history.length > 0
+  ? sessionContext.conversation_history.map(msg => `${msg.role === 'user' ? 'User' : 'Olive'}: ${msg.content}`).join('\n')
+  : 'No recent conversation'}
 `;
       
       switch (chatType) {
@@ -3347,7 +3990,10 @@ Guidelines:
         }
 
         const chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7);
-        
+
+        // Save conversation history (no specific entity for CHAT)
+        await saveReferencedEntity(null, chatResponse);
+
         return reply(chatResponse.slice(0, 1500));
       } catch (error) {
         console.error('[WhatsApp] Chat AI error:', error);
@@ -3574,7 +4220,15 @@ Guidelines:
             `💡 ${getRandomTip()}`
           ].join('\n');
         }
-        
+
+        // Store newly created task as referenced entity for context follow-ups
+        if (insertedNoteId) {
+          await saveReferencedEntity(
+            { id: insertedNoteId, summary: insertedNoteSummary, list_id: insertedListId || undefined },
+            confirmationMessage
+          );
+        }
+
         return reply(confirmationMessage);
       }
     } catch (insertError) {
