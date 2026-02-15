@@ -582,6 +582,8 @@ async function classifyIntent(
 10. If the message is a new thought, idea, or brain-dump with no action intent, classify as "create".
 11. Confidence: 0.9+ for clear intents, 0.7-0.9 for moderate confidence, 0.5-0.7 for uncertain.
 12. The user's language is: ${userLanguage}. Understand messages in this language natively.
+13. Messages containing "change", "modify", "update", "reschedule", "move" + a time/date expression should ALMOST ALWAYS be "set_due", not "create" or "chat". The word "change" implies modifying an existing entity, not creating a new one. E.g., "change it in the calendar at 7.30am" = "set_due", "move the appointment to Friday" = "set_due".
+14. When the user says "change it to X" or "can you change it to X" after discussing a specific task, ALWAYS classify as "set_due" with the target being the previously discussed task. This is NOT a "chat" or "create" intent.
 
 ## CONVERSATION HISTORY:
 ${recentConvo || 'No previous conversation.'}
@@ -816,7 +818,22 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     console.log('[Intent Detection] Matched: set due date action');
     return { intent: 'TASK_ACTION', actionType: 'set_due', actionTarget: dueMatch[1]?.trim(), cleanMessage: dueMatch[2] };
   }
-  
+
+  // "Change/modify/update it to [time]" or "change it in the calendar at [time]" patterns
+  // These should ALWAYS be set_due, not create. "Change" implies modifying existing, not creating new.
+  const changeTimeMatch = lower.match(/^(?:can\s+you\s+)?(?:change|modify|update|reschedule|move)\s+(?:it\s+)?(?:to|at|in\s+(?:the\s+)?calendar\s*(?:to|at|for)?)\s*(.+)/i);
+  if (changeTimeMatch) {
+    console.log('[Intent Detection] Matched: change time pattern →', changeTimeMatch[1]);
+    return { intent: 'TASK_ACTION', actionType: 'set_due', actionTarget: '', cleanMessage: changeTimeMatch[1] };
+  }
+
+  // "Postpone/delay X to [time]" patterns
+  const postponeMatch = lower.match(/^(?:postpone|delay|push\s+back|push)\s+(?:it\s+)?(?:to|until|till)\s*(.+)/i);
+  if (postponeMatch) {
+    console.log('[Intent Detection] Matched: postpone pattern →', postponeMatch[1]);
+    return { intent: 'TASK_ACTION', actionType: 'set_due', actionTarget: '', cleanMessage: postponeMatch[1] };
+  }
+
   // Assign patterns
   const assignMatch = lower.match(/^(?:assign|give)\s+(.+?)\s+to\s+(partner|.+)/i);
   if (assignMatch) {
@@ -2152,96 +2169,111 @@ serve(async (req) => {
       const isAffirmative = /^(yes|yeah|yep|sure|ok|okay|confirm|si|sí|do it|go ahead|please|y)$/i.test(messageBody!.trim());
       const isNegative = /^(no|nope|nah|cancel|nevermind|never mind|n)$/i.test(messageBody!.trim());
 
-      // Reset session state — preserve conversation context, only clear pending_action
-      const preservedContext = (contextData || {}) as ConversationContext;
-      await supabase
-        .from('user_sessions')
-        .update({
-          conversation_state: 'IDLE',
-          context_data: {
-            last_referenced_entity: preservedContext.last_referenced_entity,
-            entity_referenced_at: preservedContext.entity_referenced_at,
-            conversation_history: preservedContext.conversation_history,
-            // pending_action intentionally omitted (cleared)
-          },
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', session.id);
+      // Helper to clear pending state while preserving conversation context
+      const clearPendingState = async () => {
+        const preservedContext = (contextData || {}) as ConversationContext;
+        await supabase
+          .from('user_sessions')
+          .update({
+            conversation_state: 'IDLE',
+            context_data: {
+              last_referenced_entity: preservedContext.last_referenced_entity,
+              entity_referenced_at: preservedContext.entity_referenced_at,
+              conversation_history: preservedContext.conversation_history,
+              // pending_action intentionally omitted (cleared)
+            },
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', session.id);
+      };
 
-      if (isNegative) {
+      // Staleness check: if confirmation has been pending for >5 minutes, auto-cancel
+      const sessionUpdatedAt = new Date(session.updated_at).getTime();
+      const isStale = (Date.now() - sessionUpdatedAt) > 5 * 60 * 1000;
+
+      if (isStale) {
+        console.log('[AWAITING_CONFIRMATION] Stale confirmation (>5 min old), auto-cancelling and processing message normally');
+        await clearPendingState();
+        // Fall through to normal message processing below
+      } else if (isNegative) {
+        await clearPendingState();
         return reply(t('action_cancelled', userLang));
-      }
+      } else if (isAffirmative) {
+        await clearPendingState();
 
-      if (!isAffirmative) {
-        return reply(t('confirm_unclear', userLang));
-      }
+        // Execute the pending action
+        const pendingAction = contextData?.pending_action;
 
-      // Execute the pending action
-      const pendingAction = contextData?.pending_action;
-      
-      if (pendingAction?.type === 'assign') {
-        const { error: updateError } = await supabase
-          .from('clerk_notes')
-          .update({ 
-            task_owner: pendingAction.target_user_id, 
-            updated_at: new Date().toISOString() 
-          })
-          .eq('id', pendingAction.task_id);
+        if (pendingAction?.type === 'assign') {
+          const { error: updateError } = await supabase
+            .from('clerk_notes')
+            .update({
+              task_owner: pendingAction.target_user_id,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', pendingAction.task_id);
 
-        if (updateError) {
-          console.error('Error assigning task:', updateError);
-          return reply('Sorry, I couldn\'t assign that task. Please try again.');
+          if (updateError) {
+            console.error('Error assigning task:', updateError);
+            return reply('Sorry, I couldn\'t assign that task. Please try again.');
+          }
+
+          return reply(`✅ Done! I assigned "${pendingAction.task_summary}" to ${pendingAction.target_name}. 🎯`);
+        } else if (pendingAction?.type === 'set_due_date') {
+          await supabase
+            .from('clerk_notes')
+            .update({
+              due_date: pendingAction.date,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', pendingAction.task_id);
+
+          return reply(`✅ Done! "${pendingAction.task_summary}" is now due ${pendingAction.readable}. 📅`);
+        } else if (pendingAction?.type === 'set_reminder') {
+          const updateData: any = {
+            reminder_time: pendingAction.time,
+            updated_at: new Date().toISOString()
+          };
+
+          if (!pendingAction.has_due_date) {
+            updateData.due_date = pendingAction.time;
+          }
+
+          await supabase
+            .from('clerk_notes')
+            .update(updateData)
+            .eq('id', pendingAction.task_id);
+
+          return reply(`✅ Done! I'll remind you about "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`);
+        } else if (pendingAction?.type === 'delete') {
+          await supabase
+            .from('clerk_notes')
+            .delete()
+            .eq('id', pendingAction.task_id);
+
+          return reply(`🗑️ Done! "${pendingAction.task_summary}" has been deleted.`);
+        } else if (pendingAction?.type === 'merge') {
+          const { data: mergeResult, error: mergeError } = await supabase.rpc('merge_notes', {
+            p_source_id: pendingAction.source_id,
+            p_target_id: pendingAction.target_id
+          });
+
+          if (mergeError) {
+            console.error('Error merging notes:', mergeError);
+            return reply('Sorry, I couldn\'t merge those notes. Please try again.');
+          }
+
+          return reply(`✅ Merged! Combined your note into: "${pendingAction.target_summary}"\n\n🔗 Manage: https://witholive.app`);
         }
 
-        return reply(`✅ Done! I assigned "${pendingAction.task_summary}" to ${pendingAction.target_name}. 🎯`);
-      } else if (pendingAction?.type === 'set_due_date') {
-        await supabase
-          .from('clerk_notes')
-          .update({ 
-            due_date: pendingAction.date, 
-            updated_at: new Date().toISOString() 
-          })
-          .eq('id', pendingAction.task_id);
-
-        return reply(`✅ Done! "${pendingAction.task_summary}" is now due ${pendingAction.readable}. 📅`);
-      } else if (pendingAction?.type === 'set_reminder') {
-        const updateData: any = { 
-          reminder_time: pendingAction.time, 
-          updated_at: new Date().toISOString() 
-        };
-        
-        if (!pendingAction.has_due_date) {
-          updateData.due_date = pendingAction.time;
-        }
-        
-        await supabase
-          .from('clerk_notes')
-          .update(updateData)
-          .eq('id', pendingAction.task_id);
-
-        return reply(`✅ Done! I'll remind you about "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`);
-      } else if (pendingAction?.type === 'delete') {
-        await supabase
-          .from('clerk_notes')
-          .delete()
-          .eq('id', pendingAction.task_id);
-
-        return reply(`🗑️ Done! "${pendingAction.task_summary}" has been deleted.`);
-      } else if (pendingAction?.type === 'merge') {
-        const { data: mergeResult, error: mergeError } = await supabase.rpc('merge_notes', {
-          p_source_id: pendingAction.source_id,
-          p_target_id: pendingAction.target_id
-        });
-
-        if (mergeError) {
-          console.error('Error merging notes:', mergeError);
-          return reply('Sorry, I couldn\'t merge those notes. Please try again.');
-        }
-
-        return reply(`✅ Merged! Combined your note into: "${pendingAction.target_summary}"\n\n🔗 Manage: https://witholive.app`);
+        return reply('Something went wrong with the confirmation. Please try again.');
+      } else {
+        // Non-confirmation message (not yes/no): auto-cancel pending action
+        // and fall through to process the message normally
+        console.log('[AWAITING_CONFIRMATION] Non-confirmation message received, auto-cancelling pending action, processing as new message:', messageBody?.substring(0, 50));
+        await clearPendingState();
+        // DO NOT RETURN — fall through to normal intent classification below
       }
-
-      return reply('Something went wrong with the confirmation. Please try again.');
     }
 
     // ========================================================================
@@ -3976,7 +4008,21 @@ Guidelines:
 - If they ask something you can help with (tasks, productivity), do so
 - If they ask about specific tasks, use the data above
 - Suggest relevant commands if appropriate ("what's urgent", "summarize my week", etc.)
-- Use emojis warmly but sparingly 🫒`;
+- Use emojis warmly but sparingly 🫒
+
+IMPORTANT - TASK CAPABILITIES:
+Olive CAN modify tasks. You are a full task management assistant, not just a chatbot. Supported actions:
+- Complete tasks ("done with groceries")
+- Change due dates/times ("set dental to 7:30am", "postpone meeting to Friday")
+- Change priorities ("make it urgent", "set to low priority")
+- Delete tasks ("delete the dentist task")
+- Assign tasks ("assign groceries to my partner")
+- Set reminders ("remind me at 5pm")
+If the user asks to modify a task but the action didn't execute, guide them with the right phrasing:
+- "Try: 'set [task name] to [time]'" for changing due dates
+- "Try: 'make [task] urgent'" for priorities
+- "Try: 'done with [task]'" for completing tasks
+NEVER say you cannot modify tasks, change dates, or manage their calendar. You absolutely can.`;
       }
       
       try {
