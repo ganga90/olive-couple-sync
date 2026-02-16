@@ -307,7 +307,7 @@ type TaskActionType =
   | 'move'          // "move X to groceries list"
   | 'remind';       // "remind me about X tomorrow"
 
-type QueryType = 'urgent' | 'today' | 'tomorrow' | 'this_week' | 'recent' | 'overdue' | 'general' | null;
+type QueryType = 'urgent' | 'today' | 'tomorrow' | 'this_week' | 'recent' | 'overdue' | 'general' | undefined;
 
 // Chat subtypes for specialized AI handling
 type ChatType = 
@@ -522,9 +522,9 @@ async function classifyIntent(
   activatedSkills: Array<{ skill_id: string; name: string }>,
   userLanguage: string
 ): Promise<ClassifiedIntent | null> {
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY') || Deno.env.get('GEMINI_API');
   if (!GEMINI_API_KEY) {
-    console.warn('[classifyIntent] No GEMINI_API_KEY, falling back to regex');
+    console.warn('[classifyIntent] No GEMINI_API_KEY or GEMINI_API, falling back to regex');
     return null;
   }
 
@@ -604,12 +604,12 @@ ${skillsList || 'No skills activated.'}`;
       model: "gemini-2.5-flash",
       contents: `Classify this message: "${message}"`,
       config: {
+        systemInstruction: systemPrompt,
         responseMimeType: "application/json",
         responseSchema: intentClassificationSchema,
         temperature: 0.1,
         maxOutputTokens: 500,
       },
-      systemInstruction: systemPrompt,
     });
 
     const responseText = response.text || '';
@@ -796,7 +796,7 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'TASK_ACTION', actionType: 'complete', actionTarget: '' };
   }
 
-  const completeMatch = lower.match(/^(?:done|complete|completed|finished|mark(?:ed)?\s+(?:as\s+)?(?:done|complete)|checked? off)\s*(?:with\s+)?(?:the\s+)?(.+)?$/i);
+  const completeMatch = lower.match(/^(?:done|complete|completed|finished|mark(?:ed)?\s+(?:it\s+)?(?:as\s+)?(?:done|complete)|checked? off)\s*(?:with\s+)?(?:the\s+)?(.+)?$/i);
   if (completeMatch) {
     const target = completeMatch[1]?.replace(/[!.]+$/, '').trim();
     console.log('[Intent Detection] Matched: complete action, target:', target);
@@ -1903,9 +1903,32 @@ serve(async (req) => {
     const { fromNumber: rawFromNumber, messageBody: rawMessageBody, mediaItems, latitude, longitude, phoneNumberId, messageId } = messageData;
     const fromNumber = standardizePhoneNumber(rawFromNumber);
     
+    // Mutable ref for userId so reply() can access it after auth
+    let _authenticatedUserId: string | null = null;
+    
     // Helper to send reply via Meta Cloud API
     const reply = async (text: string, mediaUrl?: string): Promise<Response> => {
       await sendWhatsAppReply(phoneNumberId || WHATSAPP_PHONE_NUMBER_ID, rawFromNumber, text, WHATSAPP_ACCESS_TOKEN, mediaUrl);
+      
+      // Save last_outbound_context so bare replies can reference it
+      if (_authenticatedUserId) {
+        try {
+          await supabase
+            .from('clerk_profiles')
+            .update({
+              last_outbound_context: {
+                message_type: 'reply',
+                content: text.substring(0, 500),
+                sent_at: new Date().toISOString(),
+                status: 'sent'
+              }
+            })
+            .eq('id', _authenticatedUserId);
+        } catch (ctxErr) {
+          console.warn('[Context] Failed to save last_outbound_context:', ctxErr);
+        }
+      }
+      
       return new Response(JSON.stringify({ status: 'ok' }), { 
         status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -2057,6 +2080,7 @@ serve(async (req) => {
 
     console.log('Authenticated user:', profile.id, profile.display_name);
     const userId = profile.id;
+    _authenticatedUserId = userId; // Enable reply() to save outbound context
     const userLang = profile.language_preference || 'en';
 
     // Fetch recent outbound messages for conversation context (last 60 min)
@@ -2596,7 +2620,10 @@ serve(async (req) => {
           return `${i + 1}. ${t.summary}${priority}${dueInfo}${items}`;
         }).join('\n\n');
         
-        return reply(`📋 ${matchedListName} (${relevantTasks.length}):\n\n${itemsList}\n\n💡 Say "done with [task]" to complete items`);
+        const searchListResponse = `📋 ${matchedListName} (${relevantTasks.length}):\n\n${itemsList}\n\n💡 Say "done with [task]" to complete items`;
+        // Save the first (or only) task as referenced entity for pronoun resolution
+        await saveReferencedEntity(relevantTasks[0], searchListResponse);
+        return reply(searchListResponse);
       }
 
       // General task summary
@@ -2859,6 +2886,9 @@ serve(async (req) => {
 
       summary += '\n\n💡 Try: "what\'s urgent", "what\'s due today", or "show my groceries list"';
 
+      // Save the most prominent task as entity for pronoun resolution
+      const prominentTask = urgentTasks[0] || dueTodayTasks[0] || activeTasks[0] || null;
+      await saveReferencedEntity(prominentTask, summary);
       return reply(summary);
     }
 
@@ -2888,12 +2918,38 @@ serve(async (req) => {
         }
       }
 
-      // 2. If no direct match, use semantic search
-      if (!foundTask && actionTarget) {
+      // Check if actionTarget is a pronoun (it, that, this, lo, eso, quello)
+      const isPronoun = !actionTarget || /^(it|that|this|lo|eso|quello|la|esa|questa|quello)$/i.test(actionTarget.trim());
+
+      // 2. If no direct match, use semantic search (skip if just a pronoun)
+      if (!foundTask && actionTarget && !isPronoun) {
         foundTask = await semanticTaskSearch(supabase, userId, coupleId, actionTarget);
       }
 
-      // 3. If still no match, try using recent outbound context
+      // 3. If still no match, check session's last_referenced_entity (pronoun resolution)
+      if (!foundTask) {
+        const sessionCtx = (session.context_data || {}) as ConversationContext;
+        if (sessionCtx.last_referenced_entity) {
+          const entityAge = sessionCtx.entity_referenced_at
+            ? Date.now() - new Date(sessionCtx.entity_referenced_at).getTime()
+            : Infinity;
+          // Only use if referenced within last 10 minutes
+          if (entityAge < 10 * 60 * 1000) {
+            console.log('[Context] Resolving pronoun via session last_referenced_entity:', sessionCtx.last_referenced_entity.summary);
+            const { data: entityTask } = await supabase
+              .from('clerk_notes')
+              .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time')
+              .eq('id', sessionCtx.last_referenced_entity.id)
+              .eq('completed', false)
+              .maybeSingle();
+            if (entityTask) {
+              foundTask = entityTask;
+            }
+          }
+        }
+      }
+
+      // 4. If still no match, try using recent outbound context
       if (!foundTask && recentOutbound.length > 0) {
         console.log('[Context] No task found by target, checking recent outbound context...');
         for (const outMsg of recentOutbound) {
