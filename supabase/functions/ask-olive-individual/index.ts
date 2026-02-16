@@ -319,9 +319,9 @@ async function classifyIntentForChat(
   userMemories: Array<{ title: string; content: string; category: string }>,
   activatedSkills: Array<{ skill_id: string; name: string }>,
 ): Promise<ClassifiedIntent | null> {
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-  if (!GEMINI_API_KEY) {
-    console.warn('[classifyIntentForChat] No GEMINI_API_KEY');
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY') || Deno.env.get('GEMINI_API');
+    if (!GEMINI_API_KEY) {
+      console.warn('[classifyIntentForChat] No GEMINI_API_KEY or GEMINI_API');
     return null;
   }
 
@@ -384,12 +384,12 @@ ${skillsList || 'No skills activated.'}`;
       model: "gemini-2.5-flash",
       contents: `Classify this message: "${message}"`,
       config: {
+        systemInstruction: systemPrompt,
         responseMimeType: "application/json",
         responseSchema: intentClassificationSchema,
         temperature: 0.1,
         maxOutputTokens: 500,
       },
-      systemInstruction: systemPrompt,
     });
 
     const responseText = response.text || '';
