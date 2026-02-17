@@ -346,7 +346,7 @@ async function sendAsTemplate(
 }
 
 /**
- * Check if current time is within quiet hours for a user
+ * Check if current time is within quiet hours for a user (timezone-aware)
  */
 async function isQuietHours(supabase: any, userId: string): Promise<boolean> {
   try {
@@ -358,14 +358,27 @@ async function isQuietHours(supabase: any, userId: string): Promise<boolean> {
 
     if (!data?.quiet_hours_start || !data?.quiet_hours_end) return false;
 
-    const now = new Date();
-    const startH = parseInt(data.quiet_hours_start.split(':')[0]);
-    const endH = parseInt(data.quiet_hours_end.split(':')[0]);
-    const currentH = now.getUTCHours(); // simplified; ideally timezone-aware
+    // Get user's local hour using their timezone
+    let currentH: number;
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: data.timezone || 'UTC',
+        hour: 'numeric',
+        hour12: false,
+      });
+      const parts = formatter.formatToParts(new Date());
+      currentH = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+    } catch {
+      currentH = new Date().getUTCHours();
+    }
+
+    const startH = parseInt(data.quiet_hours_start.toString().split(':')[0]);
+    const endH = parseInt(data.quiet_hours_end.toString().split(':')[0]);
 
     if (startH < endH) {
       return currentH >= startH && currentH < endH;
     } else {
+      // Wraps midnight (e.g. 22:00 – 07:00)
       return currentH >= startH || currentH < endH;
     }
   } catch {

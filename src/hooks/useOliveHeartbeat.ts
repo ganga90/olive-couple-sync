@@ -197,11 +197,23 @@ export function useOliveHeartbeat(): UseOliveHeartbeatReturn {
       setError(null);
 
       try {
+        // Also sync timezone from clerk_profiles
+        let tz = prefs.quiet_hours_start ? undefined : undefined; // placeholder
+        try {
+          const { data: profile } = await supabase
+            .from('clerk_profiles')
+            .select('timezone')
+            .eq('id', user.id)
+            .single();
+          if (profile?.timezone) tz = profile.timezone;
+        } catch { /* ignore */ }
+
         const { error: upsertError } = await supabase
           .from('olive_user_preferences')
           .upsert({
             user_id: user.id,
             ...prefs,
+            ...(tz ? { timezone: tz } : {}),
             updated_at: new Date().toISOString(),
           }, {
             onConflict: 'user_id',
@@ -211,7 +223,6 @@ export function useOliveHeartbeat(): UseOliveHeartbeatReturn {
           throw upsertError;
         }
 
-        // Update local state
         setPreferences((prev) => (prev ? { ...prev, ...prefs } : null));
       } catch (err) {
         setError(err as Error);
