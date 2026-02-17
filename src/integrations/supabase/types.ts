@@ -1066,8 +1066,10 @@ export type Database = {
         Row: {
           created_at: string | null
           evening_review_enabled: boolean | null
+          evening_review_time: string | null
           max_daily_messages: number | null
           morning_briefing_enabled: boolean | null
+          morning_briefing_time: string | null
           overdue_nudge_enabled: boolean | null
           pattern_suggestions_enabled: boolean | null
           proactive_enabled: boolean | null
@@ -1076,13 +1078,17 @@ export type Database = {
           timezone: string | null
           updated_at: string | null
           user_id: string
+          weekly_summary_day: number | null
           weekly_summary_enabled: boolean | null
+          weekly_summary_time: string | null
         }
         Insert: {
           created_at?: string | null
           evening_review_enabled?: boolean | null
+          evening_review_time?: string | null
           max_daily_messages?: number | null
           morning_briefing_enabled?: boolean | null
+          morning_briefing_time?: string | null
           overdue_nudge_enabled?: boolean | null
           pattern_suggestions_enabled?: boolean | null
           proactive_enabled?: boolean | null
@@ -1091,13 +1097,17 @@ export type Database = {
           timezone?: string | null
           updated_at?: string | null
           user_id: string
+          weekly_summary_day?: number | null
           weekly_summary_enabled?: boolean | null
+          weekly_summary_time?: string | null
         }
         Update: {
           created_at?: string | null
           evening_review_enabled?: boolean | null
+          evening_review_time?: string | null
           max_daily_messages?: number | null
           morning_briefing_enabled?: boolean | null
+          morning_briefing_time?: string | null
           overdue_nudge_enabled?: boolean | null
           pattern_suggestions_enabled?: boolean | null
           proactive_enabled?: boolean | null
@@ -1106,7 +1116,9 @@ export type Database = {
           timezone?: string | null
           updated_at?: string | null
           user_id?: string
+          weekly_summary_day?: number | null
           weekly_summary_enabled?: boolean | null
+          weekly_summary_time?: string | null
         }
         Relationships: []
       }

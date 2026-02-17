@@ -420,9 +420,8 @@ async function checkTaskReminders(supabase: any): Promise<number> {
 
   const { data: dueReminders, error } = await supabase
     .from('clerk_notes')
-    .select('id, summary, author_id, reminder_time, due_date, reminder_sent')
+    .select('id, summary, author_id, reminder_time, due_date, auto_reminders_sent')
     .eq('completed', false)
-    .eq('reminder_sent', false)
     .gte('reminder_time', now.toISOString())
     .lte('reminder_time', fifteenMinutesLater.toISOString())
     .limit(50);
@@ -435,6 +434,11 @@ async function checkTaskReminders(supabase: any): Promise<number> {
   let sentCount = 0;
 
   for (const task of dueReminders) {
+    // Skip if already reminded for this specific reminder_time
+    const reminderKey = `heartbeat_${task.reminder_time}`;
+    const alreadySent = (task.auto_reminders_sent || []).includes(reminderKey);
+    if (alreadySent) continue;
+
     const dueInfo = task.due_date
       ? `Due: ${new Date(task.due_date).toLocaleDateString()}`
       : '';
@@ -450,10 +454,11 @@ async function checkTaskReminders(supabase: any): Promise<number> {
     );
 
     if (sent) {
-      // Mark reminder as sent
+      // Mark reminder as sent using auto_reminders_sent array
+      const updatedSent = [...(task.auto_reminders_sent || []), reminderKey];
       await supabase
         .from('clerk_notes')
-        .update({ reminder_sent: true })
+        .update({ auto_reminders_sent: updatedSent, last_reminded_at: new Date().toISOString() })
         .eq('id', task.id);
 
       // Log to heartbeat
