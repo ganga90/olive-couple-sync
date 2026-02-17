@@ -2004,7 +2004,7 @@ serve(async (req) => {
     }
 
     // Handle media-only messages — route directly to CREATE via process-note
-    // The AI in process-note will analyze the image/document and extract structured data
+    // Audio messages get transcribed via ElevenLabs STT first
     if (mediaUrls.length > 0 && !messageBody) {
       console.log('[WhatsApp] Processing media-only message — routing directly to CREATE');
 
@@ -2044,7 +2044,155 @@ serve(async (req) => {
         .single();
       const mediaCoupleId = mediaCoupleM?.couple_id || null;
 
-      // Send directly to process-note with media
+      // ====================================================================
+      // AUDIO TRANSCRIPTION via ElevenLabs Batch STT
+      // If the media is audio (voice note), transcribe it to text first,
+      // then route the transcribed text through process-note like a normal message.
+      // ====================================================================
+      const isAudio = mediaTypes.some(mt => mt.startsWith('audio/'));
+
+      if (isAudio) {
+        console.log('[WhatsApp] Audio message detected — transcribing via ElevenLabs STT');
+
+        const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
+        if (!ELEVENLABS_API_KEY) {
+          console.error('[STT] ELEVENLABS_API_KEY not configured');
+          return reply('Sorry, voice note processing is not configured yet. Please send a text message instead.');
+        }
+
+        let transcribedText = '';
+
+        try {
+          // Find the first audio media item — download raw bytes from Meta directly
+          // (We already uploaded to storage, but we need the raw bytes for STT)
+          const audioMediaItem = mediaItems.find(m => m.mimeType.startsWith('audio/'));
+          if (!audioMediaItem) throw new Error('No audio media item found');
+
+          // Download raw audio from Meta
+          const metaInfoRes = await fetch(`https://graph.facebook.com/v21.0/${audioMediaItem.id}`, {
+            headers: { 'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}` }
+          });
+          if (!metaInfoRes.ok) throw new Error(`Meta media info failed: ${metaInfoRes.status}`);
+          const metaInfo = await metaInfoRes.json();
+
+          const audioRes = await fetch(metaInfo.url, {
+            headers: { 'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}` }
+          });
+          if (!audioRes.ok) throw new Error(`Meta audio download failed: ${audioRes.status}`);
+
+          const audioBlob = await audioRes.blob();
+          console.log('[STT] Audio blob size:', audioBlob.size, 'type:', audioBlob.type || audioMediaItem.mimeType);
+
+          // Send to ElevenLabs Batch STT
+          const sttFormData = new FormData();
+          const audioFile = new File([audioBlob], 'voice_note.ogg', { type: audioMediaItem.mimeType });
+          sttFormData.append('file', audioFile);
+          sttFormData.append('model_id', 'scribe_v2');
+          // Auto-detect language
+          sttFormData.append('tag_audio_events', 'false');
+          sttFormData.append('diarize', 'false');
+
+          const sttResponse = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+            method: 'POST',
+            headers: {
+              'xi-api-key': ELEVENLABS_API_KEY,
+            },
+            body: sttFormData,
+          });
+
+          if (!sttResponse.ok) {
+            const sttErr = await sttResponse.text();
+            console.error('[STT] ElevenLabs STT failed:', sttResponse.status, sttErr);
+            throw new Error(`STT failed: ${sttResponse.status}`);
+          }
+
+          const sttResult = await sttResponse.json();
+          transcribedText = sttResult.text?.trim() || '';
+          console.log('[STT] Transcribed text:', transcribedText.substring(0, 200));
+
+        } catch (sttError) {
+          console.error('[STT] Transcription error:', sttError);
+          // Fallback: save as generic media note
+          transcribedText = '';
+        }
+
+        if (transcribedText) {
+          // Route the transcribed text through process-note just like a text message
+          console.log('[WhatsApp] Routing transcribed audio to process-note as text');
+
+          const audioPayload = {
+            text: transcribedText,
+            user_id: mediaUserId,
+            couple_id: mediaCoupleId,
+            timezone: mediaProfile.timezone || 'America/New_York',
+            media: mediaUrls, // Keep the audio URL as attachment
+            mediaTypes: mediaTypes,
+          };
+
+          const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
+            body: audioPayload
+          });
+
+          if (processError) {
+            console.error('Error processing transcribed audio note:', processError);
+            return reply('Sorry, I heard your voice note but had trouble processing it. Please try again.');
+          }
+
+          // Insert the processed note
+          try {
+            const noteData = {
+              author_id: mediaUserId,
+              couple_id: mediaCoupleId,
+              original_text: transcribedText,
+              summary: processData.summary || transcribedText,
+              category: processData.category || 'task',
+              due_date: processData.due_date || null,
+              reminder_time: processData.reminder_time || null,
+              recurrence_frequency: processData.recurrence_frequency || null,
+              recurrence_interval: processData.recurrence_interval || null,
+              priority: processData.priority || 'medium',
+              tags: processData.tags || [],
+              items: processData.items || [],
+              task_owner: processData.task_owner || null,
+              list_id: processData.list_id || null,
+              media_urls: mediaUrls,
+              completed: false,
+            };
+
+            const { data: insertedNote, error: insertError } = await supabase
+              .from('clerk_notes')
+              .insert(noteData)
+              .select('id, summary, list_id')
+              .single();
+
+            if (insertError) throw insertError;
+
+            let listName = 'Tasks';
+            if (insertedNote.list_id) {
+              const { data: listData } = await supabase
+                .from('clerk_lists')
+                .select('name')
+                .eq('id', insertedNote.list_id)
+                .single();
+              listName = listData?.name || 'Tasks';
+            }
+
+            const confirmMsg = `🎤 Voice note transcribed:\n"${transcribedText.substring(0, 200)}${transcribedText.length > 200 ? '...' : ''}"\n\n✅ Saved: ${insertedNote.summary}\n📂 Added to: ${listName}`;
+            return reply(confirmMsg);
+          } catch (insertErr) {
+            console.error('Database insertion error for audio note:', insertErr);
+            return reply('I transcribed your voice note but had trouble saving it. Please try again.');
+          }
+        } else {
+          // Transcription failed or empty — save as generic media note with fallback text
+          console.log('[WhatsApp] Audio transcription empty, saving as media attachment');
+        }
+        // Fall through to image/document processing below if transcription was empty
+      }
+
+      // ====================================================================
+      // IMAGE / DOCUMENT processing via process-note (non-audio, or audio fallback)
+      // ====================================================================
       const mediaPayload: any = {
         text: '',
         user_id: mediaUserId,
@@ -2094,7 +2242,6 @@ serve(async (req) => {
 
         if (insertError) throw insertError;
 
-        // Get list name
         let listName = 'Tasks';
         if (insertedNote.list_id) {
           const { data: listData } = await supabase
