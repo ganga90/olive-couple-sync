@@ -216,20 +216,27 @@ serve(async (req) => {
 
     console.log(`Found ${dueDateNotes?.length || 0} notes with due dates to check for automatic reminders`);
 
-    // Filter notes that need 24h or 2h reminders
+    // Filter notes that need 24h, 2h, or 15min reminders
+    // Use wider windows (±5 min) aligned with the 1-minute cron interval
     const autoReminders: any[] = [];
     if (dueDateNotes && dueDateNotes.length > 0) {
       for (const note of dueDateNotes) {
         const dueDate = new Date(note.due_date);
-        const timeDiff = dueDate.getTime() - now.getTime();
-        const hoursUntilDue = timeDiff / (1000 * 60 * 60);
+        const minutesUntilDue = (dueDate.getTime() - now.getTime()) / (1000 * 60);
 
         const alreadySent = note.auto_reminders_sent || [];
 
-        if (hoursUntilDue >= 23.9 && hoursUntilDue <= 24.1 && !alreadySent.includes('24h')) {
+        // 24h window: 23h55m to 24h05m
+        if (minutesUntilDue >= 1435 && minutesUntilDue <= 1445 && !alreadySent.includes('24h')) {
           autoReminders.push({ ...note, reminder_type: '24h', reminder_message: 'in 24 hours' });
-        } else if (hoursUntilDue >= 1.9 && hoursUntilDue <= 2.1 && !alreadySent.includes('2h')) {
+        }
+        // 2h window: 1h55m to 2h05m
+        else if (minutesUntilDue >= 115 && minutesUntilDue <= 125 && !alreadySent.includes('2h')) {
           autoReminders.push({ ...note, reminder_type: '2h', reminder_message: 'in 2 hours' });
+        }
+        // 15min window: 10m to 20m
+        else if (minutesUntilDue >= 10 && minutesUntilDue <= 20 && !alreadySent.includes('15min')) {
+          autoReminders.push({ ...note, reminder_type: '15min', reminder_message: 'in 15 minutes' });
         }
       }
     }
