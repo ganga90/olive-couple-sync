@@ -492,14 +492,17 @@ const Onboarding = () => {
         setWhatsappLink(data.whatsappLink);
         if (!isDesktop) {
           window.open(data.whatsappLink, '_blank');
-          goToNextStep();
+          // Don't auto-advance — let user click "Done" after connecting
         }
         // On desktop, show QR code instead of navigating
       } else {
+        console.error('Failed to generate WhatsApp link:', error, data);
+        toast.error("Couldn't generate WhatsApp link. You can connect later in Settings.");
         goToNextStep();
       }
     } catch (error) {
       console.error('Failed to generate WhatsApp link:', error);
+      toast.error("Couldn't generate WhatsApp link. You can connect later in Settings.");
       goToNextStep();
     }
   };
@@ -571,6 +574,7 @@ const Onboarding = () => {
       const { data, error } = await supabase.functions.invoke('process-note', {
         body: {
           text: demoText.trim(),
+          user_id: user?.id,
           couple_id: currentCouple?.id || null,
         }
       });
@@ -1258,6 +1262,33 @@ const Onboarding = () => {
                 <p className="text-center text-sm text-muted-foreground">
                   {t('whatsapp.scanQr', { defaultValue: "Scan this QR code with your phone to open WhatsApp and start chatting with Olive." })}
                 </p>
+                <Button
+                  onClick={goToNextStep}
+                  className="w-full h-12 text-base group"
+                >
+                  {t('whatsapp.done', { defaultValue: "Done — Continue" })}
+                  <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
+                </Button>
+              </div>
+            ) : whatsappLink ? (
+              /* Mobile: link generated, show "Done" button */
+              <div className="space-y-4">
+                <div className="flex justify-center py-4">
+                  <div className="w-20 h-20 rounded-full bg-green-500/10 flex items-center justify-center border border-green-500/20">
+                    <Check className="w-10 h-10 text-green-500" />
+                  </div>
+                </div>
+                <p className="text-center text-sm text-muted-foreground">
+                  {t('whatsapp.subtext', { defaultValue: "WhatsApp opened! Send the token to connect your account." })}
+                </p>
+                <Button
+                  onClick={() => window.open(whatsappLink, '_blank')}
+                  variant="outline"
+                  className="w-full h-12 text-base"
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  {t('whatsapp.connectButton', { defaultValue: "Open WhatsApp again" })}
+                </Button>
                 <Button
                   onClick={goToNextStep}
                   className="w-full h-12 text-base group"

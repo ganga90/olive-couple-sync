@@ -1367,7 +1367,8 @@ Process this note:
       'recipes': ['recipe', 'cook', 'bake', 'ingredients', 'cuisine', 'dish', 'meal'],
       'music': ['song', 'album', 'artist', 'band', 'playlist', 'spotify', 'music'],
       'stocks': ['stock', 'ticker', '$', 'share', 'shares', 'invest', 'portfolio', 'market', 'trading', 'dividend', 'earnings', 'nasdaq', 'nyse', 'price target', 'buy rating', 'sell rating', 'analyst', 'ferrari', 'apple', 'amazon', 'tesla', 'nvidia', 'microsoft', 'google', 'meta'],
-      'finance': ['finance', 'investment', 'crypto', 'bitcoin', 'ethereum', 'currency', 'forex', 'bond', 'etf', 'mutual fund']
+      'finance': ['finance', 'investment', 'crypto', 'bitcoin', 'ethereum', 'currency', 'forex', 'bond', 'etf', 'mutual fund'],
+      'groceries': ['milk', 'eggs', 'bread', 'butter', 'cheese', 'chicken', 'beef', 'pork', 'fish', 'rice', 'pasta', 'flour', 'sugar', 'salt', 'pepper', 'oil', 'vinegar', 'tomato', 'potato', 'onion', 'garlic', 'lemon', 'lime', 'orange', 'apple', 'banana', 'avocado', 'lettuce', 'spinach', 'carrot', 'broccoli', 'cucumber', 'yogurt', 'cream', 'cereal', 'coffee', 'tea', 'juice', 'water', 'soda', 'beer', 'wine', 'snack', 'chips', 'crackers', 'cookies', 'fruit', 'vegetable', 'meat', 'produce', 'dairy', 'frozen', 'canned', 'sauce', 'condiment', 'spice', 'herb', 'nut', 'seed', 'grain', 'bean', 'tofu', 'soy', 'almond', 'oat']
     };
 
     const findOrCreateList = async (category: string, tags: string[] = [], targetList?: string, summary?: string) => {
@@ -1548,9 +1549,27 @@ Process this note:
       }
       
       // ================================================================
+      // PRIORITY 4.5: Content-based category override for new list creation
+      // If the summary/text contains common grocery items but AI said "personal",
+      // override to "groceries" so the right list gets created
+      // ================================================================
+      const textForOverride = [safeText, summary].filter(Boolean).join(' ').toLowerCase();
+      const groceryKeywords = contentKeywords['groceries'] || [];
+      const groceryMatchCount = groceryKeywords.filter(kw => {
+        const regex = new RegExp(`\\b${kw}\\b`, 'i');
+        return regex.test(textForOverride);
+      }).length;
+      
+      let effectiveCategory = category;
+      if (groceryMatchCount >= 1 && normalizeName(category) !== 'groceries') {
+        console.log('[findOrCreateList] Content override: detected', groceryMatchCount, 'grocery keywords, overriding category from', category, 'to groceries');
+        effectiveCategory = 'groceries';
+      }
+
+      // ================================================================
       // PRIORITY 5: Create new list only if no match found
       // ================================================================
-      const listName = category
+      const listName = effectiveCategory
         .replace(/_/g, ' ')
         .split(' ')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
