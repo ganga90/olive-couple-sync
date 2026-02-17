@@ -458,6 +458,9 @@ interface ConversationContext {
     content: string;
     timestamp: string;
   }>;
+  // Numbered list tracking for ordinal references ("the first one", "the third one")
+  last_displayed_list?: Array<{ id: string; summary: string; position: number }>;
+  list_displayed_at?: string; // ISO timestamp for TTL
 }
 
 // ============================================================================
@@ -637,6 +640,7 @@ function mapAIResultToIntentResult(
         intent: 'SEARCH',
         queryType: params.query_type || 'general',
         cleanMessage: ai.target_task_name || undefined,
+        _listName: params.list_name || undefined,
       };
 
     case 'complete':
@@ -2140,7 +2144,8 @@ serve(async (req) => {
     // ========================================================================
     async function saveReferencedEntity(
       task: { id: string; summary: string; due_date?: string; list_id?: string; priority?: string } | null,
-      oliveResponse: string
+      oliveResponse: string,
+      displayedList?: Array<{ id: string; summary: string }>
     ) {
       try {
         const currentContext = (session.context_data || {}) as ConversationContext;
@@ -2167,6 +2172,17 @@ serve(async (req) => {
             priority: task.priority,
           };
           updatedContext.entity_referenced_at = new Date().toISOString();
+        }
+
+        // Store numbered list for ordinal reference resolution ("the first one", "the third one")
+        if (displayedList && displayedList.length > 0) {
+          updatedContext.last_displayed_list = displayedList.map((t, i) => ({
+            id: t.id,
+            summary: t.summary,
+            position: i,
+          }));
+          updatedContext.list_displayed_at = new Date().toISOString();
+          console.log('[Context] Saved displayed list:', displayedList.length, 'items');
         }
 
         await supabase
@@ -2543,6 +2559,9 @@ serve(async (req) => {
         return word;
       }
       
+      // Strip trailing punctuation for pattern matching (e.g., "What's on my travel list?")
+      const cleanedMessage = (effectiveMessage || '').replace(/[?!.]+$/, '').trim();
+      
       const listExtractionPatterns = [
         /(?:show|display|open|get|see)\s+(?:me\s+)?(?:the\s+|my\s+|our\s+)?(.+?)\s+(?:list|tasks?|items?)$/i,
         /(?:what'?s|whats)\s+(?:in|on)\s+(?:the\s+|my\s+|our\s+)?(.+?)\s+(?:list|tasks?|items?)$/i,
@@ -2555,50 +2574,72 @@ serve(async (req) => {
       let specificList: string | null = null;
       let matchedListName: string | null = null;
       
-      for (const pattern of listExtractionPatterns) {
-        const match = effectiveMessage?.match(pattern);
-        if (!match) continue;
-        
-        const rawExtracted = normalizeListName(match[1]);
-        if (!rawExtracted || rawExtracted.length < 2) continue;
-        
-        const genericWords = new Set(['tasks', 'task', 'all', 'everything', 'stuff', 'things', 'my', 'me', 'the']);
-        if (genericWords.has(rawExtracted)) continue;
-        
-        const extractedSingular = singularize(rawExtracted);
+      // PRIORITY: Use AI-provided list_name if available (most reliable)
+      const aiListName = (intentResult as any)._listName as string | undefined;
+      if (aiListName) {
+        const aiNormalized = normalizeListName(aiListName);
+        const aiSingular = singularize(aiNormalized);
+        console.log('[WhatsApp] AI provided list_name:', aiListName, '→ normalized:', aiNormalized);
         
         for (const [listId, listName] of listIdToName) {
-          const normalizedListName = normalizeListName(listName as string);
-          const listNameSingular = singularize(normalizedListName);
-          
-          if (normalizedListName === rawExtracted || normalizedListName === extractedSingular) {
+          const nln = normalizeListName(listName as string);
+          const nlnS = singularize(nln);
+          if (nln === aiNormalized || nlnS === aiSingular || nln.includes(aiNormalized) || aiNormalized.includes(nln) || nlnS.includes(aiSingular) || aiSingular.includes(nlnS)) {
             specificList = listId;
             matchedListName = listName as string;
-            break;
-          }
-          
-          if (listNameSingular === extractedSingular) {
-            specificList = listId;
-            matchedListName = listName as string;
-            break;
-          }
-          
-          if (normalizedListName.includes(rawExtracted) || rawExtracted.includes(normalizedListName)) {
-            specificList = listId;
-            matchedListName = listName as string;
-            break;
-          }
-          
-          if (listNameSingular.includes(extractedSingular) || extractedSingular.includes(listNameSingular)) {
-            specificList = listId;
-            matchedListName = listName as string;
+            console.log(`[WhatsApp] AI list match: "${aiListName}" → "${matchedListName}"`);
             break;
           }
         }
-        
-        if (specificList) {
-          console.log(`[WhatsApp] List matched: "${match[1]}" → "${matchedListName}"`);
-          break;
+      }
+      
+      // FALLBACK: Regex extraction from cleaned message (no trailing punctuation)
+      if (!specificList) {
+        for (const pattern of listExtractionPatterns) {
+          const match = cleanedMessage?.match(pattern);
+          if (!match) continue;
+          
+          const rawExtracted = normalizeListName(match[1]);
+          if (!rawExtracted || rawExtracted.length < 2) continue;
+          
+          const genericWords = new Set(['tasks', 'task', 'all', 'everything', 'stuff', 'things', 'my', 'me', 'the']);
+          if (genericWords.has(rawExtracted)) continue;
+          
+          const extractedSingular = singularize(rawExtracted);
+          
+          for (const [listId, listName] of listIdToName) {
+            const normalizedListName = normalizeListName(listName as string);
+            const listNameSingular = singularize(normalizedListName);
+            
+            if (normalizedListName === rawExtracted || normalizedListName === extractedSingular) {
+              specificList = listId;
+              matchedListName = listName as string;
+              break;
+            }
+            
+            if (listNameSingular === extractedSingular) {
+              specificList = listId;
+              matchedListName = listName as string;
+              break;
+            }
+            
+            if (normalizedListName.includes(rawExtracted) || rawExtracted.includes(normalizedListName)) {
+              specificList = listId;
+              matchedListName = listName as string;
+              break;
+            }
+            
+            if (listNameSingular.includes(extractedSingular) || extractedSingular.includes(listNameSingular)) {
+              specificList = listId;
+              matchedListName = listName as string;
+              break;
+            }
+          }
+          
+          if (specificList) {
+            console.log(`[WhatsApp] Regex list matched: "${match[1]}" → "${matchedListName}"`);
+            break;
+          }
         }
       }
 
@@ -2621,8 +2662,8 @@ serve(async (req) => {
         }).join('\n\n');
         
         const searchListResponse = `📋 ${matchedListName} (${relevantTasks.length}):\n\n${itemsList}\n\n💡 Say "done with [task]" to complete items`;
-        // Save the first (or only) task as referenced entity for pronoun resolution
-        await saveReferencedEntity(relevantTasks[0], searchListResponse);
+        // Save the first task as referenced entity AND the full numbered list for ordinal references
+        await saveReferencedEntity(relevantTasks[0], searchListResponse, relevantTasks.map(t => ({ id: t.id, summary: t.summary })));
         return reply(searchListResponse);
       }
 
@@ -2840,17 +2881,22 @@ serve(async (req) => {
           }
           
           const recentList = lastFive.map((t, i) => `${i + 1}. ${t.summary}`).join('\n');
-          return reply(`📝 Your Latest Tasks:\n\n${recentList}\n\n🔗 Manage: https://witholive.app`);
+          const recentResponse = `📝 Your Latest Tasks:\n\n${recentList}\n\n🔗 Manage: https://witholive.app`;
+          await saveReferencedEntity(lastFive[0], recentResponse, lastFive.map(t => ({ id: t.id, summary: t.summary })));
+          return reply(recentResponse);
         }
         
-        const recentList = recentTasks.slice(0, 8).map((t, i) => {
+        const displayedRecent = recentTasks.slice(0, 8);
+        const recentList = displayedRecent.map((t, i) => {
           const priority = t.priority === 'high' ? ' 🔥' : '';
           return `${i + 1}. ${t.summary}${priority}`;
         }).join('\n');
         
         const moreText = recentTasks.length > 8 ? `\n\n...and ${recentTasks.length - 8} more` : '';
         
-        return reply(`🕐 ${recentTasks.length} Task${recentTasks.length === 1 ? '' : 's'} Added Recently:\n\n${recentList}${moreText}\n\n🔗 Manage: https://witholive.app`);
+        const recentResponse = `🕐 ${recentTasks.length} Task${recentTasks.length === 1 ? '' : 's'} Added Recently:\n\n${recentList}${moreText}\n\n🔗 Manage: https://witholive.app`;
+        await saveReferencedEntity(displayedRecent[0], recentResponse, displayedRecent.map(t => ({ id: t.id, summary: t.summary })));
+        return reply(recentResponse);
       }
       
       if (queryType === 'overdue') {
@@ -2886,9 +2932,10 @@ serve(async (req) => {
 
       summary += '\n\n💡 Try: "what\'s urgent", "what\'s due today", or "show my groceries list"';
 
-      // Save the most prominent task as entity for pronoun resolution
+      // Save the most prominent task as entity AND the displayed numbered list for ordinal resolution
       const prominentTask = urgentTasks[0] || dueTodayTasks[0] || activeTasks[0] || null;
-      await saveReferencedEntity(prominentTask, summary);
+      const displayedTasks = urgentTasks.length > 0 ? urgentTasks.slice(0, 3) : activeTasks.slice(0, 5);
+      await saveReferencedEntity(prominentTask, summary, displayedTasks.map(t => ({ id: t.id, summary: t.summary })));
       return reply(summary);
     }
 
@@ -2901,8 +2948,58 @@ serve(async (req) => {
       const aiTaskId = (intentResult as any)._aiTaskId as string | undefined;
       console.log('[WhatsApp] Processing TASK_ACTION:', actionType, 'target:', actionTarget, 'aiTaskId:', aiTaskId);
 
-      // Task resolution: AI-provided ID → semantic search → outbound context
+      // Task resolution: ordinal reference → AI-provided ID → semantic search → outbound context
       let foundTask = null;
+
+      // 0. ORDINAL RESOLUTION: "the first one", "the third one", "number 2", "#3"
+      const ordinalPatterns = [
+        /(?:the\s+)?(first|second|third|fourth|fifth|sixth|seventh|eighth|1st|2nd|3rd|4th|5th|6th|7th|8th)\s*(?:one|task|item)?/i,
+        /(?:#|number\s+|no\.?\s*)(\d+)/i,
+      ];
+      let ordinalIndex = -1;
+      for (const pat of ordinalPatterns) {
+        const m = (messageBody || '').match(pat);
+        if (!m) continue;
+        const val = m[1].toLowerCase();
+        const ordinalMap: Record<string, number> = {
+          first: 0, second: 1, third: 2, fourth: 3, fifth: 4, sixth: 5, seventh: 6, eighth: 7,
+          '1st': 0, '2nd': 1, '3rd': 2, '4th': 3, '5th': 4, '6th': 5, '7th': 6, '8th': 7,
+        };
+        if (ordinalMap[val] !== undefined) {
+          ordinalIndex = ordinalMap[val];
+        } else {
+          const numMatch = val.match(/\d+/);
+          if (numMatch) ordinalIndex = parseInt(numMatch[0]) - 1;
+        }
+        break;
+      }
+
+      if (ordinalIndex >= 0) {
+        const sessionCtx = (session.context_data || {}) as ConversationContext;
+        if (sessionCtx.last_displayed_list && sessionCtx.list_displayed_at) {
+          const listAge = Date.now() - new Date(sessionCtx.list_displayed_at).getTime();
+          if (listAge < 15 * 60 * 1000) { // 15 min TTL
+            if (ordinalIndex < sessionCtx.last_displayed_list.length) {
+              const listItem = sessionCtx.last_displayed_list[ordinalIndex];
+              const { data: listTask } = await supabase
+                .from('clerk_notes')
+                .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time')
+                .eq('id', listItem.id)
+                .maybeSingle();
+              if (listTask) {
+                foundTask = listTask;
+                console.log(`[Context] Resolved ordinal #${ordinalIndex + 1} to task: ${listTask.summary}`);
+              }
+            } else {
+              console.log(`[Context] Ordinal #${ordinalIndex + 1} out of range (list has ${sessionCtx.last_displayed_list.length} items)`);
+            }
+          } else {
+            console.log('[Context] Displayed list is stale (>15 min)');
+          }
+        } else {
+          console.log('[Context] No displayed list in session for ordinal resolution');
+        }
+      }
 
       // 1. If AI provided a specific task UUID, look it up directly (fastest, most accurate)
       if (aiTaskId) {
