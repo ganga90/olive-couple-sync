@@ -2003,9 +2003,114 @@ serve(async (req) => {
       return reply(`📍 Thanks for sharing your location! (${latitude}, ${longitude})\n\nYou can add a task with this location by sending a message like:\n"Buy groceries at this location"`);
     }
 
-    // Handle media-only messages
+    // Handle media-only messages — route directly to CREATE via process-note
+    // The AI in process-note will analyze the image/document and extract structured data
     if (mediaUrls.length > 0 && !messageBody) {
-      console.log('[WhatsApp] Processing media-only message');
+      console.log('[WhatsApp] Processing media-only message — routing directly to CREATE');
+
+      // Authenticate user first (need userId, coupleId for note creation)
+      const { data: mediaProfiles, error: mediaProfileError } = await supabase
+        .from('clerk_profiles')
+        .select('id, display_name, timezone, language_preference')
+        .eq('phone_number', fromNumber)
+        .limit(1);
+
+      const mediaProfile = mediaProfiles?.[0];
+      if (mediaProfileError || !mediaProfile) {
+        console.error('Profile lookup error for media message:', mediaProfileError);
+        return reply(
+          '👋 Hi! To use Olive via WhatsApp, please link your account first:\n\n' +
+          '1️⃣ Open the Olive app\n2️⃣ Go to Profile/Settings\n3️⃣ Tap "Link WhatsApp"\n4️⃣ Send the token here'
+        );
+      }
+
+      const mediaUserId = mediaProfile.id;
+      _authenticatedUserId = mediaUserId;
+
+      // Track last user message timestamp
+      try {
+        await supabase
+          .from('clerk_profiles')
+          .update({ last_user_message_at: new Date().toISOString() })
+          .eq('id', mediaUserId);
+      } catch (e) { /* non-critical */ }
+
+      // Get couple_id
+      const { data: mediaCoupleM } = await supabase
+        .from('clerk_couple_members')
+        .select('couple_id')
+        .eq('user_id', mediaUserId)
+        .limit(1)
+        .single();
+      const mediaCoupleId = mediaCoupleM?.couple_id || null;
+
+      // Send directly to process-note with media
+      const mediaPayload: any = {
+        text: '',
+        user_id: mediaUserId,
+        couple_id: mediaCoupleId,
+        timezone: mediaProfile.timezone || 'America/New_York',
+        media: mediaUrls,
+        mediaTypes: mediaTypes,
+      };
+
+      console.log('[WhatsApp] Sending media-only to process-note:', mediaUrls.length, 'files, types:', mediaTypes);
+
+      const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
+        body: mediaPayload
+      });
+
+      if (processError) {
+        console.error('Error processing media note:', processError);
+        return reply('Sorry, I had trouble processing that image. Please try again or add a caption describing what you want to save.');
+      }
+
+      // Insert the processed note
+      try {
+        const noteData = {
+          author_id: mediaUserId,
+          couple_id: mediaCoupleId,
+          original_text: processData.summary || 'Media attachment',
+          summary: processData.summary || 'Media attachment',
+          category: processData.category || 'task',
+          due_date: processData.due_date || null,
+          reminder_time: processData.reminder_time || null,
+          recurrence_frequency: processData.recurrence_frequency || null,
+          recurrence_interval: processData.recurrence_interval || null,
+          priority: processData.priority || 'medium',
+          tags: processData.tags || [],
+          items: processData.items || [],
+          task_owner: processData.task_owner || null,
+          list_id: processData.list_id || null,
+          media_urls: mediaUrls,
+          completed: false,
+        };
+
+        const { data: insertedNote, error: insertError } = await supabase
+          .from('clerk_notes')
+          .insert(noteData)
+          .select('id, summary, list_id')
+          .single();
+
+        if (insertError) throw insertError;
+
+        // Get list name
+        let listName = 'Tasks';
+        if (insertedNote.list_id) {
+          const { data: listData } = await supabase
+            .from('clerk_lists')
+            .select('name')
+            .eq('id', insertedNote.list_id)
+            .single();
+          listName = listData?.name || 'Tasks';
+        }
+
+        const confirmMsg = `✅ Saved: ${insertedNote.summary}\n📂 Added to: ${listName}\n\n🔗 Manage: https://witholive.app`;
+        return reply(confirmMsg);
+      } catch (insertErr) {
+        console.error('Database insertion error for media note:', insertErr);
+        return reply('I analyzed your image but had trouble saving it. Please try again.');
+      }
     }
 
     if (!messageBody && mediaUrls.length === 0) {
