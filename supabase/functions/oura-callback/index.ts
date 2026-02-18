@@ -50,7 +50,7 @@ serve(async (req) => {
     const clientSecret = Deno.env.get("OURA_CLIENT_SECRET");
 
     if (!clientId || !clientSecret) {
-      return errorRedirect("Oura credentials not configured");
+      return errorRedirect("Oura credentials not configured", origin);
     }
 
     // Exchange code for tokens
@@ -69,7 +69,7 @@ serve(async (req) => {
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
       console.error('[oura-callback] Token exchange failed:', errorText);
-      return errorRedirect("Token exchange failed");
+      return errorRedirect("Token exchange failed", origin);
     }
 
     const tokens = await tokenResponse.json();
@@ -119,7 +119,7 @@ serve(async (req) => {
 
     if (insertError) {
       console.error('[oura-callback] Insert error:', insertError);
-      return errorRedirect("Failed to save Oura connection");
+      return errorRedirect("Failed to save Oura connection", origin);
     }
 
     console.log('[oura-callback] Oura connection saved:', connection.id);
@@ -135,12 +135,13 @@ serve(async (req) => {
   }
 });
 
-function errorRedirect(message: string) {
+function errorRedirect(message: string, origin?: string) {
   const errorMessage = encodeURIComponent(message);
+  const redirectOrigin = origin || 'https://witholive.app';
   return new Response(null, {
     status: 303,
     headers: {
-      Location: `https://witholive.app/profile?oura=error&message=${errorMessage}`,
+      Location: `${redirectOrigin}/profile?oura=error&message=${errorMessage}`,
     },
   });
 }
