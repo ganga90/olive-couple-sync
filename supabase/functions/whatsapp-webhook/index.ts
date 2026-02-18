@@ -15,7 +15,7 @@ const corsHeaders = {
 // CREATE: Everything else (default)
 // ============================================================================
 
-type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'TASK_ACTION' | 'EXPENSE'; isUrgent?: boolean; cleanMessage?: string };
+type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'TASK_ACTION' | 'EXPENSE' | 'PARTNER_MESSAGE'; isUrgent?: boolean; cleanMessage?: string };
 
 // ============================================================================
 // RECENT OUTBOUND MESSAGE CONTEXT
@@ -110,6 +110,26 @@ const RESPONSES: Record<string, Record<string, string>> = {
     en: 'Sorry, something went wrong. Please try again.',
     'es': 'Lo siento, algo salió mal. Inténtalo de nuevo.',
     'it': 'Mi dispiace, qualcosa è andato storto. Riprova.',
+  },
+  partner_message_sent: {
+    en: '✅ Done! I sent {partner} a message:\n\n"{message}"\n\nvia WhatsApp 💬',
+    'es': '✅ ¡Hecho! Le envié a {partner} un mensaje:\n\n"{message}"\n\nvía WhatsApp 💬',
+    'it': '✅ Fatto! Ho inviato a {partner} un messaggio:\n\n"{message}"\n\nvia WhatsApp 💬',
+  },
+  partner_message_and_task: {
+    en: '✅ Done! I told {partner} and saved a task:\n\n📋 "{task}"\n📂 Assigned to: {partner}\n💬 Notified via WhatsApp',
+    'es': '✅ ¡Hecho! Le dije a {partner} y guardé una tarea:\n\n📋 "{task}"\n📂 Asignado a: {partner}\n💬 Notificado vía WhatsApp',
+    'it': '✅ Fatto! Ho detto a {partner} e salvato un\'attività:\n\n📋 "{task}"\n📂 Assegnato a: {partner}\n💬 Notificato via WhatsApp',
+  },
+  partner_no_phone: {
+    en: '😕 I\'d love to message {partner}, but they haven\'t linked their WhatsApp yet.\n\nAsk them to open Olive → Profile → Link WhatsApp.',
+    'es': '😕 Me encantaría enviarle un mensaje a {partner}, pero aún no ha vinculado su WhatsApp.\n\nPídele que abra Olive → Perfil → Vincular WhatsApp.',
+    'it': '😕 Vorrei mandare un messaggio a {partner}, ma non ha ancora collegato il suo WhatsApp.\n\nChiedigli di aprire Olive → Profilo → Collega WhatsApp.',
+  },
+  partner_no_space: {
+    en: 'You need to be in a shared space to send messages to your partner. Invite them from the app!',
+    'es': 'Necesitas estar en un espacio compartido para enviar mensajes a tu pareja. ¡Invítale desde la app!',
+    'it': 'Devi essere in uno spazio condiviso per inviare messaggi al tuo partner. Invitalo dall\'app!',
   },
   help_text: {
     en: `🫒 *Olive Quick Commands*
@@ -398,7 +418,7 @@ const intentClassificationSchema = {
   properties: {
     intent: {
       type: Type.STRING,
-      enum: ['search', 'create', 'complete', 'set_priority', 'set_due', 'delete', 'move', 'assign', 'remind', 'expense', 'chat', 'contextual_ask', 'merge'],
+      enum: ['search', 'create', 'complete', 'set_priority', 'set_due', 'delete', 'move', 'assign', 'remind', 'expense', 'chat', 'contextual_ask', 'merge', 'partner_message'],
     },
     target_task_id: { type: Type.STRING, nullable: true },
     target_task_name: { type: Type.STRING, nullable: true },
@@ -414,6 +434,8 @@ const intentClassificationSchema = {
         amount: { type: Type.NUMBER, nullable: true },
         expense_description: { type: Type.STRING, nullable: true },
         is_urgent: { type: Type.BOOLEAN, nullable: true },
+        partner_message_content: { type: Type.STRING, nullable: true },
+        partner_action: { type: Type.STRING, nullable: true, enum: ['remind', 'tell', 'ask', 'notify'] },
       },
       required: [],
     },
@@ -480,6 +502,7 @@ You are NOT a rigid command parser. You understand natural, conversational langu
 - "chat": User wants conversational interaction — briefings, motivation, planning, greetings (e.g., "good morning", "how am I doing?", "summarize my week", "what should I focus on?", "help me plan my day")
 - "contextual_ask": User is asking a question about their saved data or wants AI-powered advice (e.g., "when is the dentist?", "what restaurants did I save?", "any date ideas?", "what books are on my list?")
 - "merge": User wants to merge duplicate tasks (exactly "merge")
+- "partner_message": User wants to send a message TO their partner via Olive (e.g., "remind Marco to buy lemons", "tell Almu to pick up the kids", "ask partner to call the dentist", "let Marcus know dinner is ready", "dile a Marco que compre limones", "ricorda a Marco di comprare i limoni"). The user is asking YOU to relay a message or task to their partner. Set partner_message_content to the message/task for the partner, and partner_action to the type (remind/tell/ask/notify).
 
 ## CRITICAL RULES:
 1. **Conversational context is king.** Use CONVERSATION HISTORY to resolve "it", "that", "this", "the last one", pronouns in any language. If someone says "cancel it" after discussing a task, the target is that task.
@@ -641,6 +664,13 @@ function mapAIResultToIntentResult(
 
     case 'merge':
       return { intent: 'MERGE' };
+
+    case 'partner_message':
+      return {
+        intent: 'PARTNER_MESSAGE',
+        cleanMessage: params.partner_message_content || ai.target_task_name || undefined,
+        _partnerAction: params.partner_action || 'tell',
+      };
 
     case 'create':
     default:
@@ -4203,6 +4233,192 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
         }
         
         return reply(fallbackMessage);
+      }
+    }
+
+    // ========================================================================
+    // PARTNER MESSAGE HANDLER - Send messages to partner via WhatsApp
+    // Triggered by: "remind Marco to buy lemons", "tell Almu to pick up kids",
+    //   "dile a Marco que...", "ricorda a Marco di..."
+    // ========================================================================
+    if (intent === 'PARTNER_MESSAGE') {
+      const partnerAction = (intentResult as any)._partnerAction || 'tell';
+      const partnerMessageContent = cleanMessage || effectiveMessage || '';
+      console.log('[WhatsApp] Processing PARTNER_MESSAGE:', partnerAction, '→', partnerMessageContent?.substring(0, 80));
+
+      // 1. Verify couple space exists
+      if (!coupleId) {
+        return reply(t('partner_no_space', userLang));
+      }
+
+      // 2. Get couple data + resolve partner
+      const [coupleDataRes, partnerMemberRes] = await Promise.all([
+        supabase
+          .from('clerk_couples')
+          .select('you_name, partner_name, created_by')
+          .eq('id', coupleId)
+          .single(),
+        supabase
+          .from('clerk_couple_members')
+          .select('user_id')
+          .eq('couple_id', coupleId)
+          .neq('user_id', userId)
+          .limit(1)
+          .single(),
+      ]);
+
+      const coupleData = coupleDataRes.data;
+      const partnerMember = partnerMemberRes.data;
+
+      if (!partnerMember?.user_id || !coupleData) {
+        return reply('I couldn\'t find your partner in the shared space. Make sure they\'ve accepted your invite!');
+      }
+
+      const isCreator = coupleData.created_by === userId;
+      const partnerName = isCreator ? (coupleData.partner_name || 'Partner') : (coupleData.you_name || 'Partner');
+      const senderName = isCreator ? (coupleData.you_name || 'Your partner') : (coupleData.partner_name || 'Your partner');
+      const partnerId = partnerMember.user_id;
+
+      // 3. Get partner's phone number
+      const { data: partnerProfile } = await supabase
+        .from('clerk_profiles')
+        .select('phone_number, display_name, last_user_message_at')
+        .eq('id', partnerId)
+        .single();
+
+      if (!partnerProfile?.phone_number) {
+        return reply(t('partner_no_phone', userLang, { partner: partnerName }));
+      }
+
+      // 4. Determine if this is a task to save or just a message to relay
+      const isTaskLike = /\b(buy|get|pick up|call|book|make|schedule|clean|fix|do|send|bring|take|comprar|llamar|hacer|enviar|traer|comprare|chiamare|fare|inviare|portare)\b/i.test(partnerMessageContent);
+
+      let savedTask: { id: string; summary: string } | null = null;
+
+      if (isTaskLike) {
+        // Save as a task assigned to partner
+        try {
+          const { data: processData } = await supabase.functions.invoke('process-note', {
+            body: {
+              text: partnerMessageContent,
+              user_id: userId,
+              couple_id: coupleId,
+              timezone: profile.timezone || 'America/New_York',
+            }
+          });
+
+          const noteData = {
+            author_id: userId,
+            couple_id: coupleId,
+            original_text: partnerMessageContent,
+            summary: processData?.summary || partnerMessageContent,
+            category: processData?.category || 'task',
+            due_date: processData?.due_date || null,
+            reminder_time: processData?.reminder_time || null,
+            priority: processData?.priority || 'medium',
+            tags: processData?.tags || [],
+            items: processData?.items || [],
+            task_owner: partnerId,
+            list_id: processData?.list_id || null,
+            completed: false,
+          };
+
+          const { data: insertedNote } = await supabase
+            .from('clerk_notes')
+            .insert(noteData)
+            .select('id, summary')
+            .single();
+
+          if (insertedNote) {
+            savedTask = { id: insertedNote.id, summary: insertedNote.summary };
+            console.log('[PARTNER_MESSAGE] Created task for partner:', insertedNote.summary);
+          }
+        } catch (taskErr) {
+          console.error('[PARTNER_MESSAGE] Error creating task (non-blocking):', taskErr);
+        }
+      }
+
+      // 5. Compose the WhatsApp message to partner
+      const actionEmoji: Record<string, string> = {
+        remind: '⏰',
+        tell: '💬',
+        ask: '❓',
+        notify: '📢',
+      };
+      const emoji = actionEmoji[partnerAction] || '💬';
+
+      let partnerWhatsAppMsg = '';
+      if (partnerAction === 'remind') {
+        partnerWhatsAppMsg = `${emoji} Reminder from ${senderName}:\n\n${savedTask?.summary || partnerMessageContent}\n\nReply "done" when finished 🫒`;
+      } else if (partnerAction === 'ask') {
+        partnerWhatsAppMsg = `${emoji} ${senderName} is asking:\n\n${partnerMessageContent}\n\nReply to let them know 🫒`;
+      } else {
+        partnerWhatsAppMsg = `${emoji} Message from ${senderName}:\n\n${savedTask?.summary || partnerMessageContent}\n\n🫒 Olive`;
+      }
+
+      // 6. Send via gateway (handles 24h window + template fallback)
+      try {
+        const { data: gatewayResult, error: gatewayError } = await supabase.functions.invoke('whatsapp-gateway', {
+          body: {
+            action: 'send',
+            message: {
+              user_id: partnerId,
+              message_type: 'partner_notification' as MessageType,
+              content: partnerWhatsAppMsg,
+              priority: 'normal',
+              metadata: {
+                from_user_id: userId,
+                from_name: senderName,
+                action: partnerAction,
+                task_id: savedTask?.id || null,
+              },
+            },
+          },
+        });
+
+        if (gatewayError || !gatewayResult?.success) {
+          console.error('[PARTNER_MESSAGE] Gateway error:', gatewayError || gatewayResult?.error);
+
+          // Fallback: try direct Meta API send
+          const cleanNumber = partnerProfile.phone_number.replace(/\D/g, '');
+          const directResult = await sendWhatsAppReply(
+            Deno.env.get('WHATSAPP_PHONE_NUMBER_ID')!,
+            cleanNumber,
+            partnerWhatsAppMsg,
+            Deno.env.get('WHATSAPP_ACCESS_TOKEN')!
+          );
+
+          if (!directResult) {
+            // Task was still saved even if message failed
+            if (savedTask) {
+              return reply(`📋 I saved "${savedTask.summary}" and assigned it to ${partnerName}, but couldn't send the WhatsApp notification right now.\n\nThey'll see it in the app!`);
+            }
+            return reply(`Sorry, I couldn't reach ${partnerName} on WhatsApp right now. Please try again later.`);
+          }
+        }
+
+        console.log('[PARTNER_MESSAGE] Message sent successfully to', partnerName);
+      } catch (sendErr) {
+        console.error('[PARTNER_MESSAGE] Send error:', sendErr);
+        if (savedTask) {
+          return reply(`📋 I saved "${savedTask.summary}" for ${partnerName}, but couldn't send the WhatsApp notification. They'll see it in the app!`);
+        }
+        return reply(t('error_generic', userLang));
+      }
+
+      // 7. Respond to sender with confirmation
+      if (savedTask) {
+        const confirmResponse = t('partner_message_and_task', userLang, {
+          partner: partnerName,
+          task: savedTask.summary,
+        });
+        await saveReferencedEntity(savedTask, confirmResponse);
+        return reply(confirmResponse);
+      } else {
+        return reply(t('partner_message_sent', userLang, {
+          partner: partnerName,
+          message: partnerMessageContent.substring(0, 200),
+        }));
       }
     }
 
