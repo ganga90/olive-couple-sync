@@ -1163,6 +1163,54 @@ export type Database = {
           },
         ]
       }
+      oura_connections: {
+        Row: {
+          access_token: string
+          created_at: string | null
+          error_message: string | null
+          id: string
+          is_active: boolean | null
+          last_sync_time: string | null
+          oura_email: string | null
+          oura_user_id: string | null
+          refresh_token: string
+          scopes: string[] | null
+          token_expiry: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_sync_time?: string | null
+          oura_email?: string | null
+          oura_user_id?: string | null
+          refresh_token: string
+          scopes?: string[] | null
+          token_expiry?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_sync_time?: string | null
+          oura_email?: string | null
+          oura_user_id?: string | null
+          refresh_token?: string
+          scopes?: string[] | null
+          token_expiry?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
