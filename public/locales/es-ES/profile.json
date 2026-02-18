@@ -299,5 +299,38 @@
     "completed": "Completadas",
     "active": "Tareas Activas",
     "shared": "Tareas Compartidas"
+  },
+  "oura": {
+    "title": "Oura Ring",
+    "subtitle": "Seguimiento de sueño, preparación y actividad",
+    "connected": "Conectado",
+    "connectButton": "Conectar Oura Ring",
+    "connecting": "Conectando...",
+    "disconnect": "Desconectar",
+    "disconnectConfirm": "¿Estás seguro de que quieres desconectar tu Oura Ring?",
+    "disconnected": "Oura Ring desconectado",
+    "connectedSuccess": "¡Oura Ring conectado con éxito!",
+    "description": "Conecta tu Oura Ring para ver datos de sueño, preparación y actividad en tu panel Mi Día.",
+    "error": "Error al conectar Oura Ring"
+  },
+  "myday": {
+    "title": "Mi Día",
+    "signInPrompt": "Inicia sesión para ver tu resumen diario",
+    "healthOverview": "Resumen de Salud",
+    "sleep": "Sueño",
+    "readiness": "Preparación",
+    "activity": "Actividad",
+    "steps": "Pasos",
+    "calories": "Cal",
+    "rhr": "FCR",
+    "todaysTasks": "Tareas de Hoy",
+    "noTasksToday": "Sin tareas para hoy. ¡Disfruta tu día!",
+    "overdue": "Vencida",
+    "more": "+{{count}} más",
+    "calendar": "Calendario",
+    "recentWorkouts": "Entrenamientos Recientes",
+    "sleepTrend": "Tendencia de Sueño (7 días)",
+    "connectOura": "Conectar Oura Ring",
+    "connectOuraDesc": "Ver tu sueño, preparación y actividad"
   }
 }

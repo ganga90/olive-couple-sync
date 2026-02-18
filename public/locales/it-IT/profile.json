@@ -299,5 +299,38 @@
     "completed": "Completate",
     "active": "Attività Attive",
     "shared": "Attività Condivise"
+  },
+  "oura": {
+    "title": "Oura Ring",
+    "subtitle": "Monitoraggio sonno, prontezza e attività",
+    "connected": "Connesso",
+    "connectButton": "Collega Oura Ring",
+    "connecting": "Collegamento...",
+    "disconnect": "Scollega",
+    "disconnectConfirm": "Sei sicuro di voler scollegare il tuo Oura Ring?",
+    "disconnected": "Oura Ring scollegato",
+    "connectedSuccess": "Oura Ring collegato con successo!",
+    "description": "Collega il tuo Oura Ring per vedere dati su sonno, prontezza e attività nella dashboard La Mia Giornata.",
+    "error": "Impossibile collegare Oura Ring"
+  },
+  "myday": {
+    "title": "La Mia Giornata",
+    "signInPrompt": "Accedi per vedere il tuo riepilogo giornaliero",
+    "healthOverview": "Panoramica Salute",
+    "sleep": "Sonno",
+    "readiness": "Prontezza",
+    "activity": "Attività",
+    "steps": "Passi",
+    "calories": "Cal",
+    "rhr": "FCR",
+    "todaysTasks": "Attività di Oggi",
+    "noTasksToday": "Nessuna attività per oggi. Goditi la giornata!",
+    "overdue": "Scaduta",
+    "more": "+{{count}} altre",
+    "calendar": "Calendario",
+    "recentWorkouts": "Allenamenti Recenti",
+    "sleepTrend": "Tendenza Sonno (7 giorni)",
+    "connectOura": "Collega Oura Ring",
+    "connectOuraDesc": "Vedi sonno, prontezza e attività"
   }
 }

@@ -232,11 +232,11 @@ export const useSupabaseLists = (coupleId?: string | null) => {
       console.log("[Lists] Successfully unlinked notes from list");
 
       // Now delete the list
+      // RLS policies already enforce authorization (author or couple member)
       const { error } = await supabase
         .from("clerk_lists")
         .delete()
-        .eq("id", id)
-        .eq("author_id", user.id); // Ensure user can only delete their own lists
+        .eq("id", id);
 
       if (error) throw error;
       
