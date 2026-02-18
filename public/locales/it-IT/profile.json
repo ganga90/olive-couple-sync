@@ -331,6 +331,29 @@
     "recentWorkouts": "Allenamenti Recenti",
     "sleepTrend": "Tendenza Sonno (7 giorni)",
     "connectOura": "Collega Oura Ring",
-    "connectOuraDesc": "Vedi sonno, prontezza e attività"
+    "connectOuraDesc": "Vedi sonno, prontezza e attività",
+    "loadingHealth": "Caricamento dati salute...",
+    "briefing": {
+      "button": "Richiedi Briefing Mattutino",
+      "loading": "Generazione briefing...",
+      "title": "Briefing Mattutino",
+      "error": "Impossibile generare il briefing. Riprova.",
+      "close": "Chiudi"
+    }
+  },
+  "oura": {
+    "title": "Oura Ring",
+    "subtitle": "Monitoraggio sonno, prontezza e attività",
+    "connected": "Collegato",
+    "connectButton": "Collega Oura Ring",
+    "connecting": "Collegamento...",
+    "disconnect": "Scollega",
+    "disconnectConfirm": "Sei sicuro di voler scollegare Oura Ring?",
+    "disconnected": "Oura Ring scollegato",
+    "connectedSuccess": "Oura Ring collegato con successo!",
+    "description": "Collega il tuo Oura Ring per vedere i dati di sonno, prontezza e attività nella dashboard Il Mio Giorno.",
+    "error": "Impossibile collegare Oura Ring",
+    "permissionNote": "Richiederemo accesso ai tuoi dati di sonno, prontezza, attività e allenamenti.",
+    "lastSynced": "Ultima sincronizzazione:"
   }
 }

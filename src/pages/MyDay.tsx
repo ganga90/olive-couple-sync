@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSEO } from '@/hooks/useSEO';
 import { useAuth } from '@/providers/AuthProvider';
@@ -9,13 +9,14 @@ import { format, isToday, isTomorrow, addDays, startOfDay, endOfDay, isWithinInt
 import { useDateLocale } from '@/hooks/useDateLocale';
 import { 
   Sun, Moon, Activity, Flame, TrendingUp, Dumbbell, CheckCircle2, 
-  Calendar, Loader2, ArrowRight, Zap, Brain, Heart
+  Calendar, Loader2, ArrowRight, Zap, Brain, Heart, Send, X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/providers/LanguageProvider';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 // ─── Oura Data Types ──────────────────────────────────────────────────────────
 
@@ -103,14 +104,14 @@ function ScoreRing({ score, size = 80, label, icon: Icon, color }: {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const MyDay = () => {
-  const { t } = useTranslation(['common', 'home', 'calendar']);
+  const { t } = useTranslation(['common', 'home', 'calendar', 'profile']);
   const { getLocalizedPath } = useLanguage();
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
   const { notes } = useSupabaseNotesContext();
   const { events } = useCalendarEvents();
   const dateLocale = useDateLocale();
-  useSEO({ title: 'My Day — Olive', description: 'Your daily overview with tasks, calendar, and health data' });
+  useSEO({ title: `${t('profile:myday.title')} — Olive`, description: t('profile:myday.signInPrompt') });
 
   const userId = user?.id;
 
@@ -127,13 +128,16 @@ const MyDay = () => {
     workouts: OuraWorkout[];
   } | null>(null);
 
+  // Briefing state
+  const [briefingLoading, setBriefingLoading] = useState(false);
+  const [briefingText, setBriefingText] = useState<string | null>(null);
+
   // Fetch Oura data
   useEffect(() => {
     if (!userId) { setOuraLoading(false); return; }
     
     const fetchOura = async () => {
       try {
-        // Fetch daily and weekly in parallel
         const [dailyRes, weeklyRes] = await Promise.all([
           supabase.functions.invoke('oura-data', { body: { user_id: userId, action: 'daily_summary' } }),
           supabase.functions.invoke('oura-data', { body: { user_id: userId, action: 'weekly_summary' } }),
@@ -158,6 +162,28 @@ const MyDay = () => {
 
     fetchOura();
   }, [userId]);
+
+  // Request morning briefing
+  const handleRequestBriefing = useCallback(async () => {
+    if (!userId) return;
+    setBriefingLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('olive-heartbeat', {
+        body: { action: 'generate_briefing', user_id: userId },
+      });
+      if (error) throw error;
+      if (data?.briefing) {
+        setBriefingText(data.briefing);
+      } else {
+        throw new Error('No briefing returned');
+      }
+    } catch (err) {
+      console.error('Briefing error:', err);
+      toast.error(t('profile:myday.briefing.error'));
+    } finally {
+      setBriefingLoading(false);
+    }
+  }, [userId, t]);
 
   // Today's tasks
   const todayTasks = useMemo(() => {
@@ -219,8 +245,8 @@ const MyDay = () => {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
         <Activity className="h-12 w-12 text-primary mb-4" />
-        <h2 className="text-2xl font-serif font-bold text-foreground mb-2">My Day</h2>
-        <p className="text-muted-foreground mb-6">Sign in to see your daily overview</p>
+        <h2 className="text-2xl font-serif font-bold text-foreground mb-2">{t('profile:myday.title')}</h2>
+        <p className="text-muted-foreground mb-6">{t('profile:myday.signInPrompt')}</p>
         <Button onClick={() => navigate(getLocalizedPath('/sign-in'))}>
           {t('common:buttons.signIn')}
         </Button>
@@ -239,53 +265,76 @@ const MyDay = () => {
           </p>
         </div>
 
+        {/* ─── Morning Briefing Button ─────────────────────────────────── */}
+        <div className="mb-4 animate-fade-up" style={{ animationDelay: '25ms' }}>
+          {briefingText ? (
+            <div className="card-glass p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-primary" />
+                  <h3 className="font-semibold text-sm text-foreground">{t('profile:myday.briefing.title')}</h3>
+                </div>
+                <button onClick={() => setBriefingText(null)} className="text-muted-foreground hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="text-sm text-foreground whitespace-pre-line leading-relaxed">
+                {briefingText}
+              </div>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              className="w-full justify-center gap-2 h-11 border-primary/20 hover:bg-primary/5"
+              onClick={handleRequestBriefing}
+              disabled={briefingLoading}
+            >
+              {briefingLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t('profile:myday.briefing.loading')}
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4" />
+                  {t('profile:myday.briefing.button')}
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+
         {/* ─── Oura Health Scores ─────────────────────────────────────── */}
         {ouraLoading ? (
           <div className="card-glass p-6 mb-4 flex items-center justify-center animate-fade-up">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mr-2" />
-            <span className="text-sm text-muted-foreground">Loading health data...</span>
+            <span className="text-sm text-muted-foreground">{t('profile:myday.loadingHealth')}</span>
           </div>
         ) : ouraConnected ? (
           <div className="card-glass p-5 mb-4 animate-fade-up" style={{ animationDelay: '50ms' }}>
             <div className="flex items-center gap-2 mb-4">
               <Activity className="h-4 w-4 text-primary" />
-              <h3 className="font-semibold text-sm text-foreground">Health Overview</h3>
+              <h3 className="font-semibold text-sm text-foreground">{t('profile:myday.healthOverview')}</h3>
             </div>
             
             <div className="flex justify-around">
-              <ScoreRing
-                score={sleep?.score ?? null}
-                label="Sleep"
-                icon={Moon}
-                color="hsl(var(--primary))"
-              />
-              <ScoreRing
-                score={readiness?.score ?? null}
-                label="Readiness"
-                icon={Zap}
-                color="hsl(130, 50%, 45%)"
-              />
-              <ScoreRing
-                score={activity?.score ?? null}
-                label="Activity"
-                icon={Flame}
-                color="hsl(25, 90%, 55%)"
-              />
+              <ScoreRing score={sleep?.score ?? null} label={t('profile:myday.sleep')} icon={Moon} color="hsl(var(--primary))" />
+              <ScoreRing score={readiness?.score ?? null} label={t('profile:myday.readiness')} icon={Zap} color="hsl(130, 50%, 45%)" />
+              <ScoreRing score={activity?.score ?? null} label={t('profile:myday.activity')} icon={Flame} color="hsl(25, 90%, 55%)" />
             </div>
 
-            {/* Quick stats row */}
             {(activity?.steps || sleep?.contributors) && (
               <div className="flex justify-around mt-4 pt-3 border-t border-border/50">
                 {activity?.steps && (
                   <div className="text-center">
                     <p className="text-lg font-bold text-foreground">{(activity.steps).toLocaleString()}</p>
-                    <p className="text-[10px] text-muted-foreground">Steps</p>
+                    <p className="text-[10px] text-muted-foreground">{t('profile:myday.steps')}</p>
                   </div>
                 )}
                 {activity?.active_calories && (
                   <div className="text-center">
                     <p className="text-lg font-bold text-foreground">{activity.active_calories}</p>
-                    <p className="text-[10px] text-muted-foreground">Cal</p>
+                    <p className="text-[10px] text-muted-foreground">{t('profile:myday.calories')}</p>
                   </div>
                 )}
                 {readiness?.contributors?.resting_heart_rate && (
@@ -294,7 +343,7 @@ const MyDay = () => {
                       <Heart className="h-3 w-3 text-red-400" />
                       {readiness.contributors.resting_heart_rate}
                     </p>
-                    <p className="text-[10px] text-muted-foreground">RHR</p>
+                    <p className="text-[10px] text-muted-foreground">{t('profile:myday.rhr')}</p>
                   </div>
                 )}
               </div>
@@ -310,8 +359,8 @@ const MyDay = () => {
               <Activity className="h-5 w-5 text-primary" />
             </div>
             <div className="flex-1">
-              <p className="font-medium text-sm text-foreground">Connect Oura Ring</p>
-              <p className="text-xs text-muted-foreground">See your sleep, readiness & activity</p>
+              <p className="font-medium text-sm text-foreground">{t('profile:myday.connectOura')}</p>
+              <p className="text-xs text-muted-foreground">{t('profile:myday.connectOuraDesc')}</p>
             </div>
             <ArrowRight className="h-4 w-4 text-muted-foreground" />
           </button>
@@ -322,9 +371,7 @@ const MyDay = () => {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-primary" />
-              <h3 className="font-semibold text-sm text-foreground">
-                {t('common:common.today')}'s Tasks
-              </h3>
+              <h3 className="font-semibold text-sm text-foreground">{t('profile:myday.todaysTasks')}</h3>
             </div>
             {todayTasks.length > 0 && (
               <span className="text-xs text-muted-foreground">{todayTasks.length}</span>
@@ -333,7 +380,7 @@ const MyDay = () => {
 
           {todayTasks.length === 0 ? (
             <p className="text-sm text-muted-foreground py-3 text-center">
-              ✨ No tasks for today. Enjoy your day!
+              ✨ {t('profile:myday.noTasksToday')}
             </p>
           ) : (
             <div className="space-y-2">
@@ -352,7 +399,7 @@ const MyDay = () => {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-foreground truncate">{task.summary}</p>
                     {task.dueDate && new Date(task.dueDate) < new Date() && (
-                      <p className="text-[10px] text-[hsl(var(--priority-high))]">Overdue</p>
+                      <p className="text-[10px] text-[hsl(var(--priority-high))]">{t('profile:myday.overdue')}</p>
                     )}
                   </div>
                 </button>
@@ -362,7 +409,7 @@ const MyDay = () => {
                   onClick={() => navigate(getLocalizedPath('/lists'))}
                   className="text-xs text-primary w-full text-center py-1"
                 >
-                  +{todayTasks.length - 6} more
+                  {t('profile:myday.more', { count: todayTasks.length - 6 })}
                 </button>
               )}
             </div>
@@ -374,7 +421,7 @@ const MyDay = () => {
           <div className="card-glass p-5 mb-4 animate-fade-up" style={{ animationDelay: '150ms' }}>
             <div className="flex items-center gap-2 mb-3">
               <Calendar className="h-4 w-4 text-[hsl(var(--accent))]" />
-              <h3 className="font-semibold text-sm text-foreground">Calendar</h3>
+              <h3 className="font-semibold text-sm text-foreground">{t('profile:myday.calendar')}</h3>
             </div>
             <div className="space-y-2">
               {todayEvents.slice(0, 5).map(event => (
@@ -395,7 +442,7 @@ const MyDay = () => {
           <div className="card-glass p-5 mb-4 animate-fade-up" style={{ animationDelay: '200ms' }}>
             <div className="flex items-center gap-2 mb-3">
               <Dumbbell className="h-4 w-4 text-orange-500" />
-              <h3 className="font-semibold text-sm text-foreground">Recent Workouts</h3>
+              <h3 className="font-semibold text-sm text-foreground">{t('profile:myday.recentWorkouts')}</h3>
             </div>
             <div className="space-y-2">
               {weeklyData.workouts.slice(-4).reverse().map((workout, i) => (
@@ -412,7 +459,7 @@ const MyDay = () => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium text-foreground">{workout.calories} cal</p>
+                    <p className="text-sm font-medium text-foreground">{workout.calories} {t('profile:myday.calories').toLowerCase()}</p>
                     <p className="text-[10px] text-muted-foreground capitalize">{workout.intensity}</p>
                   </div>
                 </div>
@@ -426,7 +473,7 @@ const MyDay = () => {
           <div className="card-glass p-5 mb-4 animate-fade-up" style={{ animationDelay: '250ms' }}>
             <div className="flex items-center gap-2 mb-4">
               <TrendingUp className="h-4 w-4 text-primary" />
-              <h3 className="font-semibold text-sm text-foreground">Sleep Trend (7 days)</h3>
+              <h3 className="font-semibold text-sm text-foreground">{t('profile:myday.sleepTrend')}</h3>
             </div>
             <div className="flex items-end gap-1 h-16">
               {weeklyData.sleep.map((s, i) => (

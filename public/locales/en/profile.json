@@ -359,6 +359,29 @@
     "recentWorkouts": "Recent Workouts",
     "sleepTrend": "Sleep Trend (7 days)",
     "connectOura": "Connect Oura Ring",
-    "connectOuraDesc": "See your sleep, readiness & activity"
+    "connectOuraDesc": "See your sleep, readiness & activity",
+    "loadingHealth": "Loading health data...",
+    "briefing": {
+      "button": "Get Morning Briefing",
+      "loading": "Generating briefing...",
+      "title": "Morning Briefing",
+      "error": "Failed to generate briefing. Please try again.",
+      "close": "Close"
+    }
+  },
+  "oura": {
+    "title": "Oura Ring",
+    "subtitle": "Sleep, readiness & activity tracking",
+    "connected": "Connected",
+    "connectButton": "Connect Oura Ring",
+    "connecting": "Connecting...",
+    "disconnect": "Disconnect",
+    "disconnectConfirm": "Are you sure you want to disconnect your Oura Ring?",
+    "disconnected": "Oura Ring disconnected",
+    "connectedSuccess": "Oura Ring connected successfully!",
+    "description": "Connect your Oura Ring to see sleep, readiness, and activity data in your My Day dashboard.",
+    "error": "Failed to connect Oura Ring",
+    "permissionNote": "We'll request access to your sleep, readiness, activity, and workout data.",
+    "lastSynced": "Last synced:"
   }
 }
