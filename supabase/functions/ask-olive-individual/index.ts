@@ -350,7 +350,7 @@ async function classifyIntentForChat(
 - "complete": User wants to mark a task as done (e.g., "done with groceries", "complete dental milka")
 - "set_priority": User wants to change a task's priority (e.g., "make it urgent")
 - "set_due": User wants to change a task's due date/time (e.g., "change it to 7:30 AM")
-- "delete": User wants to remove a task (e.g., "delete the dentist task")
+- "delete": User wants to remove a task (e.g., "delete the dentist task", "cancel the last task")
 - "move": User wants to move a task to a different list
 - "assign": User wants to assign a task to someone
 - "remind": User wants to set a reminder
@@ -367,6 +367,7 @@ async function classifyIntentForChat(
 6. If the message is a new thought or brain-dump, classify as "create".
 7. Confidence: 0.9+ for clear intents, 0.7-0.9 for moderate, 0.5-0.7 for uncertain.
 8. For conversational messages, questions about data, or when unsure, use "chat" or "contextual_ask".
+9. RELATIVE REFERENCES: When the user says "last task", "the latest one", "previous task", "most recent task", "that task I just added", etc., set target_task_name to the EXACT phrase (e.g., "last task"). The system resolves it. These are ALWAYS action intents (complete, delete, etc.), never "create".
 
 ## CONVERSATION HISTORY:
 ${recentConvo || 'No previous conversation.'}
@@ -405,6 +406,19 @@ ${skillsList || 'No skills activated.'}`;
   }
 }
 
+// Relative reference patterns for "last task", "latest one", etc.
+const RELATIVE_REF_PATTERNS = [
+  /^(?:the\s+)?(?:last|latest|most\s+recent|previous|newest|recent)\s+(?:task|one|item|note|thing)$/i,
+  /^(?:the\s+)?(?:last|latest|most\s+recent|previous|newest|recent)\s+(?:task|one|item|note|thing)\s+(?:i\s+)?(?:added|created|saved|sent|made)$/i,
+  /^(?:that|the)\s+(?:task|one|item|note|thing)\s+(?:i\s+)?(?:just\s+)?(?:added|created|saved|sent|made)$/i,
+  /^(?:l'ultima|l'ultimo|ultima|ultimo)\s*(?:attività|compito|nota|cosa)?$/i,
+  /^(?:la\s+)?(?:última|ultimo|reciente)\s*(?:tarea|nota|cosa)?$/i,
+];
+
+function isRelativeRef(target: string): boolean {
+  return RELATIVE_REF_PATTERNS.some(p => p.test(target.trim()));
+}
+
 // Execute a task action server-side and return the result
 async function executeTaskAction(
   supabase: SupabaseClient,
@@ -421,7 +435,31 @@ async function executeTaskAction(
     let taskId = intent.target_task_id;
     let taskSummary = intent.target_task_name;
 
-    if (!taskId && taskSummary) {
+    // Check for relative references first ("last task", "latest one", etc.)
+    if (taskSummary && isRelativeRef(taskSummary)) {
+      console.log('[executeTaskAction] Detected relative reference:', taskSummary);
+      let query = supabase
+        .from('clerk_notes')
+        .select('id, summary, due_date, priority')
+        .eq('completed', false)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (coupleId) {
+        query = query.or(`author_id.eq.${userId},couple_id.eq.${coupleId}`);
+      } else {
+        query = query.eq('author_id', userId);
+      }
+
+      const { data: recentTasks } = await query;
+      if (recentTasks && recentTasks.length > 0) {
+        taskId = recentTasks[0].id;
+        taskSummary = recentTasks[0].summary;
+        console.log('[executeTaskAction] Resolved relative ref to:', taskSummary);
+      }
+    }
+
+    if (!taskId && taskSummary && !isRelativeRef(taskSummary)) {
       // Search by name if no UUID provided
       const { data: tasks } = await supabase
         .from('clerk_notes')
