@@ -287,7 +287,7 @@ const intentClassificationSchema = {
   properties: {
     intent: {
       type: Type.STRING,
-      enum: ['search', 'create', 'complete', 'set_priority', 'set_due', 'delete', 'move', 'assign', 'remind', 'expense', 'chat', 'contextual_ask'],
+      enum: ['search', 'create', 'complete', 'set_priority', 'set_due', 'delete', 'move', 'assign', 'remind', 'expense', 'chat', 'contextual_ask', 'partner_message'],
     },
     target_task_id: { type: Type.STRING, nullable: true },
     target_task_name: { type: Type.STRING, nullable: true },
@@ -303,6 +303,8 @@ const intentClassificationSchema = {
         amount: { type: Type.NUMBER, nullable: true },
         expense_description: { type: Type.STRING, nullable: true },
         is_urgent: { type: Type.BOOLEAN, nullable: true },
+        partner_message_content: { type: Type.STRING, nullable: true },
+        partner_action: { type: Type.STRING, nullable: true, enum: ['remind', 'tell', 'ask', 'notify'] },
       },
       required: [],
     },
@@ -357,6 +359,7 @@ async function classifyIntentForChat(
 - "expense": User wants to log spending
 - "chat": User wants conversational interaction (e.g., "morning briefing", "how am I doing?", "motivate me")
 - "contextual_ask": User is asking about their saved data (e.g., "when is dental?", "what restaurants did I save?")
+- "partner_message": User wants to send a message TO their partner via Olive (e.g., "remind Marco to buy lemons", "tell Almu to pick up the kids", "ask partner to call the dentist"). Set partner_message_content to the message/task content, and partner_action to the type (remind/tell/ask/notify).
 
 ## CRITICAL RULES:
 1. **Conversational context is king.** Use CONVERSATION HISTORY to resolve "it", "that", "this", "the last one" and pronouns. If someone says "cancel it" after discussing a task, the target is that task.
@@ -425,9 +428,9 @@ async function executeTaskAction(
   userId: string,
   coupleId: string | null
 ): Promise<ActionResult | null> {
-  const taskActions = ['complete', 'set_priority', 'set_due', 'delete'];
-  if (!taskActions.includes(intent.intent)) return null;
-  if (intent.confidence < 0.7) return null;
+  const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message'];
+    if (!taskActions.includes(intent.intent)) return null;
+    if (intent.confidence < 0.5) return null;
 
   try {
     // Find the target task
@@ -553,6 +556,106 @@ async function executeTaskAction(
         if (error) throw error;
         console.log('[executeTaskAction] Deleted task:', taskSummary);
         return { type: 'delete', task_id: taskId, task_summary: taskSummary || '', success: true };
+      }
+
+      case 'partner_message': {
+        // Handle partner messaging from web chat
+        const partnerMsgContent = intent.parameters?.partner_message_content || intent.target_task_name || '';
+        const partnerAction = intent.parameters?.partner_action || 'tell';
+
+        if (!coupleId || !partnerMsgContent) {
+          return { type: 'partner_message', success: false, details: { error: !coupleId ? 'no_couple' : 'no_content' } };
+        }
+
+        // Find partner
+        const { data: partnerMember } = await supabase
+          .from('clerk_couple_members')
+          .select('user_id')
+          .eq('couple_id', coupleId)
+          .neq('user_id', userId)
+          .limit(1)
+          .single();
+
+        if (!partnerMember?.user_id) {
+          return { type: 'partner_message', success: false, details: { error: 'no_partner' } };
+        }
+
+        // Get couple info for names
+        const { data: coupleInfo } = await supabase
+          .from('clerk_couples')
+          .select('you_name, partner_name, created_by')
+          .eq('id', coupleId)
+          .single();
+
+        const isCreator = coupleInfo?.created_by === userId;
+        const partnerName = isCreator ? (coupleInfo?.partner_name || 'Partner') : (coupleInfo?.you_name || 'Partner');
+        const senderName = isCreator ? (coupleInfo?.you_name || 'Your partner') : (coupleInfo?.partner_name || 'Your partner');
+        const partnerId = partnerMember.user_id;
+
+        // Get partner phone
+        const { data: partnerProfile } = await supabase
+          .from('clerk_profiles')
+          .select('phone_number, last_user_message_at')
+          .eq('id', partnerId)
+          .single();
+
+        if (!partnerProfile?.phone_number) {
+          return { type: 'partner_message', success: false, task_summary: partnerName, details: { error: 'no_phone', partner_name: partnerName } };
+        }
+
+        // Determine if task-like → save as assigned task
+        const isTaskLike = /\b(buy|get|pick up|call|book|make|schedule|clean|fix|do|send|bring|take|comprar|llamar|hacer|enviar|comprare|chiamare|fare|inviare)\b/i.test(partnerMsgContent);
+        let savedTaskSummary = partnerMsgContent;
+
+        if (isTaskLike) {
+          try {
+            const { data: processData } = await supabase.functions.invoke('process-note', {
+              body: { text: partnerMsgContent, user_id: userId, couple_id: coupleId }
+            });
+            const noteData = {
+              author_id: userId, couple_id: coupleId,
+              original_text: partnerMsgContent,
+              summary: processData?.summary || partnerMsgContent,
+              category: processData?.category || 'task',
+              priority: processData?.priority || 'medium',
+              task_owner: partnerId, completed: false,
+              tags: processData?.tags || [], items: processData?.items || [],
+              due_date: processData?.due_date || null,
+              list_id: processData?.list_id || null,
+            };
+            const { data: inserted } = await supabase.from('clerk_notes').insert(noteData).select('id, summary').single();
+            if (inserted) savedTaskSummary = inserted.summary;
+          } catch (e) {
+            console.error('[partner_message] Task creation error:', e);
+          }
+        }
+
+        // Send WhatsApp message to partner via gateway
+        const actionEmoji: Record<string, string> = { remind: '⏰', tell: '💬', ask: '❓', notify: '📢' };
+        const emoji = actionEmoji[partnerAction] || '💬';
+        const partnerMsg = partnerAction === 'remind'
+          ? `${emoji} Reminder from ${senderName}:\n\n${savedTaskSummary}\n\nReply "done" when finished 🫒`
+          : partnerAction === 'ask'
+          ? `${emoji} ${senderName} is asking:\n\n${partnerMsgContent}\n\nReply to let them know 🫒`
+          : `${emoji} Message from ${senderName}:\n\n${savedTaskSummary}\n\n🫒 Olive`;
+
+        try {
+          await supabase.functions.invoke('whatsapp-gateway', {
+            body: {
+              action: 'send',
+              message: {
+                user_id: partnerId, message_type: 'partner_notification',
+                content: partnerMsg, priority: 'normal',
+                metadata: { from_user_id: userId, from_name: senderName, action: partnerAction },
+              },
+            },
+          });
+        } catch (sendErr) {
+          console.error('[partner_message] Gateway send error:', sendErr);
+          return { type: 'partner_message', success: true, task_summary: savedTaskSummary, details: { partner_name: partnerName, sent: false, task_created: isTaskLike } };
+        }
+
+        return { type: 'partner_message', success: true, task_summary: savedTaskSummary, details: { partner_name: partnerName, sent: true, task_created: isTaskLike, action: partnerAction } };
       }
     }
 
@@ -712,7 +815,7 @@ serve(async (req) => {
 
         // Execute task actions server-side (complete, set_priority, set_due, delete)
         if (aiResult && aiResult.confidence >= 0.5) {
-          const taskActions = ['complete', 'set_priority', 'set_due', 'delete'];
+          const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message'];
           if (taskActions.includes(aiResult.intent)) {
             console.log(`[Ask Olive Individual] Task action detected: ${aiResult.intent} (confidence: ${aiResult.confidence})`);
             actionResult = await executeTaskAction(supabase, aiResult, actualUserId, actualCoupleId);
@@ -766,9 +869,16 @@ serve(async (req) => {
           set_priority: `changed the priority to ${actionResult.details?.new_priority || 'updated'}`,
           set_due: `updated the due date/time to ${actionResult.details?.new_due_date ? new Date(actionResult.details.new_due_date).toLocaleString() : 'updated'}`,
           delete: 'deleted',
+          partner_message: actionResult.details?.sent
+            ? `sent a WhatsApp message to ${actionResult.details?.partner_name || 'your partner'}${actionResult.details?.task_created ? ' and created a task assigned to them' : ''}`
+            : actionResult.details?.error === 'no_phone'
+            ? `couldn't message ${actionResult.details?.partner_name || 'your partner'} because they haven't linked their WhatsApp yet`
+            : actionResult.details?.error === 'no_couple'
+            ? 'couldn\'t send the message because you\'re not in a shared space'
+            : `couldn't reach ${actionResult.details?.partner_name || 'your partner'} right now`,
         };
         const verb = actionVerbs[actionResult.type] || actionResult.type;
-        fullContext += `\n\nACTION PERFORMED: You just ${verb} the task "${actionResult.task_summary}". Acknowledge this naturally in your response and confirm what you did. Be concise and friendly.`;
+        fullContext += `\n\nACTION PERFORMED: You just ${verb}${actionResult.type !== 'partner_message' ? ` the task "${actionResult.task_summary}"` : ''}. Acknowledge this naturally in your response and confirm what you did. Be concise and friendly.`;
       }
 
       console.log('[Ask Olive Individual] Built global chat context, length:', fullContext.length);
