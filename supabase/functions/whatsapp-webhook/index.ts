@@ -4251,42 +4251,50 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
         return reply(t('partner_no_space', userLang));
       }
 
-      // 2. Get couple data + resolve partner
-      const [coupleDataRes, partnerMemberRes] = await Promise.all([
-        supabase
-          .from('clerk_couples')
-          .select('you_name, partner_name, created_by')
-          .eq('id', coupleId)
-          .single(),
-        supabase
-          .from('clerk_couple_members')
-          .select('user_id')
-          .eq('couple_id', coupleId)
-          .neq('user_id', userId)
-          .limit(1)
-          .single(),
-      ]);
+      // 2. Get couple data + resolve partner (prefer partner WITH a phone number)
+      const { data: coupleData } = await supabase
+        .from('clerk_couples')
+        .select('you_name, partner_name, created_by')
+        .eq('id', coupleId)
+        .single();
 
-      const coupleData = coupleDataRes.data;
-      const partnerMember = partnerMemberRes.data;
+      if (!coupleData) {
+        return reply('I couldn\'t find your shared space. Make sure it\'s set up correctly!');
+      }
 
-      if (!partnerMember?.user_id || !coupleData) {
+      // Get ALL other members in the couple (there may be >1 due to test/stale accounts)
+      const { data: otherMembers } = await supabase
+        .from('clerk_couple_members')
+        .select('user_id')
+        .eq('couple_id', coupleId)
+        .neq('user_id', userId);
+
+      if (!otherMembers || otherMembers.length === 0) {
         return reply('I couldn\'t find your partner in the shared space. Make sure they\'ve accepted your invite!');
       }
 
-      const isCreator = coupleData.created_by === userId;
-      const partnerName = isCreator ? (coupleData.partner_name || 'Partner') : (coupleData.you_name || 'Partner');
-      const senderName = isCreator ? (coupleData.you_name || 'Your partner') : (coupleData.partner_name || 'Your partner');
-      const partnerId = partnerMember.user_id;
-
-      // 3. Get partner's phone number
-      const { data: partnerProfile } = await supabase
+      // Look up profiles for ALL other members and pick the one with a phone number
+      const otherUserIds = otherMembers.map(m => m.user_id);
+      const { data: candidateProfiles } = await supabase
         .from('clerk_profiles')
-        .select('phone_number, display_name, last_user_message_at')
-        .eq('id', partnerId)
-        .single();
+        .select('id, phone_number, display_name, last_user_message_at')
+        .in('id', otherUserIds);
 
-      if (!partnerProfile?.phone_number) {
+      // Prefer the member who has a phone number linked
+      const partnerProfile = candidateProfiles?.find(p => p.phone_number)
+        || candidateProfiles?.[0]
+        || null;
+
+      if (!partnerProfile) {
+        return reply('I couldn\'t find your partner in the shared space. Make sure they\'ve accepted your invite!');
+      }
+
+      const partnerId = partnerProfile.id;
+      const isCreator = coupleData.created_by === userId;
+      const partnerName = isCreator ? (coupleData.partner_name || partnerProfile.display_name || 'Partner') : (coupleData.you_name || partnerProfile.display_name || 'Partner');
+      const senderName = isCreator ? (coupleData.you_name || 'Your partner') : (coupleData.partner_name || 'Your partner');
+
+      if (!partnerProfile.phone_number) {
         return reply(t('partner_no_phone', userLang, { partner: partnerName }));
       }
 
