@@ -526,7 +526,6 @@ async function logOutboundMessage(
     user_id: userId,
     message_type: messageType,
     content,
-    phone_number: phoneNumber || null,
     status: status === 'sent' ? 'sent' : 'failed',
     sent_at: new Date().toISOString(),
   });
@@ -661,12 +660,15 @@ async function processQueue(supabase: any): Promise<{ processed: number; errors:
 async function sendMessage(
   supabase: any,
   message: OutboundMessage
-): Promise<{ success: boolean; message_id?: string; error?: string }> {
-  if (message.priority !== 'high') {
+): Promise<{ success: boolean; message_id?: string; error?: string; queued?: boolean }> {
+  // Partner notifications and high-priority messages bypass quiet hours
+  const bypassQuietHours = message.priority === 'high' || message.message_type === 'partner_notification';
+  if (!bypassQuietHours) {
     const inQuiet = await isQuietHours(supabase, message.user_id);
     if (inQuiet) {
+      console.log('[Gateway] Message queued due to quiet hours for user:', message.user_id, 'type:', message.message_type);
       const queueId = await queueMessage(supabase, message);
-      return { success: true, message_id: queueId };
+      return { success: true, message_id: queueId, queued: true };
     }
   }
 
