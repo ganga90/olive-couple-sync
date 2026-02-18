@@ -587,6 +587,7 @@ async function classifyIntent(
 12. The user's language is: ${userLanguage}. Understand messages in this language natively.
 13. Messages containing "change", "modify", "update", "reschedule", "move" + a time/date expression should ALMOST ALWAYS be "set_due", not "create" or "chat". The word "change" implies modifying an existing entity, not creating a new one. E.g., "change it in the calendar at 7.30am" = "set_due", "move the appointment to Friday" = "set_due".
 14. When the user says "change it to X" or "can you change it to X" after discussing a specific task, ALWAYS classify as "set_due" with the target being the previously discussed task. This is NOT a "chat" or "create" intent.
+15. RELATIVE REFERENCES: When the user says "last task", "the latest one", "previous task", "most recent task", "that task I just added", "l'ultima attività", "última tarea", etc., set target_task_name to the EXACT phrase (e.g., "last task") — the system will resolve it to the actual most recent task. Do NOT try to guess which task they mean. Just preserve the relative reference. These are ALWAYS action intents (complete, delete, set_priority, etc.), never "create".
 
 ## CONVERSATION HISTORY:
 ${recentConvo || 'No previous conversation.'}
@@ -1571,6 +1572,57 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
     time: formatDate(targetDate),
     readable
   };
+}
+
+// ============================================================================
+// RELATIVE REFERENCE RESOLUTION
+// Handles: "last task", "the last one", "latest task", "previous task",
+//          "most recent task", "that task I just added", etc.
+// Returns the most recently created active task for the user.
+// ============================================================================
+const RELATIVE_REFERENCE_PATTERNS = [
+  /^(?:the\s+)?(?:last|latest|most\s+recent|previous|newest|recent)\s+(?:task|one|item|note|thing)$/i,
+  /^(?:the\s+)?(?:last|latest|most\s+recent|previous|newest|recent)\s+(?:task|one|item|note|thing)\s+(?:i\s+)?(?:added|created|saved|sent|made)$/i,
+  /^(?:that|the)\s+(?:task|one|item|note|thing)\s+(?:i\s+)?(?:just\s+)?(?:added|created|saved|sent|made)$/i,
+  /^(?:the\s+)?(?:one|task|item|note)\s+(?:i\s+)?(?:just\s+)?(?:added|created|saved|sent)$/i,
+  /^(?:l'ultima|l'ultimo|ultima|ultimo)\s*(?:attività|compito|nota|cosa)?$/i, // Italian
+  /^(?:la\s+)?(?:última|ultimo|reciente)\s*(?:tarea|nota|cosa)?$/i, // Spanish
+];
+
+function isRelativeReference(target: string): boolean {
+  if (!target) return false;
+  return RELATIVE_REFERENCE_PATTERNS.some(p => p.test(target.trim()));
+}
+
+async function resolveRelativeReference(
+  supabase: any,
+  userId: string,
+  coupleId: string | null,
+  completedFilter: boolean = false
+): Promise<any | null> {
+  try {
+    let query = supabase
+      .from('clerk_notes')
+      .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time, list_id, created_at')
+      .eq('completed', completedFilter)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (coupleId) {
+      query = query.eq('couple_id', coupleId);
+    } else {
+      query = query.eq('author_id', userId);
+    }
+
+    const { data, error } = await query;
+    if (error || !data || data.length === 0) return null;
+
+    console.log('[RelativeRef] Resolved "last task" to:', data[0].summary, '(id:', data[0].id, ')');
+    return data[0];
+  } catch (e) {
+    console.error('[RelativeRef] Error:', e);
+    return null;
+  }
 }
 
 // Search for a task by keywords in summary
@@ -3200,61 +3252,77 @@ serve(async (req) => {
       const aiTaskId = (intentResult as any)._aiTaskId as string | undefined;
       console.log('[WhatsApp] Processing TASK_ACTION:', actionType, 'target:', actionTarget, 'aiTaskId:', aiTaskId);
 
-      // Task resolution: ordinal reference → AI-provided ID → semantic search → outbound context
+      // Task resolution: relative ref → ordinal → AI UUID → semantic search → session context → outbound context
       let foundTask = null;
 
-      // 0. ORDINAL RESOLUTION: "the first one", "the third one", "number 2", "#3"
-      const ordinalPatterns = [
-        /(?:the\s+)?(first|second|third|fourth|fifth|sixth|seventh|eighth|1st|2nd|3rd|4th|5th|6th|7th|8th)\s*(?:one|task|item)?/i,
-        /(?:#|number\s+|no\.?\s*)(\d+)/i,
-      ];
-      let ordinalIndex = -1;
-      for (const pat of ordinalPatterns) {
-        const m = (messageBody || '').match(pat);
-        if (!m) continue;
-        const val = m[1].toLowerCase();
-        const ordinalMap: Record<string, number> = {
-          first: 0, second: 1, third: 2, fourth: 3, fifth: 4, sixth: 5, seventh: 6, eighth: 7,
-          '1st': 0, '2nd': 1, '3rd': 2, '4th': 3, '5th': 4, '6th': 5, '7th': 6, '8th': 7,
-        };
-        if (ordinalMap[val] !== undefined) {
-          ordinalIndex = ordinalMap[val];
-        } else {
-          const numMatch = val.match(/\d+/);
-          if (numMatch) ordinalIndex = parseInt(numMatch[0]) - 1;
+      // 0a. RELATIVE REFERENCE RESOLUTION: "last task", "the latest one", "previous task", etc.
+      if (actionTarget && isRelativeReference(actionTarget)) {
+        console.log('[TASK_ACTION] Detected relative reference:', actionTarget);
+        foundTask = await resolveRelativeReference(supabase, userId, coupleId);
+        if (foundTask) {
+          console.log('[TASK_ACTION] Resolved relative reference to:', foundTask.summary);
         }
-        break;
+      }
+      // Also check the full message for relative references when actionTarget is extracted oddly
+      if (!foundTask && messageBody && isRelativeReference(messageBody.replace(/^(?:cancel|delete|remove|complete|done\s+with|finish|mark\s+(?:as\s+)?done)\s+/i, '').trim())) {
+        console.log('[TASK_ACTION] Detected relative reference in cleaned message');
+        foundTask = await resolveRelativeReference(supabase, userId, coupleId);
       }
 
-      if (ordinalIndex >= 0) {
-        const sessionCtx = (session.context_data || {}) as ConversationContext;
-        if (sessionCtx.last_displayed_list && sessionCtx.list_displayed_at) {
-          const listAge = Date.now() - new Date(sessionCtx.list_displayed_at).getTime();
-          if (listAge < 15 * 60 * 1000) { // 15 min TTL
-            if (ordinalIndex < sessionCtx.last_displayed_list.length) {
-              const listItem = sessionCtx.last_displayed_list[ordinalIndex];
-              const { data: listTask } = await supabase
-                .from('clerk_notes')
-                .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time')
-                .eq('id', listItem.id)
-                .maybeSingle();
-              if (listTask) {
-                foundTask = listTask;
-                console.log(`[Context] Resolved ordinal #${ordinalIndex + 1} to task: ${listTask.summary}`);
+      // 0b. ORDINAL RESOLUTION: "the first one", "the third one", "number 2", "#3"
+      if (!foundTask) {
+        const ordinalPatterns = [
+          /(?:the\s+)?(first|second|third|fourth|fifth|sixth|seventh|eighth|1st|2nd|3rd|4th|5th|6th|7th|8th)\s*(?:one|task|item)?/i,
+          /(?:#|number\s+|no\.?\s*)(\d+)/i,
+        ];
+        let ordinalIndex = -1;
+        for (const pat of ordinalPatterns) {
+          const m = (messageBody || '').match(pat);
+          if (!m) continue;
+          const val = m[1].toLowerCase();
+          const ordinalMap: Record<string, number> = {
+            first: 0, second: 1, third: 2, fourth: 3, fifth: 4, sixth: 5, seventh: 6, eighth: 7,
+            '1st': 0, '2nd': 1, '3rd': 2, '4th': 3, '5th': 4, '6th': 5, '7th': 6, '8th': 7,
+          };
+          if (ordinalMap[val] !== undefined) {
+            ordinalIndex = ordinalMap[val];
+          } else {
+            const numMatch = val.match(/\d+/);
+            if (numMatch) ordinalIndex = parseInt(numMatch[0]) - 1;
+          }
+          break;
+        }
+
+        if (ordinalIndex >= 0) {
+          const sessionCtx = (session.context_data || {}) as ConversationContext;
+          if (sessionCtx.last_displayed_list && sessionCtx.list_displayed_at) {
+            const listAge = Date.now() - new Date(sessionCtx.list_displayed_at).getTime();
+            if (listAge < 15 * 60 * 1000) { // 15 min TTL
+              if (ordinalIndex < sessionCtx.last_displayed_list.length) {
+                const listItem = sessionCtx.last_displayed_list[ordinalIndex];
+                const { data: listTask } = await supabase
+                  .from('clerk_notes')
+                  .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time')
+                  .eq('id', listItem.id)
+                  .maybeSingle();
+                if (listTask) {
+                  foundTask = listTask;
+                  console.log(`[Context] Resolved ordinal #${ordinalIndex + 1} to task: ${listTask.summary}`);
+                }
+              } else {
+                console.log(`[Context] Ordinal #${ordinalIndex + 1} out of range (list has ${sessionCtx.last_displayed_list.length} items)`);
               }
             } else {
-              console.log(`[Context] Ordinal #${ordinalIndex + 1} out of range (list has ${sessionCtx.last_displayed_list.length} items)`);
+              console.log('[Context] Displayed list is stale (>15 min)');
             }
           } else {
-            console.log('[Context] Displayed list is stale (>15 min)');
+            console.log('[Context] No displayed list in session for ordinal resolution');
           }
-        } else {
-          console.log('[Context] No displayed list in session for ordinal resolution');
         }
       }
 
       // 1. If AI provided a specific task UUID, look it up directly (fastest, most accurate)
-      if (aiTaskId) {
+      if (!foundTask && aiTaskId) {
         const { data: directTask } = await supabase
           .from('clerk_notes')
           .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time')
@@ -3270,8 +3338,8 @@ serve(async (req) => {
       // Check if actionTarget is a pronoun (it, that, this, lo, eso, quello)
       const isPronoun = !actionTarget || /^(it|that|this|lo|eso|quello|la|esa|questa|quello)$/i.test(actionTarget.trim());
 
-      // 2. If no direct match, use semantic search (skip if just a pronoun)
-      if (!foundTask && actionTarget && !isPronoun) {
+      // 2. If no direct match, use semantic search (skip if just a pronoun or relative ref)
+      if (!foundTask && actionTarget && !isPronoun && !isRelativeReference(actionTarget)) {
         foundTask = await semanticTaskSearch(supabase, userId, coupleId, actionTarget);
       }
 
