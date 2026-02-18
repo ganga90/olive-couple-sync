@@ -38,10 +38,9 @@ const OuraCallback = () => {
         }
 
         // Redirect to edge function which handles the token exchange
-        const callbackUrl = new URL(`${supabaseUrl}/functions/v1/oura-callback`);
-        callbackUrl.searchParams.set('code', code);
-        callbackUrl.searchParams.set('state', state);
-        window.location.href = callbackUrl.toString();
+        // Use encodeURIComponent to ensure state (base64) is not corrupted by browser URL parsing
+        const callbackUrl = `${supabaseUrl}/functions/v1/oura-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
+        window.location.href = callbackUrl;
       } catch (err) {
         console.error('Oura callback error:', err);
         navigate('/profile?oura=error&message=Failed+to+connect', { replace: true });

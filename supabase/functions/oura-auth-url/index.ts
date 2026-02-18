@@ -36,9 +36,12 @@ serve(async (req) => {
       "tag",
     ];
 
-    // Encode state with user_id and redirect origin
+    // Encode state with user_id and redirect origin using URL-safe base64
     const state = JSON.stringify({ user_id, origin });
-    const encodedState = btoa(state);
+    const encodedState = btoa(state)
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
 
     const authUrl = new URL("https://cloud.ouraring.com/oauth/authorize");
     authUrl.searchParams.set("client_id", clientId);

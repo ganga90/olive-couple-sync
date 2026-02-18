@@ -28,11 +28,16 @@ serve(async (req) => {
       return errorRedirect("Missing code or state parameter");
     }
 
-    // Decode state
+    // Decode state (supports both standard and URL-safe base64)
     let state: { user_id: string; origin: string };
     try {
-      state = JSON.parse(atob(stateParam));
-    } catch {
+      // Restore URL-safe base64 to standard base64
+      let b64 = stateParam.replace(/-/g, '+').replace(/_/g, '/');
+      // Re-add padding
+      while (b64.length % 4 !== 0) b64 += '=';
+      state = JSON.parse(atob(b64));
+    } catch (e) {
+      console.error('[oura-callback] Failed to decode state:', stateParam, e);
       return errorRedirect("Invalid state parameter");
     }
 
