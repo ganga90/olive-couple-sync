@@ -331,6 +331,29 @@
     "recentWorkouts": "Entrenamientos Recientes",
     "sleepTrend": "Tendencia de Sueño (7 días)",
     "connectOura": "Conectar Oura Ring",
-    "connectOuraDesc": "Ver tu sueño, preparación y actividad"
+    "connectOuraDesc": "Ver tu sueño, preparación y actividad",
+    "loadingHealth": "Cargando datos de salud...",
+    "briefing": {
+      "button": "Obtener Resumen Matutino",
+      "loading": "Generando resumen...",
+      "title": "Resumen Matutino",
+      "error": "No se pudo generar el resumen. Inténtalo de nuevo.",
+      "close": "Cerrar"
+    }
+  },
+  "oura": {
+    "title": "Oura Ring",
+    "subtitle": "Seguimiento de sueño, preparación y actividad",
+    "connected": "Conectado",
+    "connectButton": "Conectar Oura Ring",
+    "connecting": "Conectando...",
+    "disconnect": "Desconectar",
+    "disconnectConfirm": "¿Estás seguro de que quieres desconectar Oura Ring?",
+    "disconnected": "Oura Ring desconectado",
+    "connectedSuccess": "¡Oura Ring conectado con éxito!",
+    "description": "Conecta tu Oura Ring para ver datos de sueño, preparación y actividad en tu panel Mi Día.",
+    "error": "Error al conectar Oura Ring",
+    "permissionNote": "Solicitaremos acceso a tus datos de sueño, preparación, actividad y entrenamientos.",
+    "lastSynced": "Última sincronización:"
   }
 }
