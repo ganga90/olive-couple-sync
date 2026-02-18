@@ -185,7 +185,98 @@ async function generateMorningBriefing(supabase: any, userId: string): Promise<s
     .eq('priority', 'high')
     .limit(5);
 
+  // ── Fetch Oura data if connected ──
+  let ouraSection = '';
+  try {
+    const { data: ouraConn } = await supabase
+      .from('oura_connections')
+      .select('access_token, token_expiry, refresh_token, id')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .single();
+
+    if (ouraConn) {
+      let accessToken = ouraConn.access_token;
+      
+      // Check token expiry and refresh if needed
+      if (ouraConn.token_expiry && new Date(ouraConn.token_expiry) < new Date()) {
+        const clientId = Deno.env.get("OURA_CLIENT_ID");
+        const clientSecret = Deno.env.get("OURA_CLIENT_SECRET");
+        if (clientId && clientSecret) {
+          const refreshRes = await fetch("https://api.ouraring.com/oauth/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              client_id: clientId, client_secret: clientSecret,
+              grant_type: "refresh_token", refresh_token: ouraConn.refresh_token,
+            }),
+          });
+          if (refreshRes.ok) {
+            const tokens = await refreshRes.json();
+            accessToken = tokens.access_token;
+            await supabase.from('oura_connections').update({
+              access_token: tokens.access_token,
+              refresh_token: tokens.refresh_token || ouraConn.refresh_token,
+              token_expiry: new Date(Date.now() + (tokens.expires_in || 86400) * 1000).toISOString(),
+            }).eq('id', ouraConn.id);
+          }
+        }
+      }
+
+      const todayStr = today.toISOString().split('T')[0];
+      const yesterdayStr = new Date(today.getTime() - 86400000).toISOString().split('T')[0];
+      const headers = { Authorization: `Bearer ${accessToken}` };
+
+      const [sleepRes, readinessRes] = await Promise.all([
+        fetch(`https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=${yesterdayStr}&end_date=${todayStr}`, { headers }),
+        fetch(`https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=${yesterdayStr}&end_date=${todayStr}`, { headers }),
+      ]);
+
+      let sleepScore: number | null = null;
+      let readinessScore: number | null = null;
+
+      if (sleepRes.ok) {
+        const sleepData = await sleepRes.json();
+        const latest = sleepData?.data?.[sleepData.data.length - 1];
+        sleepScore = latest?.score ?? null;
+      }
+
+      if (readinessRes.ok) {
+        const readinessData = await readinessRes.json();
+        const latest = readinessData?.data?.[readinessData.data.length - 1];
+        readinessScore = latest?.score ?? null;
+      }
+
+      if (sleepScore !== null || readinessScore !== null) {
+        ouraSection += `\n🛏️ Health check-in:\n`;
+        if (sleepScore !== null) {
+          const sleepEmoji = sleepScore >= 85 ? '🟢' : sleepScore >= 70 ? '🟡' : '🔴';
+          ouraSection += `• Sleep: ${sleepEmoji} ${sleepScore}/100\n`;
+        }
+        if (readinessScore !== null) {
+          const readyEmoji = readinessScore >= 85 ? '🟢' : readinessScore >= 70 ? '🟡' : '🔴';
+          ouraSection += `• Readiness: ${readyEmoji} ${readinessScore}/100\n`;
+        }
+        
+        // Personalized advice
+        if (sleepScore !== null && sleepScore < 70) {
+          ouraSection += `💡 Your sleep was low — consider lighter tasks today.\n`;
+        } else if (readinessScore !== null && readinessScore >= 85) {
+          ouraSection += `💪 You're in great shape today — tackle those big tasks!\n`;
+        }
+        ouraSection += '\n';
+      }
+    }
+  } catch (ouraErr) {
+    console.error('[Heartbeat] Oura data fetch error (non-blocking):', ouraErr);
+  }
+
   let briefing = `☀️ Good morning, ${userName}!\n\n`;
+
+  // Add Oura section right after greeting
+  if (ouraSection) {
+    briefing += ouraSection;
+  }
 
   if (overdueTasks && overdueTasks.length > 0) {
     briefing += `⚠️ ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}:\n`;

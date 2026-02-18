@@ -6,6 +6,7 @@ import { PartnerInfo } from "@/components/PartnerInfo";
 import { NoteStyleField } from "@/components/NoteStyleField";
 import { MemoryPersonalization } from "@/components/MemoryPersonalization";
 import { GoogleCalendarConnect } from "@/components/GoogleCalendarConnect";
+import { OuraConnect } from "@/components/OuraConnect";
 import { DataExport } from "@/components/DataExport";
 import { RegionalFormatCard } from "@/components/settings/RegionalFormatCard";
 import { WhatsAppUnifiedCard } from "@/components/settings/WhatsAppUnifiedCard";
@@ -13,7 +14,7 @@ import { AppPreferencesModals } from "@/components/settings/AppPreferencesModals
 import { OliveProactivePreferences } from "@/components/settings/OliveProactivePreferences";
 import { OliveSkillsManager } from "@/components/settings/OliveSkillsManager";
 import { CollapsibleSection } from "@/components/settings/CollapsibleSection";
-import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle } from "lucide-react";
+import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
 import { useLanguage } from "@/providers/LanguageProvider";
@@ -217,6 +218,15 @@ const Profile = () => {
             subtitle={t('profile:googleCalendar.subtitle')}
           >
             <GoogleCalendarConnect />
+          </SettingsCard>
+
+          <SettingsCard
+            icon={<Activity className="h-5 w-5 text-primary" />}
+            iconBg="bg-primary/10"
+            title={t('profile:oura.title', 'Oura Ring')}
+            subtitle={t('profile:oura.subtitle', 'Sleep, readiness & activity data')}
+          >
+            <OuraConnect />
           </SettingsCard>
 
           <SettingsCard

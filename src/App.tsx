@@ -17,6 +17,8 @@ import Reminders from "./pages/Reminders";
 import AcceptInvite from "./pages/AcceptInvite";
 import JoinInvite from "./pages/JoinInvite";
 import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
+import OuraCallback from "./pages/OuraCallback";
+import MyDay from "./pages/MyDay";
 import TermsOfService from "./pages/legal/TermsOfService";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
 import BudgetPage from "./pages/Budget";
@@ -43,6 +45,7 @@ const AppRoutes = () => (
     <Route path="/" element={<Root />} />
     <Route path="/landing" element={<Landing />} />
     <Route path="/home" element={<Home />} />
+    <Route path="/myday" element={<MyDay />} />
     <Route path="/lists" element={<Lists />} />
     <Route path="/lists/:listId" element={<ListCategory />} />
     <Route path="/calendar" element={<CalendarPage />} />
@@ -60,6 +63,7 @@ const AppRoutes = () => (
     <Route path="/accept-invite" element={<AcceptInvite />} />
     <Route path="/join/:token" element={<JoinInvite />} />
     <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
+    <Route path="/auth/oura/callback" element={<OuraCallback />} />
     <Route path="/legal/terms" element={<TermsOfService />} />
     <Route path="/legal/privacy" element={<PrivacyPolicy />} />
     <Route path="*" element={<NotFound />} />
@@ -85,6 +89,7 @@ const App = () => (
                   <Route path="/" element={<Root />} />
                   <Route path="/landing" element={<Landing />} />
                   <Route path="/home" element={<Home />} />
+                  <Route path="/myday" element={<MyDay />} />
                   <Route path="/lists" element={<Lists />} />
                   <Route path="/lists/:listId" element={<ListCategory />} />
                   <Route path="/calendar" element={<CalendarPage />} />
@@ -102,6 +107,7 @@ const App = () => (
                   <Route path="/accept-invite" element={<AcceptInvite />} />
                   <Route path="/join/:token" element={<JoinInvite />} />
                   <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
+                  <Route path="/auth/oura/callback" element={<OuraCallback />} />
                   <Route path="/legal/terms" element={<TermsOfService />} />
                   <Route path="/legal/privacy" element={<PrivacyPolicy />} />
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

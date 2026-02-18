@@ -1,7 +1,7 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
-import { Home, ListTodo, Calendar, Bell, User, Settings } from "lucide-react";
+import { Home, ListTodo, Calendar, Bell, User, Settings, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OliveLogoWithText } from "@/components/OliveLogo";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
@@ -42,6 +42,7 @@ const DesktopSidebar = () => {
 
   const navItems = [
     { to: "/home", icon: Home, label: t('nav.home'), badge: 0 },
+    { to: "/myday", icon: Sun, label: t('nav.myday', 'My Day'), badge: 0 },
     { to: "/lists", icon: ListTodo, label: t('nav.lists'), badge: urgentTasksCount },
     { to: "/calendar", icon: Calendar, label: t('nav.calendar'), badge: 0 },
     { to: "/reminders", icon: Bell, label: t('nav.reminders'), badge: upcomingRemindersCount },

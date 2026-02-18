@@ -62,3 +62,12 @@ verify_jwt = false
 
 [functions.olive-search]
 verify_jwt = false
+
+[functions.oura-auth-url]
+verify_jwt = false
+
+[functions.oura-callback]
+verify_jwt = false
+
+[functions.oura-data]
+verify_jwt = false
