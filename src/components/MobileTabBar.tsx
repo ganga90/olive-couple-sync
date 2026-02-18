@@ -1,11 +1,10 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Home, ListTodo, Calendar, Bell } from "lucide-react";
+import { Home, ListTodo, Calendar, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 import { useMemo } from "react";
-import { addHours, isBefore } from "date-fns";
 
 const MobileTabBar = () => {
   const location = useLocation();
@@ -13,20 +12,7 @@ const MobileTabBar = () => {
   const getLocalizedPath = useLocalizedHref();
   const { notes } = useSupabaseNotesContext();
   
-  // Calculate upcoming reminders count (within next 24 hours)
-  const upcomingRemindersCount = useMemo(() => {
-    const now = new Date();
-    const tomorrow = addHours(now, 24);
-    
-    return notes.filter(note => {
-      if (note.completed) return false;
-      if (note.reminder_time) {
-        const reminderTime = new Date(note.reminder_time);
-        return isBefore(now, reminderTime) && isBefore(reminderTime, tomorrow);
-      }
-      return false;
-    }).length;
-  }, [notes]);
+  
 
   // Calculate overdue/high priority tasks count
   const urgentTasksCount = useMemo(() => {
@@ -47,6 +33,13 @@ const MobileTabBar = () => {
       badge: 0
     },
     { 
+      to: "/myday", 
+      icon: Sun, 
+      label: t('nav.myday', 'My Day'),
+      badge: 0,
+      featured: true
+    },
+    { 
       to: "/lists", 
       icon: ListTodo, 
       label: t('nav.lists'),
@@ -56,14 +49,7 @@ const MobileTabBar = () => {
       to: "/calendar", 
       icon: Calendar, 
       label: t('nav.calendar'),
-      badge: 0,
-      featured: true
-    },
-    { 
-      to: "/reminders", 
-      icon: Bell, 
-      label: t('nav.reminders'),
-      badge: upcomingRemindersCount
+      badge: 0
     },
   ];
 
