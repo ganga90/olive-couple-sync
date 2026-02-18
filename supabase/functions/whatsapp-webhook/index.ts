@@ -335,106 +335,13 @@ function normalizeText(text: string): string {
 }
 
 // ============================================================================
-// CHAT TYPE DETECTION - Classify conversational queries
+// CHAT TYPE DETECTION - Lightweight fallback (AI handles this natively now)
 // ============================================================================
 function detectChatType(message: string): ChatType {
   const lower = message.toLowerCase();
-  
-  // Briefing patterns - comprehensive morning overview (today AND tomorrow)
-  if (/\b(morning\s+)?briefing\b/i.test(lower) ||
-      /\bstart\s+my\s+day\b/i.test(lower) ||
-      /\bmy\s+day\s+ahead\b/i.test(lower) ||
-      /\bgive\s+me\s+(a\s+)?(rundown|quick\s+update|update|overview|snapshot|recap)\b/i.test(lower) ||
-      /\b(what'?s|whats)\s+(on\s+)?(my\s+)?(schedule|agenda|calendar|day|plate)\s*(today|for today|tomorrow|for tomorrow)?\b/i.test(lower) ||
-      /\b(what'?s|whats)\s+(for|on)\s+(today|tomorrow)\b/i.test(lower) ||
-      /\b(what|which)\s+(tasks?|things?|items?)\s+(are|do i have)\s+(on|for|due)\s+(my\s+)?(day|today|tomorrow)\b/i.test(lower) ||
-      /\b(my|the)\s+(agenda|schedule|plan)\s+(for\s+)?(today|tomorrow)\b/i.test(lower) ||
-      /\bgood\s+morning\s+olive\b/i.test(lower) ||
-      /\bmorning\s+olive\b/i.test(lower) ||
-      /\bbrief\s+me\b/i.test(lower) ||
-      /\bdaily\s+briefing\b/i.test(lower) ||
-      /\bcatch\s+me\s+up\b/i.test(lower) ||
-      /\bquick\s+update\b/i.test(lower) ||
-      /\bwhat\s+do\s+i\s+need\s+to\s+know\b/i.test(lower) ||
-      /\bwhat('?s| is)\s+happening\s+(today|tomorrow|this week)\b/i.test(lower) ||
-      /\bgive\s+me\s+(the\s+)?highlights\b/i.test(lower)) {
-    return 'briefing';
-  }
-  
-  // Weekly summary patterns
-  if (/\b(summarize|recap|review)\s+(my\s+)?(week|weekly|past\s+7|last\s+7)/i.test(lower) ||
-      /\b(how\s+was|how'?s)\s+(my\s+)?week/i.test(lower) ||
-      /\bweek(ly)?\s+(summary|recap|review)/i.test(lower) ||
-      /\bwhat\s+did\s+i\s+(do|accomplish|complete)\s+(this|last)\s+week/i.test(lower) ||
-      /\b(anything|something|what'?s?)\s+(important|big|notable)\s+(this|for the)\s+week\b/i.test(lower) ||
-      /\bwhat('?s| is)\s+(coming\s+up|ahead)\s+(this\s+week|for the week)\b/i.test(lower) ||
-      /\bhow('?s| is)\s+(this|the)\s+week\s+(looking|going|shaping)\b/i.test(lower)) {
-    return 'weekly_summary';
-  }
-  
-  // Daily focus patterns
-  if (/\b(what\s+should\s+i|help\s+me)\s+(focus|prioritize|work)\s+on/i.test(lower) ||
-      /\b(prioritize|plan)\s+(my\s+)?(day|today)/i.test(lower) ||
-      /\bwhat'?s?\s+(most\s+)?important\s+today/i.test(lower) ||
-      /\bfocus\s+(for\s+)?today/i.test(lower) ||
-      /\bwhat\s+first\b/i.test(lower) ||
-      /\bwhere\s+should\s+i\s+start/i.test(lower) ||
-      /\bwhat\s+do\s+i\s+need\s+to\s+(focus|work)\s+on\b/i.test(lower) ||
-      /\bwhat('?s| is)\s+(the\s+)?top\s+priority\b/i.test(lower) ||
-      /\bwhat\s+matters\s+most\b/i.test(lower) ||
-      /\bmy\s+priorities\b/i.test(lower) ||
-      /\bwhat\s+should\s+i\s+tackle\b/i.test(lower)) {
-    return 'daily_focus';
-  }
-  
-  // Productivity tips patterns
-  if (/\b(productivity|efficiency)\s+(tips?|advice|suggestions?)/i.test(lower) ||
-      /\bgive\s+me\s+(some\s+)?(tips?|advice|suggestions?)/i.test(lower) ||
-      /\bhow\s+(can\s+i|to)\s+be\s+(more\s+)?(productive|efficient|organized)/i.test(lower) ||
-      /\bhelp\s+me\s+(be|get)\s+(more\s+)?(productive|organized|efficient)/i.test(lower)) {
-    return 'productivity_tips';
-  }
-  
-  // Progress check patterns
-  if (/\bhow\s+am\s+i\s+doing/i.test(lower) ||
-      /\b(my|check)\s+(progress|status|stats)/i.test(lower) ||
-      /\bhow\s+productive\s+(am\s+i|have\s+i\s+been)/i.test(lower) ||
-      /\bam\s+i\s+on\s+track/i.test(lower) ||
-      /\bhow\s+(are|am)\s+(we|i)\s+doing\b/i.test(lower)) {
-    return 'progress_check';
-  }
-  
-  // Motivation patterns
-  if (/\b(motivate|encourage|inspire)\s+me/i.test(lower) ||
-      /\bi'?m\s+(stressed|overwhelmed|anxious|tired|exhausted)/i.test(lower) ||
-      /\b(feeling|feel)\s+(down|bad|stressed|overwhelmed)/i.test(lower) ||
-      /\bneed\s+(some\s+)?(motivation|encouragement)/i.test(lower) ||
-      /\btoo\s+much\s+to\s+do/i.test(lower)) {
-    return 'motivation';
-  }
-  
-  // Planning patterns
-  if (/\bhelp\s+me\s+plan/i.test(lower) ||
-      /\bwhat'?s?\s+next\b/i.test(lower) ||
-      /\bplan\s+(my|the)\s+(day|week|tomorrow)/i.test(lower) ||
-      /\bwhat\s+should\s+i\s+do\s+(next|now|after)/i.test(lower) ||
-      /\bwhat('?s| is)\s+the\s+plan\b/i.test(lower) ||
-      /\bwhat('?s| is)\s+(on\s+)?(the|my)\s+plate\b/i.test(lower)) {
-    return 'planning';
-  }
-  
-  // Greeting patterns
-  if (/^(hi|hello|hey|good\s*(morning|afternoon|evening)|thanks|thank\s*you)\b/i.test(lower) ||
-      /^(how\s+are\s+you|how'?s\s+it\s+going)/i.test(lower)) {
-    return 'greeting';
-  }
-  
-  // Help patterns
-  if (/^(who\s+are\s+you|what\s+can\s+you\s+do|help\b|commands)/i.test(lower) ||
-      /\bwhat\s+are\s+your\s+(features|capabilities)/i.test(lower)) {
-    return 'help';
-  }
-  
+  // Only handle the most obvious patterns as fallback — AI does the real work
+  if (/^(who\s+are\s+you|what\s+can\s+you\s+do|help\b|commands)/i.test(lower)) return 'help';
+  if (/^(hi|hello|hey)\s*[!.]?$/i.test(lower)) return 'greeting';
   return 'general';
 }
 
@@ -555,39 +462,37 @@ async function classifyIntent(
     // Build outbound context
     const outboundCtx = recentOutboundMessages.slice(0, 3).map(m => `- Olive said: "${m}"`).join('\n');
 
-    const systemPrompt = `You are an intent classifier for Olive, a personal task assistant. Classify the user's WhatsApp message into exactly ONE intent. Return structured JSON.
+    const systemPrompt = `You are the intent classifier for Olive, an AI personal assistant that helps people manage their lives. You are the "brain" that decides what action to take. Classify the user's message into exactly ONE intent. Return structured JSON.
+
+You are NOT a rigid command parser. You understand natural, conversational language — the user talks to you like a friend or personal assistant. Interpret the MEANING behind their words, not just keywords.
 
 ## INTENTS:
-- "search": User wants to see/find/list tasks (e.g., "what's urgent?", "show my tasks", "what's due today?")
-- "create": User wants to create a new task/note (e.g., "buy milk", "call mom tomorrow")
-- "complete": User wants to mark a task as done (e.g., "done with groceries", "finish the report")
-- "set_priority": User wants to change a task's priority (e.g., "make it urgent", "set it to low priority")
-- "set_due": User wants to change a task's due date/time (e.g., "change it to 7:30 AM", "postpone to Friday")
-- "delete": User wants to remove a task (e.g., "delete the dentist task", "remove it")
-- "move": User wants to move a task to a different list (e.g., "move it to groceries")
-- "assign": User wants to assign a task to someone (e.g., "assign it to my partner")
-- "remind": User wants to set a reminder (e.g., "remind me at 5 PM")
-- "expense": User wants to log an expense (e.g., "spent $45 on dinner", "log $20 for gas")
-- "chat": User wants to chat with Olive (e.g., "morning briefing", "give me tips", "how am I doing?")
-- "contextual_ask": User is asking a question about their data (e.g., "when is dental?", "what did I save about restaurants?")
-- "merge": User wants to merge recent tasks (exactly "merge")
+- "search": User wants to see/find/list their tasks, items, or lists (e.g., "what's urgent?", "show my tasks", "what's due today?", "groceries list", "my tasks")
+- "create": User wants to save something new — a task, note, idea, or brain-dump (e.g., "buy milk", "call mom tomorrow", "reminder to pick up dry cleaning")
+- "complete": User wants to mark a task as done (e.g., "done with groceries", "finished!", "the dentist one is done", "cancel the last task" when they mean it's done)
+- "set_priority": User wants to change importance (e.g., "make it urgent", "this is important", "low priority")
+- "set_due": User wants to change when something is due (e.g., "change it to 7:30 AM", "postpone to Friday", "move it to tomorrow", "reschedule", "can you set it for next week?")
+- "delete": User wants to remove/cancel a task (e.g., "delete the dentist task", "never mind about that", "remove it", "cancel that")
+- "move": User wants to move a task to a different list (e.g., "move it to groceries", "put it in the work list")
+- "assign": User wants to assign a task to their partner (e.g., "give this to Marcus", "assign it to my partner", "let her handle it")
+- "remind": User wants a reminder (e.g., "remind me at 5 PM", "remind me about this tomorrow", "set an alarm for 3pm")
+- "expense": User wants to log spending (e.g., "spent $45 on dinner", "$20 gas")
+- "chat": User wants conversational interaction — briefings, motivation, planning, greetings (e.g., "good morning", "how am I doing?", "summarize my week", "what should I focus on?", "help me plan my day")
+- "contextual_ask": User is asking a question about their saved data or wants AI-powered advice (e.g., "when is the dentist?", "what restaurants did I save?", "any date ideas?", "what books are on my list?")
+- "merge": User wants to merge duplicate tasks (exactly "merge")
 
-## RULES:
-1. Use CONVERSATION HISTORY to resolve pronouns ("it", "that", "this", "lo", "eso", "quello"). If the user says "change it to 7 AM" after discussing "Dental Milka", the target is "Dental Milka".
-2. Use ACTIVE TASKS to identify which task the user refers to. Return the exact task UUID in target_task_id when you can match with high confidence.
-3. Use MEMORIES to understand personal context: names, places, preferences, relationships. E.g., if memories mention "Milka is my dog", then "dental Milka" is a vet appointment.
-4. If the user references a list name from memories, set list_name in parameters.
-5. Use ACTIVATED SKILLS to detect domain-specific intents. If the message aligns with an activated skill, return its skill_id in matched_skill_id. Only match skills the user has enabled. Do NOT force skill matches.
-6. For time/date expressions, preserve the EXACT user phrasing in due_date_expression (e.g., "7.30am", "tomorrow at 3 PM", "next Friday").
-7. For expenses, extract amount and description from the message.
-8. For search queries, set query_type based on what the user is looking for.
-9. For chat messages, set chat_type based on the conversation style.
-10. If the message is a new thought, idea, or brain-dump with no action intent, classify as "create".
-11. Confidence: 0.9+ for clear intents, 0.7-0.9 for moderate confidence, 0.5-0.7 for uncertain.
-12. The user's language is: ${userLanguage}. Understand messages in this language natively.
-13. Messages containing "change", "modify", "update", "reschedule", "move" + a time/date expression should ALMOST ALWAYS be "set_due", not "create" or "chat". The word "change" implies modifying an existing entity, not creating a new one. E.g., "change it in the calendar at 7.30am" = "set_due", "move the appointment to Friday" = "set_due".
-14. When the user says "change it to X" or "can you change it to X" after discussing a specific task, ALWAYS classify as "set_due" with the target being the previously discussed task. This is NOT a "chat" or "create" intent.
-15. RELATIVE REFERENCES: When the user says "last task", "the latest one", "previous task", "most recent task", "that task I just added", "l'ultima attività", "última tarea", etc., set target_task_name to the EXACT phrase (e.g., "last task") — the system will resolve it to the actual most recent task. Do NOT try to guess which task they mean. Just preserve the relative reference. These are ALWAYS action intents (complete, delete, set_priority, etc.), never "create".
+## CRITICAL RULES:
+1. **Conversational context is king.** Use CONVERSATION HISTORY to resolve "it", "that", "this", "the last one", pronouns in any language. If someone says "cancel it" after discussing a task, the target is that task.
+2. **Match tasks by meaning.** Use ACTIVE TASKS to find which task the user refers to. Fuzzy match — "dentist" matches "Dental checkup for Milka". Return the UUID in target_task_id.
+3. **Use memories for personalization.** MEMORIES tell you who Marcus is, what Milka is (a dog?), dietary preferences, etc. Use this to disambiguate.
+4. **"Cancel" is context-dependent.** "Cancel the dentist" = delete. "Cancel that" after a reminder = delete. But "cancel my subscription" = probably create (a task to cancel).
+5. **Time expressions = set_due, not create.** "Change it to 7am", "move it to Friday", "postpone", "reschedule" → always set_due. The word "change/move/postpone" implies modifying existing, never creating.
+6. **Relative references.** "Last task", "the latest one", "previous task", "l'ultima attività", "última tarea" → preserve the EXACT phrase in target_task_name. The system resolves it. These are action intents, never "create".
+7. **Questions about data = contextual_ask.** "When is X?", "What did I save about Y?", "Do I have any Z?" → contextual_ask.
+8. **Ambiguity → lean towards the most helpful intent.** If someone says "groceries" with no verb, check context: after "show me" → search. After nothing → probably search (they want to see their grocery list). Only classify as "create" if it clearly reads as a new item to save.
+9. **Language:** The user speaks ${userLanguage}. Understand their message natively in that language.
+10. **Confidence:** 0.9+ clear, 0.7-0.9 moderate, 0.5-0.7 uncertain, <0.5 very ambiguous.
+11. For chat_type, use: briefing, weekly_summary, daily_focus, productivity_tips, progress_check, motivation, planning, greeting, general.
 
 ## CONVERSATION HISTORY:
 ${recentConvo || 'No previous conversation.'}
@@ -747,298 +652,43 @@ function mapAIResultToIntentResult(
   }
 }
 
-// NOTE: detectPronounReference() and isContextExpired() were removed —
-// AI-powered classifyIntent() handles pronoun resolution natively via
-// conversation history + memories in the prompt. No regex needed.
-
+// ============================================================================
+// MINIMAL DETERMINISTIC FALLBACK
+// Only handles: shortcuts (+, !, $, ?, /, @), "merge", "help", and bare greetings.
+// Everything else defaults to CREATE — the AI classifier handles all natural language.
+// ============================================================================
 function determineIntent(message: string, hasMedia: boolean): IntentResult & { queryType?: QueryType; chatType?: ChatType; actionType?: TaskActionType; actionTarget?: string } {
-  const trimmed = message.trim();
-  const normalized = normalizeText(trimmed);
+  const normalized = normalizeText(message.trim());
   const lower = normalized.toLowerCase();
-  
-  console.log('[Intent Detection] Original:', trimmed);
-  console.log('[Intent Detection] Normalized:', normalized);
-  
-  // ============================================================================
-  // QUICK-SEARCH SYNTAX - Power user shortcuts
-  // ============================================================================
-  
-  // Config-driven shortcut system
+
+  console.log('[Intent Fallback] Message:', normalized.substring(0, 80));
+
+  // 1. Shortcut prefixes (+, !, $, ?, /, @)
   const firstChar = normalized.charAt(0);
   if (SHORTCUTS[firstChar]) {
     const shortcut = SHORTCUTS[firstChar];
-    console.log(`[Intent Detection] Matched: ${firstChar} prefix (${shortcut.label})`);
+    console.log(`[Intent Fallback] Shortcut: ${firstChar} → ${shortcut.label}`);
     return {
       intent: shortcut.intent as any,
       cleanMessage: normalized.slice(1).trim(),
       ...(shortcut.options || {}),
     };
   }
-  
-  // MERGE: exact match only
-  if (lower === 'merge') {
-    console.log('[Intent Detection] Matched: merge command');
-    return { intent: 'MERGE' };
-  }
-  
-  const isQuestion = lower.endsWith('?') || /^(what|where|when|who|how|why|can|do|does|is|are|which|any|recommend|suggest|so\s+what)\b/i.test(lower);
-  
-  // ============================================================================
-  // QUESTION EARLY-EXIT: Skip task action patterns for questions.
-  // ============================================================================
-  if (!isQuestion) {
-  // ============================================================================
-  // TASK ACTION PATTERNS - Edit, complete, prioritize, assign
-  // ============================================================================
-  
-  // Complete/Done patterns
-  // First check if it's JUST "done!", "completed!", "finished!" with no task name
-  // These bare completions need context awareness, so skip them if there's no target
-  const bareCompletionMatch = lower.match(/^(?:done|complete|completed|finished|did it|got it)[!.]*$/i);
-  if (bareCompletionMatch) {
-    console.log('[Intent Detection] Matched: bare completion (no task target)');
-    // Return TASK_ACTION with empty target — the handler will try context fallback
-    return { intent: 'TASK_ACTION', actionType: 'complete', actionTarget: '' };
+
+  // 2. Exact commands
+  if (lower === 'merge') return { intent: 'MERGE' };
+  if (/^(help|commands|what can you do)\s*[?!.]?$/i.test(lower)) {
+    return { intent: 'CHAT', chatType: 'help', cleanMessage: normalized };
   }
 
-  const completeMatch = lower.match(/^(?:done|complete|completed|finished|mark(?:ed)?\s+(?:it\s+)?(?:as\s+)?(?:done|complete)|checked? off)\s*(?:with\s+)?(?:the\s+)?(.+)?$/i);
-  if (completeMatch) {
-    const target = completeMatch[1]?.replace(/[!.]+$/, '').trim();
-    console.log('[Intent Detection] Matched: complete action, target:', target);
-    return { intent: 'TASK_ACTION', actionType: 'complete', actionTarget: target || '' };
-  }
-  
-  // Priority patterns
-  const priorityMatch = lower.match(/^(?:make|set|mark)\s+(.+?)\s+(?:as\s+)?(?:urgent|high\s*(?:priority)?|important|priority|low\s*(?:priority)?)/i) ||
-                        lower.match(/^(?:prioritize|urgent)\s+(.+)/i);
-  if (priorityMatch) {
-    console.log('[Intent Detection] Matched: set priority action');
-    return { intent: 'TASK_ACTION', actionType: 'set_priority', actionTarget: priorityMatch[1]?.trim() };
-  }
-  
-  // Due date patterns
-  const dueMatch = lower.match(/^(?:set|make|move)\s+(.+?)\s+(?:is\s+)?(?:due|for)\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+week|\d+.+)/i) ||
-                   lower.match(/^(.+?)\s+is\s+due\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+week|\d+.+)/i);
-  if (dueMatch) {
-    console.log('[Intent Detection] Matched: set due date action');
-    return { intent: 'TASK_ACTION', actionType: 'set_due', actionTarget: dueMatch[1]?.trim(), cleanMessage: dueMatch[2] };
+  // 3. Bare greetings (no AI call needed)
+  if (/^(hi|hello|hey)\s*[!.]?$/i.test(lower)) {
+    return { intent: 'CHAT', chatType: 'greeting', cleanMessage: normalized };
   }
 
-  // "Change/modify/update it to [time]" or "change it in the calendar at [time]" patterns
-  // These should ALWAYS be set_due, not create. "Change" implies modifying existing, not creating new.
-  const changeTimeMatch = lower.match(/^(?:can\s+you\s+)?(?:change|modify|update|reschedule|move)\s+(?:it\s+)?(?:to|at|in\s+(?:the\s+)?calendar\s*(?:to|at|for)?)\s*(.+)/i);
-  if (changeTimeMatch) {
-    console.log('[Intent Detection] Matched: change time pattern →', changeTimeMatch[1]);
-    return { intent: 'TASK_ACTION', actionType: 'set_due', actionTarget: '', cleanMessage: changeTimeMatch[1] };
-  }
-
-  // "Postpone/delay X to [time]" patterns
-  const postponeMatch = lower.match(/^(?:postpone|delay|push\s+back|push)\s+(?:it\s+)?(?:to|until|till)\s*(.+)/i);
-  if (postponeMatch) {
-    console.log('[Intent Detection] Matched: postpone pattern →', postponeMatch[1]);
-    return { intent: 'TASK_ACTION', actionType: 'set_due', actionTarget: '', cleanMessage: postponeMatch[1] };
-  }
-
-  // Assign patterns
-  const assignMatch = lower.match(/^(?:assign|give)\s+(.+?)\s+to\s+(partner|.+)/i);
-  if (assignMatch) {
-    console.log('[Intent Detection] Matched: assign action');
-    return { intent: 'TASK_ACTION', actionType: 'assign', actionTarget: assignMatch[1]?.trim(), cleanMessage: assignMatch[2] };
-  }
-  
-  // Delete patterns
-  const deleteMatch = lower.match(/^(?:delete|remove|cancel)\s+(?:the\s+)?(?:task\s+)?(.+)/i);
-  if (deleteMatch) {
-    console.log('[Intent Detection] Matched: delete action');
-    return { intent: 'TASK_ACTION', actionType: 'delete', actionTarget: deleteMatch[1]?.trim() };
-  }
-  
-  // Move to list patterns
-  const moveMatch = lower.match(/^(?:move|add)\s+(.+?)\s+to\s+(.+?)(?:\s+list)?$/i);
-  if (moveMatch) {
-    console.log('[Intent Detection] Matched: move action');
-    return { intent: 'TASK_ACTION', actionType: 'move', actionTarget: moveMatch[1]?.trim(), cleanMessage: moveMatch[2] };
-  }
-  
-  // Remind patterns
-  const remindMatch = lower.match(/^(?:remind\s+(?:me|us)\s+(?:about\s+)?|set\s+(?:a\s+)?reminder\s+(?:for\s+)?)(.+)/i);
-  if (remindMatch) {
-    console.log('[Intent Detection] Matched: remind action');
-    return { intent: 'TASK_ACTION', actionType: 'remind', actionTarget: remindMatch[1]?.trim() };
-  }
-
-  } // end !isQuestion guard
-  
-  // ============================================================================
-  // CONTEXTUAL SEARCH PATTERNS - Semantic questions needing AI understanding
-  // ============================================================================
-  
-  const contextualPatterns = [
-    /\b(?:any|good|best|recommend|suggest|ideas?\s+for|options?\s+for)\b.*\b(?:in\s+my|from\s+my|saved)\b/i,
-    /\bwhat\s+(?:books?|restaurants?|movies?|shows?|recipes?|ideas?|places?|items?)\s+(?:do\s+i|did\s+i|have\s+i)\s+(?:have|save)/i,
-    /\bwhat(?:'s|s)?\s+(?:in\s+my|on\s+my)\b.*\b(?:list|saved|wishlist|reading|watch|bucket)/i,
-    /\b(?:find|search|look)\s+(?:for\s+)?(?:something|anything)\b.*\b(?:in\s+my|from\s+my)\b/i,
-    /\b(?:recommend|suggest)\s+(?:something|anything|a)\b.*\b(?:from|based on|in)\s+my\b/i,
-    /\b(?:help\s+me\s+(?:find|pick|choose))\b.*\b(?:from\s+my|in\s+my)\b/i,
-    /\bdo\s+i\s+have\s+(?:any|a)\b.*\b(?:saved|in\s+my\s+list)/i,
-    /\b(?:what|which)\s+(?:restaurant|book|movie|place|idea)\s+(?:should|would)\s+(?:i|we)\b/i,
-    /\bany\s+(?:restaurants?|books?|movies?|ideas?|recommendations?|suggestions?|places?|recipes?)\b.*(?:for|about|from)\b/i,
-  ];
-  
-  if (contextualPatterns.some(p => p.test(lower)) && isQuestion) {
-    console.log('[Intent Detection] Matched: CONTEXTUAL_ASK (semantic question about saved items)');
-    return { intent: 'CONTEXTUAL_ASK', cleanMessage: normalized };
-  }
-  
-  // ============================================================================
-  // SIMPLE SEARCH PATTERNS - Listing items without semantic understanding
-  // ============================================================================
-  
-  if (/what'?s?\s+(is\s+)?urgent/i.test(lower) || 
-      /urgent\s*\?$/i.test(lower) || 
-      /urgent\s+tasks?/i.test(lower) ||
-      (lower.includes('urgent') && isQuestion)) {
-    console.log('[Intent Detection] Matched: urgent query pattern');
-    return { intent: 'SEARCH', queryType: 'urgent' };
-  }
-  
-  if (/what'?s?\s+(on\s+my\s+day|due\s+today|for\s+today)/i.test(lower) || 
-      /today'?s?\s+tasks?/i.test(lower) ||
-      /due\s+today/i.test(lower)) {
-    console.log('[Intent Detection] Matched: today query pattern');
-    return { intent: 'SEARCH', queryType: 'today' };
-  }
-  
-  // Tomorrow queries
-  if (/what'?s?\s+(?:on\s+)?(?:my\s+)?(?:day|agenda|schedule|calendar|plate|plan)?\s*(?:for\s+)?tomorrow/i.test(lower) ||
-      /what'?s?\s+(?:due\s+)?tomorrow/i.test(lower) ||
-      /what'?s?\s+for\s+tomorrow/i.test(lower) ||
-      /tomorrow'?s?\s+(?:tasks?|agenda|schedule|plan)/i.test(lower) ||
-      /due\s+tomorrow/i.test(lower) ||
-      /\b(?:what|which)\s+(?:tasks?|things?|items?)\s+.*(?:tomorrow|for\s+tomorrow)\b/i.test(lower) ||
-      /\b(?:my|the)\s+(?:agenda|schedule|plan)\s+(?:for\s+)?tomorrow\b/i.test(lower) ||
-      /\b(?:agenda|schedule|plan)\s+(?:for\s+)?tomorrow\b/i.test(lower) ||
-      /\b(?:so\s+)?what(?:'s|s)?\s+(?:is\s+)?(?:on\s+)?(?:my\s+)?(?:agenda|schedule|calendar|day|plate|plan)\s+(?:for\s+)?(?:tomorrow)\b/i.test(lower)) {
-    console.log('[Intent Detection] Matched: tomorrow query pattern');
-    return { intent: 'SEARCH', queryType: 'tomorrow' };
-  }
-  
-  // This week queries
-  if (/\b(?:what'?s|whats)\s+(?:on\s+)?(?:my\s+)?(?:agenda|schedule|calendar|plan|plate)\s+(?:for\s+)?(?:this|the)\s+week\b/i.test(lower) ||
-      /\b(?:anything|something|what'?s?)\s+(?:important|big|notable|coming\s+up)\s+(?:this|for the|for this)\s+week\b/i.test(lower) ||
-      /\bthis\s+week(?:'?s)?\s+(?:tasks?|agenda|schedule|plan)\b/i.test(lower) ||
-      /\bwhat(?:'s|s)?\s+(?:coming\s+up|ahead|happening)\s+(?:this\s+week|for the week)\b/i.test(lower) ||
-      /\bhow(?:'s| is)\s+(?:this|the|my)\s+week\s+(?:looking|going|shaping)\b/i.test(lower) ||
-      /\bweek\s+ahead\b/i.test(lower) ||
-      /\bwhat\s+do\s+i\s+have\s+(?:this|for the|for this)\s+week\b/i.test(lower)) {
-    console.log('[Intent Detection] Matched: this_week query pattern');
-    return { intent: 'SEARCH', queryType: 'this_week' };
-  }
-  
-  if (/what'?s?\s+recent/i.test(lower) || 
-      /recent\s+tasks?/i.test(lower) || 
-      /latest\s+tasks?/i.test(lower) ||
-      /what\s+did\s+i\s+(add|save)/i.test(lower)) {
-    console.log('[Intent Detection] Matched: recent query pattern');
-    return { intent: 'SEARCH', queryType: 'recent' };
-  }
-  
-  if (/what'?s?\s+overdue/i.test(lower) || 
-      /overdue\s*\?$/i.test(lower) ||
-      /overdue\s+tasks?/i.test(lower) ||
-      (lower.includes('overdue') && isQuestion)) {
-    console.log('[Intent Detection] Matched: overdue query pattern');
-    return { intent: 'SEARCH', queryType: 'overdue' };
-  }
-  
-  if (/what'?s?\s+pending/i.test(lower) || 
-      /pending\s+tasks?/i.test(lower) ||
-      (lower.includes('pending') && isQuestion)) {
-    console.log('[Intent Detection] Matched: pending query pattern');
-    return { intent: 'SEARCH', queryType: 'general' };
-  }
-  
-  if (/what\s+(do\s+i\s+have|are\s+my\s+tasks?|tasks?\s+do\s+i)/i.test(lower)) {
-    console.log('[Intent Detection] Matched: what do I have pattern');
-    return { intent: 'SEARCH', queryType: 'general' };
-  }
-  
-  // Simple list display commands
-  const searchStarters = ['show', 'list', 'get'];
-  if (searchStarters.some(s => lower.startsWith(s + ' ') || lower === s)) {
-    console.log('[Intent Detection] Matched: search starter keyword');
-    return { intent: 'SEARCH', queryType: 'general' };
-  }
-  
-  // "Find" with specific list names = SEARCH
-  if (/^find\s+(?:my\s+)?(\w+)\s+(?:list|tasks?)$/i.test(lower)) {
-    console.log('[Intent Detection] Matched: find specific list pattern');
-    return { intent: 'SEARCH', queryType: 'general' };
-  }
-  
-  // "Search" command for specific items
-  if (/^search\s+/i.test(lower)) {
-    console.log('[Intent Detection] Matched: search command -> CONTEXTUAL_ASK');
-    return { intent: 'CONTEXTUAL_ASK', cleanMessage: normalized };
-  }
-  
-  // Simple "my tasks/list" queries
-  if (/^(?:show\s+)?my\s+(tasks?|list|lists?|reminders?|items?|to-?do)$/i.test(lower)) {
-    console.log('[Intent Detection] Matched: show my tasks pattern');
-    return { intent: 'SEARCH', queryType: 'general' };
-  }
-  
-  // Specific list requests
-  if (/^(?:show|display|what'?s\s+(?:in|on))\s+(?:my\s+)?(\w+(?:\s+\w+)?)\s+(?:list|tasks?)$/i.test(lower)) {
-    console.log('[Intent Detection] Matched: specific list request');
-    return { intent: 'SEARCH', queryType: 'general' };
-  }
-  
-  if (/^(how many|do i have|check my|see my)/i.test(lower)) {
-    console.log('[Intent Detection] Matched: question about content');
-    return { intent: 'SEARCH', queryType: 'general' };
-  }
-  
-  // ============================================================================
-  // CHAT INTENT - Conversational AI with subtype detection
-  // ============================================================================
-  if (isQuestion && !hasMedia) {
-    const chatType = detectChatType(normalized);
-    if (chatType === 'general') {
-      console.log('[Intent Detection] General question -> CONTEXTUAL_ASK');
-      return { intent: 'CONTEXTUAL_ASK', cleanMessage: normalized };
-    }
-    console.log('[Intent Detection] Matched: CHAT intent, type:', chatType);
-    return { intent: 'CHAT', cleanMessage: normalized, chatType };
-  }
-  
-  // Check for non-question chat patterns (statements that should trigger chat)
-  const statementChatPatterns = [
-    /^(hi|hello|hey)\b/i,
-    /^good\s*(morning|afternoon|evening)(\s+olive)?\b/i,
-    /^morning\s+olive\b/i,
-    /^briefing\b/i,
-    /^start\s+my\s+day\b/i,
-    /^(motivate|encourage|inspire)\s+me/i,
-    /\bi'?m\s+(stressed|overwhelmed|anxious)/i,
-    /^(summarize|recap)\s+(my\s+)?week/i,
-    /^plan\s+(my|the)\s+(day|week)/i,
-    /^(prioritize|focus)\s+(my\s+)?/i,
-    /^brief\s+me\b/i,
-    /^catch\s+me\s+up\b/i,
-    /^quick\s+update\b/i,
-    /^give\s+me\s+(a\s+)?(quick\s+)?update\b/i,
-    /^give\s+me\s+(the\s+)?highlights\b/i,
-    /^give\s+me\s+(a\s+)?rundown\b/i
-  ];
-  
-  if (statementChatPatterns.some(p => p.test(lower)) && !hasMedia) {
-    const chatType = detectChatType(normalized);
-    console.log('[Intent Detection] Matched: statement-based CHAT, type:', chatType);
-    return { intent: 'CHAT', cleanMessage: normalized, chatType };
-  }
-  
-  console.log('[Intent Detection] No pattern matched -> CREATE (default)');
+  // 4. Everything else → CREATE (default). The AI classifier should have caught
+  //    all natural language intents before reaching this fallback.
+  console.log('[Intent Fallback] No shortcut matched → CREATE (default)');
   return { intent: 'CREATE' };
 }
 
@@ -2741,16 +2391,16 @@ serve(async (req) => {
 
     let intentResult: IntentResult & { queryType?: string; chatType?: string; actionType?: string; actionTarget?: string; cleanMessage?: string; _aiTaskId?: string; _aiSkillId?: string };
 
-    if (aiResult && aiResult.confidence >= 0.5) {
-      // AI classification succeeded with sufficient confidence
+    if (aiResult && aiResult.confidence >= 0.3) {
+      // AI classification succeeded — trust the AI for all natural language
       intentResult = mapAIResultToIntentResult(aiResult);
       console.log(`[AI Router] Using AI result: intent=${intentResult.intent}, confidence=${aiResult.confidence}, aiTaskId=${intentResult._aiTaskId || 'none'}, skill=${intentResult._aiSkillId || 'none'}`);
     } else {
-      // Fallback to deterministic regex routing
+      // Fallback to minimal deterministic routing (shortcuts + defaults only)
       if (aiResult) {
-        console.log(`[AI Router] Low confidence (${aiResult.confidence}), falling back to regex. AI suggested: ${aiResult.intent}`);
+        console.log(`[AI Router] Very low confidence (${aiResult.confidence}), falling back to shortcuts. AI suggested: ${aiResult.intent}`);
       } else {
-        console.log('[AI Router] AI classification failed, falling back to regex');
+        console.log('[AI Router] AI classification failed, falling back to shortcuts');
       }
       intentResult = determineIntent(messageBody || '', mediaUrls.length > 0);
     }

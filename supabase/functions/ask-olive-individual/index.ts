@@ -342,32 +342,31 @@ async function classifyIntentForChat(
 
     const skillsList = activatedSkills.map(s => `- ${s.skill_id}: ${s.name}`).join('\n');
 
-    const systemPrompt = `You are an intent classifier for Olive, a personal task assistant. Classify the user's message into exactly ONE intent. Return structured JSON.
+    const systemPrompt = `You are the intent classifier for Olive, an AI personal assistant. You understand natural, conversational language — the user talks to you like a friend. Interpret the MEANING behind their words, not just keywords. Return structured JSON.
 
 ## INTENTS:
-- "search": User wants to see/find/list tasks (e.g., "what's urgent?", "show my tasks")
-- "create": User wants to create a new task/note (e.g., "buy milk", "call mom tomorrow")
-- "complete": User wants to mark a task as done (e.g., "done with groceries", "complete dental milka")
-- "set_priority": User wants to change a task's priority (e.g., "make it urgent")
-- "set_due": User wants to change a task's due date/time (e.g., "change it to 7:30 AM")
-- "delete": User wants to remove a task (e.g., "delete the dentist task", "cancel the last task")
+- "search": User wants to see/find/list their tasks or items (e.g., "what's urgent?", "show my tasks")
+- "create": User wants to save something new (e.g., "buy milk", "call mom tomorrow")
+- "complete": User wants to mark a task as done (e.g., "done with groceries", "finished!")
+- "set_priority": User wants to change importance (e.g., "make it urgent")
+- "set_due": User wants to change when something is due (e.g., "change it to 7:30 AM", "postpone to Friday")
+- "delete": User wants to remove/cancel a task (e.g., "delete the dentist task", "cancel that", "never mind about that")
 - "move": User wants to move a task to a different list
 - "assign": User wants to assign a task to someone
-- "remind": User wants to set a reminder
-- "expense": User wants to log an expense
-- "chat": User wants to chat (e.g., "morning briefing", "how am I doing?")
-- "contextual_ask": User is asking a question about their data (e.g., "when is dental?")
+- "remind": User wants a reminder
+- "expense": User wants to log spending
+- "chat": User wants conversational interaction (e.g., "morning briefing", "how am I doing?", "motivate me")
+- "contextual_ask": User is asking about their saved data (e.g., "when is dental?", "what restaurants did I save?")
 
-## RULES:
-1. Use CONVERSATION HISTORY to resolve pronouns ("it", "that", "this"). If the user says "change it to 7 AM" after discussing a task, the target is that task.
-2. Use ACTIVE TASKS to identify which task the user refers to. Return the exact task UUID in target_task_id when confident.
-3. Use MEMORIES to understand personal context (names, preferences, relationships).
-4. If the user's message naturally aligns with an ACTIVATED SKILL, return its skill_id in matched_skill_id.
-5. For time/date expressions, preserve the EXACT user phrasing in due_date_expression.
-6. If the message is a new thought or brain-dump, classify as "create".
-7. Confidence: 0.9+ for clear intents, 0.7-0.9 for moderate, 0.5-0.7 for uncertain.
-8. For conversational messages, questions about data, or when unsure, use "chat" or "contextual_ask".
-9. RELATIVE REFERENCES: When the user says "last task", "the latest one", "previous task", "most recent task", "that task I just added", etc., set target_task_name to the EXACT phrase (e.g., "last task"). The system resolves it. These are ALWAYS action intents (complete, delete, etc.), never "create".
+## CRITICAL RULES:
+1. **Conversational context is king.** Use CONVERSATION HISTORY to resolve "it", "that", "this", "the last one" and pronouns. If someone says "cancel it" after discussing a task, the target is that task.
+2. **Match tasks by meaning.** Use ACTIVE TASKS to find the referred task. Fuzzy match — "dentist" matches "Dental checkup for Milka". Return UUID in target_task_id.
+3. **Use memories for personalization.** MEMORIES tell you who people are, what things mean, preferences, etc.
+4. **"Cancel" is context-dependent.** "Cancel the dentist" = delete. "Cancel my subscription" = probably create (a task to cancel).
+5. **Time expressions = set_due, not create.** "Change/move/postpone/reschedule" → always set_due.
+6. **Relative references.** "Last task", "the latest one", "previous task" → preserve the EXACT phrase in target_task_name. These are action intents, never "create".
+7. **Ambiguity → lean towards most helpful intent.** Check context before defaulting to "create".
+8. **Confidence:** 0.9+ clear, 0.7-0.9 moderate, 0.5-0.7 uncertain.
 
 ## CONVERSATION HISTORY:
 ${recentConvo || 'No previous conversation.'}
@@ -712,7 +711,7 @@ serve(async (req) => {
         );
 
         // Execute task actions server-side (complete, set_priority, set_due, delete)
-        if (aiResult && aiResult.confidence >= 0.7) {
+        if (aiResult && aiResult.confidence >= 0.5) {
           const taskActions = ['complete', 'set_priority', 'set_due', 'delete'];
           if (taskActions.includes(aiResult.intent)) {
             console.log(`[Ask Olive Individual] Task action detected: ${aiResult.intent} (confidence: ${aiResult.confidence})`);
