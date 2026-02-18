@@ -59,6 +59,8 @@ const NoteDetails = () => {
   const [isAssistantLoading, setIsAssistantLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [showReminderDialog, setShowReminderDialog] = useState(false);
+  const [isAddingItems, setIsAddingItems] = useState(false);
+  const [newItems, setNewItems] = useState("");
   
   // Helper to safely format dates without timezone shift
   const formatDateSafely = (dateStr: string | null | undefined): string => {
@@ -626,12 +628,44 @@ const NoteDetails = () => {
 
           {/* Add Subtask Button - Show when no items */}
           {(!note.items || note.items.length === 0) && !isEditing && (
-            <button 
-              onClick={() => setIsEditing(true)}
-              className="w-full py-3 text-sm text-stone-400 hover:text-stone-600 transition-colors flex items-center justify-center gap-2"
-            >
-              <span>+ Add details or subtasks</span>
-            </button>
+            isAddingItems ? (
+              <div className="card-glass p-5 animate-fade-up">
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold text-stone-700">Details</span>
+                </div>
+                <Textarea
+                  autoFocus
+                  value={newItems}
+                  onChange={(e) => setNewItems(e.target.value)}
+                  className="min-h-[100px] text-sm border-stone-200 bg-white mb-3"
+                  placeholder="Enter details or subtasks, one per line"
+                />
+                <div className="flex gap-2 justify-end">
+                  <Button variant="ghost" size="sm" onClick={() => { setIsAddingItems(false); setNewItems(""); }}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={async () => {
+                    const items = newItems.split("\n").map(i => i.trim()).filter(Boolean);
+                    if (items.length > 0) {
+                      await updateNote(note.id, { items });
+                      toast.success(t('toast.noteUpdated'));
+                    }
+                    setIsAddingItems(false);
+                    setNewItems("");
+                  }}>
+                    Save
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setIsAddingItems(true)}
+                className="w-full py-3 text-sm text-stone-400 hover:text-stone-600 transition-colors flex items-center justify-center gap-2"
+              >
+                <span>+ Add details or subtasks</span>
+              </button>
+            )
           )}
 
           {/* Media Section */}
