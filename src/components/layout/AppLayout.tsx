@@ -33,7 +33,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const shouldHideLayout = hideLayoutRoutes.includes(cleanPath);
   
   // Main app routes that get the full navigation treatment
-  const mainAppRoutes = ['/home', '/lists', '/calendar', '/reminders', '/profile', '/budget'];
+  const mainAppRoutes = ['/home', '/lists', '/calendar', '/reminders', '/profile', '/budget', '/myday'];
   const isMainAppRoute = mainAppRoutes.includes(cleanPath) ||
     cleanPath.startsWith('/lists/') ||
     cleanPath.startsWith('/notes/');

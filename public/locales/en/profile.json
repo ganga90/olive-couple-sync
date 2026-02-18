@@ -365,8 +365,11 @@
       "button": "Get Morning Briefing",
       "loading": "Generating briefing...",
       "title": "Morning Briefing",
-      "error": "Failed to generate briefing. Please try again.",
-      "close": "Close"
+      "error": "Failed to send briefing. Please try again.",
+      "close": "Close",
+      "sentToWhatsApp": "Briefing sent to your WhatsApp!",
+      "linkWhatsApp": "Link WhatsApp for Briefings",
+      "linkWhatsAppFirst": "Link your WhatsApp number first to receive briefings."
     }
   },
   "oura": {

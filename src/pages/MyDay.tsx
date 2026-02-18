@@ -5,14 +5,13 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useSupabaseNotesContext } from '@/providers/SupabaseNotesProvider';
 import { useCalendarEvents } from '@/hooks/useCalendarEvents';
 import { supabase } from '@/lib/supabaseClient';
-import { format, isToday, isTomorrow, addDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
+import { format, isWithinInterval, addDays, startOfDay, endOfDay } from 'date-fns';
 import { useDateLocale } from '@/hooks/useDateLocale';
 import { 
   Sun, Moon, Activity, Flame, TrendingUp, Dumbbell, CheckCircle2, 
-  Calendar, Loader2, ArrowRight, Zap, Brain, Heart, Send, X
+  Calendar, Loader2, ArrowRight, Zap, Heart, Send, Home, MessageCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/providers/LanguageProvider';
 import { cn } from '@/lib/utils';
@@ -128,9 +127,23 @@ const MyDay = () => {
     workouts: OuraWorkout[];
   } | null>(null);
 
-  // Briefing state
-  const [briefingLoading, setBriefingLoading] = useState(false);
-  const [briefingText, setBriefingText] = useState<string | null>(null);
+  // WhatsApp linked state
+  const [hasWhatsApp, setHasWhatsApp] = useState<boolean | null>(null);
+  const [briefingRequested, setBriefingRequested] = useState(false);
+
+  // Check if user has WhatsApp linked
+  useEffect(() => {
+    if (!userId) return;
+    const checkWhatsApp = async () => {
+      const { data } = await supabase
+        .from('clerk_profiles')
+        .select('phone_number')
+        .eq('id', userId)
+        .single();
+      setHasWhatsApp(!!data?.phone_number);
+    };
+    checkWhatsApp();
+  }, [userId]);
 
   // Fetch Oura data
   useEffect(() => {
@@ -163,27 +176,30 @@ const MyDay = () => {
     fetchOura();
   }, [userId]);
 
-  // Request morning briefing
+  // Request morning briefing via WhatsApp
   const handleRequestBriefing = useCallback(async () => {
     if (!userId) return;
-    setBriefingLoading(true);
+
+    // If no WhatsApp linked, navigate to profile WhatsApp section
+    if (!hasWhatsApp) {
+      toast.info(t('profile:myday.briefing.linkWhatsAppFirst'));
+      navigate(getLocalizedPath('/profile'), { state: { scrollTo: 'whatsapp' } });
+      return;
+    }
+
+    setBriefingRequested(true);
     try {
-      const { data, error } = await supabase.functions.invoke('olive-heartbeat', {
-        body: { action: 'generate_briefing', user_id: userId },
+      const { error } = await supabase.functions.invoke('olive-heartbeat', {
+        body: { action: 'generate_briefing', user_id: userId, channel: 'whatsapp' },
       });
       if (error) throw error;
-      if (data?.briefing) {
-        setBriefingText(data.briefing);
-      } else {
-        throw new Error('No briefing returned');
-      }
+      toast.success(t('profile:myday.briefing.sentToWhatsApp'));
     } catch (err) {
-      console.error('Briefing error:', err);
+      console.error('Briefing request error:', err);
       toast.error(t('profile:myday.briefing.error'));
-    } finally {
-      setBriefingLoading(false);
+      setBriefingRequested(false);
     }
-  }, [userId, t]);
+  }, [userId, hasWhatsApp, t, navigate, getLocalizedPath]);
 
   // Today's tasks
   const todayTasks = useMemo(() => {
@@ -255,53 +271,48 @@ const MyDay = () => {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-background atmosphere-bg">
-      <div className="px-4 py-6 max-w-2xl mx-auto relative z-10 pb-32">
-        {/* Header */}
+    <div className="h-full overflow-y-auto">
+      <div className="px-4 py-6 max-w-2xl mx-auto pb-8">
+        {/* Back to Home + Header */}
         <div className="mb-6 animate-fade-up">
+          <button
+            onClick={() => navigate(getLocalizedPath('/home'))}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3 min-h-[44px]"
+          >
+            <Home className="h-4 w-4" />
+            <span>{t('common:buttons.backToHome', 'Back to Home')}</span>
+          </button>
           <h1 className="text-2xl font-serif font-bold text-foreground">{greeting}</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {format(new Date(), 'EEEE, MMMM d', { locale: dateLocale })}
           </p>
         </div>
 
-        {/* ─── Morning Briefing Button ─────────────────────────────────── */}
+        {/* ─── Morning Briefing via WhatsApp ───────────────────────────── */}
         <div className="mb-4 animate-fade-up" style={{ animationDelay: '25ms' }}>
-          {briefingText ? (
-            <div className="card-glass p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Brain className="h-4 w-4 text-primary" />
-                  <h3 className="font-semibold text-sm text-foreground">{t('profile:myday.briefing.title')}</h3>
-                </div>
-                <button onClick={() => setBriefingText(null)} className="text-muted-foreground hover:text-foreground">
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="text-sm text-foreground whitespace-pre-line leading-relaxed">
-                {briefingText}
-              </div>
-            </div>
-          ) : (
-            <Button
-              variant="outline"
-              className="w-full justify-center gap-2 h-11 border-primary/20 hover:bg-primary/5"
-              onClick={handleRequestBriefing}
-              disabled={briefingLoading}
-            >
-              {briefingLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t('profile:myday.briefing.loading')}
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4" />
-                  {t('profile:myday.briefing.button')}
-                </>
-              )}
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            className="w-full justify-center gap-2 h-11 border-primary/20 hover:bg-primary/5"
+            onClick={handleRequestBriefing}
+            disabled={briefingRequested}
+          >
+            {briefingRequested ? (
+              <>
+                <CheckCircle2 className="h-4 w-4 text-[hsl(var(--success))]" />
+                {t('profile:myday.briefing.sentToWhatsApp', 'Sent to WhatsApp!')}
+              </>
+            ) : hasWhatsApp === false ? (
+              <>
+                <MessageCircle className="h-4 w-4" />
+                {t('profile:myday.briefing.linkWhatsApp', 'Link WhatsApp for Briefings')}
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" />
+                {t('profile:myday.briefing.button')}
+              </>
+            )}
+          </Button>
         </div>
 
         {/* ─── Oura Health Scores ─────────────────────────────────────── */}
