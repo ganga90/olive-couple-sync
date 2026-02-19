@@ -339,7 +339,9 @@
     "disconnected": "Oura Ring disconnected",
     "connectedSuccess": "Oura Ring connected successfully!",
     "description": "Connect your Oura Ring to see sleep, readiness, and activity data in your My Day dashboard.",
-    "error": "Failed to connect Oura Ring"
+    "error": "Failed to connect Oura Ring",
+    "permissionNote": "We'll request access to your sleep, readiness, activity, and workout data.",
+    "lastSynced": "Last synced:"
   },
   "myday": {
     "title": "My Day",
@@ -361,6 +363,14 @@
     "connectOura": "Connect Oura Ring",
     "connectOuraDesc": "See your sleep, readiness & activity",
     "loadingHealth": "Loading health data...",
+    "showingYesterday": "Yesterday's data",
+    "inProgress": "In progress",
+    "noDataTitle": "No Health Data Found",
+    "noDataDesc": "Please open your Oura App to sync your ring.",
+    "refreshData": "Refresh",
+    "reauthTitle": "Oura connection expired",
+    "reauthDesc": "Please reconnect your Oura Ring to continue seeing health data.",
+    "reconnectOura": "Reconnect Oura Ring",
     "briefing": {
       "button": "Get Morning Briefing",
       "loading": "Generating briefing...",
@@ -371,20 +381,5 @@
       "linkWhatsApp": "Link WhatsApp for Briefings",
       "linkWhatsAppFirst": "Link your WhatsApp number first to receive briefings."
     }
-  },
-  "oura": {
-    "title": "Oura Ring",
-    "subtitle": "Sleep, readiness & activity tracking",
-    "connected": "Connected",
-    "connectButton": "Connect Oura Ring",
-    "connecting": "Connecting...",
-    "disconnect": "Disconnect",
-    "disconnectConfirm": "Are you sure you want to disconnect your Oura Ring?",
-    "disconnected": "Oura Ring disconnected",
-    "connectedSuccess": "Oura Ring connected successfully!",
-    "description": "Connect your Oura Ring to see sleep, readiness, and activity data in your My Day dashboard.",
-    "error": "Failed to connect Oura Ring",
-    "permissionNote": "We'll request access to your sleep, readiness, activity, and workout data.",
-    "lastSynced": "Last synced:"
   }
 }

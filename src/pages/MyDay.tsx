@@ -9,7 +9,8 @@ import { format, isWithinInterval, addDays, startOfDay, endOfDay } from 'date-fn
 import { useDateLocale } from '@/hooks/useDateLocale';
 import { 
   Sun, Moon, Activity, Flame, TrendingUp, Dumbbell, CheckCircle2, 
-  Calendar, Loader2, ArrowRight, Zap, Heart, Send, Home, MessageCircle
+  Calendar, Loader2, ArrowRight, Zap, Heart, Send, Home, MessageCircle,
+  AlertCircle, RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -19,44 +20,21 @@ import { toast } from 'sonner';
 
 // ─── Oura Data Types ──────────────────────────────────────────────────────────
 
-interface OuraSleep {
+interface OuraDailyMetric {
   day: string;
-  score: number;
-  contributors?: {
-    deep_sleep?: number;
-    efficiency?: number;
-    latency?: number;
-    rem_sleep?: number;
-    restfulness?: number;
-    timing?: number;
-    total_sleep?: number;
-  };
-  timestamp?: string;
+  score: number | null;
 }
 
-interface OuraReadiness {
+interface OuraActivityMetric {
   day: string;
-  score: number;
-  contributors?: {
-    activity_balance?: number;
-    body_temperature?: number;
-    hrv_balance?: number;
-    previous_day_activity?: number;
-    previous_night?: number;
-    recovery_index?: number;
-    resting_heart_rate?: number;
-    sleep_balance?: number;
-  };
-  timestamp?: string;
+  score: number | null;
+  active_calories: number | null;
+  steps: number | null;
 }
 
-interface OuraActivity {
-  day: string;
-  score: number;
-  active_calories?: number;
-  steps?: number;
-  equivalent_walking_distance?: number;
-  timestamp?: string;
+interface OuraRHR {
+  value: number;
+  source: 'lowest' | 'average';
 }
 
 interface OuraWorkout {
@@ -67,6 +45,13 @@ interface OuraWorkout {
   end_datetime: string;
   intensity: string;
   start_datetime: string;
+}
+
+interface OuraDailyData {
+  sleep: OuraDailyMetric | null;
+  readiness: OuraDailyMetric | null;
+  activity: OuraActivityMetric | null;
+  rhr: OuraRHR | null;
 }
 
 // ─── Score Ring Component ─────────────────────────────────────────────────────
@@ -117,19 +102,22 @@ const MyDay = () => {
   // Oura state
   const [ouraConnected, setOuraConnected] = useState(false);
   const [ouraLoading, setOuraLoading] = useState(true);
-  const [sleep, setSleep] = useState<OuraSleep | null>(null);
-  const [readiness, setReadiness] = useState<OuraReadiness | null>(null);
-  const [activity, setActivity] = useState<OuraActivity | null>(null);
+  const [ouraEmpty, setOuraEmpty] = useState(false);
+  const [dailyData, setDailyData] = useState<OuraDailyData | null>(null);
+  const [isYesterday, setIsYesterday] = useState(false);
+  const [isFinalized, setIsFinalized] = useState(false);
+  const [requiresReauth, setRequiresReauth] = useState(false);
   const [weeklyData, setWeeklyData] = useState<{
-    sleep: OuraSleep[];
-    readiness: OuraReadiness[];
-    activity: OuraActivity[];
+    sleep: OuraDailyMetric[];
+    readiness: OuraDailyMetric[];
+    activity: OuraActivityMetric[];
     workouts: OuraWorkout[];
   } | null>(null);
 
   // WhatsApp linked state
   const [hasWhatsApp, setHasWhatsApp] = useState<boolean | null>(null);
   const [briefingRequested, setBriefingRequested] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Check if user has WhatsApp linked
   useEffect(() => {
@@ -146,41 +134,55 @@ const MyDay = () => {
   }, [userId]);
 
   // Fetch Oura data
-  useEffect(() => {
+  const fetchOuraData = useCallback(async (forceRefresh = false) => {
     if (!userId) { setOuraLoading(false); return; }
     
-    const fetchOura = async () => {
-      try {
-        const [dailyRes, weeklyRes] = await Promise.all([
-          supabase.functions.invoke('oura-data', { body: { user_id: userId, action: 'daily_summary' } }),
-          supabase.functions.invoke('oura-data', { body: { user_id: userId, action: 'weekly_summary' } }),
-        ]);
+    try {
+      if (forceRefresh) setRefreshing(true);
 
-        if (dailyRes.data?.success) {
-          setOuraConnected(true);
-          setSleep(dailyRes.data.data.sleep);
-          setReadiness(dailyRes.data.data.readiness);
-          setActivity(dailyRes.data.data.activity);
-        }
+      const [dailyRes, weeklyRes] = await Promise.all([
+        supabase.functions.invoke('oura-data', { body: { user_id: userId, action: 'daily_summary', force_refresh: forceRefresh } }),
+        supabase.functions.invoke('oura-data', { body: { user_id: userId, action: 'weekly_summary' } }),
+      ]);
 
-        if (weeklyRes.data?.success) {
-          setWeeklyData(weeklyRes.data.data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch Oura data:', err);
-      } finally {
-        setOuraLoading(false);
+      if (dailyRes.data?.requires_reauth) {
+        setRequiresReauth(true);
+        setOuraConnected(true);
+        return;
       }
-    };
 
-    fetchOura();
+      if (dailyRes.data?.success || dailyRes.data?.connected) {
+        setOuraConnected(true);
+
+        if (dailyRes.data?.empty) {
+          setOuraEmpty(true);
+        } else {
+          setOuraEmpty(false);
+          setDailyData(dailyRes.data.data);
+          setIsYesterday(dailyRes.data.is_yesterday ?? false);
+          setIsFinalized(dailyRes.data.is_finalized ?? false);
+        }
+      }
+
+      if (weeklyRes.data?.success) {
+        setWeeklyData(weeklyRes.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch Oura data:', err);
+    } finally {
+      setOuraLoading(false);
+      setRefreshing(false);
+    }
   }, [userId]);
+
+  useEffect(() => {
+    fetchOuraData();
+  }, [fetchOuraData]);
 
   // Request morning briefing via WhatsApp
   const handleRequestBriefing = useCallback(async () => {
     if (!userId) return;
 
-    // If no WhatsApp linked, navigate to profile WhatsApp section
     if (!hasWhatsApp) {
       toast.info(t('profile:myday.briefing.linkWhatsAppFirst'));
       navigate(getLocalizedPath('/profile'), { state: { scrollTo: 'whatsapp' } });
@@ -321,38 +323,108 @@ const MyDay = () => {
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mr-2" />
             <span className="text-sm text-muted-foreground">{t('profile:myday.loadingHealth')}</span>
           </div>
-        ) : ouraConnected ? (
+        ) : requiresReauth ? (
+          /* Step 5: 401 re-auth flow */
           <div className="card-glass p-5 mb-4 animate-fade-up" style={{ animationDelay: '50ms' }}>
-            <div className="flex items-center gap-2 mb-4">
-              <Activity className="h-4 w-4 text-primary" />
-              <h3 className="font-semibold text-sm text-foreground">{t('profile:myday.healthOverview')}</h3>
+            <div className="flex items-center gap-3 mb-3">
+              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {t('profile:myday.reauthTitle', 'Oura connection expired')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t('profile:myday.reauthDesc', 'Please reconnect your Oura Ring to continue seeing health data.')}
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(getLocalizedPath('/profile'))}
+              className="w-full"
+            >
+              {t('profile:myday.reconnectOura', 'Reconnect Oura Ring')}
+            </Button>
+          </div>
+        ) : ouraConnected && ouraEmpty ? (
+          /* Step 5: Empty state — no data for 3 days */
+          <div className="card-glass p-5 mb-4 animate-fade-up" style={{ animationDelay: '50ms' }}>
+            <div className="flex flex-col items-center text-center py-4">
+              <Activity className="h-8 w-8 text-muted-foreground mb-3" />
+              <p className="text-sm font-medium text-foreground mb-1">
+                {t('profile:myday.noDataTitle', 'No Health Data Found')}
+              </p>
+              <p className="text-xs text-muted-foreground mb-3">
+                {t('profile:myday.noDataDesc', 'Please open your Oura App to sync your ring.')}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchOuraData(true)}
+                disabled={refreshing}
+              >
+                {refreshing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                {t('profile:myday.refreshData', 'Refresh')}
+              </Button>
+            </div>
+          </div>
+        ) : ouraConnected && dailyData ? (
+          <div className="card-glass p-5 mb-4 animate-fade-up" style={{ animationDelay: '50ms' }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-primary" />
+                <h3 className="font-semibold text-sm text-foreground">{t('profile:myday.healthOverview')}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Step 1: Stale data label */}
+                {isYesterday && (
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                    {t('profile:myday.showingYesterday', "Yesterday's data")}
+                  </span>
+                )}
+                {!isFinalized && !isYesterday && (
+                  <span className="text-[10px] text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                    {t('profile:myday.inProgress', 'In progress')}
+                  </span>
+                )}
+                <button
+                  onClick={() => fetchOuraData(true)}
+                  disabled={refreshing}
+                  className="p-1.5 rounded-lg hover:bg-accent/50 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                  title={t('profile:myday.refreshData', 'Refresh')}
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5 text-muted-foreground", refreshing && "animate-spin")} />
+                </button>
+              </div>
             </div>
             
+            {/* Score Rings */}
             <div className="flex justify-around">
-              <ScoreRing score={sleep?.score ?? null} label={t('profile:myday.sleep')} icon={Moon} color="hsl(var(--primary))" />
-              <ScoreRing score={readiness?.score ?? null} label={t('profile:myday.readiness')} icon={Zap} color="hsl(130, 50%, 45%)" />
-              <ScoreRing score={activity?.score ?? null} label={t('profile:myday.activity')} icon={Flame} color="hsl(25, 90%, 55%)" />
+              <ScoreRing score={dailyData.sleep?.score ?? null} label={t('profile:myday.sleep')} icon={Moon} color="hsl(var(--primary))" />
+              <ScoreRing score={dailyData.readiness?.score ?? null} label={t('profile:myday.readiness')} icon={Zap} color="hsl(130, 50%, 45%)" />
+              <ScoreRing score={dailyData.activity?.score ?? null} label={t('profile:myday.activity')} icon={Flame} color="hsl(25, 90%, 55%)" />
             </div>
 
-            {(activity?.steps || sleep?.contributors) && (
+            {/* Secondary metrics: Steps, Active Calories, RHR */}
+            {(dailyData.activity?.steps || dailyData.activity?.active_calories || dailyData.rhr) && (
               <div className="flex justify-around mt-4 pt-3 border-t border-border/50">
-                {activity?.steps && (
+                {dailyData.activity?.steps != null && (
                   <div className="text-center">
-                    <p className="text-lg font-bold text-foreground">{(activity.steps).toLocaleString()}</p>
+                    <p className="text-lg font-bold text-foreground">{dailyData.activity.steps.toLocaleString()}</p>
                     <p className="text-[10px] text-muted-foreground">{t('profile:myday.steps')}</p>
                   </div>
                 )}
-                {activity?.active_calories && (
+                {dailyData.activity?.active_calories != null && (
                   <div className="text-center">
-                    <p className="text-lg font-bold text-foreground">{activity.active_calories}</p>
+                    <p className="text-lg font-bold text-foreground">{dailyData.activity.active_calories}</p>
                     <p className="text-[10px] text-muted-foreground">{t('profile:myday.calories')}</p>
                   </div>
                 )}
-                {readiness?.contributors?.resting_heart_rate && (
+                {dailyData.rhr && (
                   <div className="text-center">
                     <p className="text-lg font-bold text-foreground flex items-center justify-center gap-1">
                       <Heart className="h-3 w-3 text-red-400" />
-                      {readiness.contributors.resting_heart_rate}
+                      {dailyData.rhr.value}
                     </p>
                     <p className="text-[10px] text-muted-foreground">{t('profile:myday.rhr')}</p>
                   </div>
@@ -360,7 +432,7 @@ const MyDay = () => {
               </div>
             )}
           </div>
-        ) : (
+        ) : !ouraConnected ? (
           <button 
             onClick={() => navigate(getLocalizedPath('/profile'))}
             className="card-glass p-4 mb-4 w-full text-left animate-fade-up flex items-center gap-3 hover:bg-accent/50 transition-colors"
@@ -375,7 +447,7 @@ const MyDay = () => {
             </div>
             <ArrowRight className="h-4 w-4 text-muted-foreground" />
           </button>
-        )}
+        ) : null}
 
         {/* ─── Today's Tasks ──────────────────────────────────────────── */}
         <div className="card-glass p-5 mb-4 animate-fade-up" style={{ animationDelay: '100ms' }}>
@@ -491,7 +563,7 @@ const MyDay = () => {
                 <div key={i} className="flex-1 flex flex-col items-center gap-1">
                   <div 
                     className="w-full rounded-t bg-primary/60 transition-all duration-500"
-                    style={{ height: `${Math.max(10, (s.score / 100) * 64)}px` }}
+                    style={{ height: `${Math.max(10, ((s.score ?? 0) / 100) * 64)}px` }}
                   />
                   <span className="text-[8px] text-muted-foreground">
                     {s.day.slice(-2)}
