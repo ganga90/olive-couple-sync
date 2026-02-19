@@ -499,7 +499,7 @@ You are NOT a rigid command parser. You understand natural, conversational langu
 - "delete": User wants to remove/cancel a task (e.g., "delete the dentist task", "never mind about that", "remove it", "cancel that")
 - "move": User wants to move a task to a different list (e.g., "move it to groceries", "put it in the work list")
 - "assign": User wants to assign a task to their partner (e.g., "give this to Marcus", "assign it to my partner", "let her handle it")
-- "remind": User wants a reminder (e.g., "remind me at 5 PM", "remind me about this tomorrow", "set an alarm for 3pm")
+- "remind": User wants a reminder — EITHER on an existing task OR creating a new one with a reminder. Examples: "remind me at 5 PM" (existing context), "remind me about this tomorrow" (existing task), "Moonswatch - remind me to check it out on March 6th" (NEW item + reminder), "remind me to call the dentist next Monday" (NEW task + reminder). Use target_task_name for the subject/task name and due_date_expression for the time. The system will auto-create a new task if no existing one matches.
 - "expense": User wants to log spending (e.g., "spent $45 on dinner", "$20 gas")
 - "chat": User wants conversational interaction — briefings, motivation, planning, greetings (e.g., "good morning", "how am I doing?", "summarize my week", "what should I focus on?", "help me plan my day")
 - "contextual_ask": User is asking a question about their saved data or wants AI-powered advice (e.g., "when is the dentist?", "what restaurants did I save?", "any date ideas?", "what books are on my list?")
@@ -3232,6 +3232,115 @@ serve(async (req) => {
               break;
             }
           }
+        }
+      }
+
+      // ================================================================
+      // COMPOUND CREATE+REMIND: If remind intent but no existing task found,
+      // create a new note first, then set the reminder on it.
+      // ================================================================
+      if (!foundTask && actionType === 'remind') {
+        console.log('[TASK_ACTION] Remind intent but no existing task found — creating new note first');
+        
+        // Extract the task description from the original message, stripping reminder phrases
+        let taskDescription = messageBody || actionTarget || '';
+        // Remove common reminder phrases to get the clean task description
+        taskDescription = taskDescription
+          .replace(/\s*[-–—]\s*remind\s+me\s+(?:to\s+)?(?:check\s+(?:it\s+)?out\s+)?(?:on|at|in|tomorrow|next|this).*$/i, '')
+          .replace(/\s*[-–—]\s*ricordami\s+(?:di\s+)?.*$/i, '')
+          .replace(/\s*[-–—]\s*recuérdame\s+(?:de\s+)?.*$/i, '')
+          .replace(/\s*remind\s+me\s+(?:about\s+)?(?:this\s+)?(?:on|at|in|tomorrow|next|this).*$/i, '')
+          .replace(/\s*remind\s+me\s+(?:to\s+)?(?:check\s+(?:it\s+)?out\s+)?(?:on|at|in|tomorrow|next|this).*$/i, '')
+          .replace(/\s*ricordami\s+(?:di\s+)?.*$/i, '')
+          .replace(/\s*recuérdame\s+(?:de\s+)?.*$/i, '')
+          .trim();
+        
+        // If stripping left nothing, use the actionTarget or original message
+        if (!taskDescription) {
+          taskDescription = actionTarget || messageBody || 'New reminder';
+        }
+        
+        console.log('[TASK_ACTION] Creating note with description:', taskDescription);
+        
+        try {
+          // Process through the AI note processor for smart categorization
+          const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
+            body: {
+              text: taskDescription,
+              user_id: userId,
+              couple_id: coupleId,
+              timezone: profile.timezone || 'America/New_York',
+            }
+          });
+          
+          if (processError) {
+            console.error('[TASK_ACTION] process-note error:', processError);
+            return reply(t('error_generic', userLang));
+          }
+          
+          // Parse the reminder date from the original message
+          const reminderExpr = effectiveMessage || messageBody || '';
+          const parsed = parseNaturalDate(reminderExpr, profile.timezone || 'America/New_York');
+          
+          // Insert the new note with reminder already set
+          const noteData: any = {
+            author_id: userId,
+            couple_id: coupleId,
+            original_text: messageBody || taskDescription,
+            summary: processData.summary || taskDescription,
+            category: processData.category || 'Task',
+            due_date: parsed.date || processData.due_date || null,
+            reminder_time: parsed.date || null,
+            priority: processData.priority || 'medium',
+            tags: processData.tags || [],
+            items: processData.items || [],
+            list_id: processData.list_id || null,
+            media_urls: mediaUrls.length > 0 ? mediaUrls : null,
+            completed: false,
+          };
+          
+          const { data: insertedNote, error: insertError } = await supabase
+            .from('clerk_notes')
+            .insert(noteData)
+            .select('id, summary, list_id')
+            .single();
+          
+          if (insertError) {
+            console.error('[TASK_ACTION] Insert error:', insertError);
+            return reply(t('error_generic', userLang));
+          }
+          
+          // Get list name for response
+          let listName = 'Tasks';
+          if (insertedNote.list_id) {
+            const { data: list } = await supabase
+              .from('clerk_lists')
+              .select('name')
+              .eq('id', insertedNote.list_id)
+              .single();
+            if (list) listName = list.name;
+          }
+          
+          const friendlyDate = parsed.date ? formatFriendlyDate(parsed.date) : 'tomorrow at 9:00 AM';
+          
+          const confirmationMessage = [
+            `✅ Saved: ${insertedNote.summary}`,
+            `📂 Added to: ${listName}`,
+            `⏰ Reminder set for ${friendlyDate}`,
+            ``,
+            `🔗 Manage: https://witholive.app`,
+          ].join('\n');
+          
+          // Store as referenced entity for follow-up
+          await saveReferencedEntity(
+            { id: insertedNote.id, summary: insertedNote.summary, list_id: insertedNote.list_id || undefined },
+            confirmationMessage
+          );
+          
+          return reply(confirmationMessage);
+        } catch (createErr) {
+          console.error('[TASK_ACTION] Create+remind error:', createErr);
+          return reply(t('error_generic', userLang));
         }
       }
 
