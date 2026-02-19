@@ -269,6 +269,8 @@ interface ClassifiedIntent {
     amount: number | null;
     expense_description: string | null;
     is_urgent: boolean | null;
+    partner_message_content: string | null;
+    partner_action: string | null;
   };
   confidence: number;
   reasoning: string;
@@ -428,7 +430,7 @@ async function executeTaskAction(
   userId: string,
   coupleId: string | null
 ): Promise<ActionResult | null> {
-  const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message'];
+  const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind'];
     if (!taskActions.includes(intent.intent)) return null;
     if (intent.confidence < 0.5) return null;
 
@@ -506,45 +508,102 @@ async function executeTaskAction(
         return { type: 'set_priority', task_id: taskId, task_summary: taskSummary || '', success: true, details: { new_priority: newPriority } };
       }
 
-      case 'set_due': {
+      case 'set_due':
+      case 'remind': {
         const dateExpr = intent.parameters?.due_date_expression;
         if (!dateExpr) return null;
 
-        // Simple date parsing for common expressions
+        // Robust natural language date parsing
         const now = new Date();
         let targetDate: Date | null = null;
+        let readable = '';
+        const lower = dateExpr.toLowerCase().trim();
 
-        const lower = dateExpr.toLowerCase();
-        if (lower.includes('tomorrow')) {
+        // Word-to-number map
+        const wordToNum: Record<string, number> = {
+          'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+          'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'fifteen': 15,
+          'twenty': 20, 'thirty': 30, 'un': 1, 'una': 1, 'dos': 2, 'media': 0.5, 'mezza': 0.5,
+        };
+        const resolveNum = (t: string): number | null => { const n = parseInt(t); return !isNaN(n) ? n : (wordToNum[t.toLowerCase()] ?? null); };
+
+        // Relative time: "in X minutes/hours/days"
+        const halfHourMatch = lower.match(/(?:half\s+(?:an?\s+)?hour|mezz'?ora|media\s+hora)/i);
+        const minMatch = lower.match(/in\s+([\w'-]+(?:\s+[\w'-]+)?)\s*(?:min(?:ute)?s?|minuto?s?|minut[io])/i);
+        const hrMatch = lower.match(/in\s+([\w'-]+(?:\s+[\w'-]+)?)\s*(?:hours?|hrs?|or[ae]s?|or[ae])/i);
+        const dayMatch = lower.match(/in\s+([\w'-]+(?:\s+[\w'-]+)?)\s*(?:days?|días?|dias?|giorn[io])/i);
+
+        if (halfHourMatch) {
+          targetDate = new Date(now); targetDate.setMinutes(targetDate.getMinutes() + 30); readable = 'in 30 minutes';
+        } else if (minMatch) {
+          const num = resolveNum(minMatch[1].trim());
+          if (num) { targetDate = new Date(now); targetDate.setMinutes(targetDate.getMinutes() + Math.round(num)); readable = `in ${Math.round(num)} minutes`; }
+        } else if (hrMatch) {
+          const num = resolveNum(hrMatch[1].trim());
+          if (num) { targetDate = new Date(now); if (num === 0.5) { targetDate.setMinutes(targetDate.getMinutes() + 30); readable = 'in 30 minutes'; } else { targetDate.setHours(targetDate.getHours() + Math.round(num)); readable = `in ${Math.round(num)} hour${num > 1 ? 's' : ''}`; } }
+        } else if (dayMatch) {
+          const num = resolveNum(dayMatch[1].trim());
+          if (num) { targetDate = new Date(now); targetDate.setDate(targetDate.getDate() + Math.round(num)); targetDate.setHours(9, 0, 0, 0); readable = `in ${Math.round(num)} day${num > 1 ? 's' : ''}`; }
+        }
+
+        // Named dates
+        if (!targetDate) {
+          if (lower.includes('tomorrow') || /\bmañana\b/.test(lower) || lower.includes('domani')) {
+            targetDate = new Date(now); targetDate.setDate(targetDate.getDate() + 1); targetDate.setHours(9, 0, 0, 0); readable = 'tomorrow';
+          } else if (lower.includes('today') || lower.includes('hoy') || lower.includes('oggi')) {
+            targetDate = new Date(now); targetDate.setHours(18, 0, 0, 0); readable = 'today';
+          } else if (lower.includes('next week') || lower.includes('próxima semana') || lower.includes('prossima settimana')) {
+            targetDate = new Date(now); targetDate.setDate(targetDate.getDate() + 7); targetDate.setHours(9, 0, 0, 0); readable = 'next week';
+          } else if (lower.includes('this weekend') || lower.includes('este fin de semana') || lower.includes('questo weekend')) {
+            targetDate = new Date(now); const daysUntilSat = (6 - targetDate.getDay() + 7) % 7 || 7; targetDate.setDate(targetDate.getDate() + daysUntilSat); targetDate.setHours(10, 0, 0, 0); readable = 'this weekend';
+          }
+        }
+
+        // Named time-of-day
+        let hours: number | null = null;
+        let mins = 0;
+        if (/\bnoon\b|\bmidday\b|\bmezzogiorno\b|\bmediodía\b|\bmediodia\b/.test(lower)) { hours = 12; }
+        else if (lower.includes('morning') || lower.includes('mattina')) { hours = 9; }
+        else if (lower.includes('afternoon') || lower.includes('pomeriggio') || lower.includes('tarde')) { hours = 14; }
+        else if (lower.includes('evening') || lower.includes('sera') || lower.includes('noche')) { hours = 18; }
+        else if (lower.includes('night') || lower.includes('notte')) { hours = 20; }
+        else if (lower.includes('midnight') || lower.includes('mezzanotte') || lower.includes('medianoche')) { hours = 0; }
+
+        // Explicit time: "3pm", "10:30 AM"
+        const timeMatch = lower.match(/(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)/i);
+        if (timeMatch) {
+          hours = parseInt(timeMatch[1]);
+          mins = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+          if (timeMatch[3].toLowerCase() === 'pm' && hours < 12) hours += 12;
+          if (timeMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
+        }
+
+        // Standalone time with no date → today (or tomorrow if passed)
+        if (!targetDate && hours !== null) {
           targetDate = new Date(now);
-          targetDate.setDate(targetDate.getDate() + 1);
-          targetDate.setHours(9, 0, 0, 0);
-        } else if (lower.includes('today')) {
-          targetDate = new Date(now);
-          targetDate.setHours(18, 0, 0, 0);
-        } else {
-          // Try to parse time expression like "7:30 AM", "7.30am"
-          const timeMatch = lower.match(/(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)/i);
-          if (timeMatch) {
-            targetDate = new Date(now);
-            let hours = parseInt(timeMatch[1]);
-            const mins = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-            if (timeMatch[3].toLowerCase() === 'pm' && hours < 12) hours += 12;
-            if (timeMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
-            targetDate.setHours(hours, mins, 0, 0);
+          const proposed = new Date(now); proposed.setHours(hours, mins, 0, 0);
+          if (proposed <= now) { targetDate.setDate(targetDate.getDate() + 1); readable = 'tomorrow'; } else { readable = 'today'; }
+        }
+
+        // Apply time to date
+        if (targetDate && hours !== null) {
+          targetDate.setHours(hours, mins, 0, 0);
+          if (!readable.includes('minute') && !readable.includes('hour')) {
+            readable += ` at ${hours > 12 ? hours - 12 : hours === 0 ? 12 : hours}:${mins.toString().padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
           }
         }
 
         if (!targetDate) return null;
 
+        const updateField = intent.intent === 'remind' ? 'reminder_time' : 'due_date';
         const { error } = await supabase
           .from('clerk_notes')
-          .update({ due_date: targetDate.toISOString(), updated_at: new Date().toISOString() })
+          .update({ [updateField]: targetDate.toISOString(), updated_at: new Date().toISOString() })
           .eq('id', taskId);
 
         if (error) throw error;
-        console.log('[executeTaskAction] Set due date:', taskSummary, '→', targetDate.toISOString());
-        return { type: 'set_due', task_id: taskId, task_summary: taskSummary || '', success: true, details: { new_due_date: targetDate.toISOString() } };
+        console.log(`[executeTaskAction] Set ${updateField}:`, taskSummary, '→', targetDate.toISOString());
+        return { type: intent.intent, task_id: taskId, task_summary: taskSummary || '', success: true, details: { [`new_${updateField}`]: targetDate.toISOString(), readable } };
       }
 
       case 'delete': {
@@ -886,7 +945,7 @@ serve(async (req) => {
 
         // Execute task actions server-side (complete, set_priority, set_due, delete)
         if (aiResult && aiResult.confidence >= 0.5) {
-          const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message'];
+          const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind'];
           if (taskActions.includes(aiResult.intent)) {
             console.log(`[Ask Olive Individual] Task action detected: ${aiResult.intent} (confidence: ${aiResult.confidence})`);
             actionResult = await executeTaskAction(supabase, aiResult, actualUserId, actualCoupleId);
@@ -944,6 +1003,7 @@ serve(async (req) => {
           set_priority: `changed the priority to ${actionResult.details?.new_priority || 'updated'}`,
           set_due: `updated the due date/time to ${actionResult.details?.new_due_date ? new Date(actionResult.details.new_due_date).toLocaleString() : 'updated'}`,
           delete: 'deleted',
+          remind: `set a reminder ${actionResult.details?.readable || 'for ' + (actionResult.details?.new_reminder_time ? new Date(actionResult.details.new_reminder_time).toLocaleString() : 'later')}`,
           partner_message: actionResult.details?.sent
             ? `sent a WhatsApp message to ${actionResult.details?.partner_name || 'your partner'}${actionResult.details?.task_created ? ' and created a task assigned to them' : ''}`
             : actionResult.details?.error === 'no_phone'

@@ -1175,6 +1175,7 @@ export type Database = {
           oura_user_id: string | null
           refresh_token: string
           scopes: string[] | null
+          share_wellness_with_partner: boolean | null
           token_expiry: string | null
           updated_at: string | null
           user_id: string
@@ -1190,6 +1191,7 @@ export type Database = {
           oura_user_id?: string | null
           refresh_token: string
           scopes?: string[] | null
+          share_wellness_with_partner?: boolean | null
           token_expiry?: string | null
           updated_at?: string | null
           user_id: string
@@ -1205,11 +1207,125 @@ export type Database = {
           oura_user_id?: string | null
           refresh_token?: string
           scopes?: string[] | null
+          share_wellness_with_partner?: boolean | null
           token_expiry?: string | null
           updated_at?: string | null
           user_id?: string
         }
         Relationships: []
+      }
+      oura_daily_data: {
+        Row: {
+          active_calories: number | null
+          active_minutes: number | null
+          activity_score: number | null
+          awake_seconds: number | null
+          bedtime_end: string | null
+          bedtime_start: string | null
+          connection_id: string
+          day: string
+          deep_sleep_seconds: number | null
+          id: string
+          light_sleep_seconds: number | null
+          raw_data: Json | null
+          readiness_hrv_balance: number | null
+          readiness_resting_heart_rate: number | null
+          readiness_score: number | null
+          readiness_temperature_deviation: number | null
+          recovery_high_minutes: number | null
+          rem_sleep_seconds: number | null
+          resilience_daytime_recovery: number | null
+          resilience_level: string | null
+          resilience_sleep_recovery: number | null
+          sedentary_minutes: number | null
+          sleep_duration_seconds: number | null
+          sleep_efficiency: number | null
+          sleep_latency_seconds: number | null
+          sleep_score: number | null
+          steps: number | null
+          stress_day_summary: string | null
+          stress_high_minutes: number | null
+          synced_at: string | null
+          total_calories: number | null
+          user_id: string
+        }
+        Insert: {
+          active_calories?: number | null
+          active_minutes?: number | null
+          activity_score?: number | null
+          awake_seconds?: number | null
+          bedtime_end?: string | null
+          bedtime_start?: string | null
+          connection_id: string
+          day: string
+          deep_sleep_seconds?: number | null
+          id?: string
+          light_sleep_seconds?: number | null
+          raw_data?: Json | null
+          readiness_hrv_balance?: number | null
+          readiness_resting_heart_rate?: number | null
+          readiness_score?: number | null
+          readiness_temperature_deviation?: number | null
+          recovery_high_minutes?: number | null
+          rem_sleep_seconds?: number | null
+          resilience_daytime_recovery?: number | null
+          resilience_level?: string | null
+          resilience_sleep_recovery?: number | null
+          sedentary_minutes?: number | null
+          sleep_duration_seconds?: number | null
+          sleep_efficiency?: number | null
+          sleep_latency_seconds?: number | null
+          sleep_score?: number | null
+          steps?: number | null
+          stress_day_summary?: string | null
+          stress_high_minutes?: number | null
+          synced_at?: string | null
+          total_calories?: number | null
+          user_id: string
+        }
+        Update: {
+          active_calories?: number | null
+          active_minutes?: number | null
+          activity_score?: number | null
+          awake_seconds?: number | null
+          bedtime_end?: string | null
+          bedtime_start?: string | null
+          connection_id?: string
+          day?: string
+          deep_sleep_seconds?: number | null
+          id?: string
+          light_sleep_seconds?: number | null
+          raw_data?: Json | null
+          readiness_hrv_balance?: number | null
+          readiness_resting_heart_rate?: number | null
+          readiness_score?: number | null
+          readiness_temperature_deviation?: number | null
+          recovery_high_minutes?: number | null
+          rem_sleep_seconds?: number | null
+          resilience_daytime_recovery?: number | null
+          resilience_level?: string | null
+          resilience_sleep_recovery?: number | null
+          sedentary_minutes?: number | null
+          sleep_duration_seconds?: number | null
+          sleep_efficiency?: number | null
+          sleep_latency_seconds?: number | null
+          sleep_score?: number | null
+          steps?: number | null
+          stress_day_summary?: string | null
+          stress_high_minutes?: number | null
+          synced_at?: string | null
+          total_calories?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oura_daily_data_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "oura_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
