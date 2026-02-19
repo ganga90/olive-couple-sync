@@ -41,6 +41,7 @@ interface HeartbeatRequest {
   action: 'tick' | 'schedule_job' | 'get_pending' | 'generate_briefing' | 'check_reminders' | 'test_briefing';
   user_id?: string;
   job_type?: JobType;
+  channel?: string;
   payload?: Record<string, any>;
 }
 
@@ -977,9 +978,37 @@ serve(async (req) => {
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
+
         const briefing = await generateMorningBriefing(supabase, body.user_id);
+        let whatsappSent = false;
+
+        // If channel is 'whatsapp', actually send the briefing via WhatsApp
+        if (body.payload?.channel === 'whatsapp' || (body as any).channel === 'whatsapp') {
+          console.log('[Heartbeat] generate_briefing: sending via WhatsApp to', body.user_id);
+          whatsappSent = await sendWhatsAppMessage(
+            supabase,
+            body.user_id,
+            'morning_briefing',
+            briefing,
+            'high'
+          );
+
+          // Log the attempt
+          await supabase.from('olive_heartbeat_log').insert({
+            user_id: body.user_id,
+            job_type: 'morning_briefing',
+            status: whatsappSent ? 'sent' : 'failed',
+            message_preview: briefing.substring(0, 200),
+            channel: 'whatsapp',
+          });
+
+          if (!whatsappSent) {
+            console.error('[Heartbeat] generate_briefing: WhatsApp send FAILED for', body.user_id);
+          }
+        }
+
         return new Response(
-          JSON.stringify({ success: true, briefing }),
+          JSON.stringify({ success: true, briefing, whatsapp_sent: whatsappSent }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
