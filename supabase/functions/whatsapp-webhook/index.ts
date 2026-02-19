@@ -3755,7 +3755,56 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
           console.error('[WhatsApp Chat] Partner context fetch error (non-blocking):', partnerErr);
         }
       }
-      
+
+      // ================================================================
+      // PARTNER WELLNESS (opt-in, gentle, privacy-first)
+      // ================================================================
+      let partnerWellnessContext = '';
+      if (coupleId && chatType === 'briefing') {
+        try {
+          // Find partner's user_id
+          const { data: partnerMemberForWellness } = await supabase
+            .from('clerk_couple_members')
+            .select('user_id')
+            .eq('couple_id', coupleId)
+            .neq('user_id', userId)
+            .limit(1)
+            .maybeSingle();
+
+          if (partnerMemberForWellness?.user_id) {
+            // Check if partner has opted in to share wellness
+            const { data: partnerOuraConn } = await supabase
+              .from('oura_connections')
+              .select('share_wellness_with_partner')
+              .eq('user_id', partnerMemberForWellness.user_id)
+              .eq('is_active', true)
+              .maybeSingle();
+
+            if (partnerOuraConn?.share_wellness_with_partner) {
+              const todayStr = today.toISOString().split('T')[0];
+              const yesterdayStr = new Date(today.getTime() - 86400000).toISOString().split('T')[0];
+              const { data: partnerHealth } = await supabase
+                .from('oura_daily_data')
+                .select('day, readiness_score, sleep_score')
+                .eq('user_id', partnerMemberForWellness.user_id)
+                .in('day', [todayStr, yesterdayStr])
+                .order('day', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              // Only surface if readiness is notably low (<65) — qualitative signal only, no scores
+              if (partnerHealth?.readiness_score && partnerHealth.readiness_score < 65) {
+                partnerWellnessContext = `\nNote: ${partnerName || 'Your partner'} had a rough night and may appreciate some extra help today.\n`;
+                console.log('[WhatsApp Chat] Partner wellness signal included (low readiness)');
+              }
+            }
+          }
+        } catch (pwErr) {
+          // Non-blocking — partner wellness is a bonus
+          console.warn('[WhatsApp Chat] Partner wellness fetch error (non-blocking):', pwErr);
+        }
+      }
+
       // ================================================================
       // CALENDAR EVENTS
       // ================================================================
@@ -3830,34 +3879,97 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
       }
 
       // ================================================================
-      // OURA RING HEALTH DATA
+      // OURA RING HEALTH DATA (enhanced with stress, resilience, trends)
       // ================================================================
       let ouraContext = '';
       if (chatType === 'briefing') {
         try {
           const { data: ouraConn } = await supabase
             .from('oura_connections')
-            .select('id')
+            .select('id, last_sync_time, share_wellness_with_partner')
             .eq('user_id', userId)
             .eq('is_active', true)
             .maybeSingle();
 
           if (ouraConn) {
-            const todayStr = today.toISOString().split('T')[0];
-            const { data: ouraDay } = await supabase
-              .from('oura_daily_data')
-              .select('sleep_score, sleep_duration_seconds, readiness_score, activity_score, steps')
-              .eq('user_id', userId)
-              .eq('day', todayStr)
-              .maybeSingle();
+            // Pre-briefing auto-sync: if data is stale (>4h), trigger a fresh sync
+            const lastSync = ouraConn.last_sync_time ? new Date(ouraConn.last_sync_time).getTime() : 0;
+            const fourHoursMs = 4 * 60 * 60 * 1000;
+            if (Date.now() - lastSync > fourHoursMs) {
+              try {
+                console.log('[WhatsApp Chat] Oura data stale, triggering pre-briefing sync...');
+                await supabase.functions.invoke('oura-sync', {
+                  body: { user_id: userId, action: 'fetch_data' },
+                });
+              } catch (syncErr) {
+                console.warn('[WhatsApp Chat] Pre-briefing sync failed (non-blocking):', syncErr);
+              }
+            }
 
-            if (ouraDay) {
-              const sleepHours = ouraDay.sleep_duration_seconds ? (ouraDay.sleep_duration_seconds / 3600).toFixed(1) : null;
-              ouraContext = `\n## Health & Wellness (Oura Ring):\n`;
-              ouraContext += `• Sleep: ${ouraDay.sleep_score || 'N/A'}/100${sleepHours ? ` (${sleepHours}h)` : ''}\n`;
-              ouraContext += `• Readiness: ${ouraDay.readiness_score || 'N/A'}/100\n`;
-              ouraContext += `• Activity: ${ouraDay.activity_score || 'N/A'}/100 | ${ouraDay.steps || 0} steps\n`;
-              console.log('[WhatsApp Chat] Oura data included in briefing');
+            const todayStr = today.toISOString().split('T')[0];
+            const yesterdayStr = new Date(today.getTime() - 86400000).toISOString().split('T')[0];
+            const sevenDaysAgoStr = new Date(today.getTime() - 7 * 86400000).toISOString().split('T')[0];
+
+            // Fetch last 7 days for averages and trend detection
+            const { data: ouraWeek } = await supabase
+              .from('oura_daily_data')
+              .select('day, sleep_score, sleep_duration_seconds, readiness_score, activity_score, steps, stress_day_summary, stress_high_minutes, resilience_level')
+              .eq('user_id', userId)
+              .gte('day', sevenDaysAgoStr)
+              .order('day', { ascending: false })
+              .limit(7);
+
+            if (ouraWeek && ouraWeek.length > 0) {
+              const ouraToday = ouraWeek.find((r: any) => r.day === todayStr);
+              const ouraYesterday = ouraWeek.find((r: any) => r.day === yesterdayStr);
+              const ouraDay = ouraToday || ouraYesterday;
+              const isYesterday = !ouraToday && !!ouraYesterday;
+
+              if (ouraDay) {
+                const sleepHours = ouraDay.sleep_duration_seconds ? (ouraDay.sleep_duration_seconds / 3600).toFixed(1) : null;
+
+                // Compute 7-day averages
+                const rowsWithSleep = ouraWeek.filter((r: any) => r.sleep_score);
+                const rowsWithReadiness = ouraWeek.filter((r: any) => r.readiness_score);
+                const avgSleep = rowsWithSleep.length ? Math.round(rowsWithSleep.reduce((s: number, r: any) => s + r.sleep_score, 0) / rowsWithSleep.length) : null;
+                const avgReadiness = rowsWithReadiness.length ? Math.round(rowsWithReadiness.reduce((s: number, r: any) => s + r.readiness_score, 0) / rowsWithReadiness.length) : null;
+
+                ouraContext = `\n## Health & Wellness (Oura Ring${isYesterday ? ' — yesterday\'s data' : ''}):\n`;
+                ouraContext += `• Sleep: ${ouraDay.sleep_score || 'N/A'}/100${sleepHours ? ` (${sleepHours}h)` : ''}`;
+                if (avgSleep && ouraDay.sleep_score) {
+                  const delta = ouraDay.sleep_score - avgSleep;
+                  if (Math.abs(delta) >= 8) ouraContext += ` (${delta > 0 ? '+' : ''}${delta} vs 7-day avg)`;
+                }
+                ouraContext += '\n';
+                ouraContext += `• Readiness: ${ouraDay.readiness_score || 'N/A'}/100`;
+                if (avgReadiness && ouraDay.readiness_score) {
+                  const delta = ouraDay.readiness_score - avgReadiness;
+                  if (Math.abs(delta) >= 8) ouraContext += ` (${delta > 0 ? '+' : ''}${delta} vs 7-day avg)`;
+                }
+                ouraContext += '\n';
+                ouraContext += `• Activity: ${ouraDay.activity_score || 'N/A'}/100 | ${ouraDay.steps || 0} steps\n`;
+                if (ouraDay.stress_day_summary) {
+                  ouraContext += `• Stress: ${ouraDay.stress_day_summary}${ouraDay.stress_high_minutes ? ` (${ouraDay.stress_high_minutes}min high stress)` : ''}\n`;
+                }
+                if (ouraDay.resilience_level) {
+                  ouraContext += `• Resilience: ${ouraDay.resilience_level}\n`;
+                }
+
+                // Advisory note for the AI
+                if (ouraDay.readiness_score && ouraDay.readiness_score < 65) {
+                  ouraContext += `Advisory: Readiness is low — suggest a lighter, recovery-focused day.\n`;
+                } else if (ouraDay.readiness_score && ouraDay.readiness_score >= 85) {
+                  ouraContext += `Advisory: Readiness is high — great day to tackle demanding tasks.\n`;
+                }
+
+                console.log('[WhatsApp Chat] Enhanced Oura data included in briefing');
+              }
+            }
+
+            // Partner wellness context (gentle, opt-in only)
+            if (coupleId && ouraConn.share_wellness_with_partner) {
+              // This user opted in to share — but we need to check the *partner's* opt-in
+              // We'll inject partner wellness in the partner context section below
             }
           }
         } catch (ouraErr) {
@@ -4050,7 +4162,7 @@ ${sessionContext.conversation_history && sessionContext.conversation_history.len
       switch (chatType) {
         case 'briefing':
           const briefingCalendar = calendarContext || '\n## Today\'s Calendar:\nNo calendar connected - connect in settings to see events!\n';
-          const briefingPartner = partnerContext || (coupleId ? '' : '');
+          const briefingPartner = (partnerContext || '') + partnerWellnessContext;
           
           const briefingTimeframe = isTomorrowQuery ? 'tomorrow' : 'today';
           const briefingEmoji = isTomorrowQuery ? '📅' : '🌅';
@@ -4068,7 +4180,7 @@ Structure your response:
 ${briefingEmoji} **${briefingTitle}**
 
 1. **Schedule Snapshot**: Mention ${briefingTimeframe}'s calendar events (if any) or note a clear schedule
-${ouraContext ? `2. **Wellness Check**: Briefly mention sleep score, readiness, and any notable health insights from Oura data` : ''}
+${ouraContext ? `2. **Wellness Check**: Mention sleep and readiness in a warm, advisory tone. If readiness is low, gently suggest a lighter day ("your body is still recovering"). If readiness is high, be encouraging ("great energy today"). Include stress/resilience only if notable. Never be clinical — be a caring friend, not a doctor.` : ''}
 ${ouraContext ? '3' : '2'}. **${isTomorrowQuery ? 'Tomorrow\'s' : 'Today\'s'} Focus**: Top 2-3 priorities ${isTomorrowQuery ? 'for tomorrow' : '(overdue first, then urgent, then due today)'}
 ${ouraContext ? '4' : '3'}. **Quick Stats**: ${taskContext.total_active} active tasks, ${taskContext.urgent} urgent, ${taskContext.overdue} overdue, ${taskContext.due_tomorrow} due tomorrow
 ${partnerName ? `${ouraContext ? '5' : '4'}. **${partnerName} Update**: Brief note on partner's recent activity or assignments (if any)` : ''}

@@ -338,7 +338,9 @@
     "lastSynced": "Last synced:",
     "syncNow": "Sync Now",
     "syncing": "Syncing...",
-    "syncSuccess": "Synced {{count}} days of health data"
+    "syncSuccess": "Synced {{count}} days of health data",
+    "shareWellness": "Share wellness with partner",
+    "shareWellnessDesc": "Let your partner know when you need a lighter day"
   },
   "contextRail": {
     "stats": "Quick Stats",

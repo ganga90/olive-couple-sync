@@ -338,7 +338,9 @@
     "lastSynced": "Última sincronización:",
     "syncNow": "Sincronizar Ahora",
     "syncing": "Sincronizando...",
-    "syncSuccess": "Sincronizados {{count}} días de datos de salud"
+    "syncSuccess": "Sincronizados {{count}} días de datos de salud",
+    "shareWellness": "Compartir bienestar con tu pareja",
+    "shareWellnessDesc": "Permite que tu pareja sepa cuando necesitas un día más tranquilo"
   },
   "contextRail": {
     "stats": "Estadísticas Rápidas",

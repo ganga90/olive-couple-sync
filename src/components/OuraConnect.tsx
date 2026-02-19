@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, Loader2, RefreshCw, Unlink, Activity } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Check, Loader2, RefreshCw, Unlink, Activity, Heart } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
@@ -12,6 +14,7 @@ interface OuraConnection {
   connected: boolean;
   email?: string;
   last_sync?: string;
+  share_wellness_with_partner?: boolean;
 }
 
 export function OuraConnect() {
@@ -24,6 +27,7 @@ export function OuraConnect() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [shareWellness, setShareWellness] = useState(false);
 
   useEffect(() => {
     const ouraParam = searchParams.get('oura');
@@ -54,6 +58,16 @@ export function OuraConnect() {
       if (error) throw error;
       if (data?.success && data?.connected) {
         setConnection({ connected: true, email: data.email, last_sync: data.last_sync });
+        // Fetch partner wellness sharing preference directly from DB
+        const { data: connData } = await supabase
+          .from('oura_connections')
+          .select('share_wellness_with_partner')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (connData) {
+          setShareWellness(connData.share_wellness_with_partner ?? false);
+        }
       } else {
         setConnection({ connected: false });
       }
@@ -107,6 +121,23 @@ export function OuraConnect() {
     }
   }
 
+  async function handleShareWellnessToggle(enabled: boolean) {
+    if (!userId) return;
+    setShareWellness(enabled);
+    try {
+      const { error } = await supabase
+        .from('oura_connections')
+        .update({ share_wellness_with_partner: enabled })
+        .eq('user_id', userId)
+        .eq('is_active', true);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Failed to update wellness sharing:', error);
+      setShareWellness(!enabled); // Revert on failure
+      toast.error(t('oura.error', 'Failed to update setting'));
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-6">
@@ -139,6 +170,21 @@ export function OuraConnect() {
               </p>
             )}
           </div>
+        </div>
+
+        {/* Partner wellness sharing toggle */}
+        <div className="flex items-center justify-between py-3 px-3 rounded-lg bg-muted/50">
+          <div className="flex items-center gap-3">
+            <Heart className="h-4 w-4 text-rose-400" />
+            <div>
+              <Label className="text-sm font-medium">{t('oura.shareWellness', 'Share wellness with partner')}</Label>
+              <p className="text-xs text-muted-foreground">{t('oura.shareWellnessDesc', 'Let your partner know when you need a lighter day')}</p>
+            </div>
+          </div>
+          <Switch
+            checked={shareWellness}
+            onCheckedChange={handleShareWellnessToggle}
+          />
         </div>
 
         <div className="flex gap-2">

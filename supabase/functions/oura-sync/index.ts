@@ -93,13 +93,15 @@ serve(async (req) => {
 
       const headers = { Authorization: `Bearer ${accessToken}` };
 
-      const [sleepRes, readinessRes, activityRes] = await Promise.all([
+      const [sleepRes, readinessRes, activityRes, stressRes, resilienceRes] = await Promise.all([
         fetch(`https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=${startDate}&end_date=${endDate}`, { headers }),
         fetch(`https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=${startDate}&end_date=${endDate}`, { headers }),
         fetch(`https://api.ouraring.com/v2/usercollection/daily_activity?start_date=${startDate}&end_date=${endDate}`, { headers }),
+        fetch(`https://api.ouraring.com/v2/usercollection/daily_stress?start_date=${startDate}&end_date=${endDate}`, { headers }),
+        fetch(`https://api.ouraring.com/v2/usercollection/daily_resilience?start_date=${startDate}&end_date=${endDate}`, { headers }),
       ]);
 
-      // Check for auth errors (token may be invalid)
+      // Check for auth errors on core endpoints (stress/resilience may 403 on older rings — non-fatal)
       if (sleepRes.status === 401 || readinessRes.status === 401 || activityRes.status === 401) {
         console.error('[oura-sync] Oura API returned 401, marking connection as errored');
         await supabase
@@ -112,8 +114,11 @@ serve(async (req) => {
       const sleepData = sleepRes.ok ? await sleepRes.json() : { data: [] };
       const readinessData = readinessRes.ok ? await readinessRes.json() : { data: [] };
       const activityData = activityRes.ok ? await activityRes.json() : { data: [] };
+      // Stress and resilience may not be available on all ring generations — graceful fallback
+      const stressData = stressRes.ok ? await stressRes.json() : { data: [] };
+      const resilienceData = resilienceRes.ok ? await resilienceRes.json() : { data: [] };
 
-      console.log('[oura-sync] Received:', sleepData.data?.length || 0, 'sleep,', readinessData.data?.length || 0, 'readiness,', activityData.data?.length || 0, 'activity records');
+      console.log('[oura-sync] Received:', sleepData.data?.length || 0, 'sleep,', readinessData.data?.length || 0, 'readiness,', activityData.data?.length || 0, 'activity,', stressData.data?.length || 0, 'stress,', resilienceData.data?.length || 0, 'resilience records');
 
       // Build a map of day → merged data
       const dayMap: Record<string, any> = {};
@@ -156,6 +161,26 @@ serve(async (req) => {
         dayMap[day].raw_activity = item;
       }
 
+      // Stress data (may be empty on older ring generations)
+      for (const item of (stressData.data || [])) {
+        const day = item.day;
+        if (!dayMap[day]) dayMap[day] = {};
+        dayMap[day].stress_high_minutes = item.stress_high != null ? Math.round(item.stress_high / 60) : null;
+        dayMap[day].recovery_high_minutes = item.recovery_high != null ? Math.round(item.recovery_high / 60) : null;
+        dayMap[day].stress_day_summary = item.day_summary ?? null;
+        dayMap[day].raw_stress = item;
+      }
+
+      // Resilience data (requires Gen3+ ring)
+      for (const item of (resilienceData.data || [])) {
+        const day = item.day;
+        if (!dayMap[day]) dayMap[day] = {};
+        dayMap[day].resilience_level = item.level ?? null;
+        dayMap[day].resilience_sleep_recovery = item.contributors?.sleep_recovery ?? null;
+        dayMap[day].resilience_daytime_recovery = item.contributors?.daytime_recovery ?? null;
+        dayMap[day].raw_resilience = item;
+      }
+
       // Upsert into oura_daily_data
       const rows = Object.entries(dayMap).map(([day, data]) => ({
         connection_id: connection.id,
@@ -181,7 +206,13 @@ serve(async (req) => {
         total_calories: data.total_calories,
         active_minutes: data.active_minutes,
         sedentary_minutes: data.sedentary_minutes,
-        raw_data: { sleep: data.raw_sleep, readiness: data.raw_readiness, activity: data.raw_activity },
+        stress_high_minutes: data.stress_high_minutes ?? null,
+        recovery_high_minutes: data.recovery_high_minutes ?? null,
+        stress_day_summary: data.stress_day_summary ?? null,
+        resilience_level: data.resilience_level ?? null,
+        resilience_sleep_recovery: data.resilience_sleep_recovery ?? null,
+        resilience_daytime_recovery: data.resilience_daytime_recovery ?? null,
+        raw_data: { sleep: data.raw_sleep, readiness: data.raw_readiness, activity: data.raw_activity, stress: data.raw_stress, resilience: data.raw_resilience },
         synced_at: new Date().toISOString(),
       }));
 

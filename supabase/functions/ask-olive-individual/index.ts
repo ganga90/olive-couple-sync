@@ -774,11 +774,11 @@ serve(async (req) => {
           .maybeSingle();
 
         if (ouraConn) {
-          // Fetch last 7 days of Oura data
+          // Fetch last 7 days of Oura data including stress & resilience
           const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
           const { data: ouraRows } = await supabase
             .from('oura_daily_data')
-            .select('day, sleep_score, sleep_duration_seconds, readiness_score, activity_score, steps')
+            .select('day, sleep_score, sleep_duration_seconds, readiness_score, activity_score, steps, stress_day_summary, stress_high_minutes, recovery_high_minutes, resilience_level')
             .eq('user_id', actualUserId)
             .gte('day', sevenDaysAgo)
             .order('day', { ascending: false })
@@ -786,18 +786,41 @@ serve(async (req) => {
 
           if (ouraRows && ouraRows.length > 0) {
             const today = new Date().toISOString().split('T')[0];
+            const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
             const todayData = ouraRows.find((r: any) => r.day === today);
-            const avgSleep = Math.round(ouraRows.reduce((s: number, r: any) => s + (r.sleep_score || 0), 0) / ouraRows.filter((r: any) => r.sleep_score).length) || 0;
-            const avgReadiness = Math.round(ouraRows.reduce((s: number, r: any) => s + (r.readiness_score || 0), 0) / ouraRows.filter((r: any) => r.readiness_score).length) || 0;
-            const avgActivity = Math.round(ouraRows.reduce((s: number, r: any) => s + (r.activity_score || 0), 0) / ouraRows.filter((r: any) => r.activity_score).length) || 0;
+            // Use today's data, or yesterday's if today is not yet available
+            const latestData = todayData || ouraRows.find((r: any) => r.day === yesterday);
 
-            const parts: string[] = ['OURA RING HEALTH DATA (last 7 days):'];
-            if (todayData) {
-              const sleepHours = todayData.sleep_duration_seconds ? (todayData.sleep_duration_seconds / 3600).toFixed(1) : null;
-              parts.push(`Today: Sleep ${todayData.sleep_score || 'N/A'}/100${sleepHours ? ` (${sleepHours}h)` : ''} | Readiness ${todayData.readiness_score || 'N/A'}/100 | Activity ${todayData.activity_score || 'N/A'}/100 | ${todayData.steps || 0} steps`);
+            const rowsWithSleep = ouraRows.filter((r: any) => r.sleep_score);
+            const rowsWithReadiness = ouraRows.filter((r: any) => r.readiness_score);
+            const rowsWithActivity = ouraRows.filter((r: any) => r.activity_score);
+            const avgSleep = rowsWithSleep.length ? Math.round(rowsWithSleep.reduce((s: number, r: any) => s + r.sleep_score, 0) / rowsWithSleep.length) : 0;
+            const avgReadiness = rowsWithReadiness.length ? Math.round(rowsWithReadiness.reduce((s: number, r: any) => s + r.readiness_score, 0) / rowsWithReadiness.length) : 0;
+            const avgActivity = rowsWithActivity.length ? Math.round(rowsWithActivity.reduce((s: number, r: any) => s + r.activity_score, 0) / rowsWithActivity.length) : 0;
+
+            const parts: string[] = ['## Health & Wellness (Oura Ring, last 7 days):'];
+            if (latestData) {
+              const sleepHours = latestData.sleep_duration_seconds ? (latestData.sleep_duration_seconds / 3600).toFixed(1) : null;
+              const dayLabel = latestData.day === today ? 'Today' : 'Yesterday';
+              parts.push(`${dayLabel}: Sleep ${latestData.sleep_score || 'N/A'}/100${sleepHours ? ` (${sleepHours}h)` : ''} | Readiness ${latestData.readiness_score || 'N/A'}/100 | Activity ${latestData.activity_score || 'N/A'}/100 | ${latestData.steps || 0} steps`);
+              if (latestData.stress_day_summary) {
+                parts.push(`Stress today: ${latestData.stress_day_summary}${latestData.stress_high_minutes ? ` (${latestData.stress_high_minutes}min high stress)` : ''}`);
+              }
+              if (latestData.resilience_level) {
+                parts.push(`Resilience: ${latestData.resilience_level}`);
+              }
             }
             parts.push(`7-day averages: Sleep ${avgSleep}/100 | Readiness ${avgReadiness}/100 | Activity ${avgActivity}/100`);
-            parts.push('Use this health data to personalize advice. If the user asks about sleep, energy, or wellness, reference their actual Oura data.');
+
+            // Surface notable trends to help the AI give better advice
+            if (latestData?.sleep_score && avgSleep && (latestData.sleep_score - avgSleep) < -10) {
+              parts.push(`Note: Sleep is notably below their average (${latestData.sleep_score} vs avg ${avgSleep}).`);
+            }
+            if (latestData?.readiness_score && latestData.readiness_score < 65) {
+              parts.push(`Note: Readiness is low — body may need recovery.`);
+            }
+
+            parts.push('Use this data to give gentle, advisory suggestions when relevant. Frame as "you might want to..." not "you must...". Never alarm the user.');
             ouraContext = parts.join('\n');
             console.log('[Ask Olive Individual] Oura context built for', ouraRows.length, 'days');
           }
