@@ -141,7 +141,10 @@
     "analyzing": "Analizzando le tue note...",
     "patternDetected": "Pattern rilevato! Controlla la schermata principale.",
     "noPatterns": "Nessun pattern forte rilevato nelle tue note recenti.",
-    "analyzeError": "Impossibile analizzare le note"
+    "analyzeError": "Impossibile analizzare le note",
+    "showAll": "Mostra Tutto",
+    "showLess": "Mostra Meno",
+    "more": "altri"
   },
   "noteProcessingStyle": "Stile di Elaborazione Note",
   "memoryPersonalization": {
@@ -166,6 +169,31 @@
       "title": "Lingua",
       "subtitle": "Cambia la lingua dell'app"
     }
+  },
+  "notifications": {
+    "push": "Notifiche Push",
+    "pushDesc": "Ricevi notifiche sul tuo dispositivo",
+    "email": "Notifiche Email",
+    "emailDesc": "Ricevi aggiornamenti via email",
+    "reminders": "Promemoria Attività",
+    "remindersDesc": "Ricevi promemoria per le attività in scadenza",
+    "partner": "Attività del Partner",
+    "partnerDesc": "Scopri quando il tuo partner aggiunge o completa attività"
+  },
+  "privacy": {
+    "analytics": "Condividi Dati di Utilizzo",
+    "analyticsDesc": "Aiutaci a migliorare Olive con dati anonimi",
+    "activity": "Mostra Stato Attività",
+    "activityDesc": "Lascia che il tuo partner veda quando sei attivo",
+    "dataNote": "I tuoi dati sono crittografati e archiviati in modo sicuro. Non vendiamo mai le tue informazioni personali."
+  },
+  "help": {
+    "faq": "Domande Frequenti",
+    "faqDesc": "Trova risposte alle domande comuni su Olive.",
+    "contact": "Contatta il Supporto",
+    "contactDesc": "Hai bisogno di aiuto? Contatta il nostro team.",
+    "feedback": "Invia Feedback",
+    "feedbackDesc": "Ci piace sentirti! Condividi le tue idee."
   },
   "export": {
     "title": "Esporta i Tuoi Dati",
@@ -303,15 +331,17 @@
   "oura": {
     "title": "Oura Ring",
     "subtitle": "Monitoraggio sonno, prontezza e attività",
-    "connected": "Connesso",
+    "connected": "Collegato",
     "connectButton": "Collega Oura Ring",
     "connecting": "Collegamento...",
     "disconnect": "Scollega",
-    "disconnectConfirm": "Sei sicuro di voler scollegare il tuo Oura Ring?",
+    "disconnectConfirm": "Sei sicuro di voler scollegare Oura Ring?",
     "disconnected": "Oura Ring scollegato",
     "connectedSuccess": "Oura Ring collegato con successo!",
-    "description": "Collega il tuo Oura Ring per vedere dati su sonno, prontezza e attività nella dashboard La Mia Giornata.",
-    "error": "Impossibile collegare Oura Ring"
+    "description": "Collega il tuo Oura Ring per vedere i dati di sonno, prontezza e attività nella dashboard Il Mio Giorno.",
+    "error": "Impossibile collegare Oura Ring",
+    "permissionNote": "Richiederemo accesso ai tuoi dati di sonno, prontezza, attività e allenamenti.",
+    "lastSynced": "Ultima sincronizzazione:"
   },
   "myday": {
     "title": "La Mia Giornata",
@@ -333,27 +363,23 @@
     "connectOura": "Collega Oura Ring",
     "connectOuraDesc": "Vedi sonno, prontezza e attività",
     "loadingHealth": "Caricamento dati salute...",
+    "showingYesterday": "Dati di ieri",
+    "inProgress": "In corso",
+    "noDataTitle": "Nessun Dato Salute Trovato",
+    "noDataDesc": "Apri la tua App Oura per sincronizzare il tuo anello.",
+    "refreshData": "Aggiorna",
+    "reauthTitle": "Connessione Oura scaduta",
+    "reauthDesc": "Ricollega il tuo Oura Ring per continuare a vedere i dati sulla salute.",
+    "reconnectOura": "Ricollega Oura Ring",
     "briefing": {
       "button": "Richiedi Briefing Mattutino",
       "loading": "Generazione briefing...",
       "title": "Briefing Mattutino",
-      "error": "Impossibile generare il briefing. Riprova.",
-      "close": "Chiudi"
+      "error": "Impossibile inviare il briefing. Riprova.",
+      "close": "Chiudi",
+      "sentToWhatsApp": "Briefing inviato al tuo WhatsApp!",
+      "linkWhatsApp": "Collega WhatsApp per i Briefing",
+      "linkWhatsAppFirst": "Collega prima il tuo numero WhatsApp per ricevere i briefing."
     }
-  },
-  "oura": {
-    "title": "Oura Ring",
-    "subtitle": "Monitoraggio sonno, prontezza e attività",
-    "connected": "Collegato",
-    "connectButton": "Collega Oura Ring",
-    "connecting": "Collegamento...",
-    "disconnect": "Scollega",
-    "disconnectConfirm": "Sei sicuro di voler scollegare Oura Ring?",
-    "disconnected": "Oura Ring scollegato",
-    "connectedSuccess": "Oura Ring collegato con successo!",
-    "description": "Collega il tuo Oura Ring per vedere i dati di sonno, prontezza e attività nella dashboard Il Mio Giorno.",
-    "error": "Impossibile collegare Oura Ring",
-    "permissionNote": "Richiederemo accesso ai tuoi dati di sonno, prontezza, attività e allenamenti.",
-    "lastSynced": "Ultima sincronizzazione:"
   }
 }
