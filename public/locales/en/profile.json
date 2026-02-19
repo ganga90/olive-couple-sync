@@ -326,30 +326,6 @@
     "title": "Oura Ring",
     "subtitle": "Sleep, readiness & activity tracking",
     "connected": "Connected",
-    "lastSynced": "Last synced:",
-    "syncNow": "Sync Now",
-    "syncing": "Syncing...",
-    "syncSuccess": "Synced {{count}} days of health data",
-    "connectButton": "Connect Oura Ring",
-    "connecting": "Connecting...",
-    "disconnect": "Disconnect",
-    "disconnectConfirm": "Are you sure you want to disconnect your Oura Ring?",
-    "disconnected": "Oura Ring disconnected",
-    "connectedSuccess": "Oura Ring connected successfully!",
-    "description": "Connect your Oura Ring to track sleep quality, readiness, and daily activity. Olive will use this data to give you personalized recommendations.",
-    "permissionNote": "We'll request access to read your daily sleep, readiness, and activity data.",
-    "error": "Failed to connect Oura Ring"
-  },
-  "contextRail": {
-    "stats": "Quick Stats",
-    "completed": "Completed",
-    "active": "Active Tasks",
-    "shared": "Shared Tasks"
-  },
-  "oura": {
-    "title": "Oura Ring",
-    "subtitle": "Sleep, readiness & activity tracking",
-    "connected": "Connected",
     "connectButton": "Connect Oura Ring",
     "connecting": "Connecting...",
     "disconnect": "Disconnect",
@@ -359,7 +335,16 @@
     "description": "Connect your Oura Ring to see sleep, readiness, and activity data in your My Day dashboard.",
     "error": "Failed to connect Oura Ring",
     "permissionNote": "We'll request access to your sleep, readiness, activity, and workout data.",
-    "lastSynced": "Last synced:"
+    "lastSynced": "Last synced:",
+    "syncNow": "Sync Now",
+    "syncing": "Syncing...",
+    "syncSuccess": "Synced {{count}} days of health data"
+  },
+  "contextRail": {
+    "stats": "Quick Stats",
+    "completed": "Completed",
+    "active": "Active Tasks",
+    "shared": "Shared Tasks"
   },
   "myday": {
     "title": "My Day",
