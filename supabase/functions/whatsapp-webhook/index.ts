@@ -111,6 +111,11 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'es': 'Lo siento, algo salió mal. Inténtalo de nuevo.',
     'it': 'Mi dispiace, qualcosa è andato storto. Riprova.',
   },
+  task_ambiguous: {
+    en: '🤔 I found multiple tasks matching "{query}":\n\n{options}\n\nWhich one did you mean? Reply with the number.',
+    'es': '🤔 Encontré varias tareas que coinciden con "{query}":\n\n{options}\n\n¿Cuál querías? Responde con el número.',
+    'it': '🤔 Ho trovato più attività corrispondenti a "{query}":\n\n{options}\n\nQuale intendevi? Rispondi con il numero.',
+  },
   partner_message_sent: {
     en: '✅ Done! I sent {partner} a message:\n\n"{message}"\n\nvia WhatsApp 💬',
     'es': '✅ ¡Hecho! Le envié a {partner} un mensaje:\n\n"{message}"\n\nvía WhatsApp 💬',
@@ -508,7 +513,7 @@ You are NOT a rigid command parser. You understand natural, conversational langu
 
 ## CRITICAL RULES:
 1. **Conversational context is king.** Use CONVERSATION HISTORY to resolve "it", "that", "this", "the last one", pronouns in any language. If someone says "cancel it" after discussing a task, the target is that task.
-2. **Match tasks by meaning.** Use ACTIVE TASKS to find which task the user refers to. Fuzzy match — "dentist" matches "Dental checkup for Milka". Return the UUID in target_task_id.
+2. **Match tasks PRECISELY.** Use ACTIVE TASKS to find which task the user refers to. The user's query words must closely match the task summary. If the user says "Dental Milka complete", match ONLY tasks whose summary contains BOTH "Dental" AND "Milka" — do NOT match tasks that only contain "Milka" (e.g., "Research The Happy Howl for Milka" is NOT a match for "Dental Milka"). Return the UUID in target_task_id. If multiple tasks match equally well (e.g., "Milka Dental" and "Dental Milka"), return target_task_id as null and set target_task_name to the user's query — the system will handle disambiguation.
 3. **Use memories for personalization.** MEMORIES tell you who Marcus is, what Milka is (a dog?), dietary preferences, etc. Use this to disambiguate.
 4. **"Cancel" is context-dependent.** "Cancel the dentist" = delete. "Cancel that" after a reminder = delete. But "cancel my subscription" = probably create (a task to cancel).
 5. **Time expressions = set_due, not create.** "Change it to 7am", "move it to Friday", "postpone", "reschedule" → always set_due. The word "change/move/postpone" implies modifying existing, never creating.
@@ -1533,38 +1538,76 @@ async function searchTaskByKeywords(
   return null;
 }
 
+// ============================================================================
+// MATCH QUALITY VERIFICATION
+// Checks if a found task actually matches the user's query well enough.
+// Uses normalized word overlap to prevent false positives.
+// ============================================================================
+function computeMatchQuality(query: string, taskSummary: string): number {
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+  const queryWords = new Set(normalize(query).split(/\s+/).filter(w => w.length > 1));
+  const taskWords = new Set(normalize(taskSummary).split(/\s+/).filter(w => w.length > 1));
+  
+  if (queryWords.size === 0) return 0;
+  
+  let matchedWords = 0;
+  for (const qw of queryWords) {
+    for (const tw of taskWords) {
+      if (tw === qw || tw.includes(qw) || qw.includes(tw)) {
+        matchedWords++;
+        break;
+      }
+    }
+  }
+  
+  // What fraction of query words matched?
+  return matchedWords / queryWords.size;
+}
+
 // Semantic task search using hybrid_search_notes RPC (vector + full-text)
-// Replaces searchTaskByKeywords for AI-routed flows
-async function semanticTaskSearch(
+// Returns multiple candidates for ambiguity detection
+interface TaskCandidate {
+  id: string;
+  summary: string;
+  priority: string;
+  completed: boolean;
+  task_owner: string | null;
+  author_id: string;
+  couple_id: string | null;
+  due_date: string | null;
+  reminder_time: string | null;
+  score?: number;
+  matchQuality?: number;
+}
+
+async function semanticTaskSearchMulti(
   supabase: any,
   userId: string,
   coupleId: string | null,
-  queryString: string
-): Promise<any | null> {
+  queryString: string,
+  limit: number = 5
+): Promise<TaskCandidate[]> {
   try {
     console.log('[semanticTaskSearch] Searching for:', queryString);
 
-    // Generate embedding for semantic search
     const embedding = await generateEmbedding(queryString);
+    let candidates: TaskCandidate[] = [];
 
     if (embedding) {
-      // Use hybrid search: 70% vector similarity + 30% full-text
       const { data, error } = await supabase.rpc('hybrid_search_notes', {
         p_user_id: userId,
         p_couple_id: coupleId,
         p_query: queryString,
         p_query_embedding: JSON.stringify(embedding),
         p_vector_weight: 0.7,
-        p_limit: 5
+        p_limit: limit
       });
 
       if (!error && data && data.length > 0) {
-        // Return first non-completed match
-        const match = data.find((t: any) => !t.completed);
-        if (match) {
-          console.log('[semanticTaskSearch] Hybrid match:', match.summary, 'score:', match.score);
-          return match;
-        }
+        candidates = data.filter((t: any) => !t.completed).map((t: any) => ({
+          ...t,
+          matchQuality: computeMatchQuality(queryString, t.summary),
+        }));
       }
 
       if (error) {
@@ -1572,42 +1615,82 @@ async function semanticTaskSearch(
       }
     }
 
-    // Fallback: text-only search (vector_weight = 0.0)
-    console.log('[semanticTaskSearch] Falling back to text-only search');
-    const { data: textData, error: textError } = await supabase.rpc('hybrid_search_notes', {
-      p_user_id: userId,
-      p_couple_id: coupleId,
-      p_query: queryString,
-      p_query_embedding: JSON.stringify(new Array(1536).fill(0)),
-      p_vector_weight: 0.0,
-      p_limit: 5
-    });
+    // Fallback: text-only search
+    if (candidates.length === 0) {
+      console.log('[semanticTaskSearch] Falling back to text-only search');
+      const { data: textData, error: textError } = await supabase.rpc('hybrid_search_notes', {
+        p_user_id: userId,
+        p_couple_id: coupleId,
+        p_query: queryString,
+        p_query_embedding: JSON.stringify(new Array(1536).fill(0)),
+        p_vector_weight: 0.0,
+        p_limit: limit
+      });
 
-    if (!textError && textData && textData.length > 0) {
-      const match = textData.find((t: any) => !t.completed);
-      if (match) {
-        console.log('[semanticTaskSearch] Text-only match:', match.summary, 'score:', match.score);
-        return match;
+      if (!textError && textData && textData.length > 0) {
+        candidates = textData.filter((t: any) => !t.completed).map((t: any) => ({
+          ...t,
+          matchQuality: computeMatchQuality(queryString, t.summary),
+        }));
       }
     }
 
-    // Final fallback: use legacy keyword search
-    console.log('[semanticTaskSearch] No semantic match, falling back to keyword search');
-    const keywords = queryString.split(/\s+/).filter(w => w.length > 2);
-    if (keywords.length > 0) {
-      return await searchTaskByKeywords(supabase, userId, coupleId, keywords);
+    // Final fallback: keyword search (return all scored > 0)
+    if (candidates.length === 0) {
+      console.log('[semanticTaskSearch] No semantic match, falling back to keyword search');
+      const keywords = queryString.split(/\s+/).filter(w => w.length > 2);
+      if (keywords.length > 0) {
+        let query = supabase
+          .from('clerk_notes')
+          .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time')
+          .eq('completed', false)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (coupleId) { query = query.eq('couple_id', coupleId); }
+        else { query = query.eq('author_id', userId); }
+        const { data: tasks } = await query;
+        if (tasks) {
+          candidates = tasks
+            .map((task: any) => {
+              const mq = computeMatchQuality(queryString, task.summary);
+              return { ...task, matchQuality: mq, score: mq };
+            })
+            .filter((t: any) => t.matchQuality > 0)
+            .sort((a: any, b: any) => b.matchQuality - a.matchQuality)
+            .slice(0, limit);
+        }
+      }
     }
 
-    return null;
+    // Log candidates
+    for (const c of candidates.slice(0, 5)) {
+      console.log(`[semanticTaskSearch] Candidate: "${c.summary}" score=${c.score?.toFixed(3)} matchQ=${c.matchQuality?.toFixed(2)}`);
+    }
+
+    return candidates;
   } catch (error) {
     console.error('[semanticTaskSearch] Error:', error);
-    // Fallback to keyword search on any error
-    const keywords = queryString.split(/\s+/).filter(w => w.length > 2);
-    if (keywords.length > 0) {
-      return await searchTaskByKeywords(supabase, userId, coupleId, keywords);
-    }
+    return [];
+  }
+}
+
+// Legacy single-result wrapper (used by outbound context resolution etc.)
+async function semanticTaskSearch(
+  supabase: any,
+  userId: string,
+  coupleId: string | null,
+  queryString: string
+): Promise<any | null> {
+  const candidates = await semanticTaskSearchMulti(supabase, userId, coupleId, queryString, 5);
+  if (candidates.length === 0) return null;
+  
+  // Only return if match quality is decent (>= 50% word overlap)
+  const best = candidates[0];
+  if ((best.matchQuality ?? 1) < 0.4) {
+    console.log(`[semanticTaskSearch] Best match "${best.summary}" has low quality ${best.matchQuality?.toFixed(2)}, rejecting`);
     return null;
   }
+  return best;
 }
 
 // Find similar notes using embedding similarity
@@ -2355,6 +2438,137 @@ serve(async (req) => {
         }
       } catch (e) {
         console.warn('[Context] Failed to save entity context:', e);
+      }
+    }
+
+    // ========================================================================
+    // HANDLE AWAITING_DISAMBIGUATION STATE
+    // User was shown a numbered list of ambiguous tasks, waiting for their pick
+    // ========================================================================
+    if (session.conversation_state === 'AWAITING_DISAMBIGUATION') {
+      const contextData = session.context_data as any;
+      const pendingAction = contextData?.pending_action;
+      const candidates = pendingAction?.candidates as Array<{ id: string; summary: string }> | undefined;
+      
+      // Staleness check
+      const sessionUpdatedAt = new Date(session.updated_at).getTime();
+      const isStale = (Date.now() - sessionUpdatedAt) > 5 * 60 * 1000;
+      
+      const clearDisambigState = async () => {
+        const preservedContext = (contextData || {}) as ConversationContext;
+        await supabase
+          .from('user_sessions')
+          .update({
+            conversation_state: 'IDLE',
+            context_data: {
+              last_referenced_entity: preservedContext.last_referenced_entity,
+              entity_referenced_at: preservedContext.entity_referenced_at,
+              conversation_history: preservedContext.conversation_history,
+            },
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', session.id);
+      };
+      
+      if (isStale) {
+        console.log('[DISAMBIGUATION] Stale (>5 min), auto-cancelling');
+        await clearDisambigState();
+        // Fall through to normal processing
+      } else if (candidates && messageBody) {
+        const isCancel = /^(no|nope|cancel|nevermind|never mind|n)$/i.test(messageBody.trim());
+        if (isCancel) {
+          await clearDisambigState();
+          return reply(t('action_cancelled', userLang));
+        }
+        
+        // Try to parse a number from the response
+        const numMatch = messageBody.trim().match(/^(\d+)\.?$/);
+        const selectedIndex = numMatch ? parseInt(numMatch[1]) - 1 : -1;
+        
+        if (selectedIndex >= 0 && selectedIndex < candidates.length) {
+          const selectedTask = candidates[selectedIndex];
+          console.log(`[DISAMBIGUATION] User selected #${selectedIndex + 1}: "${selectedTask.summary}"`);
+          
+          await clearDisambigState();
+          
+          // Fetch full task data
+          const { data: fullTask } = await supabase
+            .from('clerk_notes')
+            .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time')
+            .eq('id', selectedTask.id)
+            .maybeSingle();
+          
+          if (!fullTask) {
+            return reply(t('task_not_found', userLang, { query: selectedTask.summary }));
+          }
+          
+          // Execute the original action type
+          const originalActionType = pendingAction.type as TaskActionType;
+          
+          if (originalActionType === 'complete') {
+            const { error } = await supabase
+              .from('clerk_notes')
+              .update({ completed: true, updated_at: new Date().toISOString() })
+              .eq('id', fullTask.id);
+            if (!error) {
+              const completeResponse = t('task_completed', userLang, { task: fullTask.summary });
+              await saveReferencedEntity(fullTask, completeResponse);
+              return reply(completeResponse);
+            }
+            return reply(t('error_generic', userLang));
+          } else if (originalActionType === 'delete') {
+            // Enter confirmation for delete
+            const deleteCtx = (session.context_data || {}) as ConversationContext;
+            await supabase
+              .from('user_sessions')
+              .update({
+                conversation_state: 'AWAITING_CONFIRMATION',
+                context_data: {
+                  ...deleteCtx,
+                  pending_action: {
+                    type: 'delete',
+                    task_id: fullTask.id,
+                    task_summary: fullTask.summary
+                  }
+                },
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', session.id);
+            return reply(`🗑️ Delete "${fullTask.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`);
+          } else if (originalActionType === 'set_priority') {
+            const msgLower = (pendingAction.original_query || '').toLowerCase();
+            const newPriority = msgLower.includes('low') ? 'low' : 'high';
+            await supabase
+              .from('clerk_notes')
+              .update({ priority: newPriority, updated_at: new Date().toISOString() })
+              .eq('id', fullTask.id);
+            const emoji = newPriority === 'high' ? '🔥' : '📌';
+            return reply(t('priority_updated', userLang, { emoji, task: fullTask.summary, priority: newPriority }));
+          } else {
+            // For other actions (remind, set_due, move, assign), mark the task as found
+            // and store as referenced entity so the user can follow up
+            await saveReferencedEntity(fullTask, `Selected: ${fullTask.summary}`);
+            // Re-process with the resolved task — for now, confirm selection
+            const completeResponse = t('task_completed', userLang, { task: fullTask.summary });
+            const { error } = await supabase
+              .from('clerk_notes')
+              .update({ completed: true, updated_at: new Date().toISOString() })
+              .eq('id', fullTask.id);
+            if (!error) {
+              await saveReferencedEntity(fullTask, completeResponse);
+              return reply(completeResponse);
+            }
+            return reply(t('error_generic', userLang));
+          }
+        } else {
+          // Invalid selection — cancel and process as new message
+          console.log('[DISAMBIGUATION] Invalid selection, processing as new message:', messageBody?.substring(0, 50));
+          await clearDisambigState();
+          // Fall through to normal processing
+        }
+      } else {
+        await clearDisambigState();
+        // Fall through
       }
     }
 
@@ -3183,17 +3397,77 @@ serve(async (req) => {
           .maybeSingle();
 
         if (directTask) {
-          console.log('[TASK_ACTION] Direct AI task match:', directTask.summary);
-          foundTask = directTask;
+          // Post-match verification: ensure the AI-provided UUID actually matches the user's query
+          const matchQuality = actionTarget ? computeMatchQuality(actionTarget, directTask.summary) : 1;
+          if (matchQuality >= 0.4 || !actionTarget) {
+            console.log('[TASK_ACTION] Direct AI task match:', directTask.summary, 'matchQ:', matchQuality.toFixed(2));
+            foundTask = directTask;
+          } else {
+            console.log(`[TASK_ACTION] AI UUID match "${directTask.summary}" REJECTED — matchQ ${matchQuality.toFixed(2)} for query "${actionTarget}"`);
+          }
         }
       }
 
       // Check if actionTarget is a pronoun (it, that, this, lo, eso, quello)
       const isPronoun = !actionTarget || /^(it|that|this|lo|eso|quello|la|esa|questa|quello)$/i.test(actionTarget.trim());
 
-      // 2. If no direct match, use semantic search (skip if just a pronoun or relative ref)
+      // 2. If no direct match, use semantic search WITH ambiguity detection
       if (!foundTask && actionTarget && !isPronoun && !isRelativeReference(actionTarget)) {
-        foundTask = await semanticTaskSearch(supabase, userId, coupleId, actionTarget);
+        const candidates = await semanticTaskSearchMulti(supabase, userId, coupleId, actionTarget, 5);
+        
+        if (candidates.length > 0) {
+          const best = candidates[0];
+          const bestMQ = best.matchQuality ?? 0;
+          
+          // Check for ambiguity: are there multiple high-quality matches?
+          const AMBIGUITY_THRESHOLD = 0.15; // If top 2 scores are within 15% of each other
+          const MIN_MATCH_QUALITY = 0.4;    // Minimum word overlap to accept a match
+          
+          if (bestMQ < MIN_MATCH_QUALITY) {
+            // Best match is too weak — don't use it
+            console.log(`[TASK_ACTION] Best match "${best.summary}" quality ${bestMQ.toFixed(2)} below threshold, skipping`);
+          } else if (candidates.length >= 2) {
+            const secondMQ = candidates[1].matchQuality ?? 0;
+            const scoreDiff = bestMQ - secondMQ;
+            
+            // Both are high quality and close in score → ambiguous
+            if (secondMQ >= MIN_MATCH_QUALITY && scoreDiff < AMBIGUITY_THRESHOLD) {
+              console.log(`[TASK_ACTION] AMBIGUOUS: "${best.summary}" (${bestMQ.toFixed(2)}) vs "${candidates[1].summary}" (${secondMQ.toFixed(2)})`);
+              
+              // Build numbered options list for disambiguation
+              const ambiguousCandidates = candidates.filter(c => (c.matchQuality ?? 0) >= MIN_MATCH_QUALITY).slice(0, 4);
+              const optionsList = ambiguousCandidates.map((c, i) => `${i + 1}. ${c.summary}`).join('\n');
+              
+              // Save disambiguation state in session
+              const disambigCtx = (session.context_data || {}) as ConversationContext;
+              await supabase
+                .from('user_sessions')
+                .update({
+                  conversation_state: 'AWAITING_DISAMBIGUATION',
+                  context_data: {
+                    ...disambigCtx,
+                    pending_action: {
+                      type: actionType,
+                      candidates: ambiguousCandidates.map(c => ({ id: c.id, summary: c.summary })),
+                      original_query: actionTarget,
+                    }
+                  },
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', session.id);
+              
+              return reply(t('task_ambiguous', userLang, { query: actionTarget, options: optionsList }));
+            } else {
+              // Clear winner
+              foundTask = best;
+              console.log(`[TASK_ACTION] Clear match: "${best.summary}" (${bestMQ.toFixed(2)}) vs next (${secondMQ.toFixed(2)})`);
+            }
+          } else {
+            // Only one candidate and it's good enough
+            foundTask = best;
+            console.log(`[TASK_ACTION] Single match: "${best.summary}" (${bestMQ.toFixed(2)})`);
+          }
+        }
       }
 
       // 3. If still no match, check session's last_referenced_entity (pronoun resolution)
