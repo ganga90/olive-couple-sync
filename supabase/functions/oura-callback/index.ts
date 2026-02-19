@@ -17,7 +17,7 @@ serve(async (req) => {
     const stateParam = url.searchParams.get("state");
     const error = url.searchParams.get("error");
 
-    console.log('[oura-callback] Received callback with code:', !!code, 'state:', !!stateParam);
+    console.log('[oura-callback] Received callback with code:', !!code, 'state:', !!stateParam, 'error:', error);
 
     if (error) {
       console.error('[oura-callback] OAuth error:', error);
@@ -25,6 +25,7 @@ serve(async (req) => {
     }
 
     if (!code || !stateParam) {
+      console.error('[oura-callback] Missing params. code:', !!code, 'state:', !!stateParam);
       return errorRedirect("Missing code or state parameter");
     }
 
@@ -42,12 +43,15 @@ serve(async (req) => {
     }
 
     const { user_id, origin } = state;
-    const redirectUri = `${origin}/auth/oura/callback`;
 
-    console.log('[oura-callback] Processing for user:', user_id);
+    // CRITICAL: Use the same redirect_uri that was used in the authorize request.
+    // This MUST be the edge function URL, not the frontend URL.
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const redirectUri = `${supabaseUrl}/functions/v1/oura-callback`;
+
+    console.log('[oura-callback] Processing for user:', user_id, 'redirect_uri:', redirectUri);
 
     // Initialize Supabase with service role
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -58,7 +62,7 @@ serve(async (req) => {
       return errorRedirect("Oura credentials not configured", origin);
     }
 
-    // Exchange code for tokens
+    // Exchange code for tokens using the EXACT same redirect_uri
     const tokenResponse = await fetch("https://api.ouraring.com/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -73,7 +77,7 @@ serve(async (req) => {
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
-      console.error('[oura-callback] Token exchange failed:', errorText);
+      console.error('[oura-callback] Token exchange failed:', tokenResponse.status, errorText);
       return errorRedirect("Token exchange failed", origin);
     }
 
@@ -129,10 +133,11 @@ serve(async (req) => {
 
     console.log('[oura-callback] Oura connection saved:', connection.id);
 
-    // Redirect back to profile with success
+    // Redirect back to the frontend profile page with success
+    const redirectOrigin = origin || 'https://witholive.app';
     return new Response(null, {
       status: 303,
-      headers: { Location: `${origin}/profile?oura=connected` },
+      headers: { Location: `${redirectOrigin}/profile?oura=connected` },
     });
   } catch (error: unknown) {
     console.error("[oura-callback] Error:", error);
