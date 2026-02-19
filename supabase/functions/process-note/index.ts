@@ -277,6 +277,33 @@ ${mediaDescriptions.map((d, i) => `Media ${i + 1}: ${d}`).join('\n')}
 
 MEDIA EXTRACTION RULES - ALWAYS extract ALL details into items array:
 
+0. **HANDWRITTEN TEXT / STICKY NOTES / WHITEBOARDS / MEETING NOTES — HIGHEST PRIORITY**:
+   If media content starts with "HANDWRITTEN:" or contains transcribed handwritten text:
+   
+   a. **APPOINTMENTS** (contains words like "appt", "appointment", "doctor", "dentist", "meeting at"):
+      - Summary: "[Type] Appointment" (e.g., "Doctor Appointment")
+      - Category: "health" for medical, "personal" for others
+      - **CRITICAL**: Extract date/time references ("tomorrow", "4 PM", "March 6") and compute due_date + reminder_time
+      - Items: ["Time: [extracted time]", "Date: [extracted date]", "Location: [if any]", "Notes: [additional details]"]
+      - Priority: "high" for medical/urgent, "medium" otherwise
+   
+   b. **MEETING NOTES / BRAINSTORMING** (contains bullet points, arrows, multiple ideas):
+      - If user caption provides context (e.g., "Oura notes for interview"), use it for the summary
+      - Summary: Use the caption context or a descriptive title (NOT "whiteboard notes")
+      - Items: Extract EACH distinct point, bullet, or idea as a separate item
+      - For content with arrows (→), preserve as "Label → Value" format in items
+      - Category: "task" or match to user's lists based on caption context
+      - If caption mentions a company/project name, use that for list routing via target_list
+   
+   c. **TO-DO LISTS** (contains checkboxes, numbered items, "buy", "do", "call"):
+      - Create MULTIPLE separate notes (set multiple:true) — one per item
+      - Each note gets its own summary, category, and appropriate due_date
+   
+   d. **GENERAL HANDWRITTEN NOTES**:
+      - Summary: First meaningful phrase or sentence from the handwriting
+      - Items: All additional lines/points as separate items
+      - Category: Infer from content or use "personal"
+
 1. **BUSINESS/RESTAURANT/LOCATION (Google Maps, Yelp, etc.)**:
    - Summary: "[Business Name]" (just the name, clean and simple)
    - Category: "date_ideas" for restaurants, "personal" for services, "health" for medical
@@ -315,7 +342,10 @@ MEDIA EXTRACTION RULES - ALWAYS extract ALL details into items array:
    - Category: "books"
    - target_list: match to Books list if exists
 
-CRITICAL: If user text is vague ("save this", "remember"), use ALL media content to create summary AND populate items with extracted details.`;
+CRITICAL RULES:
+- If user text is vague ("save this", "remember"), use ALL media content to create summary AND populate items with extracted details.
+- If user caption provides CONTEXT (e.g., "Oura notes for interview", "meeting notes from standup"), use the caption to determine the summary and category, and use the media content for items/details.
+- NEVER produce generic summaries like "WHITEBOARD NOTES" or "APPOINTMENTS:" — always include the SPECIFIC content from the handwriting.`;
   }
   
   // Style-specific guidance
@@ -663,8 +693,20 @@ async function analyzeImageWithGemini(genai: GoogleGenAI, imageUrl: string): Pro
     
     console.log('[Gemini Vision] Image downloaded, type:', mimeType, 'size:', imageBlob.size);
     
-    // Enhanced prompt for structured data extraction - especially for business/location pages
+    // Enhanced prompt for structured data extraction
     const extractionPrompt = `Analyze this image and extract ALL useful information with MAXIMUM detail. Be thorough and specific.
+
+**HANDWRITTEN TEXT / STICKY NOTES / WHITEBOARDS / MEETING NOTES — TOP PRIORITY:**
+- Perform careful OCR on ALL handwritten text, even if messy or partial
+- Preserve the EXACT words written, do not paraphrase
+- If dates or times are written (e.g., "tomorrow", "4 PM", "March 6"), extract them explicitly as "Date: ..." and "Time: ..."
+- If it looks like an appointment or event (e.g., "Doctor appt tomorrow 4pm"), format as:
+  "APPOINTMENT: [Type] | Date: [date] | Time: [time] | Location: [if any]"
+- If it contains bullet points or multiple items (meeting notes, to-do list), extract EACH item on a separate line prefixed with "• "
+- If it contains action items or next steps, prefix each with "ACTION: "
+- For whiteboard/brainstorm content, preserve the structure: headings, arrows (→), groupings
+- Format: Start with "HANDWRITTEN:" followed by the full transcribed content
+- NEVER summarize handwritten text generically as "whiteboard notes" or "sticky note" — always transcribe the ACTUAL content
 
 **STOCK/FINANCIAL SCREENSHOTS - CRITICAL:**
 - Stock Ticker Symbol (e.g., "$RACE", "$AAPL", "$AMZN")
@@ -723,12 +765,13 @@ FORMAT: Extract the ACTUAL content being shared, not "social media post"
 - Phone numbers, emails, websites, social media handles
 
 FORMAT YOUR RESPONSE AS STRUCTURED DATA with the PRIMARY SUBJECT clearly identified first.
+For HANDWRITTEN content: Start with "HANDWRITTEN:" and transcribe ALL text verbatim
 For STOCKS: Start with "[TICKER] [COMPANY] - [PRICE]"
 For SOCIAL MEDIA about stocks: Start with the stock ticker(s) and company name(s)
 For other content types, start with the MAIN SUBJECT clearly identified.
 
-CRITICAL: Extract EVERY piece of visible information. Be specific and complete. Never return generic text like "social media post" - extract the ACTUAL content.
-Max 400 words.`;
+CRITICAL: Extract EVERY piece of visible information. Be specific and complete. Never return generic labels like "whiteboard notes" or "sticky note" - extract the ACTUAL content written.
+Max 500 words.`;
 
 
     // Use Gemini with vision capability
@@ -752,7 +795,7 @@ Max 400 words.`;
       ],
       config: {
         temperature: 0.1,
-        maxOutputTokens: 600
+        maxOutputTokens: 800
       }
     });
     
@@ -1228,6 +1271,11 @@ serve(async (req) => {
         .map(d => d.replace(/^\[.*?\]\s*/, ''))
         .join(' ');
       
+      // Detect if text is a "caption" providing context for the media (not vague, but not the main content)
+      // Examples: "Oura notes for interview", "meeting notes from standup", "doctor note"
+      const isCaptionContext = !isVagueText && safeText.length > 0 && safeText.length < 80 
+        && imageDescriptions.length > safeText.length * 2;
+      
       if (isVagueText && (imageDescriptions || audioTranscriptions)) {
         // When text is vague, media content becomes the PRIMARY source
         console.log('[process-note] Vague text detected with media - using media content as primary source');
@@ -1239,6 +1287,13 @@ serve(async (req) => {
           enhancedText = enhancedText === safeText 
             ? `[User wants to save/remember the following from audio]\n\n${audioTranscriptions}`
             : `${enhancedText}\n\n[Audio content]: ${audioTranscriptions}`;
+        }
+      } else if (isCaptionContext && imageDescriptions) {
+        // Caption provides CONTEXT for the media — media is the primary content, caption guides categorization
+        console.log('[process-note] Caption-as-context detected: "' + safeText + '" — media is primary content');
+        enhancedText = `[USER CAPTION/CONTEXT: "${safeText}" — Use this to determine the summary title, category, and list routing]\n\n[EXTRACTED CONTENT FROM IMAGE — use for items/details]:\n${imageDescriptions}`;
+        if (audioTranscriptions) {
+          enhancedText += `\n\n[Audio content]: ${audioTranscriptions}`;
         }
       } else {
         // Normal case: append audio transcriptions to user text
