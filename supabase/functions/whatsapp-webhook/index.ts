@@ -408,6 +408,8 @@ interface ClassifiedIntent {
     amount: number | null;
     expense_description: string | null;
     is_urgent: boolean | null;
+    partner_message_content: string | null;
+    partner_action: string | null;
   };
   confidence: number;
   reasoning: string;
@@ -560,7 +562,7 @@ ${skillsList || 'No skills activated.'}`;
 // Bridge: Convert AI ClassifiedIntent → existing IntentResult format
 function mapAIResultToIntentResult(
   ai: ClassifiedIntent
-): IntentResult & { queryType?: string; chatType?: string; actionType?: string; actionTarget?: string; cleanMessage?: string; _aiTaskId?: string; _aiSkillId?: string } {
+): IntentResult & { queryType?: string; chatType?: string; actionType?: string; actionTarget?: string; cleanMessage?: string; _aiTaskId?: string; _aiSkillId?: string; _listName?: string; _partnerAction?: string } {
   const params = ai.parameters || {};
 
   switch (ai.intent) {
@@ -632,7 +634,7 @@ function mapAIResultToIntentResult(
     case 'remind':
       return {
         intent: 'TASK_ACTION',
-        actionType: 'set_due',
+        actionType: 'remind',
         actionTarget: ai.target_task_name || undefined,
         cleanMessage: params.due_date_expression || undefined,
         _aiTaskId: ai.target_task_id || undefined,
@@ -1108,17 +1110,56 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
   const lowerExpr = expression.toLowerCase().trim();
   
   const formatDate = (d: Date): string => d.toISOString();
+
+  // Word-to-number map for natural language ("in one hour", "in two minutes")
+  const wordToNum: Record<string, number> = {
+    'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+    'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'eleven': 11,
+    'twelve': 12, 'fifteen': 15, 'twenty': 20, 'thirty': 30, 'forty': 40,
+    'forty-five': 45, 'forty five': 45, 'sixty': 60, 'ninety': 90,
+    // Spanish
+    'un': 1, 'una': 1, 'uno': 1, 'dos': 2, 'tres': 3, 'cuatro': 4, 'cinco': 5,
+    'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9, 'diez': 10, 'quince': 15,
+    'veinte': 20, 'treinta': 30, 'media': 0.5,
+    // Italian
+    'un\'': 1, 'mezza': 0.5, 'mezz\'ora': 0.5, 'due': 2, 'tre_it': 3, 'quattro': 4,
+    'cinque': 5, 'sei': 6, 'sette': 7, 'otto': 8, 'nove': 9, 'dieci': 10,
+    'quindici': 15, 'venti': 20, 'trenta': 30,
+  };
+
+  // Helper: resolve a number token (digit string or word)
+  function resolveNumber(token: string): number | null {
+    const n = parseInt(token);
+    if (!isNaN(n)) return n;
+    return wordToNum[token.toLowerCase()] ?? null;
+  }
   
   const monthNames: Record<string, number> = {
     'january': 0, 'jan': 0, 'february': 1, 'feb': 1, 'march': 2, 'mar': 2,
     'april': 3, 'apr': 3, 'may': 4, 'june': 5, 'jun': 5, 'july': 6, 'jul': 6,
     'august': 7, 'aug': 7, 'september': 8, 'sep': 8, 'sept': 8,
-    'october': 9, 'oct': 9, 'november': 10, 'nov': 10, 'december': 11, 'dec': 11
+    'october': 9, 'oct': 9, 'november': 10, 'nov': 10, 'december': 11, 'dec': 11,
+    // Spanish
+    'enero': 0, 'febrero': 1, 'marzo': 2, 'abril': 3, 'mayo': 4, 'junio': 5,
+    'julio': 6, 'agosto': 7, 'septiembre': 8, 'octubre': 9, 'noviembre': 10, 'diciembre': 11,
+    // Italian
+    'gennaio': 0, 'febbraio': 1, 'marzo_it': 2, 'aprile': 3, 'maggio': 4, 'giugno': 5,
+    'luglio': 6, 'settembre': 8, 'ottobre': 9, 'novembre': 10, 'dicembre': 11,
   };
   
   const getNextDayOfWeek = (dayName: string): Date => {
     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const targetDay = days.indexOf(dayName.toLowerCase());
+    // Also handle Spanish/Italian day names
+    const dayMap: Record<string, number> = {
+      'sunday': 0, 'sun': 0, 'monday': 1, 'mon': 1, 'tuesday': 2, 'tue': 2, 'wednesday': 3, 'wed': 3,
+      'thursday': 4, 'thu': 4, 'friday': 5, 'fri': 5, 'saturday': 6, 'sat': 6,
+      // Spanish
+      'domingo': 0, 'lunes': 1, 'martes': 2, 'miércoles': 3, 'miercoles': 3, 'jueves': 4, 'viernes': 5, 'sábado': 6, 'sabado': 6,
+      // Italian
+      'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2, 'mercoledì': 3, 'mercoledi': 3,
+      'giovedì': 4, 'giovedi': 4, 'venerdì': 5, 'venerdi': 5, 'sabato_it': 6,
+    };
+    const targetDay = dayMap[dayName.toLowerCase()] ?? days.indexOf(dayName.toLowerCase());
     if (targetDay === -1) return now;
     
     const result = new Date(now);
@@ -1133,6 +1174,7 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
   let hours: number | null = null;
   let minutes: number = 0;
   
+  // Parse explicit time (e.g., "3pm", "10:30 AM", "15:00")
   const timeMatch = lowerExpr.match(/(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?/i);
   if (timeMatch) {
     const potentialHour = parseInt(timeMatch[1]);
@@ -1146,58 +1188,117 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
     }
   }
   
-  if (lowerExpr.includes('morning')) { hours = hours ?? 9; }
-  else if (lowerExpr.includes('noon') || lowerExpr.includes('midday')) { hours = hours ?? 12; }
-  else if (lowerExpr.includes('afternoon')) { hours = hours ?? 14; }
-  else if (lowerExpr.includes('evening')) { hours = hours ?? 18; }
-  else if (lowerExpr.includes('night')) { hours = hours ?? 20; }
+  // Named time-of-day keywords (multilingual)
+  if (lowerExpr.includes('morning') || lowerExpr.includes('mañana') || lowerExpr.includes('mattina')) { hours = hours ?? 9; }
+  else if (/\bnoon\b/.test(lowerExpr) || /\bmidday\b/.test(lowerExpr) || /\bmezzogiorno\b/.test(lowerExpr) || /\bmediodía\b/.test(lowerExpr) || /\bmediodia\b/.test(lowerExpr)) { hours = hours ?? 12; minutes = 0; }
+  else if (lowerExpr.includes('afternoon') || lowerExpr.includes('pomeriggio') || lowerExpr.includes('tarde')) { hours = hours ?? 14; }
+  else if (lowerExpr.includes('evening') || lowerExpr.includes('sera') || lowerExpr.includes('noche')) { hours = hours ?? 18; }
+  else if (lowerExpr.includes('night') || lowerExpr.includes('notte')) { hours = hours ?? 20; }
+  else if (lowerExpr.includes('midnight') || lowerExpr.includes('mezzanotte') || lowerExpr.includes('medianoche')) { hours = hours ?? 0; minutes = 0; }
   
   let targetDate: Date | null = null;
   let readable = '';
   
-  if (lowerExpr.includes('today')) {
+  // === RELATIVE TIME EXPRESSIONS (highest priority) ===
+  // "in X minutes/hours/days" with digits or words
+  const relativePatterns = [
+    // "in 30 minutes", "in one hour", "in a minute"
+    /in\s+([\w'-]+(?:\s+[\w'-]+)?)\s*(?:min(?:ute)?s?|minuto?s?|minut[io])/i,
+    /in\s+([\w'-]+(?:\s+[\w'-]+)?)\s*(?:hours?|hrs?|or[ae]s?|or[ae])/i,
+    /in\s+([\w'-]+(?:\s+[\w'-]+)?)\s*(?:days?|días?|dias?|giorn[io])/i,
+    // "half an hour", "half hour", "mezz'ora", "media hora"  
+    /(?:half\s+(?:an?\s+)?hour|mezz'?ora|media\s+hora)/i,
+  ];
+
+  const halfHourMatch = lowerExpr.match(relativePatterns[3]);
+  if (halfHourMatch) {
     targetDate = new Date(now);
-    readable = 'today';
-  } else if (lowerExpr.includes('tomorrow')) {
-    targetDate = new Date(now);
-    targetDate.setDate(targetDate.getDate() + 1);
-    readable = 'tomorrow';
-  } else if (lowerExpr.includes('day after tomorrow')) {
-    targetDate = new Date(now);
-    targetDate.setDate(targetDate.getDate() + 2);
-    readable = 'day after tomorrow';
-  } else if (lowerExpr.includes('next week')) {
-    targetDate = new Date(now);
-    targetDate.setDate(targetDate.getDate() + 7);
-    readable = 'next week';
-  } else if (lowerExpr.includes('in a week') || lowerExpr.includes('in 1 week')) {
-    targetDate = new Date(now);
-    targetDate.setDate(targetDate.getDate() + 7);
-    readable = 'in a week';
-  }
-  
-  const inMinutesMatch = lowerExpr.match(/in\s+(\d+)\s*(?:min(?:ute)?s?)/i);
-  const inHoursMatch = lowerExpr.match(/in\s+(\d+)\s*(?:hour?s?|hr?s?)/i);
-  const inDaysMatch = lowerExpr.match(/in\s+(\d+)\s*days?/i);
-  
-  if (inMinutesMatch) {
-    targetDate = new Date(now);
-    targetDate.setMinutes(targetDate.getMinutes() + parseInt(inMinutesMatch[1]));
-    readable = `in ${inMinutesMatch[1]} minutes`;
+    targetDate.setMinutes(targetDate.getMinutes() + 30);
+    readable = 'in 30 minutes';
     hours = targetDate.getHours();
     minutes = targetDate.getMinutes();
-  } else if (inHoursMatch) {
-    targetDate = new Date(now);
-    targetDate.setHours(targetDate.getHours() + parseInt(inHoursMatch[1]));
-    readable = `in ${inHoursMatch[1]} hours`;
-    hours = targetDate.getHours();
-    minutes = targetDate.getMinutes();
-  } else if (inDaysMatch) {
-    targetDate = new Date(now);
-    targetDate.setDate(targetDate.getDate() + parseInt(inDaysMatch[1]));
-    readable = `in ${inDaysMatch[1]} days`;
   }
-  
+
+  if (!targetDate) {
+    const minMatch = lowerExpr.match(relativePatterns[0]);
+    if (minMatch) {
+      const num = resolveNumber(minMatch[1].trim());
+      if (num !== null) {
+        targetDate = new Date(now);
+        targetDate.setMinutes(targetDate.getMinutes() + Math.round(num));
+        readable = `in ${Math.round(num)} minutes`;
+        hours = targetDate.getHours();
+        minutes = targetDate.getMinutes();
+      }
+    }
+  }
+
+  if (!targetDate) {
+    const hrMatch = lowerExpr.match(relativePatterns[1]);
+    if (hrMatch) {
+      const num = resolveNumber(hrMatch[1].trim());
+      if (num !== null) {
+        targetDate = new Date(now);
+        if (num === 0.5) {
+          targetDate.setMinutes(targetDate.getMinutes() + 30);
+          readable = 'in 30 minutes';
+        } else {
+          targetDate.setHours(targetDate.getHours() + Math.round(num));
+          readable = `in ${Math.round(num)} hour${num > 1 ? 's' : ''}`;
+        }
+        hours = targetDate.getHours();
+        minutes = targetDate.getMinutes();
+      }
+    }
+  }
+
+  if (!targetDate) {
+    const dayMatch = lowerExpr.match(relativePatterns[2]);
+    if (dayMatch) {
+      const num = resolveNumber(dayMatch[1].trim());
+      if (num !== null) {
+        targetDate = new Date(now);
+        targetDate.setDate(targetDate.getDate() + Math.round(num));
+        readable = `in ${Math.round(num)} day${num > 1 ? 's' : ''}`;
+      }
+    }
+  }
+
+  // === NAMED DATE EXPRESSIONS ===
+  if (!targetDate) {
+    if (lowerExpr.includes('today') || lowerExpr.includes('hoy') || lowerExpr.includes('oggi')) {
+      targetDate = new Date(now);
+      readable = 'today';
+    } else if (lowerExpr.includes('tomorrow') || /\bmañana\b/.test(lowerExpr) || lowerExpr.includes('domani')) {
+      targetDate = new Date(now);
+      targetDate.setDate(targetDate.getDate() + 1);
+      readable = 'tomorrow';
+    } else if (lowerExpr.includes('day after tomorrow') || lowerExpr.includes('pasado mañana') || lowerExpr.includes('dopodomani')) {
+      targetDate = new Date(now);
+      targetDate.setDate(targetDate.getDate() + 2);
+      readable = 'day after tomorrow';
+    } else if (lowerExpr.includes('next week') || lowerExpr.includes('próxima semana') || lowerExpr.includes('prossima settimana') || lowerExpr.includes('la semana que viene') || lowerExpr.includes('settimana prossima')) {
+      targetDate = new Date(now);
+      targetDate.setDate(targetDate.getDate() + 7);
+      readable = 'next week';
+    } else if (lowerExpr.includes('in a week') || lowerExpr.includes('in 1 week') || lowerExpr.includes('en una semana') || lowerExpr.includes('tra una settimana') || lowerExpr.includes('fra una settimana')) {
+      targetDate = new Date(now);
+      targetDate.setDate(targetDate.getDate() + 7);
+      readable = 'in a week';
+    } else if (lowerExpr.includes('this weekend') || lowerExpr.includes('este fin de semana') || lowerExpr.includes('questo weekend') || lowerExpr.includes('questo fine settimana')) {
+      targetDate = new Date(now);
+      const currentDay = targetDate.getDay();
+      const daysUntilSaturday = currentDay === 6 ? 0 : (6 - currentDay);
+      targetDate.setDate(targetDate.getDate() + daysUntilSaturday);
+      readable = 'this weekend';
+    } else if (lowerExpr.includes('next month') || lowerExpr.includes('próximo mes') || lowerExpr.includes('prossimo mese') || lowerExpr.includes('il mese prossimo')) {
+      targetDate = new Date(now);
+      targetDate.setMonth(targetDate.getMonth() + 1);
+      readable = 'next month';
+    }
+  }
+
+  // === MONTH + DAY EXPRESSIONS ===
   if (!targetDate) {
     for (const [monthWord, monthNum] of Object.entries(monthNames)) {
       const monthDayMatch = lowerExpr.match(new RegExp(`${monthWord}\\s+(\\d{1,2})(?:st|nd|rd|th)?`, 'i'));
@@ -1224,23 +1325,52 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
     }
   }
   
+  // === DAY-OF-WEEK ===
   if (!targetDate) {
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    for (const day of dayNames) {
-      if (lowerExpr.includes(day) || lowerExpr.includes(day.substring(0, 3))) {
+    const allDayNames = [
+      'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
+      'sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat',
+      'domingo', 'lunes', 'martes', 'miércoles', 'miercoles', 'jueves', 'viernes', 'sábado', 'sabado',
+      'domenica', 'lunedì', 'lunedi', 'martedì', 'martedi', 'mercoledì', 'mercoledi', 'giovedì', 'giovedi', 'venerdì', 'venerdi',
+    ];
+    for (const day of allDayNames) {
+      if (lowerExpr.includes(day)) {
         targetDate = getNextDayOfWeek(day);
-        readable = `next ${day.charAt(0).toUpperCase() + day.slice(1)}`;
+        const displayDay = day.charAt(0).toUpperCase() + day.slice(1);
+        readable = `next ${displayDay}`;
         break;
       }
     }
   }
+
+  // === STANDALONE TIME (no date) → default to TODAY ===
+  // This handles "at noon", "at 3pm", "at 10:30", etc.
+  if (!targetDate && hours !== null) {
+    targetDate = new Date(now);
+    // If the time has already passed today, default to tomorrow
+    const proposedDate = new Date(now);
+    proposedDate.setHours(hours, minutes, 0, 0);
+    if (proposedDate <= now) {
+      targetDate.setDate(targetDate.getDate() + 1);
+      readable = 'tomorrow';
+    } else {
+      readable = 'today';
+    }
+  }
   
+  // === APPLY TIME ===
   if (targetDate && hours !== null) {
     targetDate.setHours(hours, minutes, 0, 0);
-    readable += ` at ${hours > 12 ? hours - 12 : hours === 0 ? 12 : hours}:${minutes.toString().padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
+    // Only add time to readable if it wasn't already set by relative time parsing
+    if (!readable.includes('minute') && !readable.includes('hour')) {
+      readable += ` at ${hours > 12 ? hours - 12 : hours === 0 ? 12 : hours}:${minutes.toString().padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
+    }
   } else if (targetDate && hours === null) {
-    targetDate.setHours(9, 0, 0, 0);
-    readable += ' at 9:00 AM';
+    // For relative time (in X minutes/hours), hours are already set
+    if (!readable.includes('minute') && !readable.includes('hour')) {
+      targetDate.setHours(9, 0, 0, 0);
+      readable += ' at 9:00 AM';
+    }
   }
   
   if (!targetDate) {
@@ -3285,7 +3415,9 @@ serve(async (req) => {
         }
         
         case 'remind': {
-          const reminderExpr = actionTarget;
+          // Use the due_date_expression (cleanMessage/effectiveMessage) for time, NOT the task name (actionTarget)
+          const reminderExpr = effectiveMessage || actionTarget || messageBody || '';
+          console.log('[remind] reminderExpr:', reminderExpr, '| actionTarget:', actionTarget, '| effectiveMessage:', effectiveMessage);
           const parsed = parseNaturalDate(reminderExpr, profile.timezone || 'America/New_York');
           const remindCtx = (session.context_data || {}) as ConversationContext;
 
@@ -4521,7 +4653,7 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
             action: 'send',
             message: {
               user_id: partnerId,
-              message_type: 'partner_notification' as MessageType,
+              message_type: 'partner_notification',
               content: partnerWhatsAppMsg,
               priority: 'normal',
               metadata: {
