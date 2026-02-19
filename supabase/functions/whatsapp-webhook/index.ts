@@ -3828,7 +3828,43 @@ ${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.
           console.error('[WhatsApp Chat] Calendar fetch error (non-blocking):', calErr);
         }
       }
-      
+
+      // ================================================================
+      // OURA RING HEALTH DATA
+      // ================================================================
+      let ouraContext = '';
+      if (chatType === 'briefing') {
+        try {
+          const { data: ouraConn } = await supabase
+            .from('oura_connections')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .maybeSingle();
+
+          if (ouraConn) {
+            const todayStr = today.toISOString().split('T')[0];
+            const { data: ouraDay } = await supabase
+              .from('oura_daily_data')
+              .select('sleep_score, sleep_duration_seconds, readiness_score, activity_score, steps')
+              .eq('user_id', userId)
+              .eq('day', todayStr)
+              .maybeSingle();
+
+            if (ouraDay) {
+              const sleepHours = ouraDay.sleep_duration_seconds ? (ouraDay.sleep_duration_seconds / 3600).toFixed(1) : null;
+              ouraContext = `\n## Health & Wellness (Oura Ring):\n`;
+              ouraContext += `• Sleep: ${ouraDay.sleep_score || 'N/A'}/100${sleepHours ? ` (${sleepHours}h)` : ''}\n`;
+              ouraContext += `• Readiness: ${ouraDay.readiness_score || 'N/A'}/100\n`;
+              ouraContext += `• Activity: ${ouraDay.activity_score || 'N/A'}/100 | ${ouraDay.steps || 0} steps\n`;
+              console.log('[WhatsApp Chat] Oura data included in briefing');
+            }
+          }
+        } catch (ouraErr) {
+          console.error('[WhatsApp Chat] Oura fetch error (non-blocking):', ouraErr);
+        }
+      }
+
       // ================================================================
       // TASK ANALYTICS
       // ================================================================
@@ -4025,16 +4061,18 @@ ${sessionContext.conversation_history && sessionContext.conversation_history.len
 ${baseContext}
 ${briefingCalendar}
 ${briefingPartner}
+${ouraContext}
 Your task: Deliver a complete but concise ${briefingTitle} focused on ${briefingTimeframe} (under 600 chars for WhatsApp).
 
 Structure your response:
 ${briefingEmoji} **${briefingTitle}**
 
 1. **Schedule Snapshot**: Mention ${briefingTimeframe}'s calendar events (if any) or note a clear schedule
-2. **${isTomorrowQuery ? 'Tomorrow\'s' : 'Today\'s'} Focus**: Top 2-3 priorities ${isTomorrowQuery ? 'for tomorrow' : '(overdue first, then urgent, then due today)'}
-3. **Quick Stats**: ${taskContext.total_active} active tasks, ${taskContext.urgent} urgent, ${taskContext.overdue} overdue, ${taskContext.due_tomorrow} due tomorrow
-${partnerName ? `4. **${partnerName} Update**: Brief note on partner's recent activity or assignments (if any)` : ''}
-5. **Encouragement**: One motivating line personalized to their situation
+${ouraContext ? `2. **Wellness Check**: Briefly mention sleep score, readiness, and any notable health insights from Oura data` : ''}
+${ouraContext ? '3' : '2'}. **${isTomorrowQuery ? 'Tomorrow\'s' : 'Today\'s'} Focus**: Top 2-3 priorities ${isTomorrowQuery ? 'for tomorrow' : '(overdue first, then urgent, then due today)'}
+${ouraContext ? '4' : '3'}. **Quick Stats**: ${taskContext.total_active} active tasks, ${taskContext.urgent} urgent, ${taskContext.overdue} overdue, ${taskContext.due_tomorrow} due tomorrow
+${partnerName ? `${ouraContext ? '5' : '4'}. **${partnerName} Update**: Brief note on partner's recent activity or assignments (if any)` : ''}
+${ouraContext ? '6' : '5'}. **Encouragement**: One motivating line personalized to their situation
 
 IMPORTANT: The user asked "${effectiveMessage}". If they ask about "tomorrow", focus on TOMORROW's tasks and events, not today's.
 

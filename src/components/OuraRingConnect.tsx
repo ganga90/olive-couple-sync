@@ -2,50 +2,41 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Check, Loader2, RefreshCw, Unlink } from 'lucide-react';
+import { Heart, Check, Loader2, RefreshCw, Unlink } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { useSearchParams } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
-import { CalendarSettings } from '@/components/CalendarSettings';
-import { useOnboardingTooltip } from '@/hooks/useOnboardingTooltip';
-import { OnboardingTooltip } from '@/components/OnboardingTooltip';
 
-interface CalendarConnection {
+interface OuraConnection {
   connected: boolean;
-  email?: string;
-  calendar_name?: string;
   sync_enabled?: boolean;
   last_sync?: string;
 }
 
-export function GoogleCalendarConnect() {
+export function OuraRingConnect() {
   const { t } = useTranslation('profile');
   const { user } = useAuth();
   const userId = user?.id;
   const [searchParams, setSearchParams] = useSearchParams();
-  
-  const [connection, setConnection] = useState<CalendarConnection | null>(null);
+
+  const [connection, setConnection] = useState<OuraConnection | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-  
-  // Onboarding tooltip
-  const calendarOnboarding = useOnboardingTooltip('google_calendar_feature');
 
   useEffect(() => {
-    // Handle callback params
-    const calendarParam = searchParams.get('calendar');
-    if (calendarParam === 'connected') {
-      toast.success(t('googleCalendar.connectedSuccess'));
-      searchParams.delete('calendar');
+    const ouraParam = searchParams.get('oura');
+    if (ouraParam === 'connected') {
+      toast.success(t('oura.connectedSuccess'));
+      searchParams.delete('oura');
       setSearchParams(searchParams, { replace: true });
-    } else if (calendarParam === 'error') {
-      const message = searchParams.get('message') || t('googleCalendar.error');
+    } else if (ouraParam === 'error') {
+      const message = searchParams.get('message') || t('oura.error');
       toast.error(message);
-      searchParams.delete('calendar');
+      searchParams.delete('oura');
       searchParams.delete('message');
       setSearchParams(searchParams, { replace: true });
     }
@@ -59,20 +50,18 @@ export function GoogleCalendarConnect() {
 
   async function checkConnection() {
     if (!userId) return;
-    
+
     try {
       setLoading(true);
-      const { data, error } = await supabase.functions.invoke('calendar-sync', {
-        body: { user_id: userId, action: 'status' }
+      const { data, error } = await supabase.functions.invoke('oura-sync', {
+        body: { user_id: userId, action: 'status' },
       });
 
       if (error) throw error;
-      
+
       if (data?.success && data?.connected) {
         setConnection({
           connected: true,
-          email: data.email,
-          calendar_name: data.calendar_name,
           sync_enabled: data.sync_enabled,
           last_sync: data.last_sync,
         });
@@ -80,7 +69,7 @@ export function GoogleCalendarConnect() {
         setConnection({ connected: false });
       }
     } catch (error) {
-      console.error('Failed to check calendar connection:', error);
+      console.error('Failed to check Oura connection:', error);
       setConnection({ connected: false });
     } finally {
       setLoading(false);
@@ -89,54 +78,52 @@ export function GoogleCalendarConnect() {
 
   async function handleConnect() {
     if (!userId) return;
-    
+
     try {
       setConnecting(true);
-      
-      // Get current origin for redirect
+
       // On native iOS/Android, use the deployed web URL for OAuth redirects
       const isNative = Capacitor.isNativePlatform();
       const origin = isNative ? 'https://witholive.app' : window.location.origin;
-      
-      const { data, error } = await supabase.functions.invoke('calendar-auth-url', {
-        body: { user_id: userId, redirect_origin: origin }
+
+      const { data, error } = await supabase.functions.invoke('oura-auth-url', {
+        body: { user_id: userId, redirect_origin: origin },
       });
 
       if (error) throw error;
-      
+
       if (data?.success && data?.auth_url) {
-        // Redirect to Google OAuth
         window.location.href = data.auth_url;
       } else {
         throw new Error('Failed to get auth URL');
       }
     } catch (error) {
-      console.error('Failed to start calendar connection:', error);
-      toast.error(t('googleCalendar.error'));
+      console.error('Failed to start Oura connection:', error);
+      toast.error(t('oura.error'));
       setConnecting(false);
     }
   }
 
   async function handleSync() {
     if (!userId) return;
-    
+
     try {
       setSyncing(true);
-      const { data, error } = await supabase.functions.invoke('calendar-sync', {
-        body: { user_id: userId, action: 'fetch_events' }
+      const { data, error } = await supabase.functions.invoke('oura-sync', {
+        body: { user_id: userId, action: 'fetch_data' },
       });
 
       if (error) throw error;
-      
+
       if (data?.success) {
-        toast.success(t('googleCalendar.syncSuccess', { count: data.synced_count }));
+        toast.success(t('oura.syncSuccess', { count: data.synced_count }));
         await checkConnection();
       } else {
         throw new Error(data?.error || 'Sync failed');
       }
     } catch (error: any) {
-      console.error('Failed to sync calendar:', error);
-      toast.error(error.message || t('googleCalendar.error'));
+      console.error('Failed to sync Oura data:', error);
+      toast.error(error.message || t('oura.error'));
     } finally {
       setSyncing(false);
     }
@@ -144,28 +131,28 @@ export function GoogleCalendarConnect() {
 
   async function handleDisconnect() {
     if (!userId) return;
-    
-    if (!confirm(t('googleCalendar.disconnectConfirm'))) {
+
+    if (!confirm(t('oura.disconnectConfirm'))) {
       return;
     }
-    
+
     try {
       setDisconnecting(true);
-      const { data, error } = await supabase.functions.invoke('calendar-sync', {
-        body: { user_id: userId, action: 'disconnect' }
+      const { data, error } = await supabase.functions.invoke('oura-sync', {
+        body: { user_id: userId, action: 'disconnect' },
       });
 
       if (error) throw error;
-      
+
       if (data?.success) {
-        toast.success(t('googleCalendar.disconnected'));
+        toast.success(t('oura.disconnected'));
         setConnection({ connected: false });
       } else {
         throw new Error(data?.error || 'Disconnect failed');
       }
     } catch (error: any) {
-      console.error('Failed to disconnect calendar:', error);
-      toast.error(error.message || t('googleCalendar.error'));
+      console.error('Failed to disconnect Oura:', error);
+      toast.error(error.message || t('oura.error'));
     } finally {
       setDisconnecting(false);
     }
@@ -182,26 +169,23 @@ export function GoogleCalendarConnect() {
   if (connection?.connected) {
     return (
       <div className="space-y-4">
-        <div className="flex items-start gap-3 p-3 bg-primary/5 rounded-lg border border-primary/10">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-            <Calendar className="h-5 w-5 text-primary" />
+        <div className="flex items-start gap-3 p-3 bg-rose-500/5 rounded-lg border border-rose-500/10">
+          <div className="w-10 h-10 rounded-full bg-rose-500/10 flex items-center justify-center flex-shrink-0">
+            <Heart className="h-5 w-5 text-rose-500" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="font-medium text-sm text-foreground truncate">
-                {connection.calendar_name || 'Google Calendar'}
+              <span className="font-medium text-sm text-foreground">
+                Oura Ring
               </span>
               <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
                 <Check className="h-3 w-3 mr-1" />
-                {t('googleCalendar.connected')}
+                {t('oura.connected')}
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground truncate">
-              {connection.email}
-            </p>
             {connection.last_sync && (
               <p className="text-xs text-muted-foreground mt-1">
-                {t('googleCalendar.lastSynced')} {new Date(connection.last_sync).toLocaleString()}
+                {t('oura.lastSynced')} {new Date(connection.last_sync).toLocaleString()}
               </p>
             )}
           </div>
@@ -220,7 +204,7 @@ export function GoogleCalendarConnect() {
             ) : (
               <RefreshCw className="h-4 w-4 mr-2" />
             )}
-            {t('googleCalendar.syncNow')}
+            {t('oura.syncNow')}
           </Button>
           <Button
             variant="outline"
@@ -236,9 +220,6 @@ export function GoogleCalendarConnect() {
             )}
           </Button>
         </div>
-
-        {/* Calendar Settings */}
-        <CalendarSettings />
       </div>
     );
   }
@@ -246,45 +227,29 @@ export function GoogleCalendarConnect() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        {t('googleCalendar.description')}
+        {t('oura.description')}
       </p>
-      
-      <div className="relative">
-        <Button
-          onClick={() => {
-            if (calendarOnboarding.isVisible) {
-              calendarOnboarding.dismiss();
-            }
-            handleConnect();
-          }}
-          disabled={connecting}
-          className="w-full"
-        >
-          {connecting ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              {t('googleCalendar.connecting')}
-            </>
-          ) : (
-            <>
-              <Calendar className="h-4 w-4 mr-2" />
-              {t('googleCalendar.connectButton')}
-            </>
-          )}
-        </Button>
-        
-        {/* Onboarding Tooltip */}
-        <OnboardingTooltip
-          isVisible={calendarOnboarding.isVisible}
-          onDismiss={calendarOnboarding.dismiss}
-          title={t('googleCalendar.onboarding.title')}
-          description={t('googleCalendar.onboarding.description')}
-          position="top"
-        />
-      </div>
+
+      <Button
+        onClick={handleConnect}
+        disabled={connecting}
+        className="w-full"
+      >
+        {connecting ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            {t('oura.connecting')}
+          </>
+        ) : (
+          <>
+            <Heart className="h-4 w-4 mr-2" />
+            {t('oura.connectButton')}
+          </>
+        )}
+      </Button>
 
       <p className="text-xs text-muted-foreground text-center">
-        {t('googleCalendar.permissionNote')}
+        {t('oura.permissionNote')}
       </p>
     </div>
   );

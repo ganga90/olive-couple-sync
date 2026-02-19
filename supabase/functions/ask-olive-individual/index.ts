@@ -760,6 +760,54 @@ serve(async (req) => {
     }
 
     // =========================================================================
+    // Fetch Oura Ring health data for context
+    // =========================================================================
+    let ouraContext = '';
+    if (actualUserId && supabase) {
+      try {
+        // Check if user has an active Oura connection
+        const { data: ouraConn } = await supabase
+          .from('oura_connections')
+          .select('id, is_active')
+          .eq('user_id', actualUserId)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (ouraConn) {
+          // Fetch last 7 days of Oura data
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          const { data: ouraRows } = await supabase
+            .from('oura_daily_data')
+            .select('day, sleep_score, sleep_duration_seconds, readiness_score, activity_score, steps')
+            .eq('user_id', actualUserId)
+            .gte('day', sevenDaysAgo)
+            .order('day', { ascending: false })
+            .limit(7);
+
+          if (ouraRows && ouraRows.length > 0) {
+            const today = new Date().toISOString().split('T')[0];
+            const todayData = ouraRows.find((r: any) => r.day === today);
+            const avgSleep = Math.round(ouraRows.reduce((s: number, r: any) => s + (r.sleep_score || 0), 0) / ouraRows.filter((r: any) => r.sleep_score).length) || 0;
+            const avgReadiness = Math.round(ouraRows.reduce((s: number, r: any) => s + (r.readiness_score || 0), 0) / ouraRows.filter((r: any) => r.readiness_score).length) || 0;
+            const avgActivity = Math.round(ouraRows.reduce((s: number, r: any) => s + (r.activity_score || 0), 0) / ouraRows.filter((r: any) => r.activity_score).length) || 0;
+
+            const parts: string[] = ['OURA RING HEALTH DATA (last 7 days):'];
+            if (todayData) {
+              const sleepHours = todayData.sleep_duration_seconds ? (todayData.sleep_duration_seconds / 3600).toFixed(1) : null;
+              parts.push(`Today: Sleep ${todayData.sleep_score || 'N/A'}/100${sleepHours ? ` (${sleepHours}h)` : ''} | Readiness ${todayData.readiness_score || 'N/A'}/100 | Activity ${todayData.activity_score || 'N/A'}/100 | ${todayData.steps || 0} steps`);
+            }
+            parts.push(`7-day averages: Sleep ${avgSleep}/100 | Readiness ${avgReadiness}/100 | Activity ${avgActivity}/100`);
+            parts.push('Use this health data to personalize advice. If the user asks about sleep, energy, or wellness, reference their actual Oura data.');
+            ouraContext = parts.join('\n');
+            console.log('[Ask Olive Individual] Oura context built for', ouraRows.length, 'days');
+          }
+        }
+      } catch (ouraErr) {
+        console.warn('[Ask Olive Individual] Could not fetch Oura data:', ouraErr);
+      }
+    }
+
+    // =========================================================================
     // AI INTENT CLASSIFICATION + ACTION EXECUTION (global chat only)
     // =========================================================================
     let actionResult: ActionResult | null = null;
@@ -840,6 +888,10 @@ serve(async (req) => {
 
       if (memoryContext) {
         fullContext += `\n${memoryContext}\n`;
+      }
+
+      if (ouraContext) {
+        fullContext += `\n${ouraContext}\n`;
       }
 
       if (savedItemsContext) {

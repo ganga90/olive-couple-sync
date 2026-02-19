@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.oura-webhook]
 verify_jwt = false
+
+[functions.oura-sync]
+verify_jwt = false

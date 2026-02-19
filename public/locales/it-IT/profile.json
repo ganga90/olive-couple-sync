@@ -322,6 +322,24 @@
     "licenses": "Licenze di Terze Parti",
     "licensesSubtitle": "Attribuzioni open source"
   },
+  "oura": {
+    "title": "Oura Ring",
+    "subtitle": "Monitoraggio sonno, prontezza e attività",
+    "connected": "Connesso",
+    "lastSynced": "Ultima sincronizzazione:",
+    "syncNow": "Sincronizza Ora",
+    "syncing": "Sincronizzazione...",
+    "syncSuccess": "Sincronizzati {{count}} giorni di dati sulla salute",
+    "connectButton": "Collega Oura Ring",
+    "connecting": "Collegamento...",
+    "disconnect": "Scollega",
+    "disconnectConfirm": "Sei sicuro di voler scollegare il tuo Oura Ring?",
+    "disconnected": "Oura Ring scollegato",
+    "connectedSuccess": "Oura Ring collegato con successo!",
+    "description": "Collega il tuo Oura Ring per monitorare la qualità del sonno, la prontezza e l'attività quotidiana. Olive utilizzerà questi dati per darti raccomandazioni personalizzate.",
+    "permissionNote": "Richiederemo l'accesso per leggere i tuoi dati giornalieri su sonno, prontezza e attività.",
+    "error": "Impossibile collegare Oura Ring"
+  },
   "contextRail": {
     "stats": "Statistiche Rapide",
     "completed": "Completate",

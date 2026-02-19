@@ -103,7 +103,7 @@ serve(async (req) => {
     }
 
     // Calculate token expiry
-    const tokenExpiry = tokens.expires_in 
+    const tokenExpiry = tokens.expires_in
       ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
       : null;
 
