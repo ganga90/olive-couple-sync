@@ -1345,12 +1345,29 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
 
   // === STANDALONE TIME (no date) → default to TODAY ===
   // This handles "at noon", "at 3pm", "at 10:30", etc.
+  // IMPORTANT: Compare in the user's local timezone, not UTC
   if (!targetDate && hours !== null) {
     targetDate = new Date(now);
-    // If the time has already passed today, default to tomorrow
-    const proposedDate = new Date(now);
-    proposedDate.setHours(hours, minutes, 0, 0);
-    if (proposedDate <= now) {
+    
+    // Get the current hour/minute in the user's timezone to compare correctly
+    let localHour: number, localMinute: number;
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: 'numeric', minute: 'numeric', hour12: false
+      }).formatToParts(now);
+      localHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+      localMinute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
+    } catch {
+      localHour = now.getHours();
+      localMinute = now.getMinutes();
+    }
+    
+    const proposedMinutes = hours * 60 + minutes;
+    const currentMinutes = localHour * 60 + localMinute;
+    
+    if (proposedMinutes <= currentMinutes) {
+      // Time has already passed today in the user's timezone → tomorrow
       targetDate.setDate(targetDate.getDate() + 1);
       readable = 'tomorrow';
     } else {
@@ -1358,9 +1375,26 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
     }
   }
   
-  // === APPLY TIME ===
+  // === APPLY TIME (timezone-aware) ===
+  // Convert user's intended local time to the correct UTC time
   if (targetDate && hours !== null) {
+    // First set the hours naively
     targetDate.setHours(hours, minutes, 0, 0);
+    
+    // Now adjust for timezone offset: the user means this time in THEIR timezone
+    // Calculate the offset between UTC and user's timezone
+    try {
+      const utcStr = targetDate.toLocaleString('en-US', { timeZone: 'UTC' });
+      const tzStr = targetDate.toLocaleString('en-US', { timeZone: timezone });
+      const utcDate = new Date(utcStr);
+      const tzDate = new Date(tzStr);
+      const offsetMs = utcDate.getTime() - tzDate.getTime();
+      // Shift targetDate so that when stored as UTC, it represents the correct local time
+      targetDate = new Date(targetDate.getTime() + offsetMs);
+    } catch {
+      // If timezone conversion fails, keep as-is
+    }
+    
     // Only add time to readable if it wasn't already set by relative time parsing
     if (!readable.includes('minute') && !readable.includes('hour')) {
       readable += ` at ${hours > 12 ? hours - 12 : hours === 0 ? 12 : hours}:${minutes.toString().padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
@@ -1368,7 +1402,16 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
   } else if (targetDate && hours === null) {
     // For relative time (in X minutes/hours), hours are already set
     if (!readable.includes('minute') && !readable.includes('hour')) {
+      // Default to 9 AM in user's timezone
       targetDate.setHours(9, 0, 0, 0);
+      try {
+        const utcStr = targetDate.toLocaleString('en-US', { timeZone: 'UTC' });
+        const tzStr = targetDate.toLocaleString('en-US', { timeZone: timezone });
+        const utcDate = new Date(utcStr);
+        const tzDate = new Date(tzStr);
+        const offsetMs = utcDate.getTime() - tzDate.getTime();
+        targetDate = new Date(targetDate.getTime() + offsetMs);
+      } catch { /* keep as-is */ }
       readable += ' at 9:00 AM';
     }
   }
