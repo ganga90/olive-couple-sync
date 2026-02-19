@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 serve(async (req) => {
@@ -22,8 +22,18 @@ serve(async (req) => {
       throw new Error('OURA_CLIENT_ID not configured');
     }
 
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    if (!supabaseUrl) {
+      throw new Error('SUPABASE_URL not configured');
+    }
+
+    // CRITICAL FIX: Use the edge function URL as redirect_uri, NOT the frontend URL.
+    // This ensures the redirect_uri is always consistent regardless of browser,
+    // www vs non-www, or preview vs production environments.
+    const redirectUri = `${supabaseUrl}/functions/v1/oura-callback`;
+
+    // Store the frontend origin in the state so the callback can redirect back
     const origin = redirect_origin || 'https://witholive.app';
-    const redirectUri = `${origin}/auth/oura/callback`;
 
     const scopes = [
       "email",
@@ -36,7 +46,7 @@ serve(async (req) => {
       "tag",
     ];
 
-    // Encode state with user_id and redirect origin using URL-safe base64
+    // Encode state with user_id and frontend origin using URL-safe base64
     const state = JSON.stringify({ user_id, origin });
     const encodedState = btoa(state)
       .replace(/\+/g, '-')
@@ -50,7 +60,7 @@ serve(async (req) => {
     authUrl.searchParams.set("scope", scopes.join(" "));
     authUrl.searchParams.set("state", encodedState);
 
-    console.log('[oura-auth-url] Generated auth URL for user:', user_id);
+    console.log('[oura-auth-url] Generated auth URL for user:', user_id, 'redirect_uri:', redirectUri);
 
     return new Response(
       JSON.stringify({ success: true, auth_url: authUrl.toString() }),
