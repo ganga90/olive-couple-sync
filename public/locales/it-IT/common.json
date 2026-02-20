@@ -1,4 +1,9 @@
 {
+  "privacyFilter": {
+    "all": "Tutti",
+    "private": "Privati",
+    "shared": "Condivisi"
+  },
   "speedDial": {
     "askOlive": "Chiedi a Olive",
     "brainDump": "Scarica pensieri"

@@ -1,4 +1,14 @@
 {
+  "defaultPrivacy": {
+    "title": "Default Privacy",
+    "subtitle": "For new tasks & lists",
+    "description": "Choose the default visibility when you create new tasks or lists.",
+    "private": "Private",
+    "privateDesc": "Only you can see it",
+    "shared": "Shared",
+    "sharedDesc": "You and your partner",
+    "saving": "Saving..."
+  },
   "title": "Profile",
   "subtitle": "Manage your Olive account profile and settings.",
   "signInToManage": "Sign in to manage your account",

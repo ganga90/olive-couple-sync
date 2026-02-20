@@ -22,6 +22,7 @@ import { OnboardingTooltip } from "@/components/OnboardingTooltip";
 import { PartnerActivityWidget } from "@/components/PartnerActivityWidget";
 import { InsightDiscoveryCard } from "@/components/InsightDiscoveryCard";
 import { useCalendarEvents } from "@/hooks/useCalendarEvents";
+import { PrivacyFilterPills, type PrivacyFilter } from "@/components/PrivacyFilterPills";
 
 const Home = () => {
   const { t } = useTranslation(['home', 'common']);
@@ -38,7 +39,11 @@ const Home = () => {
   const { notes, updateNote, refetch: refetchNotes } = useSupabaseNotesContext();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
+  const [privacyFilter, setPrivacyFilter] = useState<PrivacyFilter>("all");
   const { connection: calendarConnection } = useCalendarEvents();
+
+  // Determine whether there are any shared notes (to conditionally show shared pill)
+  const hasSharedNotes = useMemo(() => notes.some(n => n.isShared), [notes]);
   
   // Organize Agent
   const {
@@ -67,9 +72,11 @@ const Home = () => {
     return notes.filter(note => {
       if (categoryFilter !== "all" && note.category.toLowerCase() !== categoryFilter.toLowerCase()) return false;
       if (ownerFilter !== "all" && note.task_owner !== ownerFilter) return false;
+      if (privacyFilter === "private" && note.isShared) return false;
+      if (privacyFilter === "shared" && !note.isShared) return false;
       return true;
     });
-  }, [notes, categoryFilter, ownerFilter]);
+  }, [notes, categoryFilter, ownerFilter, privacyFilter]);
 
   // Get priority tasks (top 5 ordered by priority)
   const priorityTasks = useMemo(() => {
@@ -277,29 +284,42 @@ const Home = () => {
                 </TabsList>
                 
                 {/* Filters - Pill Style */}
-                <div className="flex gap-3">
-                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                    <SelectTrigger className="h-10 text-sm flex-1 bg-white/80 rounded-full border-stone-200/50 shadow-sm">
-                      <SelectValue placeholder={t('common:common.allCategories')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('common:common.allCategories')}</SelectItem>
-                      {categories.map(cat => (
-                        <SelectItem key={cat} value={cat.toLowerCase()}>{t(`common:categories.${cat.toLowerCase().replace(/\s+/g, '_')}`, cat)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  
-                  <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-                    <SelectTrigger className="h-10 text-sm flex-1 bg-white/80 rounded-full border-stone-200/50 shadow-sm">
-                      <SelectValue placeholder={t('common:common.everyone')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('common:common.everyone')}</SelectItem>
-                      <SelectItem value="you">{you || t('common:common.you')}</SelectItem>
-                      <SelectItem value="partner">{partner || t('common:common.partner')}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-3">
+                  <div className="flex gap-3">
+                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                      <SelectTrigger className="h-10 text-sm flex-1 bg-white/80 rounded-full border-stone-200/50 shadow-sm">
+                        <SelectValue placeholder={t('common:common.allCategories')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t('common:common.allCategories')}</SelectItem>
+                        {categories.map(cat => (
+                          <SelectItem key={cat} value={cat.toLowerCase()}>{t(`common:categories.${cat.toLowerCase().replace(/\s+/g, '_')}`, cat)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    
+                    {currentCouple && (
+                      <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+                        <SelectTrigger className="h-10 text-sm flex-1 bg-white/80 rounded-full border-stone-200/50 shadow-sm">
+                          <SelectValue placeholder={t('common:common.everyone')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t('common:common.everyone')}</SelectItem>
+                          <SelectItem value="you">{you || t('common:common.you')}</SelectItem>
+                          <SelectItem value="partner">{partner || t('common:common.partner')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+
+                  {/* Privacy Filter Pills - only show when in a couple */}
+                  {currentCouple && (
+                    <PrivacyFilterPills
+                      value={privacyFilter}
+                      onChange={setPrivacyFilter}
+                      hasShared={hasSharedNotes}
+                    />
+                  )}
                 </div>
               </div>
               {/* Priority Tab - DESKTOP PADDING p-8, space-y-5 for breathing room */}

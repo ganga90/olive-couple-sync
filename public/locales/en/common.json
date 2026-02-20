@@ -1,4 +1,9 @@
 {
+  "privacyFilter": {
+    "all": "All",
+    "private": "Private",
+    "shared": "Shared"
+  },
   "speedDial": {
     "askOlive": "Ask Olive",
     "brainDump": "Brain-dump"
