@@ -321,6 +321,42 @@ function extractTaskFromOutbound(message: RecentOutbound): string | null {
   return null;
 }
 
+/**
+ * Get outbound context with task_id (stored by send-reminders)
+ * This is the most reliable way to resolve bare replies to reminders
+ */
+async function getOutboundContextWithTaskId(
+  supabase: any,
+  userId: string
+): Promise<{ task_id: string; task_summary: string; all_task_ids?: Array<{ id: string; summary: string }> } | null> {
+  try {
+    const { data: profile } = await supabase
+      .from('clerk_profiles')
+      .select('last_outbound_context')
+      .eq('id', userId)
+      .single();
+
+    const ctx = profile?.last_outbound_context;
+    if (!ctx?.task_id) return null;
+
+    // Only use if sent within last 60 minutes
+    const sentAt = ctx.sent_at || '';
+    if (sentAt && new Date(sentAt).getTime() < Date.now() - 60 * 60 * 1000) {
+      console.log('[Context] Outbound context with task_id is stale (>60min)');
+      return null;
+    }
+
+    return {
+      task_id: ctx.task_id,
+      task_summary: ctx.task_summary || '',
+      all_task_ids: ctx.all_task_ids || undefined,
+    };
+  } catch (e) {
+    console.error('[Context] Error reading outbound context task_id:', e);
+    return null;
+  }
+}
+
 // Task action types for management commands
 type TaskActionType = 
   | 'complete'      // "done with X", "mark X complete"
@@ -2693,7 +2729,7 @@ serve(async (req) => {
     // and Olive recently sent a reminder about a specific task, auto-complete it.
     // ========================================================================
     const bareReplyMatch = messageBody?.trim().match(
-      /^(completed!?|done!?|finished!?|got it!?|did it!?|hecho!?|fatto!?|terminado!?|finito!?)$/i
+      /^(complete[d]?!?|done!?|finished!?|got it!?|did it!?|hecho!?|fatto!?|terminado!?|finito!?|listo!?|ok!?|yes!?|sí!?|si!?)$/i
     );
     if (bareReplyMatch && recentOutbound.length > 0) {
       // Find the most recent reminder-like message
@@ -2703,6 +2739,30 @@ serve(async (req) => {
       );
 
       if (recentReminder) {
+        // PRIORITY 1: Use task_id from outbound context if available (stored by send-reminders)
+        // This is the most reliable method — no semantic search needed
+        const outboundCtx = await getOutboundContextWithTaskId(supabase, userId);
+        if (outboundCtx?.task_id) {
+          console.log('[Context] Bare reply — using task_id from outbound context:', outboundCtx.task_id, outboundCtx.task_summary);
+          const { data: directTask, error: directErr } = await supabase
+            .from('clerk_notes')
+            .select('id, summary, completed')
+            .eq('id', outboundCtx.task_id)
+            .single();
+
+          if (!directErr && directTask && !directTask.completed) {
+            const { error } = await supabase
+              .from('clerk_notes')
+              .update({ completed: true, updated_at: new Date().toISOString() })
+              .eq('id', directTask.id);
+
+            if (!error) {
+              return reply(t('context_completed', userLang, { task: directTask.summary }));
+            }
+          }
+        }
+
+        // PRIORITY 2: Fall back to extracting task name and semantic search
         const extractedTask = extractTaskFromOutbound(recentReminder);
         if (extractedTask) {
           console.log('[Context] Bare reply detected, matching to recent reminder task:', extractedTask);

@@ -296,6 +296,30 @@ serve(async (req) => {
         }
 
         console.log(`Sent reminder to ${profile.phone_number} (${profile.display_name || 'Unknown'})`);
+
+        // CRITICAL: Update last_outbound_context so bare replies ("Complete", "Done")
+        // resolve to the correct task. Store the task ID for direct resolution.
+        const primaryNote = notes[0] as any;
+        try {
+          await supabase
+            .from('clerk_profiles')
+            .update({
+              last_outbound_context: {
+                message_type: 'reminder',
+                content: reminderText.substring(0, 500),
+                sent_at: new Date().toISOString(),
+                status: 'sent',
+                task_id: primaryNote.id,
+                task_summary: primaryNote.summary,
+                // If multiple reminders, store all task IDs
+                all_task_ids: notes.map((n: any) => ({ id: n.id, summary: n.summary })),
+              }
+            })
+            .eq('id', authorId);
+          console.log(`[Context] Updated last_outbound_context for reminder: ${primaryNote.summary} (${primaryNote.id})`);
+        } catch (ctxErr) {
+          console.warn('[Context] Failed to update outbound context:', ctxErr);
+        }
         sentCount++;
 
         // Handle recurring reminders and mark as reminded
