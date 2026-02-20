@@ -99,11 +99,14 @@ serve(async (req) => {
 
         // Fetch daily_sleep, daily_readiness, daily_activity for last 3 days
         // Also fetch /sleep (sleep periods) for lowest_heart_rate and type filtering
-        const [dailySleep, dailyReadiness, dailyActivity, sleepPeriods] = await Promise.all([
+        // Also fetch daily_stress and daily_resilience (Gen3+ rings; graceful fallback)
+        const [dailySleep, dailyReadiness, dailyActivity, sleepPeriods, dailyStress, dailyResilience] = await Promise.all([
           ouraFetch(`${OURA_API}/daily_sleep?start_date=${threeDaysAgo}&end_date=${today}`, headers),
           ouraFetch(`${OURA_API}/daily_readiness?start_date=${threeDaysAgo}&end_date=${today}`, headers),
           ouraFetch(`${OURA_API}/daily_activity?start_date=${threeDaysAgo}&end_date=${today}`, headers),
           ouraFetch(`${OURA_API}/sleep?start_date=${threeDaysAgo}&end_date=${today}`, headers),
+          ouraFetch(`${OURA_API}/daily_stress?start_date=${threeDaysAgo}&end_date=${today}`, headers),
+          ouraFetch(`${OURA_API}/daily_resilience?start_date=${threeDaysAgo}&end_date=${today}`, headers),
         ]);
 
         // Handle 401 from any endpoint
@@ -124,6 +127,9 @@ serve(async (req) => {
         const readinessData = dailyReadiness?.data || [];
         const activityData = dailyActivity?.data || [];
         const sleepPeriodsData = sleepPeriods?.data || [];
+        // Stress & resilience: graceful fallback for older ring generations (may be null or UNAUTHORIZED)
+        const stressData = (dailyStress !== 'UNAUTHORIZED' && dailyStress?.data) || [];
+        const resilienceData = (dailyResilience !== 'UNAUTHORIZED' && dailyResilience?.data) || [];
 
         // Check if we have any data in the last 3 days
         const hasAnyData = sleepData.length > 0 || readinessData.length > 0 || activityData.length > 0;
@@ -135,7 +141,7 @@ serve(async (req) => {
             success: true,
             connected: true,
             empty: true,
-            data: { sleep: null, readiness: null, activity: null, rhr: null },
+            data: { sleep: null, readiness: null, activity: null, rhr: null, stress: null, resilience: null },
             message: 'No data found. Please open your Oura App to sync your ring.',
           });
         }
@@ -145,6 +151,8 @@ serve(async (req) => {
         const selectedSleep = findForDay(sleepData, today) || findForDay(sleepData, yesterday);
         const selectedReadiness = findForDay(readinessData, today) || findForDay(readinessData, yesterday);
         const selectedActivity = findForDay(activityData, today) || findForDay(activityData, yesterday);
+        const selectedStress = findForDay(stressData, today) || findForDay(stressData, yesterday);
+        const selectedResilience = findForDay(resilienceData, today) || findForDay(resilienceData, yesterday);
 
         // Determine which day we're showing
         const dataDay = selectedSleep?.day || selectedReadiness?.day || selectedActivity?.day || yesterday;
@@ -165,6 +173,23 @@ serve(async (req) => {
           active_calories: selectedActivity.active_calories ?? null,
         } : null;
 
+        // ── Step 5: Stress & Resilience (Gen3+ rings) ──
+        const stressResult = selectedStress ? {
+          day: selectedStress.day,
+          stress_high: selectedStress.stress_high ?? null,
+          recovery_high: selectedStress.recovery_high ?? null,
+          day_summary: selectedStress.day_summary ?? null,
+        } : null;
+
+        const resilienceResult = selectedResilience ? {
+          day: selectedResilience.day,
+          level: selectedResilience.level ?? null,
+          contributors: {
+            sleep_recovery: selectedResilience.contributors?.sleep_recovery ?? null,
+            daytime_recovery: selectedResilience.contributors?.daytime_recovery ?? null,
+          },
+        } : null;
+
         await updateSyncTime(supabase, connection.id);
 
         return json({
@@ -175,6 +200,8 @@ serve(async (req) => {
             readiness: selectedReadiness ? { day: selectedReadiness.day, score: selectedReadiness.score } : null,
             activity: activityResult,
             rhr,
+            stress: stressResult,
+            resilience: resilienceResult,
           },
           data_day: dataDay,
           is_yesterday: isYesterday,

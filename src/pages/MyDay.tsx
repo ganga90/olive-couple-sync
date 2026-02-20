@@ -8,10 +8,10 @@ import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { format, isWithinInterval, addDays, startOfDay, endOfDay } from 'date-fns';
 import { useDateLocale } from '@/hooks/useDateLocale';
-import { 
-  Sun, Moon, Activity, Flame, TrendingUp, Dumbbell, CheckCircle2, 
+import {
+  Sun, Moon, Activity, Flame, TrendingUp, Dumbbell, CheckCircle2,
   Calendar, Loader2, ArrowRight, Zap, Heart, Send, Home, MessageCircle,
-  AlertCircle, RefreshCw
+  AlertCircle, RefreshCw, Brain, Shield
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -49,11 +49,29 @@ interface OuraWorkout {
   start_datetime: string;
 }
 
+interface OuraStressMetric {
+  day: string;
+  stress_high: number | null;    // seconds of high stress
+  recovery_high: number | null;  // seconds of high recovery
+  day_summary: 'stressed' | 'restored' | 'normal' | null;
+}
+
+interface OuraResilienceMetric {
+  day: string;
+  level: 'limited' | 'adequate' | 'solid' | 'strong' | 'exceptional' | null;
+  contributors: {
+    sleep_recovery: number | null;
+    daytime_recovery: number | null;
+  };
+}
+
 interface OuraDailyData {
   sleep: OuraDailyMetric | null;
   readiness: OuraDailyMetric | null;
   activity: OuraActivityMetric | null;
   rhr: OuraRHR | null;
+  stress: OuraStressMetric | null;
+  resilience: OuraResilienceMetric | null;
 }
 
 // ─── Score Ring Component ─────────────────────────────────────────────────────
@@ -85,6 +103,38 @@ function ScoreRing({ score, size = 80, label, icon: Icon, color }: {
       </div>
     </div>
   );
+}
+
+// ─── Stress & Resilience Helpers ─────────────────────────────────────────────
+
+function getStressSummaryInfo(summary: string | null): { label: string; color: string } {
+  switch (summary) {
+    case 'restored':
+      return { label: 'myday.stressRestored', color: 'text-green-600 dark:text-green-400' };
+    case 'normal':
+      return { label: 'myday.stressNormal', color: 'text-amber-600 dark:text-amber-400' };
+    case 'stressed':
+      return { label: 'myday.stressStressed', color: 'text-red-600 dark:text-red-400' };
+    default:
+      return { label: 'myday.stressNoData', color: 'text-muted-foreground' };
+  }
+}
+
+function getResilienceLevelInfo(level: string | null): { label: string; color: string } {
+  switch (level) {
+    case 'exceptional':
+      return { label: 'myday.resilienceExceptional', color: 'text-green-600 dark:text-green-400' };
+    case 'strong':
+      return { label: 'myday.resilienceStrong', color: 'text-emerald-600 dark:text-emerald-400' };
+    case 'solid':
+      return { label: 'myday.resilienceSolid', color: 'text-blue-600 dark:text-blue-400' };
+    case 'adequate':
+      return { label: 'myday.resilienceAdequate', color: 'text-amber-600 dark:text-amber-400' };
+    case 'limited':
+      return { label: 'myday.resilienceLimited', color: 'text-red-600 dark:text-red-400' };
+    default:
+      return { label: 'myday.resilienceNoData', color: 'text-muted-foreground' };
+  }
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -442,9 +492,52 @@ const MyDay = () => {
                 )}
               </div>
             )}
+
+            {/* Stress & Resilience (Gen3+ rings only — hidden when data is unavailable) */}
+            {(dailyData.stress || dailyData.resilience) && (
+              <div className="flex justify-around mt-4 pt-3 border-t border-border/50">
+                {dailyData.stress && (
+                  <div className="text-center flex-1">
+                    <div className="flex items-center justify-center gap-1 mb-1">
+                      <Brain className="h-3.5 w-3.5 text-violet-500" />
+                      <p className="text-[10px] text-muted-foreground font-medium">
+                        {t('profile:myday.stress')}
+                      </p>
+                    </div>
+                    <p className={cn(
+                      "text-sm font-semibold capitalize",
+                      getStressSummaryInfo(dailyData.stress.day_summary).color
+                    )}>
+                      {t(`profile:${getStressSummaryInfo(dailyData.stress.day_summary).label}`)}
+                    </p>
+                    {dailyData.stress.recovery_high != null && (
+                      <p className="text-[9px] text-muted-foreground mt-0.5">
+                        {Math.round(dailyData.stress.recovery_high / 60)}{t('profile:myday.minRecovery')}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {dailyData.resilience && (
+                  <div className="text-center flex-1">
+                    <div className="flex items-center justify-center gap-1 mb-1">
+                      <Shield className="h-3.5 w-3.5 text-teal-500" />
+                      <p className="text-[10px] text-muted-foreground font-medium">
+                        {t('profile:myday.resilience')}
+                      </p>
+                    </div>
+                    <p className={cn(
+                      "text-sm font-semibold capitalize",
+                      getResilienceLevelInfo(dailyData.resilience.level).color
+                    )}>
+                      {t(`profile:${getResilienceLevelInfo(dailyData.resilience.level).label}`)}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : !ouraConnected ? (
-          <button 
+          <button
             onClick={() => navigate(getLocalizedPath('/profile'))}
             className="card-glass p-4 mb-4 w-full text-left animate-fade-up flex items-center gap-3 hover:bg-accent/50 transition-colors"
             style={{ animationDelay: '50ms' }}
