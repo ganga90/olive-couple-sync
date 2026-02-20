@@ -1,4 +1,9 @@
 {
+  "privacyFilter": {
+    "all": "Todos",
+    "private": "Privados",
+    "shared": "Compartidos"
+  },
   "speedDial": {
     "askOlive": "Preguntar a Olive",
     "brainDump": "Volcado mental"

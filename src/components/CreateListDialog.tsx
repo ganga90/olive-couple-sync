@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ResponsiveDialog,
@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Plus, Lock, Users } from "lucide-react";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useDefaultPrivacy } from "@/hooks/useDefaultPrivacy";
 
 interface CreateListDialogProps {
   onListCreated?: () => void;
@@ -25,11 +26,19 @@ export const CreateListDialog: React.FC<CreateListDialogProps> = ({ onListCreate
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [isShared, setIsShared] = useState(true); // Default to shared if in a couple
+  const [isShared, setIsShared] = useState(true);
   const [loading, setLoading] = useState(false);
   
   const { currentCouple } = useSupabaseCouple();
   const { createList } = useSupabaseLists(currentCouple?.id || null);
+  const { defaultPrivacy } = useDefaultPrivacy();
+
+  // Sync default privacy when dialog opens or preference changes
+  useEffect(() => {
+    if (open) {
+      setIsShared(defaultPrivacy === "shared");
+    }
+  }, [open, defaultPrivacy]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,7 +69,7 @@ export const CreateListDialog: React.FC<CreateListDialogProps> = ({ onListCreate
     if (result) {
       setName("");
       setDescription("");
-      setIsShared(true);
+      setIsShared(defaultPrivacy === "shared");
       setOpen(false);
       onListCreated?.();
     }

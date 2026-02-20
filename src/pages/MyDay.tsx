@@ -4,6 +4,7 @@ import { useSEO } from '@/hooks/useSEO';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSupabaseNotesContext } from '@/providers/SupabaseNotesProvider';
 import { useCalendarEvents } from '@/hooks/useCalendarEvents';
+import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { format, isWithinInterval, addDays, startOfDay, endOfDay } from 'date-fns';
 import { useDateLocale } from '@/hooks/useDateLocale';
@@ -17,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/providers/LanguageProvider';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { PrivacyFilterPills, type PrivacyFilter } from '@/components/PrivacyFilterPills';
 
 // ─── Oura Data Types ──────────────────────────────────────────────────────────
 
@@ -94,10 +96,15 @@ const MyDay = () => {
   const { isAuthenticated, user } = useAuth();
   const { notes } = useSupabaseNotesContext();
   const { events } = useCalendarEvents();
+  const { currentCouple } = useSupabaseCouple();
   const dateLocale = useDateLocale();
   useSEO({ title: `${t('profile:myday.title')} — Olive`, description: t('profile:myday.signInPrompt') });
 
   const userId = user?.id;
+  const [privacyFilter, setPrivacyFilter] = useState<PrivacyFilter>('all');
+  const hasSharedNotes = useMemo(() => notes.some(n => n.isShared), [notes]);
+
+
 
   // Oura state
   const [ouraConnected, setOuraConnected] = useState(false);
@@ -203,7 +210,7 @@ const MyDay = () => {
     }
   }, [userId, hasWhatsApp, t, navigate, getLocalizedPath]);
 
-  // Today's tasks
+  // Today's tasks (with privacy filter)
   const todayTasks = useMemo(() => {
     const now = new Date();
     const todayStart = startOfDay(now);
@@ -211,6 +218,8 @@ const MyDay = () => {
     
     return notes.filter(note => {
       if (note.completed) return false;
+      if (privacyFilter === 'private' && note.isShared) return false;
+      if (privacyFilter === 'shared' && !note.isShared) return false;
       if (note.dueDate) {
         const due = new Date(note.dueDate);
         return isWithinInterval(due, { start: todayStart, end: todayEnd }) || due < todayStart;
@@ -222,9 +231,9 @@ const MyDay = () => {
       if (b.priority === 'high' && a.priority !== 'high') return 1;
       return 0;
     });
-  }, [notes]);
+  }, [notes, privacyFilter]);
 
-  // Tomorrow's tasks
+  // Tomorrow's tasks (with privacy filter)
   const tomorrowTasks = useMemo(() => {
     const tomorrow = addDays(new Date(), 1);
     const start = startOfDay(tomorrow);
@@ -232,13 +241,15 @@ const MyDay = () => {
     
     return notes.filter(note => {
       if (note.completed) return false;
+      if (privacyFilter === 'private' && note.isShared) return false;
+      if (privacyFilter === 'shared' && !note.isShared) return false;
       if (note.dueDate) {
         const due = new Date(note.dueDate);
         return isWithinInterval(due, { start, end });
       }
       return false;
     });
-  }, [notes]);
+  }, [notes, privacyFilter]);
 
   // Today's events
   const todayEvents = useMemo(() => {
@@ -460,6 +471,17 @@ const MyDay = () => {
               <span className="text-xs text-muted-foreground">{todayTasks.length}</span>
             )}
           </div>
+
+          {/* Privacy Filter - only shown when in a couple */}
+          {currentCouple && (
+            <div className="mb-3">
+              <PrivacyFilterPills
+                value={privacyFilter}
+                onChange={setPrivacyFilter}
+                hasShared={hasSharedNotes}
+              />
+            </div>
+          )}
 
           {todayTasks.length === 0 ? (
             <p className="text-sm text-muted-foreground py-3 text-center">

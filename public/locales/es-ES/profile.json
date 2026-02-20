@@ -1,4 +1,14 @@
 {
+  "defaultPrivacy": {
+    "title": "Privacidad Predeterminada",
+    "subtitle": "Para nuevas tareas y listas",
+    "description": "Elige la visibilidad predeterminada al crear nuevas tareas o listas.",
+    "private": "Privado",
+    "privateDesc": "Solo tú puedes verlo",
+    "shared": "Compartido",
+    "sharedDesc": "Tú y tu pareja",
+    "saving": "Guardando..."
+  },
   "title": "Perfil",
   "subtitle": "Gestiona tu cuenta y ajustes de Olive.",
   "signInToManage": "Inicia sesión para gestionar tu cuenta",

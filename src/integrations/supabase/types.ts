@@ -457,6 +457,7 @@ export type Database = {
       clerk_profiles: {
         Row: {
           created_at: string
+          default_privacy: string
           display_name: string | null
           id: string
           language_preference: string | null
@@ -469,6 +470,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          default_privacy?: string
           display_name?: string | null
           id: string
           language_preference?: string | null
@@ -481,6 +483,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          default_privacy?: string
           display_name?: string | null
           id?: string
           language_preference?: string | null
