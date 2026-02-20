@@ -8,10 +8,8 @@ import { ClerkProvider } from '@clerk/clerk-react'
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
 if (!PUBLISHABLE_KEY) {
-  throw new Error('Missing Clerk Publishable Key - Please set VITE_CLERK_PUBLISHABLE_KEY')
+  console.error('[Olive] Missing Clerk Publishable Key — app will load in degraded mode')
 }
-
-console.log('[Olive] Initializing Clerk with key:', PUBLISHABLE_KEY.substring(0, 20) + '...')
 
 createRoot(document.getElementById('root')!).render(
   <ClerkProvider 
