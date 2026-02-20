@@ -5,7 +5,7 @@ import { Capacitor } from "@capacitor/core";
 
 const Root = () => {
   const navigate = useLocalizedNavigate();
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, clerkTimedOut } = useAuth();
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
@@ -13,8 +13,9 @@ const Root = () => {
       if (isAuthenticated) {
         navigate("/home", { replace: true });
       } else {
-        // Native iOS/Android app gets the native welcome screen
-        // Web users get the full landing page
+        if (clerkTimedOut) {
+          console.warn('[Root] Clerk timed out — redirecting to landing as fallback');
+        }
         if (isNative) {
           navigate("/native-welcome", { replace: true });
         } else {
@@ -22,9 +23,8 @@ const Root = () => {
         }
       }
     }
-  }, [isAuthenticated, loading, navigate, isNative]);
+  }, [isAuthenticated, loading, navigate, isNative, clerkTimedOut]);
 
-  // Show loading state while determining redirect
   return (
     <div className="min-h-screen bg-gradient-soft flex items-center justify-center">
       <div className="text-center">

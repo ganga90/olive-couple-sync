@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { useUser, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { supabase, setClerkTokenGetter } from "@/lib/supabaseClient";
 
@@ -6,35 +6,51 @@ type AuthContextValue = {
   user: any;
   loading: boolean;
   isAuthenticated: boolean;
+  clerkTimedOut: boolean;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const CLERK_LOAD_TIMEOUT_MS = 6000; // 6 seconds max wait for Clerk
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoaded } = useUser();
   const { getToken, isSignedIn } = useClerkAuth();
-  
+  const [clerkTimedOut, setClerkTimedOut] = useState(false);
+
+  // Timeout: if Clerk doesn't load within 6s, stop blocking the app
+  useEffect(() => {
+    if (isLoaded) return; // Already loaded, no timeout needed
+    const timer = setTimeout(() => {
+      if (!isLoaded) {
+        console.warn('[AuthProvider] Clerk failed to load within timeout — falling back to unauthenticated state');
+        setClerkTimedOut(true);
+      }
+    }, CLERK_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [isLoaded]);
+
+  // Clear timeout flag if Clerk eventually loads
+  useEffect(() => {
+    if (isLoaded && clerkTimedOut) {
+      setClerkTimedOut(false);
+    }
+  }, [isLoaded, clerkTimedOut]);
 
   // Make the token getter available to the singleton client
   useEffect(() => {
     console.log('[AuthProvider] Setting token getter, getToken function:', typeof getToken)
-    // Create a wrapper that gets the token with the supabase template
     const tokenGetterWrapper = async () => {
       try {
-        // Get the HS256 supabase template token
         const token = await getToken({ template: 'supabase' })
-        
-        // VERIFICATION LOG: Check token algorithm
         if (token) {
           try {
             const alg = JSON.parse(atob(token.split('.')[0])).alg;
-            console.log('[Auth] Supabase token alg:', alg); // MUST print "HS256"
+            console.log('[Auth] Supabase token alg:', alg);
           } catch (e) {
             console.error('[Auth] Could not parse token header:', e);
           }
         }
-        
-        console.log('[AuthProvider] Token retrieved:', !!token, token?.substring(0, 50) + '...')
         return token
       } catch (error) {
         console.error('[AuthProvider] Error getting token:', error)
@@ -44,14 +60,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setClerkTokenGetter(tokenGetterWrapper)
   }, [getToken]);
 
-  console.log('[AuthProvider] Clerk state:', { 
-    isLoaded, 
-    isSignedIn, 
-    user: !!user, 
-    userId: user?.id
-  });
-
-  // ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL LOGIC
   // Sync Clerk user to Supabase profiles when signed in
   useEffect(() => {
     if (isLoaded && isSignedIn && user) {
@@ -61,41 +69,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const { error } = await supabase
             .from('clerk_profiles')
             .upsert([{ 
-              id: user.id, // This is now a UUID with the new integration
+              id: user.id,
               display_name: user.fullName || user.firstName || user.emailAddresses[0]?.emailAddress?.split('@')[0] || 'User'
             }], {
               onConflict: 'id'
             });
-          
-          if (error) {
-            console.error('[Auth] Error syncing profile:', error);
-          } else {
-            console.log('[Auth] Profile synced successfully for:', user.id);
-          }
+          if (error) console.error('[Auth] Error syncing profile:', error);
         } catch (err) {
           console.error('[Auth] Error syncing profile:', err);
         }
       };
-
       syncProfile();
     }
   }, [isLoaded, isSignedIn, user]);
 
-  // Calculate auth state
+  // Calculate auth state — if timed out, treat as "not loading, not authenticated"
+  const effectivelyLoaded = isLoaded || clerkTimedOut;
   const isAuthenticated = Boolean(isLoaded && isSignedIn && user);
-  const loading = !isLoaded;
-
-  console.log('[AuthProvider] Final auth state:', {
-    isAuthenticated,
-    loading,
-    hasUser: !!user,
-    userId: user?.id
-  });
+  const loading = !effectivelyLoaded;
 
   const value = {
     user: isAuthenticated ? user : null,
     loading,
     isAuthenticated,
+    clerkTimedOut,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
