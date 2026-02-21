@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      beta_feedback: {
+        Row: {
+          category: string
+          contact_email: string | null
+          created_at: string
+          id: string
+          message: string
+          page: string | null
+          user_agent: string | null
+          user_id: string | null
+          user_name: string | null
+        }
+        Insert: {
+          category?: string
+          contact_email?: string | null
+          created_at?: string
+          id?: string
+          message: string
+          page?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Update: {
+          category?: string
+          contact_email?: string | null
+          created_at?: string
+          id?: string
+          message?: string
+          page?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Relationships: []
+      }
       calendar_connections: {
         Row: {
           access_token: string

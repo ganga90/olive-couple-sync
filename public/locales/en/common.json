@@ -40,7 +40,27 @@
     "complete": "Complete",
     "askOlive": "Ask Olive",
     "organize": "Optimize",
-    "backToHome": "Back to Home"
+    "backToHome": "Back to Home",
+    "requestAccess": "Request Access"
+  },
+  "feedback": {
+    "title": "Feedback",
+    "dialogTitle": "Share your feedback",
+    "dialogDescription": "Help us make Olive better. Your feedback goes directly to the team.",
+    "category": "Category",
+    "cat_bug": "Bug",
+    "cat_feature": "Feature request",
+    "cat_improvement": "Improvement",
+    "cat_other": "Other",
+    "messageLabel": "Your feedback",
+    "messageRequired": "Please enter your feedback",
+    "placeholder": "What's on your mind? Bugs, ideas, things you love...",
+    "emailLabel": "Email (optional)",
+    "emailPlaceholder": "your@email.com",
+    "send": "Send Feedback",
+    "sending": "Sending...",
+    "thankYou": "Thanks for your feedback! 💚",
+    "error": "Failed to send feedback. Please try again."
   },
   "common": {
     "welcome": "Welcome to Olive",

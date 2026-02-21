@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.oura-sync]
 verify_jwt = false
+
+[functions.send-feedback]
+verify_jwt = false

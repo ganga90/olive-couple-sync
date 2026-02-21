@@ -103,9 +103,9 @@ const DesktopSidebar = () => {
                 {t('buttons.signIn')}
               </Button>
             </Link>
-            <Link to={getLocalizedPath("/sign-up")} className="block">
+            <Link to={getLocalizedPath("/request-access")} className="block">
               <Button variant="outline" size="sm" className="w-full">
-                {t('buttons.signUp')}
+                {t('buttons.requestAccess', 'Request Access')}
               </Button>
             </Link>
           </div>
