@@ -54,6 +54,14 @@ export const NewLandingNav = () => {
               </Link>
             </div>
 
+            {/* Mobile-only Login */}
+            <Link 
+              to={getLocalizedPath("/sign-in")}
+              className="md:hidden text-stone-600 hover:text-stone-900 transition-colors text-sm font-medium"
+            >
+              {t('nav.login')}
+            </Link>
+
             {/* CTA */}
             <Link to={getLocalizedPath("/request-access")}>
               <Button 
