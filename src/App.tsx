@@ -22,6 +22,7 @@ import MyDay from "./pages/MyDay";
 import TermsOfService from "./pages/legal/TermsOfService";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
 import BudgetPage from "./pages/Budget";
+import RequestAccessPage from "./pages/RequestAccess";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider } from "./providers/AuthProvider";
 import { SupabaseCoupleProvider } from "./providers/SupabaseCoupleProvider";
@@ -33,6 +34,7 @@ import AuthPage from "./pages/Auth";
 import AuthRedirectNative from "./pages/AuthRedirectNative";
 import NativeWelcome from "./pages/NativeWelcome";
 import CookieConsentBanner from "./components/CookieConsentBanner";
+import { FeedbackDialog } from "./components/FeedbackDialog";
 
 // Import i18n configuration
 import './lib/i18n/config';
@@ -58,6 +60,7 @@ const AppRoutes = () => (
     <Route path="/auth" element={<AuthPage />} />
     <Route path="/sign-in" element={<SignInPage />} />
     <Route path="/sign-up" element={<SignUpPage />} />
+    <Route path="/request-access" element={<RequestAccessPage />} />
     <Route path="/auth-redirect-native" element={<AuthRedirectNative />} />
     <Route path="/native-welcome" element={<NativeWelcome />} />
     <Route path="/accept-invite" element={<AcceptInvite />} />
@@ -102,6 +105,7 @@ const App = () => (
                   <Route path="/auth" element={<AuthPage />} />
                   <Route path="/sign-in" element={<SignInPage />} />
                   <Route path="/sign-up" element={<SignUpPage />} />
+                  <Route path="/request-access" element={<RequestAccessPage />} />
                   <Route path="/auth-redirect-native" element={<AuthRedirectNative />} />
                   <Route path="/native-welcome" element={<NativeWelcome />} />
                   <Route path="/accept-invite" element={<AcceptInvite />} />
@@ -114,6 +118,7 @@ const App = () => (
                   <Route path="*" element={<NotFound />} />
                 </Routes>
                 <CookieConsentBanner />
+                <FeedbackDialog />
               </AppLayout>
             </LanguageProvider>
           </BrowserRouter>

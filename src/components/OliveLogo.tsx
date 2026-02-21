@@ -1,5 +1,6 @@
 import React from "react";
 import oliveLogoImage from "@/assets/olive-logo.jpg";
+import { BetaBadge } from "./BetaBadge";
 export const OliveLogo: React.FC<{
   size?: number;
   className?: string;
@@ -14,9 +15,11 @@ export const OliveLogo: React.FC<{
 export const OliveLogoWithText: React.FC<{
   size?: "sm" | "md" | "lg";
   className?: string;
+  showBeta?: boolean;
 }> = ({
   size = "md",
-  className = ""
+  className = "",
+  showBeta = true
 }) => {
   const logoSize = size === "sm" ? 24 : size === "lg" ? 48 : 32;
   const textSize = size === "sm" ? "text-lg" : size === "lg" ? "text-3xl" : "text-2xl";
@@ -25,5 +28,6 @@ export const OliveLogoWithText: React.FC<{
       <span className={`font-bold text-primary ${textSize} tracking-tight`}>
         Olive
       </span>
+      {showBeta && <BetaBadge size={size === "sm" ? "sm" : "md"} />}
     </div>;
 };

@@ -27,6 +27,7 @@ export const NewLandingNav = () => {
               <span className="text-white font-bold text-sm">O</span>
             </div>
             <span className="text-xl font-bold text-stone-900">Olive</span>
+            <span className="inline-flex items-center rounded-full font-bold uppercase tracking-wider text-[9px] px-1.5 py-0.5 bg-primary/15 text-primary border border-primary/30">Beta</span>
           </Link>
 
           {/* Right Side Navigation */}
@@ -54,12 +55,12 @@ export const NewLandingNav = () => {
             </div>
 
             {/* CTA */}
-            <Link to={getLocalizedPath("/sign-up")}>
+            <Link to={getLocalizedPath("/request-access")}>
               <Button 
                 size="sm"
                 className="bg-olive hover:bg-olive/90 text-white font-semibold px-4 py-2 rounded-full shadow-lg shadow-olive/20"
               >
-                {t('nav.cta')}
+                {t('nav.betaCta', 'Request Beta Access')}
               </Button>
             </Link>
           </div>

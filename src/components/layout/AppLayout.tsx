@@ -25,6 +25,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     '/landing',
     '/sign-in',
     '/sign-up',
+    '/request-access',
     '/onboarding',
     '/welcome',
     '/'

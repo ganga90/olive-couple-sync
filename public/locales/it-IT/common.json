@@ -38,7 +38,27 @@
     "complete": "Completa",
     "askOlive": "Chiedi a Olive",
     "organize": "Ottimizza",
-    "backToHome": "Torna alla Home"
+    "backToHome": "Torna alla Home",
+    "requestAccess": "Richiedi Accesso"
+  },
+  "feedback": {
+    "title": "Feedback",
+    "dialogTitle": "Condividi il tuo feedback",
+    "dialogDescription": "Aiutaci a migliorare Olive. Il tuo feedback va direttamente al team.",
+    "category": "Categoria",
+    "cat_bug": "Bug",
+    "cat_feature": "Richiesta funzionalità",
+    "cat_improvement": "Miglioramento",
+    "cat_other": "Altro",
+    "messageLabel": "Il tuo feedback",
+    "messageRequired": "Inserisci il tuo feedback",
+    "placeholder": "Cosa hai in mente? Bug, idee, cose che ami...",
+    "emailLabel": "Email (opzionale)",
+    "emailPlaceholder": "tua@email.com",
+    "send": "Invia Feedback",
+    "sending": "Invio...",
+    "thankYou": "Grazie per il tuo feedback! 💚",
+    "error": "Invio fallito. Riprova."
   },
   "common": {
     "welcome": "Benvenuto a Olive",

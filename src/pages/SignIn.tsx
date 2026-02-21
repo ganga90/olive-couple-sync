@@ -315,10 +315,10 @@ const SignInPage = () => {
                       {t('signIn.noAccount', "Don't have an account?")}{' '}
                       <button
                         type="button"
-                        onClick={() => navigate('/sign-up')}
+                        onClick={() => navigate('/request-access')}
                         className="text-primary hover:underline font-medium"
                       >
-                        {t('signIn.signUpLink', 'Sign up')}
+                        {t('signIn.requestAccess', 'Request beta access')}
                       </button>
                     </p>
                   </form>
@@ -392,10 +392,10 @@ const SignInPage = () => {
                       {t('signIn.noAccount', "Don't have an account?")}{' '}
                       <button
                         type="button"
-                        onClick={() => navigate('/sign-up')}
+                        onClick={() => navigate('/request-access')}
                         className="text-primary hover:underline font-medium"
                       >
-                        {t('signIn.signUpLink', 'Sign up')}
+                        {t('signIn.requestAccess', 'Request beta access')}
                       </button>
                     </p>
                   </form>

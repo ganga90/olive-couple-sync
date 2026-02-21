@@ -40,7 +40,27 @@
     "complete": "Completar",
     "askOlive": "Preguntar a Olive",
     "organize": "Optimizar",
-    "backToHome": "Volver al Inicio"
+    "backToHome": "Volver al Inicio",
+    "requestAccess": "Solicitar Acceso"
+  },
+  "feedback": {
+    "title": "Feedback",
+    "dialogTitle": "Comparte tu opinión",
+    "dialogDescription": "Ayúdanos a mejorar Olive. Tu opinión va directamente al equipo.",
+    "category": "Categoría",
+    "cat_bug": "Error",
+    "cat_feature": "Solicitar función",
+    "cat_improvement": "Mejora",
+    "cat_other": "Otro",
+    "messageLabel": "Tu opinión",
+    "messageRequired": "Por favor escribe tu opinión",
+    "placeholder": "¿Qué tienes en mente? Errores, ideas, cosas que te gustan...",
+    "emailLabel": "Email (opcional)",
+    "emailPlaceholder": "tu@email.com",
+    "send": "Enviar Feedback",
+    "sending": "Enviando...",
+    "thankYou": "¡Gracias por tu feedback! 💚",
+    "error": "No se pudo enviar. Inténtalo de nuevo."
   },
   "common": {
     "welcome": "Bienvenido a Olive",
