@@ -40,6 +40,7 @@
     "sectionLabel": "Your Tasks",
     "priority": "🔥 Priority",
     "daily": "📅 Daily",
+    "reminders": "⏰ Reminders",
     "recent": "🕐 Recent"
   },
   "emptyState": {
@@ -47,7 +48,9 @@
     "adjustFilters": "Try adjusting your filters above",
     "noRecentTasks": "No recent tasks",
     "addFirstTask": "Add your first task above",
-    "noTasksScheduled": "No tasks scheduled"
+    "noTasksScheduled": "No tasks scheduled",
+    "noReminders": "No upcoming reminders",
+    "setReminders": "Set a reminder on any task to see it here"
   },
   "completedThisWeek": "{{count}} task completed this week 🎉",
   "completedThisWeek_plural": "{{count}} tasks completed this week 🎉",

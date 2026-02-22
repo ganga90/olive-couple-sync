@@ -11,14 +11,15 @@ import { useDateLocale } from '@/hooks/useDateLocale';
 import {
   Sun, Moon, Activity, Flame, TrendingUp, Dumbbell, CheckCircle2,
   Calendar, Loader2, ArrowRight, Zap, Heart, Send, Home, MessageCircle,
-  AlertCircle, RefreshCw, Brain, Shield
+  AlertCircle, RefreshCw, Brain, Shield, Bell
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/providers/LanguageProvider';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { PrivacyFilterPills, type PrivacyFilter } from '@/components/PrivacyFilterPills';
+import { PrivacyFilterPills } from '@/components/PrivacyFilterPills';
+import { useDefaultPrivacyFilter } from '@/hooks/useDefaultPrivacyFilter';
 
 // ─── Oura Data Types ──────────────────────────────────────────────────────────
 
@@ -151,7 +152,7 @@ const MyDay = () => {
   useSEO({ title: `${t('profile:myday.title')} — Olive`, description: t('profile:myday.signInPrompt') });
 
   const userId = user?.id;
-  const [privacyFilter, setPrivacyFilter] = useState<PrivacyFilter>('all');
+  const { privacyFilter, setPrivacyFilter } = useDefaultPrivacyFilter();
   const hasSharedNotes = useMemo(() => notes.some(n => n.isShared), [notes]);
 
 
@@ -299,6 +300,21 @@ const MyDay = () => {
       }
       return false;
     });
+  }, [notes, privacyFilter]);
+
+  // Upcoming reminders for today and tomorrow
+  const upcomingReminders = useMemo(() => {
+    const now = new Date();
+    const tomorrowEnd = endOfDay(addDays(now, 1));
+    
+    return notes.filter(note => {
+      if (note.completed) return false;
+      if (!note.reminder_time) return false;
+      if (privacyFilter === 'private' && note.isShared) return false;
+      if (privacyFilter === 'shared' && !note.isShared) return false;
+      const reminderDate = new Date(note.reminder_time);
+      return reminderDate > now && reminderDate <= tomorrowEnd;
+    }).sort((a, b) => new Date(a.reminder_time!).getTime() - new Date(b.reminder_time!).getTime());
   }, [notes, privacyFilter]);
 
   // Today's events
@@ -613,6 +629,42 @@ const MyDay = () => {
             </div>
           )}
         </div>
+
+        {/* ─── Upcoming Reminders ─────────────────────────────────────── */}
+        {upcomingReminders.length > 0 && (
+          <div className="card-glass p-5 mb-4 animate-fade-up" style={{ animationDelay: '125ms' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Bell className="h-4 w-4 text-primary" />
+                <h3 className="font-semibold text-sm text-foreground">{t('profile:myday.upcomingReminders', 'Upcoming Reminders')}</h3>
+              </div>
+              <span className="text-xs text-muted-foreground">{upcomingReminders.length}</span>
+            </div>
+            <div className="space-y-2">
+              {upcomingReminders.map(task => {
+                const reminderDate = new Date(task.reminder_time!);
+                const isToday = startOfDay(reminderDate).getTime() === startOfDay(new Date()).getTime();
+                return (
+                  <button
+                    key={task.id}
+                    onClick={() => navigate(getLocalizedPath(`/notes/${task.id}`))}
+                    className="flex items-start gap-3 w-full p-2.5 rounded-xl hover:bg-accent/50 transition-colors text-left"
+                  >
+                    <div className="flex-shrink-0 text-xs text-muted-foreground w-14 pt-0.5">
+                      {isToday ? format(reminderDate, 'HH:mm') : format(reminderDate, 'EEE HH:mm', { locale: dateLocale })}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground truncate">{task.summary}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {isToday ? t('common:common.today') : t('common:common.tomorrow')}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* ─── Today's Calendar ───────────────────────────────────────── */}
         {todayEvents.length > 0 && (

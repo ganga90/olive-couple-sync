@@ -37,8 +37,10 @@
     "subtitle": "Sincroniza con Google Calendar"
   },
   "tabs": {
+    "sectionLabel": "Tus tareas",
     "priority": "🔥 Prioridad",
     "daily": "📅 Diario",
+    "reminders": "⏰ Recordatorios",
     "recent": "🕐 Reciente"
   },
   "emptyState": {
@@ -46,7 +48,9 @@
     "adjustFilters": "Intenta ajustar los filtros",
     "noRecentTasks": "No hay tareas recientes",
     "addFirstTask": "Añade tu primera tarea arriba",
-    "noTasksScheduled": "No hay tareas programadas"
+    "noTasksScheduled": "No hay tareas programadas",
+    "noReminders": "Sin recordatorios próximos",
+    "setReminders": "Establece un recordatorio en cualquier tarea para verlo aquí"
   },
   "completedThisWeek": "{{count}} tarea completada esta semana 🎉",
   "completedThisWeek_plural": "{{count}} tareas completadas esta semana 🎉",
