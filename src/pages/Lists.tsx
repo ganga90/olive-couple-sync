@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isAfter, parseISO, addDays } from "date-fns";
+import { useDefaultPrivacy } from "@/hooks/useDefaultPrivacy";
 
 const getCategoryIcon = (category: string) => {
   const iconMap: Record<string, any> = {
@@ -129,6 +130,7 @@ const Lists = () => {
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("recentlyUsed");
   const [filterBy, setFilterBy] = useState<FilterOption>("all");
+  const { defaultPrivacy, loading: privacyLoading } = useDefaultPrivacy();
   const { notes, refetch: refetchNotes } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouple();
   const { lists, loading, deleteList, refetch } = useSupabaseLists(currentCouple?.id || null);
@@ -145,6 +147,13 @@ const Lists = () => {
   } = useOrganizeAgent({ coupleId: currentCouple?.id, onComplete: () => { refetch(); refetchNotes(); } });
   
   useSEO({ title: `${t('title')} — Olive`, description: t('empty.createFirstList') });
+
+  // Initialize filter from user's default privacy setting
+  useEffect(() => {
+    if (!privacyLoading && filterBy === "all") {
+      setFilterBy(defaultPrivacy as FilterOption);
+    }
+  }, [privacyLoading, defaultPrivacy]);
 
   // Check for shared and AI lists
   const hasSharedLists = useMemo(() => lists.some(list => list.couple_id), [lists]);

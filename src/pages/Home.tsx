@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2 } from "lucide-react";
+import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2, Bell } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/providers/AuthProvider";
@@ -22,7 +22,8 @@ import { OnboardingTooltip } from "@/components/OnboardingTooltip";
 import { PartnerActivityWidget } from "@/components/PartnerActivityWidget";
 import { InsightDiscoveryCard } from "@/components/InsightDiscoveryCard";
 import { useCalendarEvents } from "@/hooks/useCalendarEvents";
-import { PrivacyFilterPills, type PrivacyFilter } from "@/components/PrivacyFilterPills";
+import { PrivacyFilterPills } from "@/components/PrivacyFilterPills";
+import { useDefaultPrivacyFilter } from "@/hooks/useDefaultPrivacyFilter";
 
 const Home = () => {
   const { t } = useTranslation(['home', 'common']);
@@ -39,7 +40,7 @@ const Home = () => {
   const { notes, updateNote, refetch: refetchNotes } = useSupabaseNotesContext();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
-  const [privacyFilter, setPrivacyFilter] = useState<PrivacyFilter>("all");
+  const { privacyFilter, setPrivacyFilter } = useDefaultPrivacyFilter();
   const { connection: calendarConnection } = useCalendarEvents();
 
   // Determine whether there are any shared notes (to conditionally show shared pill)
@@ -97,6 +98,19 @@ const Home = () => {
     return filteredNotes
       .filter(note => !note.completed)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5);
+  }, [filteredNotes]);
+
+  // Get upcoming reminders (tasks with reminder_time in the future, sorted soonest first)
+  const upcomingReminders = useMemo(() => {
+    const now = new Date();
+    return filteredNotes
+      .filter(note => {
+        if (note.completed) return false;
+        if (!note.reminder_time) return false;
+        return new Date(note.reminder_time) > now;
+      })
+      .sort((a, b) => new Date(a.reminder_time!).getTime() - new Date(b.reminder_time!).getTime())
       .slice(0, 5);
   }, [filteredNotes]);
 
@@ -271,14 +285,17 @@ const Home = () => {
                   {t('home:tabs.sectionLabel', 'Your Tasks')}
                 </p>
                 
-                <TabsList className="w-full grid grid-cols-3 bg-stone-100/80 mb-5 md:mb-6 h-12 md:h-14 rounded-full p-1">
-                  <TabsTrigger value="priority" className="text-sm md:text-base font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
+                <TabsList className="w-full grid grid-cols-4 bg-stone-100/80 mb-5 md:mb-6 h-12 md:h-14 rounded-full p-1">
+                  <TabsTrigger value="priority" className="text-xs md:text-sm font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
                     {t('home:tabs.priority')}
                   </TabsTrigger>
-                  <TabsTrigger value="daily" className="text-sm md:text-base font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
+                  <TabsTrigger value="daily" className="text-xs md:text-sm font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
                     {t('home:tabs.daily')}
                   </TabsTrigger>
-                  <TabsTrigger value="recent" className="text-sm md:text-base font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
+                  <TabsTrigger value="reminders" className="text-xs md:text-sm font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
+                    {t('home:tabs.reminders')}
+                  </TabsTrigger>
+                  <TabsTrigger value="recent" className="text-xs md:text-sm font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
                     {t('home:tabs.recent')}
                   </TabsTrigger>
                 </TabsList>
@@ -380,6 +397,38 @@ const Home = () => {
                       )}
                     </div>
                   ))}
+                </div>
+              </TabsContent>
+
+              {/* Reminders Tab */}
+              <TabsContent value="reminders" className="mt-0">
+                <div className="p-4 md:p-8 space-y-4 md:space-y-5">
+                  {upcomingReminders.length > 0 ? (
+                    upcomingReminders.map((task, index) => (
+                      <div key={task.id} className={`animate-fade-up stagger-${Math.min(index + 1, 5)}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Bell className="w-4 h-4 md:w-5 md:h-5 text-primary" />
+                          <span className="text-sm md:text-base text-muted-foreground">
+                            {formatDistanceToNow(new Date(task.reminder_time!), { addSuffix: true })}
+                          </span>
+                        </div>
+                        <TaskItem
+                          task={task}
+                          onToggleComplete={handleToggleComplete}
+                          onTaskClick={handleTaskClick}
+                          authorName={getAuthorName(task)}
+                        />
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12 md:py-16 text-muted-foreground">
+                      <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
+                        <Bell className="w-7 h-7 md:w-8 md:h-8" />
+                      </div>
+                      <p className="text-base md:text-lg font-medium">{t('home:emptyState.noReminders')}</p>
+                      <p className="text-sm md:text-base mt-2">{t('home:emptyState.setReminders')}</p>
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 

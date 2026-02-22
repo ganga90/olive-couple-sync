@@ -37,8 +37,10 @@
     "subtitle": "Sincronizza con Google Calendar"
   },
   "tabs": {
+    "sectionLabel": "Le tue attività",
     "priority": "🔥 Priorità",
     "daily": "📅 Giornaliero",
+    "reminders": "⏰ Promemoria",
     "recent": "🕐 Recente"
   },
   "emptyState": {
@@ -46,7 +48,9 @@
     "adjustFilters": "Prova a modificare i filtri",
     "noRecentTasks": "Nessuna attività recente",
     "addFirstTask": "Aggiungi la tua prima attività sopra",
-    "noTasksScheduled": "Nessuna attività programmata"
+    "noTasksScheduled": "Nessuna attività programmata",
+    "noReminders": "Nessun promemoria in arrivo",
+    "setReminders": "Imposta un promemoria su qualsiasi attività per vederlo qui"
   },
   "completedThisWeek": "{{count}} attività completata questa settimana 🎉",
   "completedThisWeek_plural": "{{count}} attività completate questa settimana 🎉",
