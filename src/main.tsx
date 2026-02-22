@@ -16,6 +16,7 @@ createRoot(document.getElementById('root')!).render(
     publishableKey={PUBLISHABLE_KEY}
     signInUrl="/sign-in"
     signUpUrl="/sign-up"
+    waitlistUrl="/request-access"
   >
     <App />
   </ClerkProvider>
