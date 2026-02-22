@@ -31,6 +31,10 @@ export const FeedbackDialog: React.FC<{ variant?: "fab" | "inline" }> = ({ varia
   const [message, setMessage] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { isAuthenticated } = useAuth();
+
+  // Only show the floating feedback button to authenticated users
+  if (!isAuthenticated && variant === "fab") return null;
 
   const handleSubmit = async () => {
     if (!message.trim()) {
