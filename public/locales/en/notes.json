@@ -15,6 +15,7 @@
       "failed": "Failed to generate tip. Please try again.",
       "generic": "Something went wrong. Please try again."
     },
+    "callNow": "Call Now",
     "onboarding": {
       "title": "Olive Insights",
       "description": "Get smart suggestions and helpful links based on your task content."
