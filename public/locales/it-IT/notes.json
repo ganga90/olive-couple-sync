@@ -76,5 +76,34 @@
       "title": "✨ Chiedi aiuto a Olive",
       "description": "Olive può cercare sul web per trovare link utili, numeri di telefono, indirizzi e raccomandazioni relative a questa attività!"
     }
+  },
+  "createDialog": {
+    "addNote": "Aggiungi Nota",
+    "title": "Aggiungi Nuova Nota",
+    "summaryLabel": "Riepilogo *",
+    "summaryPlaceholder": "Cosa bisogna fare?",
+    "detailsLabel": "Dettagli (Opzionale)",
+    "detailsPlaceholder": "Aggiungi più dettagli...",
+    "category": "Categoria",
+    "selectCategory": "Seleziona categoria",
+    "priority": "Priorità",
+    "priorityLow": "Bassa",
+    "priorityMedium": "Media",
+    "priorityHigh": "Alta",
+    "dueDate": "Data di Scadenza",
+    "pickDate": "Scegli data",
+    "list": "Lista",
+    "selectList": "Seleziona lista",
+    "noList": "Nessuna lista",
+    "cancel": "Annulla",
+    "creating": "Creazione...",
+    "createNote": "Crea Nota"
+  },
+  "dueDateChip": {
+    "noDate": "Nessuna data",
+    "setDueDate": "Imposta Data di Scadenza",
+    "placeholder": "GG/MM/AAAA",
+    "save": "Salva",
+    "clear": "Cancella"
   }
 }

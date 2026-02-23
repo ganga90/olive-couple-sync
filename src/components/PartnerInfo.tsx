@@ -32,7 +32,6 @@ export const PartnerInfo = () => {
     }
 
     if (loading) {
-      console.log('Invite creation already in progress, ignoring duplicate request');
       return;
     }
 
@@ -48,14 +47,6 @@ export const PartnerInfo = () => {
       // Create unique placeholder email to avoid conflicts
       const uniqueEmail = `${partner?.toLowerCase().replace(/\s+/g, '') || 'partner'}-${timestamp}@invite.olive`;
 
-      console.log('Creating invite with:', {
-        couple_id: currentCouple.id,
-        invited_email: uniqueEmail,
-        invited_by: user?.id,
-        token,
-        status: 'pending',
-        expires_at: expiresAt.toISOString()
-      });
 
       const supabase = getSupabase();
       const { data: inviteData, error: inviteError } = await supabase.rpc('create_invite', {
@@ -67,7 +58,6 @@ export const PartnerInfo = () => {
         throw inviteError;
       }
 
-      console.log('Invite created successfully with data:', inviteData);
 
       // Extract token from the returned jsonb object
       const inviteToken = inviteData?.token;
@@ -130,7 +120,6 @@ export const PartnerInfo = () => {
       const supabase = getSupabase();
       
       // First, move user's notes from shared space to private space
-      console.log("Moving user's notes to private space...");
       const { data: movedNotes, error: notesError } = await supabase
         .from("clerk_notes")
         .update({ couple_id: null }) // Set to null for private notes
@@ -144,13 +133,7 @@ export const PartnerInfo = () => {
       }
 
       const notesCount = movedNotes?.length || 0;
-      console.log(`Successfully moved ${notesCount} notes to private space`);
 
-      // Then remove user from couple members
-      console.log("Removing user from couple members...", {
-        couple_id: currentCouple.id,
-        user_id: user.id
-      });
       
       const { data: deletedData, error: memberError } = await supabase
         .from("clerk_couple_members")
@@ -164,7 +147,6 @@ export const PartnerInfo = () => {
         throw memberError;
       }
 
-      console.log("Successfully removed from couple members:", deletedData);
       
       // Verify deletion worked by checking if any records remain
       const { data: remainingMembers, error: checkError } = await supabase
@@ -176,7 +158,6 @@ export const PartnerInfo = () => {
       if (checkError) {
         console.error("Error checking remaining members:", checkError);
       } else {
-        console.log("Remaining members after deletion:", remainingMembers);
         if (remainingMembers && remainingMembers.length > 0) {
           console.error("WARNING: User still appears in couple members after deletion!");
         }
@@ -184,11 +165,9 @@ export const PartnerInfo = () => {
 
       // Clear localStorage to remove persisted couple data
       localStorage.removeItem('olive_current_couple');
-      console.log("Cleared couple data from localStorage");
 
       // Force clear the current couple state immediately
       // Don't wait for refetch, clear it now
-      console.log("Force clearing couple state before refetch");
       
       if (notesCount > 0) {
         toast.success(`Successfully unlinked from couple space! ${notesCount} of your notes have been moved to your private space.`);
@@ -197,12 +176,10 @@ export const PartnerInfo = () => {
       }
       
       // Force refetch couple data to update the UI
-      console.log("Starting refetch to verify couple removal...");
       await refetch();
       
       // Small delay to ensure state is updated before navigation
       setTimeout(() => {
-        console.log("Navigating to onboarding...");
         navigate("/onboarding");
       }, 1000); // Increased delay to ensure cleanup
       

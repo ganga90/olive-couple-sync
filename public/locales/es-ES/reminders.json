@@ -16,5 +16,29 @@
     "reminder": "Recordatorio",
     "24hBefore": "24h antes",
     "2hBefore": "2h antes"
+  },
+  "picker": {
+    "setReminder": "Establecer Recordatorio",
+    "quickReminders": "Recordatorios Rápidos",
+    "orPickCustom": "o elegir personalizado",
+    "time": "Hora",
+    "5min": "5 min",
+    "15min": "15 min",
+    "30min": "30 min",
+    "1hour": "1 hora",
+    "2hours": "2 horas",
+    "tomorrow9am": "Mañana 9am"
+  },
+  "dialog": {
+    "setReminder": "Establecer Recordatorio",
+    "setReminderFor": "Establecer recordatorio para:",
+    "reminderSet": "Recordatorio establecido",
+    "reminderRemoved": "Recordatorio eliminado",
+    "snoozed": "Recordatorio pospuesto {{minutes}} minutos",
+    "failedUpdate": "Error al actualizar recordatorio",
+    "failedSnooze": "Error al posponer recordatorio",
+    "quickSnooze": "Posponer Rápido",
+    "cancel": "Cancelar",
+    "save": "Guardar"
   }
 }

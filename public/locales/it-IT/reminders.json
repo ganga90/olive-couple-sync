@@ -16,5 +16,29 @@
     "reminder": "Promemoria",
     "24hBefore": "24h prima",
     "2hBefore": "2h prima"
+  },
+  "picker": {
+    "setReminder": "Imposta Promemoria",
+    "quickReminders": "Promemoria Rapidi",
+    "orPickCustom": "o scegli personalizzato",
+    "time": "Ora",
+    "5min": "5 min",
+    "15min": "15 min",
+    "30min": "30 min",
+    "1hour": "1 ora",
+    "2hours": "2 ore",
+    "tomorrow9am": "Domani 9:00"
+  },
+  "dialog": {
+    "setReminder": "Imposta Promemoria",
+    "setReminderFor": "Imposta promemoria per:",
+    "reminderSet": "Promemoria impostato",
+    "reminderRemoved": "Promemoria rimosso",
+    "snoozed": "Promemoria posticipato di {{minutes}} minuti",
+    "failedUpdate": "Impossibile aggiornare il promemoria",
+    "failedSnooze": "Impossibile posticipare il promemoria",
+    "quickSnooze": "Posticipa Rapido",
+    "cancel": "Annulla",
+    "save": "Salva"
   }
 }

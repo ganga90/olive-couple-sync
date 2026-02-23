@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ReminderPicker } from "./ReminderPicker";
@@ -15,6 +16,7 @@ interface QuickEditReminderDialogProps {
 }
 
 export function QuickEditReminderDialog({ open, onOpenChange, note }: QuickEditReminderDialogProps) {
+  const { t } = useTranslation('reminders');
   const { updateNote } = useSupabaseNotesContext();
   const [reminderTime, setReminderTime] = useState<string | null>(note.reminder_time || null);
   const [frequency, setFrequency] = useState<'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'>(
@@ -25,37 +27,37 @@ export function QuickEditReminderDialog({ open, onOpenChange, note }: QuickEditR
   const handleSave = async () => {
     try {
       // Extract just the date from reminder_time for due_date (if reminder is set)
-      const updates: any = { 
+      const updates: any = {
         reminder_time: reminderTime,
         recurrence_frequency: frequency,
         recurrence_interval: interval
       };
-      
+
       // If setting a reminder, also set due_date to match the reminder date
       if (reminderTime) {
         updates.dueDate = reminderTime;
       }
-      
+
       await updateNote(note.id, updates);
-      toast.success(reminderTime ? "Reminder set" : "Reminder removed");
+      toast.success(reminderTime ? t('dialog.reminderSet', 'Reminder set') : t('dialog.reminderRemoved', 'Reminder removed'));
       onOpenChange(false);
     } catch (error) {
-      toast.error("Failed to update reminder");
+      toast.error(t('dialog.failedUpdate', 'Failed to update reminder'));
     }
   };
 
   const handleSnooze = async (minutes: number) => {
     if (!note.reminder_time) return;
-    
+
     try {
       const currentReminder = new Date(note.reminder_time);
       const snoozedTime = new Date(currentReminder.getTime() + minutes * 60000);
-      
+
       await updateNote(note.id, { reminder_time: snoozedTime.toISOString() });
-      toast.success(`Reminder snoozed for ${minutes} minutes`);
+      toast.success(t('dialog.snoozed', 'Reminder snoozed for {{minutes}} minutes', { minutes }));
       onOpenChange(false);
     } catch (error) {
-      toast.error("Failed to snooze reminder");
+      toast.error(t('dialog.failedSnooze', 'Failed to snooze reminder'));
     }
   };
 
@@ -63,15 +65,15 @@ export function QuickEditReminderDialog({ open, onOpenChange, note }: QuickEditR
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Set Reminder</DialogTitle>
+          <DialogTitle>{t('dialog.setReminder', 'Set Reminder')}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Set a reminder for: <span className="font-medium text-foreground">{note.summary}</span>
+            {t('dialog.setReminderFor', 'Set a reminder for:')} <span className="font-medium text-foreground">{note.summary}</span>
           </p>
-          
-          <ReminderPicker 
-            value={reminderTime} 
+
+          <ReminderPicker
+            value={reminderTime}
             onChange={setReminderTime}
           />
 
@@ -86,7 +88,7 @@ export function QuickEditReminderDialog({ open, onOpenChange, note }: QuickEditR
             <div className="pt-3 border-t space-y-2">
               <p className="text-xs font-medium flex items-center gap-2">
                 <Clock className="h-3 w-3" />
-                Quick Snooze
+                {t('dialog.quickSnooze', 'Quick Snooze')}
               </p>
               <div className="flex gap-2">
                 <Button
@@ -95,7 +97,7 @@ export function QuickEditReminderDialog({ open, onOpenChange, note }: QuickEditR
                   onClick={() => handleSnooze(5)}
                   className="flex-1"
                 >
-                  5 min
+                  {t('picker.5min', '5 min')}
                 </Button>
                 <Button
                   variant="outline"
@@ -103,7 +105,7 @@ export function QuickEditReminderDialog({ open, onOpenChange, note }: QuickEditR
                   onClick={() => handleSnooze(15)}
                   className="flex-1"
                 >
-                  15 min
+                  {t('picker.15min', '15 min')}
                 </Button>
                 <Button
                   variant="outline"
@@ -111,7 +113,7 @@ export function QuickEditReminderDialog({ open, onOpenChange, note }: QuickEditR
                   onClick={() => handleSnooze(30)}
                   className="flex-1"
                 >
-                  30 min
+                  {t('picker.30min', '30 min')}
                 </Button>
                 <Button
                   variant="outline"
@@ -119,19 +121,19 @@ export function QuickEditReminderDialog({ open, onOpenChange, note }: QuickEditR
                   onClick={() => handleSnooze(60)}
                   className="flex-1"
                 >
-                  1 hour
+                  {t('picker.1hour', '1 hour')}
                 </Button>
               </div>
             </div>
           )}
         </div>
-        
+
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('dialog.cancel', 'Cancel')}
           </Button>
           <Button onClick={handleSave}>
-            Save
+            {t('dialog.save', 'Save')}
           </Button>
         </DialogFooter>
       </DialogContent>

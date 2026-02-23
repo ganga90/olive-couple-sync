@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { 
-  ResponsiveDialog, 
-  ResponsiveDialogContent, 
-  ResponsiveDialogHeader, 
-  ResponsiveDialogTitle, 
+import { useTranslation } from "react-i18next";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
   ResponsiveDialogTrigger,
-  ResponsiveDialogFooter 
+  ResponsiveDialogFooter
 } from "@/components/ui/responsive-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +51,7 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
   onNoteCreated,
   preselectedDate 
 }) => {
+  const { t } = useTranslation('notes');
   const [open, setOpen] = useState(false);
   const [summary, setSummary] = useState("");
   const [originalText, setOriginalText] = useState("");
@@ -58,7 +60,7 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
   const [dueDate, setDueDate] = useState<Date | undefined>(preselectedDate);
   const [selectedListId, setSelectedListId] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  
+
   const { currentCouple } = useSupabaseCouple();
   const { addNote } = useSupabaseNotesContext();
   const { lists } = useSupabaseLists(currentCouple?.id || null);
@@ -106,23 +108,23 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
       <ResponsiveDialogTrigger asChild>
         <Button className="bg-olive hover:bg-olive/90 text-white">
           <Plus className="h-4 w-4 mr-2" />
-          Add Note
+          {t('createDialog.addNote', 'Add Note')}
         </Button>
       </ResponsiveDialogTrigger>
       <ResponsiveDialogContent className="bg-background max-w-md">
         <ResponsiveDialogHeader>
-          <ResponsiveDialogTitle className="text-olive-dark">Add New Note</ResponsiveDialogTitle>
+          <ResponsiveDialogTitle className="text-olive-dark">{t('createDialog.title', 'Add New Note')}</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 px-4 md:px-0">
           <div className="space-y-2">
             <Label htmlFor="note-summary" className="text-sm font-medium text-olive-dark">
-              Summary *
+              {t('createDialog.summaryLabel', 'Summary *')}
             </Label>
             <Input
               id="note-summary"
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
-              placeholder="What needs to be done?"
+              placeholder={t('createDialog.summaryPlaceholder', 'What needs to be done?')}
               className="border-olive/30 focus:border-olive focus:ring-olive/20"
               required
             />
@@ -130,13 +132,13 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
 
           <div className="space-y-2">
             <Label htmlFor="note-details" className="text-sm font-medium text-olive-dark">
-              Details (Optional)
+              {t('createDialog.detailsLabel', 'Details (Optional)')}
             </Label>
             <Textarea
               id="note-details"
               value={originalText}
               onChange={(e) => setOriginalText(e.target.value)}
-              placeholder="Add more details..."
+              placeholder={t('createDialog.detailsPlaceholder', 'Add more details...')}
               className="border-olive/30 focus:border-olive focus:ring-olive/20"
               rows={3}
             />
@@ -144,10 +146,10 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label className="text-sm font-medium text-olive-dark">Category</Label>
+              <Label className="text-sm font-medium text-olive-dark">{t('createDialog.category', 'Category')}</Label>
               <Select value={category} onValueChange={setCategory}>
                 <SelectTrigger className="border-olive/30 focus:border-olive">
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder={t('createDialog.selectCategory', 'Select category')} />
                 </SelectTrigger>
                 <SelectContent>
                   {categories.map((cat) => {
@@ -166,15 +168,15 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium text-olive-dark">Priority</Label>
+              <Label className="text-sm font-medium text-olive-dark">{t('createDialog.priority', 'Priority')}</Label>
               <Select value={priority} onValueChange={(value) => setPriority(value as any)}>
                 <SelectTrigger className="border-olive/30 focus:border-olive">
-                  <SelectValue placeholder="Priority" />
+                  <SelectValue placeholder={t('createDialog.priority', 'Priority')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="low">{t('createDialog.priorityLow', 'Low')}</SelectItem>
+                  <SelectItem value="medium">{t('createDialog.priorityMedium', 'Medium')}</SelectItem>
+                  <SelectItem value="high">{t('createDialog.priorityHigh', 'High')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -182,7 +184,7 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label className="text-sm font-medium text-olive-dark">Due Date</Label>
+              <Label className="text-sm font-medium text-olive-dark">{t('createDialog.dueDate', 'Due Date')}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -193,7 +195,7 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dueDate ? format(dueDate, "PPP") : "Pick date"}
+                    {dueDate ? format(dueDate, "PPP") : t('createDialog.pickDate', 'Pick date')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -209,13 +211,13 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium text-olive-dark">List</Label>
+              <Label className="text-sm font-medium text-olive-dark">{t('createDialog.list', 'List')}</Label>
               <Select value={selectedListId} onValueChange={setSelectedListId}>
                 <SelectTrigger className="border-olive/30 focus:border-olive">
-                  <SelectValue placeholder="Select list" />
+                  <SelectValue placeholder={t('createDialog.selectList', 'Select list')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No list</SelectItem>
+                  <SelectItem value="">{t('createDialog.noList', 'No list')}</SelectItem>
                   {lists.map((list) => (
                     <SelectItem key={list.id} value={list.id}>
                       {list.name}
@@ -234,14 +236,14 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
               disabled={loading}
               className="border-olive/30 flex-1 md:flex-none"
             >
-              Cancel
+              {t('createDialog.cancel', 'Cancel')}
             </Button>
             <Button
               type="submit"
               disabled={loading || !summary.trim()}
               className="bg-olive hover:bg-olive/90 text-white flex-1 md:flex-none"
             >
-              {loading ? "Creating..." : "Create Note"}
+              {loading ? t('createDialog.creating', 'Creating...') : t('createDialog.createNote', 'Create Note')}
             </Button>
           </ResponsiveDialogFooter>
         </form>

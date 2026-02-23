@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { format, parse, isValid } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -18,6 +19,7 @@ export const DueDateChip: React.FC<DueDateChipProps> = ({
   isOverdue = false,
   onUpdate 
 }) => {
+  const { t } = useTranslation('notes');
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
@@ -95,8 +97,8 @@ export const DueDateChip: React.FC<DueDateChipProps> = ({
 
   // Display formatted date
   const displayDate = currentDate 
-    ? format(currentDate, 'MMM d') 
-    : 'No date';
+    ? format(currentDate, 'MMM d')
+    : t('dueDateChip.noDate', 'No date');
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -110,12 +112,12 @@ export const DueDateChip: React.FC<DueDateChipProps> = ({
       </PopoverTrigger>
       <PopoverContent className="w-auto p-3" align="start">
         <div className="space-y-3">
-          <p className="text-sm font-medium">Set Due Date</p>
-          
+          <p className="text-sm font-medium">{t('dueDateChip.setDueDate', 'Set Due Date')}</p>
+
           {/* Manual Date Input */}
           <Input
             type="text"
-            placeholder="DD/MM/YYYY"
+            placeholder={t('dueDateChip.placeholder', 'DD/MM/YYYY')}
             value={inputValue}
             onChange={handleInputChange}
             onBlur={handleInputBlur}
@@ -139,16 +141,16 @@ export const DueDateChip: React.FC<DueDateChipProps> = ({
               disabled={!selectedDate}
               className="flex-1"
             >
-              Save
+              {t('dueDateChip.save', 'Save')}
             </Button>
             {currentDate && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 className="text-stone-400"
                 onClick={handleClear}
               >
-                Clear
+                {t('dueDateChip.clear', 'Clear')}
               </Button>
             )}
           </div>

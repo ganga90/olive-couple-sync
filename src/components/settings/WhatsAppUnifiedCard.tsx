@@ -109,7 +109,6 @@ export const WhatsAppUnifiedCard: React.FC = () => {
 
     setIsTestSending(true);
     try {
-      console.log('[TestMessage] Sending test message for user:', userId, 'phone:', phoneNumber);
       const { data, error } = await supabase.functions.invoke('whatsapp-gateway', {
         body: {
           action: 'send',
@@ -122,7 +121,6 @@ export const WhatsAppUnifiedCard: React.FC = () => {
         },
       });
 
-      console.log('[TestMessage] Gateway response:', { data, error });
 
       if (error) {
         console.error('[TestMessage] Invoke error:', error);

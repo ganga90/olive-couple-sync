@@ -35,11 +35,9 @@ export const useSupabaseCouples = () => {
   const [loading, setLoading] = useState(true);
   
 
-  console.log('[useSupabaseCouples] Hook initialized with user:', !!user, 'loading:', loading);
 
   const fetchCouples = useCallback(async () => {
     if (!user) {
-      console.log("[Couples] No user, clearing state");
       setCouples([]);
       setCurrentCouple(null);
       setLoading(false);
@@ -48,7 +46,6 @@ export const useSupabaseCouples = () => {
 
     setLoading(true);
     try {
-      console.log("[Couples] Fetching couples for user:", user.id);
       
       const supabase = getSupabase();
       
@@ -95,11 +92,6 @@ export const useSupabaseCouples = () => {
         const resolvedYouName = isCreator ? couple.you_name : couple.partner_name;
         const resolvedPartnerName = isCreator ? couple.partner_name : couple.you_name;
         
-        console.log("[Couples] Resolving names for user:", user.id, {
-          isCreator,
-          original: { you_name: couple.you_name, partner_name: couple.partner_name },
-          resolved: { resolvedYouName, resolvedPartnerName }
-        });
         
         return {
           ...couple,
@@ -108,15 +100,12 @@ export const useSupabaseCouples = () => {
         };
       }).filter(Boolean) || []) as SupabaseCouple[];
       
-      console.log("[Couples] Found couples:", userCouples);
       setCouples(userCouples);
       
       // Set the first couple as current if none selected, or clear if no couples
       if (userCouples.length > 0 && !currentCouple) {
-        console.log("[Couples] Setting current couple to:", userCouples[0]);
         setCurrentCouple(userCouples[0]);
       } else if (userCouples.length === 0) {
-        console.log("[Couples] No couples found, clearing current couple");
         setCurrentCouple(null);
         // Also clear from localStorage
         localStorage.removeItem('olive_current_couple');
@@ -125,7 +114,6 @@ export const useSupabaseCouples = () => {
       console.error("[Couples] Error fetching couples:", error);
       toast.error("Failed to load couples");
     } finally {
-      console.log("[Couples] Fetch completed, setting loading to false");
       setLoading(false);
     }
   }, [user]); // Remove currentCouple dependency to avoid infinite loop
@@ -148,7 +136,6 @@ export const useSupabaseCouples = () => {
           table: "clerk_couples",
         },
         (payload) => {
-          console.log("[Couples] Realtime update:", payload);
           fetchCouples();
         }
       )
@@ -160,7 +147,6 @@ export const useSupabaseCouples = () => {
           table: "clerk_couple_members",
         },
         (payload) => {
-          console.log("[Couples] Member realtime update:", payload);
           fetchCouples();
         }
       )
@@ -172,7 +158,6 @@ export const useSupabaseCouples = () => {
   }, [user, fetchCouples]);
 
   const createCouple = useCallback(async (coupleData: { title?: string; you_name?: string; partner_name?: string }) => {
-    console.log("[Couples] Starting createCouple with:", { coupleData, user: user?.id });
     
     if (!user) {
       console.error("[Couples] No user found when creating couple");
@@ -189,7 +174,6 @@ export const useSupabaseCouples = () => {
         p_you_name: coupleData.you_name || '',
         p_partner_name: coupleData.partner_name || ''
       };
-      console.log('[RPC:create_couple] body', rpcArgs);
       const { data, error } = await supabase.rpc('create_couple', rpcArgs);
 
       if (error) {
@@ -198,7 +182,6 @@ export const useSupabaseCouples = () => {
         return null;
       }
 
-      console.log('[Couples] RPC response:', data);
       
       // The RPC now returns just the couple_id UUID
       if (!data) {
@@ -221,7 +204,6 @@ export const useSupabaseCouples = () => {
         throw fetchError;
       }
 
-      console.log("[Couples] Couple created successfully:", newCouple);
       
       // Refresh couples list and set current
       await fetchCouples();

@@ -3,7 +3,6 @@ import { Loader2 } from 'lucide-react';
 
 const AuthRedirectNative = () => {
   useEffect(() => {
-    console.log('[AuthRedirectNative] Redirecting to native app...');
     // Small delay to ensure the page renders
     setTimeout(() => {
       window.location.href = 'olive://auth-complete';

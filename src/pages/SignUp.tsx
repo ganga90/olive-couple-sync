@@ -115,14 +115,6 @@ const SignUpPage = () => {
     try {
       const result = await signUp.attemptEmailAddressVerification({ code });
 
-      console.log('[SignUp] Verification result:', JSON.stringify({
-        status: result.status,
-        createdSessionId: result.createdSessionId,
-        createdUserId: result.createdUserId,
-        missingFields: result.missingFields,
-        unverifiedFields: result.unverifiedFields,
-        verifications: result.verifications,
-      }, null, 2));
 
       if (await completeSignUp(result)) return;
 
@@ -138,7 +130,6 @@ const SignUpPage = () => {
           return;
         }
         // If there are unverified fields we can't handle, log and show message
-        console.log('[SignUp] Missing requirements:', result.missingFields, result.unverifiedFields);
       }
 
       toast.error(t('signUp.verificationIncomplete', 'Verification incomplete. Please try again.'));

@@ -199,7 +199,6 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
     // If note doesn't have an ID yet (hasn't been saved), just update the local state
     // and notify the parent via onNoteUpdated
     if (!note.id) {
-      console.log('[NoteRecap] Note not yet saved, updating local state:', updatedData);
       onNoteUpdated?.(updatedData);
       setIsEditing(false);
       toast.success("Changes saved - click 'Save Note' to confirm");

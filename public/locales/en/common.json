@@ -138,6 +138,12 @@
     "spanish": "Spanish (Spain)",
     "italian": "Italian"
   },
+  "loginPrompt": {
+    "title": "Sign in to continue",
+    "description": "Create an account or sign in to organize your notes with AI",
+    "createAccount": "Create Account",
+    "signIn": "Sign In"
+  },
   "cookies": {
     "title": "We value your privacy",
     "description": "We use cookies to enhance your browsing experience, provide personalized content, and analyze our traffic. By clicking \"Accept All\", you consent to our use of cookies.",

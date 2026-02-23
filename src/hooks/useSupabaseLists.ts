@@ -19,21 +19,17 @@ export const useSupabaseLists = (coupleId?: string | null) => {
   const [lists, setLists] = useState<SupabaseList[]>([]);
   const [loading, setLoading] = useState(true);
 
-  console.log('[useSupabaseLists] Hook initialized with coupleId:', coupleId);
 
   const fetchLists = useCallback(async () => {
     if (!user?.id) {
-      console.log("[Lists] No user, clearing state");
       setLists([]);
       setLoading(false);
       return;
     }
 
-    console.log("[Lists] Starting fetchLists for user:", user.id, "coupleId:", coupleId);
     setLoading(true);
     
     try {
-      console.log("[Lists] Fetching lists for user:", user.id, "coupleId:", coupleId);
       
       const supabase = getSupabase();
       
@@ -54,7 +50,6 @@ export const useSupabaseLists = (coupleId?: string | null) => {
         query = query.is("couple_id", null);
       }
 
-      console.log("[Lists] Executing query...");
       const { data, error } = await query.order("created_at", { ascending: false });
 
       if (error) {
@@ -62,14 +57,12 @@ export const useSupabaseLists = (coupleId?: string | null) => {
         throw error;
       }
 
-      console.log("[Lists] Successfully fetched lists:", data?.length || 0, data);
       setLists(data || []);
     } catch (error) {
       console.error("[Lists] Error fetching lists:", error);
       toast.error("Failed to load lists");
       setLists([]); // Set empty array on error to prevent infinite loading
     } finally {
-      console.log("[Lists] fetchLists completed, setting loading to false");
       setLoading(false);
     }
   }, [user?.id, coupleId]);
@@ -92,7 +85,6 @@ export const useSupabaseLists = (coupleId?: string | null) => {
           table: "clerk_lists",
         },
         (payload) => {
-          console.log("[Lists] Realtime update:", payload);
           fetchLists();
         }
       )
@@ -110,7 +102,6 @@ export const useSupabaseLists = (coupleId?: string | null) => {
     }
 
     try {
-      console.log("[Lists] Creating list:", listData);
       
       const supabase = getSupabase();
       const normalizedName = listData.name.trim();
@@ -121,7 +112,6 @@ export const useSupabaseLists = (coupleId?: string | null) => {
       );
       
       if (existingList) {
-        console.log("[Lists] List already exists:", existingList);
         toast.info("List already exists");
         return existingList;
       }
@@ -143,7 +133,6 @@ export const useSupabaseLists = (coupleId?: string | null) => {
       if (error) {
         // Handle unique constraint violation gracefully
         if (error.code === '23505') {
-          console.log("[Lists] List already exists (constraint):", normalizedName);
           await fetchLists(); // Refresh to get the existing list
           const existing = lists.find(l => l.name.toLowerCase().trim() === normalizedName.toLowerCase());
           if (existing) return existing;
@@ -151,7 +140,6 @@ export const useSupabaseLists = (coupleId?: string | null) => {
         throw error;
       }
       
-      console.log("[Lists] Successfully created list:", data);
       toast.success("List created successfully");
       return data;
     } catch (error: any) {
@@ -168,7 +156,6 @@ export const useSupabaseLists = (coupleId?: string | null) => {
     }
 
     try {
-      console.log("[Lists] Updating list:", id, "with updates:", updates);
       
       const supabase = getSupabase();
       
@@ -183,7 +170,6 @@ export const useSupabaseLists = (coupleId?: string | null) => {
       
       // If couple_id was updated (privacy change), cascade to all notes in this list
       if ('couple_id' in updates) {
-        console.log("[Lists] Cascading privacy change to notes in list:", id);
         const { error: notesError } = await supabase
           .from("clerk_notes")
           .update({ couple_id: updates.couple_id })
@@ -193,11 +179,9 @@ export const useSupabaseLists = (coupleId?: string | null) => {
           console.error("[Lists] Error cascading privacy to notes:", notesError);
           // Don't throw - the list update succeeded
         } else {
-          console.log("[Lists] Successfully cascaded privacy to all notes in list");
         }
       }
       
-      console.log("[Lists] Successfully updated list:", data);
       toast.success("List updated successfully");
       return data;
     } catch (error) {
@@ -214,7 +198,6 @@ export const useSupabaseLists = (coupleId?: string | null) => {
     }
 
     try {
-      console.log("[Lists] Deleting list:", id);
       
       const supabase = getSupabase();
       
@@ -229,7 +212,6 @@ export const useSupabaseLists = (coupleId?: string | null) => {
         throw unlinkError;
       }
 
-      console.log("[Lists] Successfully unlinked notes from list");
 
       // Now delete the list
       // RLS policies already enforce authorization (author or couple member)
@@ -240,7 +222,6 @@ export const useSupabaseLists = (coupleId?: string | null) => {
 
       if (error) throw error;
       
-      console.log("[Lists] Successfully deleted list");
       toast.success("List deleted successfully");
       return true;
     } catch (error) {
@@ -263,14 +244,12 @@ export const useSupabaseLists = (coupleId?: string | null) => {
     );
     
     if (existingList) {
-      console.log("[Lists] Found existing list for category:", category, existingList);
       return existingList;
     }
     
     // Create a new list for this category
     const listName = category.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
     
-    console.log("[Lists] Creating new list for category:", category, "->", listName);
     
     const newList = await createList({
       name: listName,

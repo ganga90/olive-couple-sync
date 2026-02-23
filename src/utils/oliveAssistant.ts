@@ -79,7 +79,6 @@ async function saveInteractionId(
     if (error) {
       console.warn('[Olive Assistant] Error saving interaction:', error);
     } else {
-      console.log('[Olive Assistant] Saved interaction ID for note:', noteId);
     }
   } catch (e) {
     console.error('[Olive Assistant] Error in saveInteractionId:', e);
@@ -154,7 +153,6 @@ export async function clearNoteConversation(
 ): Promise<void> {
   // Clear from memory cache
   interactionCache.delete(noteId);
-  console.log('[Olive Assistant] Cleared conversation from cache for note:', noteId);
 
   // Clear from database if client provided
   if (supabaseClient) {
@@ -167,7 +165,6 @@ export async function clearNoteConversation(
       if (error) {
         console.warn('[Olive Assistant] Error clearing conversation from DB:', error);
       } else {
-        console.log('[Olive Assistant] Cleared conversation from DB for note:', noteId);
       }
     } catch (e) {
       console.error('[Olive Assistant] Error in clearNoteConversation:', e);
@@ -178,7 +175,6 @@ export async function clearNoteConversation(
 // Clear all conversations (e.g., on logout)
 export function clearAllConversations(): void {
   interactionCache.clear();
-  console.log('[Olive Assistant] Cleared all conversations from cache');
 }
 
 // Backward-compatible wrapper used elsewhere

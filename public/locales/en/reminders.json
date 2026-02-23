@@ -16,5 +16,29 @@
     "reminder": "Reminder",
     "24hBefore": "24h before due",
     "2hBefore": "2h before due"
+  },
+  "picker": {
+    "setReminder": "Set Reminder",
+    "quickReminders": "Quick Reminders",
+    "orPickCustom": "or pick custom",
+    "time": "Time",
+    "5min": "5 min",
+    "15min": "15 min",
+    "30min": "30 min",
+    "1hour": "1 hour",
+    "2hours": "2 hours",
+    "tomorrow9am": "Tomorrow 9am"
+  },
+  "dialog": {
+    "setReminder": "Set Reminder",
+    "setReminderFor": "Set a reminder for:",
+    "reminderSet": "Reminder set",
+    "reminderRemoved": "Reminder removed",
+    "snoozed": "Reminder snoozed for {{minutes}} minutes",
+    "failedUpdate": "Failed to update reminder",
+    "failedSnooze": "Failed to snooze reminder",
+    "quickSnooze": "Quick Snooze",
+    "cancel": "Cancel",
+    "save": "Save"
   }
 }

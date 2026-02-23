@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -14,6 +15,7 @@ export const LoginPromptDialog: React.FC<LoginPromptDialogProps> = ({
   open, 
   onOpenChange 
 }) => {
+  const { t } = useTranslation('common');
   const navigate = useLocalizedNavigate();
 
   const handleSignIn = () => {
@@ -36,10 +38,10 @@ export const LoginPromptDialog: React.FC<LoginPromptDialogProps> = ({
           
           <div className="text-center space-y-2">
             <DialogTitle className="text-2xl font-bold text-olive-dark">
-              Sign in to continue
+              {t('loginPrompt.title', 'Sign in to continue')}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              Create an account or sign in to organize your notes with AI
+              {t('loginPrompt.description', 'Create an account or sign in to organize your notes with AI')}
             </DialogDescription>
           </div>
 
@@ -48,21 +50,21 @@ export const LoginPromptDialog: React.FC<LoginPromptDialogProps> = ({
               onClick={handleSignUp}
               className="w-full bg-gradient-olive hover:bg-olive text-white shadow-olive"
             >
-              Create Account
+              {t('loginPrompt.createAccount', 'Create Account')}
             </Button>
-            <Button 
+            <Button
               onClick={handleSignIn}
               variant="outline"
               className="w-full border-olive/30 text-olive hover:bg-olive/10"
             >
-              Sign In
+              {t('loginPrompt.signIn', 'Sign In')}
             </Button>
-            <Button 
+            <Button
               onClick={() => onOpenChange(false)}
               variant="ghost"
               className="w-full text-muted-foreground hover:text-foreground"
             >
-              Cancel
+              {t('buttons.cancel', 'Cancel')}
             </Button>
           </div>
         </div>

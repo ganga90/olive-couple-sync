@@ -38,7 +38,6 @@ export const useOrganizeAgent = ({ coupleId, onComplete }: UseOrganizeAgentOptio
         throw new Error(data.error);
       }
 
-      console.log("[OrganizeAgent] Analysis complete:", data);
       setPlan(data);
       setIsModalOpen(true);
     } catch (error) {
@@ -59,7 +58,6 @@ export const useOrganizeAgent = ({ coupleId, onComplete }: UseOrganizeAgentOptio
       const newListIds = new Map<string, string>();
       
       for (const listName of planToApply.new_lists_to_create) {
-        console.log("[OrganizeAgent] Creating list:", listName);
         const newList = await createList({
           name: listName,
           description: `Created by Olive Organizer`,
@@ -82,7 +80,6 @@ export const useOrganizeAgent = ({ coupleId, onComplete }: UseOrganizeAgentOptio
           continue;
         }
 
-        console.log("[OrganizeAgent] Moving task:", move.task_id, "to list:", targetListId);
         
         const { error } = await supabase
           .from("clerk_notes")

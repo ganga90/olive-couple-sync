@@ -120,7 +120,7 @@ export const CreateListDialog: React.FC<CreateListDialogProps> = ({ onListCreate
           {/* Privacy Toggle - only show if user is in a couple */}
           {currentCouple && (
             <div className="space-y-2">
-              <Label className="text-sm font-medium text-olive-dark">Visibility</Label>
+              <Label className="text-sm font-medium text-olive-dark">{t('createDialog.visibility', 'Visibility')}</Label>
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -130,7 +130,7 @@ export const CreateListDialog: React.FC<CreateListDialogProps> = ({ onListCreate
                   className="flex-1 gap-2 touch-target-44"
                 >
                   <Lock className="h-4 w-4" />
-                  Private
+                  {t('createDialog.private', 'Private')}
                 </Button>
                 <Button
                   type="button"
@@ -140,13 +140,13 @@ export const CreateListDialog: React.FC<CreateListDialogProps> = ({ onListCreate
                   className="flex-1 gap-2 touch-target-44"
                 >
                   <Users className="h-4 w-4" />
-                  Shared
+                  {t('createDialog.shared', 'Shared')}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                {isShared 
-                  ? "Both you and your partner can see and edit this list."
-                  : "Only you can see this list."}
+                {isShared
+                  ? t('createDialog.sharedDesc', 'Both you and your partner can see and edit this list.')
+                  : t('createDialog.privateDesc', 'Only you can see this list.')}
               </p>
             </div>
           )}

@@ -35,10 +35,8 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
   
 
   const fetchNotes = useCallback(async () => {
-    console.log('[useSupabaseNotes] fetchNotes called with user:', !!user, 'coupleId:', coupleId);
     
     if (!user) {
-      console.log('[useSupabaseNotes] No user, clearing notes');
       setNotes([]);
       setLoading(false);
       return;
@@ -47,7 +45,6 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
     try {
       if (coupleId) {
         // If couple ID is provided, fetch BOTH personal notes AND couple notes
-        console.log('[useSupabaseNotes] Fetching both personal and couple notes for couple:', coupleId);
         
         const [personalNotesResult, coupleNotesResult] = await Promise.all([
           supabase
@@ -71,16 +68,10 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
           ...(coupleNotesResult.data || [])
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-        console.log('[useSupabaseNotes] Combined notes:', {
-          personal: personalNotesResult.data?.length || 0,
-          couple: coupleNotesResult.data?.length || 0,
-          total: combinedNotes.length
-        });
         
         setNotes(combinedNotes);
       } else {
         // If no couple ID, fetch only personal notes
-        console.log('[useSupabaseNotes] Fetching personal notes only (couple_id is null)');
         const { data, error } = await supabase
           .from("clerk_notes")
           .select("*")
@@ -89,7 +80,6 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
 
         if (error) throw error;
         
-        console.log('[useSupabaseNotes] Successfully fetched personal notes:', data?.length || 0);
         setNotes(data || []);
       }
     } catch (error) {
@@ -106,7 +96,6 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
       return;
     }
 
-    console.log('[useSupabaseNotes] useEffect triggered - fetching notes for user:', user.id, 'coupleId:', coupleId);
     fetchNotes();
 
     // Set up realtime subscription
@@ -120,22 +109,18 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
           table: "clerk_notes",
         },
         (payload) => {
-          console.log("[Notes] Realtime update received:", payload);
           fetchNotes(); // Refetch all notes for simplicity
         }
       )
       .subscribe();
 
-    console.log('[useSupabaseNotes] Realtime subscription set up for user:', user.id);
 
     return () => {
-      console.log('[useSupabaseNotes] Cleaning up realtime subscription');
       supabase.removeChannel(channel);
     };
   }, [user, fetchNotes]);
 
   const addNote = useCallback(async (noteData: Omit<SupabaseNote, "id" | "created_at" | "updated_at" | "author_id">, providedCoupleId?: string | null) => {
-    console.log('[useSupabaseNotes] addNote called with:', { noteData, userId: user?.id, coupleId, providedCoupleId });
     
     if (!user) {
       console.error('[useSupabaseNotes] No user found');
@@ -144,7 +129,6 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
     }
 
     try {
-      console.log('[useSupabaseNotes] Inserting note to clerk_notes table');
       
       // Convert camelCase input to snake_case for database insert
       const insertData: any = {
@@ -189,7 +173,6 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
         insertData.recurrence_interval = noteData.recurrence_interval;
       }
       
-      console.log('[useSupabaseNotes] Final insert data:', insertData);
       
       const { data, error } = await supabase
         .from("clerk_notes")
@@ -209,7 +192,6 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
         throw error;
       }
       
-      console.log('[useSupabaseNotes] Successfully inserted note:', data);
       toast.success("Note added successfully");
       return data;
     } catch (error: any) {
@@ -226,9 +208,6 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
     }
 
     try {
-      console.log("[useSupabaseNotes] Updating note:", id, "with updates:", updates);
-      console.log("[useSupabaseNotes] Current user:", user?.id);
-      console.log("[useSupabaseNotes] Raw updates payload:", JSON.stringify(updates, null, 2));
       
       // Convert camelCase Note fields to snake_case Supabase fields
       const supabaseUpdates: any = {};
@@ -281,7 +260,6 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
         }
       });
       
-      console.log("[useSupabaseNotes] Converted updates payload:", JSON.stringify(supabaseUpdates, null, 2));
       
       if (Object.keys(supabaseUpdates).length === 0) {
         console.error("[useSupabaseNotes] No valid fields to update");
@@ -320,7 +298,6 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
         throw error;
       }
       
-      console.log("[useSupabaseNotes] Successfully updated note:", data);
       toast.success("Note updated successfully");
       
       // Trigger refetch to ensure UI is updated

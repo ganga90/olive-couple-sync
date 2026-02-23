@@ -53,7 +53,6 @@ export default function VoiceInput({ text, setText, interim, setInterim, disable
     if (recording || dgRef.current) return;
     
     try {
-      console.log("[VoiceInput] Starting Deepgram connection...");
       setRecording(true);
       updateInterim("");
       
@@ -70,15 +69,12 @@ export default function VoiceInput({ text, setText, interim, setInterim, disable
       
       dgRef.current = createDeepgramLive({
         onOpen() {
-          console.log('[VoiceInput] Deepgram connected');
           toast.success("Voice recording started");
         },
         onInterim(text) {
-          console.log('[VoiceInput] Interim:', text);
           updateInterim(text);
         },
         onFinal(text) {
-          console.log('[VoiceInput] Final:', text);
           commitText(text);
           updateInterim('');
         },
@@ -98,7 +94,6 @@ export default function VoiceInput({ text, setText, interim, setInterim, disable
           toast.error(errorMessage);
         },
         onClose(code, reason) {
-          console.log('[VoiceInput] Deepgram closed:', code, reason);
           cleanupRecording();
           if (code !== 1000) {
             toast.error("Voice connection closed unexpectedly");
@@ -143,7 +138,6 @@ export default function VoiceInput({ text, setText, interim, setInterim, disable
   };
 
   const onStop = () => {
-    console.log("[VoiceInput] Stopping voice input");
     cleanupRecording();
     
     try { 

@@ -32,7 +32,6 @@ export function makeDeepgramLive(getTokenEndpoint: string): DeepgramLive {
       vad_events: true
     });
 
-    live.addListener('open', () => console.log('[Deepgram] Connected'));
     live.addListener('error', (e) => console.error('[Deepgram] live error', e));
     live.addListener('transcriptReceived', (evt: any) => {
       const transcript = evt?.channel?.alternatives?.[0]?.transcript ?? '';
@@ -63,7 +62,6 @@ export function makeDeepgramLive(getTokenEndpoint: string): DeepgramLive {
     live.addListener('close', () => {
       try { mr.state !== 'inactive' && mr.stop(); } catch {}
       stream.getTracks().forEach(t => t.stop());
-      console.log('[Deepgram] closed');
     });
 
     return {

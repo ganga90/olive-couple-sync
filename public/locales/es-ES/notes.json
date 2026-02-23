@@ -76,5 +76,34 @@
       "title": "✨ Pide ayuda a Olive",
       "description": "¡Olive puede buscar en la web para encontrar enlaces útiles, números de teléfono, direcciones y recomendaciones relacionadas con esta tarea!"
     }
+  },
+  "createDialog": {
+    "addNote": "Agregar Nota",
+    "title": "Agregar Nueva Nota",
+    "summaryLabel": "Resumen *",
+    "summaryPlaceholder": "¿Qué necesitas hacer?",
+    "detailsLabel": "Detalles (Opcional)",
+    "detailsPlaceholder": "Agregar más detalles...",
+    "category": "Categoría",
+    "selectCategory": "Seleccionar categoría",
+    "priority": "Prioridad",
+    "priorityLow": "Baja",
+    "priorityMedium": "Media",
+    "priorityHigh": "Alta",
+    "dueDate": "Fecha Límite",
+    "pickDate": "Elegir fecha",
+    "list": "Lista",
+    "selectList": "Seleccionar lista",
+    "noList": "Sin lista",
+    "cancel": "Cancelar",
+    "creating": "Creando...",
+    "createNote": "Crear Nota"
+  },
+  "dueDateChip": {
+    "noDate": "Sin fecha",
+    "setDueDate": "Establecer Fecha Límite",
+    "placeholder": "DD/MM/AAAA",
+    "save": "Guardar",
+    "clear": "Limpiar"
   }
 }

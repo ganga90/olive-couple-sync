@@ -44,13 +44,6 @@ export const SupabaseCoupleProvider: React.FC<{ children: React.ReactNode }> = (
     // User is onboarded if they have a couple (regardless of partner_name being set)
     // This allows "Set up My space Only" to work properly
     const isOnboardedValue = Boolean(currentCouple);
-    console.log('[SupabaseCoupleProvider] Calculating isOnboarded:', {
-      currentCouple: !!currentCouple,
-      you_name: currentCouple?.you_name,
-      partner_name: currentCouple?.partner_name,
-      isOnboarded: isOnboardedValue
-    });
-    
     return {
       currentCouple,
       couples,

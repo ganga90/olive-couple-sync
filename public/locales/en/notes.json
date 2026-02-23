@@ -75,5 +75,34 @@
     "priorityUpdated": "Priority updated!",
     "markedComplete": "Marked as complete!"
   },
-  "back": "Back"
+  "back": "Back",
+  "createDialog": {
+    "addNote": "Add Note",
+    "title": "Add New Note",
+    "summaryLabel": "Summary *",
+    "summaryPlaceholder": "What needs to be done?",
+    "detailsLabel": "Details (Optional)",
+    "detailsPlaceholder": "Add more details...",
+    "category": "Category",
+    "selectCategory": "Select category",
+    "priority": "Priority",
+    "priorityLow": "Low",
+    "priorityMedium": "Medium",
+    "priorityHigh": "High",
+    "dueDate": "Due Date",
+    "pickDate": "Pick date",
+    "list": "List",
+    "selectList": "Select list",
+    "noList": "No list",
+    "cancel": "Cancel",
+    "creating": "Creating...",
+    "createNote": "Create Note"
+  },
+  "dueDateChip": {
+    "noDate": "No date",
+    "setDueDate": "Set Due Date",
+    "placeholder": "DD/MM/YYYY",
+    "save": "Save",
+    "clear": "Clear"
+  }
 }

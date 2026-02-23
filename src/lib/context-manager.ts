@@ -422,7 +422,6 @@ export function createOptimizedContext(
     wasCompacted = result.compacted;
 
     if (wasCompacted) {
-      console.log('[ContextManager] Compacted context:', {
         removed: result.removedSections,
         compressed: result.compressedSections,
         tokensSaved: result.tokensSaved,

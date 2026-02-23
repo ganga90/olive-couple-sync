@@ -41,15 +41,6 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const { addNote, refetch: refetchNotes } = useSupabaseNotesContext();
   const { style: noteStyle } = useNoteStyle();
 
-  // Debug authentication state in NoteInput
-  console.log('[NoteInput] Auth State:', {
-    user: !!user,
-    userId: user?.id,
-    loading,
-    isAuthenticated,
-    currentCouple: !!currentCouple,
-    coupleId: currentCouple?.id
-  });
 
   // Don't allow note submission while loading or if not authenticated
   if (loading) {
@@ -252,17 +243,6 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Comprehensive auth debugging
-    console.log('[NoteInput] === SUBMISSION DEBUG ===');
-    console.log('[NoteInput] Text:', text.trim());
-    console.log('[NoteInput] Media files:', mediaFiles.length);
-    console.log('[NoteInput] Auth state:', {
-      user: !!user,
-      userId: user?.id,
-      loading,
-      isAuthenticated,
-      userObject: user
-    });
 
     if (!text.trim() && mediaFiles.length === 0) {
       toast.error(t('toast.enterNoteOrMedia'));
@@ -270,12 +250,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     }
 
     if (!isAuthenticated || !user) {
-      console.log('[NoteInput] FAILED: Not authenticated or no user', { isAuthenticated, user: !!user });
       setShowLoginPrompt(true);
       return;
     }
 
-    console.log('[NoteInput] ✅ Auth checks passed, proceeding with note creation');
 
     setIsProcessing(true);
 
@@ -288,12 +266,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       // Upload media files first if any
       let mediaUrls: string[] = [];
       if (mediaFiles.length > 0) {
-        console.log('[NoteInput] Uploading', mediaFiles.length, 'media files...');
         mediaUrls = await uploadMediaFiles();
-        console.log('[NoteInput] Uploaded media URLs:', mediaUrls);
       }
 
-      console.log('[NoteInput] Processing note with AI for user:', user.id);
 
       // Process the note with Gemini AI (including media and style)
       // Send empty string for media-only notes - process-note will derive content from media
@@ -318,11 +293,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         throw new Error('No data returned from AI processing');
       }
 
-      console.log('[NoteInput] AI processed note:', aiProcessedNote);
 
       // Check if we got multiple notes
       if (aiProcessedNote.multiple && aiProcessedNote.notes) {
-        console.log('[NoteInput] Got multiple notes:', aiProcessedNote.notes.length);
 
         // Show multiple notes recap for user review before saving
         setMultipleNotes({
@@ -348,7 +321,6 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       }
 
       // Handle single note - show recap BEFORE saving to database
-      console.log('[NoteInput] Single note case, showing recap for review');
 
       // Store the AI-processed data for review (NOT saved to DB yet)
       setProcessedNote({
@@ -399,7 +371,6 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
 
   const handleNoteUpdated = (updatedNote: any) => {
     // Update the local state with edited values, merging both formats
-    console.log('[NoteInput] Updating processed note with:', updatedNote);
     setProcessedNote(prev => {
       if (!prev) return null;
       return {
@@ -420,7 +391,6 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     if (!processedNote || !user) return;
 
     try {
-      console.log('[NoteInput] Saving accepted note to database:', processedNote);
 
       // Prepare note data in the correct format for SupabaseNotesProvider (Note shape)
       const noteData = {

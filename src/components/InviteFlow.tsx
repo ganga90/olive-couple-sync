@@ -37,24 +37,20 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
   }, [user]);
 
   const handleSetupOnly = async () => {
-    console.log('[InviteFlow] handleSetupOnly called with:', { you, partner, user: !!user });
     setLoading(true);
     try {
       if (!user) {
-        console.log('[InviteFlow] No user available, proceeding with local setup');
         // Create a temporary local couple without database dependency
         toast.success("Your space is ready! You can invite your partner later from your profile.");
         onComplete();
         return;
       }
 
-      console.log('[InviteFlow] Creating couple with:', { title: `${you} & ${partner}`, you_name: you, partner_name: partner });
       const couple = await createCouple({
         title: `${you} & ${partner}`,
         you_name: you,
         partner_name: partner,
       });
-      console.log('[InviteFlow] Couple created:', couple);
       
       if (!couple) {
         console.error('[InviteFlow] Failed to create couple - null returned');
@@ -64,7 +60,6 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         return;
       }
       
-      console.log('[InviteFlow] Couple creation successful, calling onComplete');
       toast.success("Your space is ready! You can invite your partner later from your profile.");
       onComplete();
     } catch (error) {
@@ -87,7 +82,6 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         p_you_name: you,
         p_partner_name: partner
       };
-      console.log('[RPC:create_couple] body', rpcArgs);
       const { data: result, error: coupleError } = await supabase.rpc('create_couple', rpcArgs);
 
       if (coupleError || !result) {
@@ -95,7 +89,6 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         throw coupleError || new Error("Failed to create couple");
       }
 
-      console.log('[create_couple] RPC response:', result);
       
       // The RPC now returns just the couple_id UUID
       if (!result) {
@@ -104,7 +97,6 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
       }
 
       const coupleId = result;
-      console.log('Couple created successfully with ID:', coupleId);
       
       // Now create the invite using the couple_id
       const { data: inviteData, error: inviteError } = await supabase.rpc('create_invite', {
@@ -116,7 +108,6 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         throw inviteError;
       }
 
-      console.log('Invite created successfully:', inviteData);
       
       // Extract token from the returned jsonb object
       const inviteToken = inviteData?.token;
@@ -126,7 +117,6 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         throw new Error('Failed to generate invite - no token returned');
       }
 
-      console.log('Invite created successfully with token:', inviteToken);
 
       // Generate invite URL using the token from RPC response
       const currentUrl = window.location.origin;

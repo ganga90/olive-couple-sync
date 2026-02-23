@@ -26,19 +26,11 @@ const Index = () => {
   const { currentCouple } = useSupabaseCouple();
   const { notes } = useSupabaseNotesContext();
 
-  // Debug authentication state
-  console.log('[Index] Auth State:', { 
-    user: !!user, 
-    loading, 
-    isAuthenticated,
-    userId: user?.id 
-  });
 
   // If user is authenticated AND auth has loaded, show enhanced experience
   const isAuthenticatedUser = isAuthenticated && user;
   const userName = isAuthenticatedUser ? (user.firstName || user.fullName || "there") : null;
 
-  console.log('[Index] Computed States:', { isAuthenticatedUser, userName });
 
   // Get filtered notes based on view mode - ALWAYS call this hook
   const filteredNotes = useMemo(() => {

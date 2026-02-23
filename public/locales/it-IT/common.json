@@ -10,6 +10,8 @@
   },
   "askOlive": {
     "greeting": "Ciao{{name}}! 👋 Come posso aiutarti oggi? Posso aiutarti con attività, pianificazione, promemoria o semplicemente chiacchierare.",
+    "greetingWithName": "Ciao {{name}}! 👋 Come posso aiutarti oggi? Posso aiutarti con attività, pianificazione, promemoria o semplicemente chiacchierare.",
+    "greetingNoName": "Ciao! 👋 Come posso aiutarti oggi? Posso aiutarti con attività, pianificazione, promemoria o semplicemente chiacchierare.",
     "placeholder": "Chiedimi qualsiasi cosa...",
     "thinking": "Sto pensando...",
     "error": "Ho difficoltà a rispondere ora. Per favore riprova.",
@@ -135,6 +137,12 @@
     "english": "Inglese",
     "spanish": "Spagnolo (Spagna)",
     "italian": "Italiano"
+  },
+  "loginPrompt": {
+    "title": "Accedi per continuare",
+    "description": "Crea un account o accedi per organizzare le tue note con l'IA",
+    "createAccount": "Crea Account",
+    "signIn": "Accedi"
   },
   "cookies": {
     "title": "Rispettiamo la tua privacy",

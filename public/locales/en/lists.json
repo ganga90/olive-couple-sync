@@ -52,7 +52,12 @@
     "descriptionPlaceholder": "Describe what this list is for...",
     "cancel": "Cancel",
     "creating": "Creating...",
-    "create": "Create List"
+    "create": "Create List",
+    "visibility": "Visibility",
+    "private": "Private",
+    "shared": "Shared",
+    "sharedDesc": "Both you and your partner can see and edit this list.",
+    "privateDesc": "Only you can see this list."
   },
   "contextRail": {
     "popular": "Popular Lists",

@@ -695,8 +695,8 @@ const MyDay = () => {
               <h3 className="font-semibold text-sm text-foreground">{t('profile:myday.recentWorkouts')}</h3>
             </div>
             <div className="space-y-2">
-              {weeklyData.workouts.slice(-4).reverse().map((workout, i) => (
-                <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-accent/30">
+              {weeklyData.workouts.slice(-4).reverse().map((workout) => (
+                <div key={`${workout.day}-${workout.activity}`} className="flex items-center justify-between p-2.5 rounded-xl bg-accent/30">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center">
                       <Dumbbell className="h-4 w-4 text-orange-500" />
@@ -726,8 +726,8 @@ const MyDay = () => {
               <h3 className="font-semibold text-sm text-foreground">{t('profile:myday.sleepTrend')}</h3>
             </div>
             <div className="flex items-end gap-1 h-16">
-              {weeklyData.sleep.map((s, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+              {weeklyData.sleep.map((s) => (
+                <div key={s.day} className="flex-1 flex flex-col items-center gap-1">
                   <div 
                     className="w-full rounded-t bg-primary/60 transition-all duration-500"
                     style={{ height: `${Math.max(10, ((s.score ?? 0) / 100) * 64)}px` }}

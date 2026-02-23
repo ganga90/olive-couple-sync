@@ -138,6 +138,12 @@
     "spanish": "Español (España)",
     "italian": "Italiano"
   },
+  "loginPrompt": {
+    "title": "Inicia sesión para continuar",
+    "description": "Crea una cuenta o inicia sesión para organizar tus notas con IA",
+    "createAccount": "Crear Cuenta",
+    "signIn": "Iniciar Sesión"
+  },
   "cookies": {
     "title": "Valoramos tu privacidad",
     "description": "Utilizamos cookies para mejorar tu experiencia de navegación, proporcionar contenido personalizado y analizar nuestro tráfico. Al hacer clic en \"Aceptar todo\", consientes el uso de cookies.",

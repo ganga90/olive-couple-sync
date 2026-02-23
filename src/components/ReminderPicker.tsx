@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -12,15 +13,16 @@ interface ReminderPickerProps {
 }
 
 const QUICK_REMINDERS = [
-  { label: "5 min", minutes: 5 },
-  { label: "15 min", minutes: 15 },
-  { label: "30 min", minutes: 30 },
-  { label: "1 hour", minutes: 60 },
-  { label: "2 hours", minutes: 120 },
-  { label: "Tomorrow 9am", special: "tomorrow9am" },
+  { labelKey: "picker.5min", fallback: "5 min", minutes: 5 },
+  { labelKey: "picker.15min", fallback: "15 min", minutes: 15 },
+  { labelKey: "picker.30min", fallback: "30 min", minutes: 30 },
+  { labelKey: "picker.1hour", fallback: "1 hour", minutes: 60 },
+  { labelKey: "picker.2hours", fallback: "2 hours", minutes: 120 },
+  { labelKey: "picker.tomorrow9am", fallback: "Tomorrow 9am", special: "tomorrow9am" },
 ];
 
 export function ReminderPicker({ value, onChange }: ReminderPickerProps) {
+  const { t } = useTranslation('reminders');
   const [date, setDate] = useState<Date | undefined>(
     value ? new Date(value) : undefined
   );
@@ -95,7 +97,7 @@ export function ReminderPicker({ value, onChange }: ReminderPickerProps) {
             className="gap-2"
           >
             <Bell className="h-4 w-4" />
-            {value ? format(new Date(value), "PPp") : "Set Reminder"}
+            {value ? format(new Date(value), "PPp") : t('picker.setReminder', 'Set Reminder')}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0 max-h-[80vh] overflow-y-auto" align="start">
@@ -103,18 +105,18 @@ export function ReminderPicker({ value, onChange }: ReminderPickerProps) {
             <div className="space-y-2">
               <label className="text-sm font-medium flex items-center gap-2">
                 <Clock className="h-4 w-4" />
-                Quick Reminders
+                {t('picker.quickReminders', 'Quick Reminders')}
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {QUICK_REMINDERS.map((reminder) => (
                   <Button
-                    key={reminder.label}
+                    key={reminder.labelKey}
                     variant="outline"
                     size="sm"
                     onClick={() => handleQuickReminder(reminder.minutes, reminder.special)}
                     className="text-xs"
                   >
-                    {reminder.label}
+                    {t(reminder.labelKey, reminder.fallback)}
                   </Button>
                 ))}
               </div>
@@ -122,7 +124,7 @@ export function ReminderPicker({ value, onChange }: ReminderPickerProps) {
             
             <div className="relative flex items-center">
               <div className="flex-1 border-t border-border" />
-              <span className="px-2 text-xs text-muted-foreground">or pick custom</span>
+              <span className="px-2 text-xs text-muted-foreground">{t('picker.orPickCustom', 'or pick custom')}</span>
               <div className="flex-1 border-t border-border" />
             </div>
             
@@ -136,7 +138,7 @@ export function ReminderPicker({ value, onChange }: ReminderPickerProps) {
               className="pointer-events-auto"
             />
             <div className="border-t pt-3">
-              <label className="text-sm font-medium mb-2 block">Time</label>
+              <label className="text-sm font-medium mb-2 block">{t('picker.time', 'Time')}</label>
               <Select value={time} onValueChange={handleTimeChange}>
                 <SelectTrigger>
                   <SelectValue />

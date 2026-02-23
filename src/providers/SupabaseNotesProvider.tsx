@@ -132,7 +132,6 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
   const { currentCouple } = useSupabaseCouple();
   const { user } = useAuth();
   
-  console.log('[SupabaseNotesProvider] Rendering with currentCouple:', !!currentCouple, currentCouple?.id);
   
   const { 
     notes: supabaseNotes, 
@@ -146,7 +145,6 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const notes = useMemo(() => {
     const convertedNotes = supabaseNotes.map(note => convertSupabaseNoteToNote(note, user, currentCouple));
-    console.log('[SupabaseNotesProvider] Converting notes:', supabaseNotes.length, 'supabase notes to', convertedNotes.length, 'app notes');
     return convertedNotes;
   }, 
     [supabaseNotes, user, currentCouple]

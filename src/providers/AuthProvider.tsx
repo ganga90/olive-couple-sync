@@ -39,14 +39,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Make the token getter available to the singleton client
   useEffect(() => {
-    console.log('[AuthProvider] Setting token getter, getToken function:', typeof getToken)
     const tokenGetterWrapper = async () => {
       try {
         const token = await getToken({ template: 'supabase' })
         if (token) {
           try {
             const alg = JSON.parse(atob(token.split('.')[0])).alg;
-            console.log('[Auth] Supabase token alg:', alg);
           } catch (e) {
             console.error('[Auth] Could not parse token header:', e);
           }
@@ -63,7 +61,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Sync Clerk user to Supabase profiles when signed in
   useEffect(() => {
     if (isLoaded && isSignedIn && user) {
-      console.log('[AuthProvider] Syncing user to Supabase:', user.id);
       const syncProfile = async () => {
         try {
           const { error } = await supabase

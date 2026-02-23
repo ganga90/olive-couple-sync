@@ -25,17 +25,8 @@ const AcceptInvite = () => {
 
   const token = searchParams.get("token");
 
-  // Debug authentication state
-  console.log('[AcceptInvite] Auth state:', { 
-    user: !!user, 
-    authLoading, 
-    isAuthenticated, 
-    token,
-    currentUrl: window.location.href
-  });
 
   useEffect(() => {
-    console.log('[AcceptInvite] useEffect triggered:', { token, user: !!user, authLoading });
     
     if (!token) {
       setError("Invalid invite link");
@@ -45,16 +36,13 @@ const AcceptInvite = () => {
 
     // Wait for auth to finish loading before making decisions
     if (authLoading) {
-      console.log('[AcceptInvite] Auth still loading, waiting...');
       return;
     }
 
     // Only load invite data if user is authenticated
     if (user) {
-      console.log('[AcceptInvite] User found, loading invite data');
       loadInvite();
     } else {
-      console.log('[AcceptInvite] No user, showing sign-in prompt');
       setLoading(false);
     }
   }, [token, user, authLoading]);
@@ -62,15 +50,12 @@ const AcceptInvite = () => {
   const loadInvite = async () => {
     try {
       const supabase = getSupabase();
-      console.log('[AcceptInvite] Loading invite with token:', token);
       
       // Use the new RPC function instead of direct table query
       const { data, error } = await supabase.rpc('validate_invite', {
         p_token: token
       });
 
-      console.log('[AcceptInvite] RPC validate_invite result:', data);
-      console.log('[AcceptInvite] RPC error:', error);
 
       if (error) {
         console.error('[AcceptInvite] RPC error:', error);
@@ -105,7 +90,6 @@ const AcceptInvite = () => {
         return;
       }
 
-      console.log('[AcceptInvite] Setting invite data:', inviteData);
       // Transform the data to match the expected format
       const transformedInvite = {
         couple_id: inviteData.couple_id,
@@ -156,7 +140,6 @@ const AcceptInvite = () => {
         return;
       }
 
-      console.log('Invite accepted successfully, couple ID:', coupleId);
       
       // Refresh couples list to include the new shared space
       await refetchCouples();
@@ -173,7 +156,6 @@ const AcceptInvite = () => {
       } else {
         // Switch to the shared space that was just joined
         switchCouple(joinedCouple);
-        console.log('Switched to joined couple:', joinedCouple);
       }
       
       toast.success("Welcome to your shared Olive space!");
@@ -188,7 +170,6 @@ const AcceptInvite = () => {
 
   // Show loading if auth is loading OR component is loading
   if (authLoading || loading) {
-    console.log('[AcceptInvite] Showing loading state:', { authLoading, loading });
     return (
       <main className="min-h-screen bg-gradient-soft flex items-center justify-center">
         <div className="text-center">
@@ -202,7 +183,6 @@ const AcceptInvite = () => {
   }
 
   if (error) {
-    console.log('[AcceptInvite] Showing error state:', error);
     return (
       <main className="min-h-screen bg-gradient-soft">
         <section className="mx-auto max-w-md px-4 py-10">
@@ -230,7 +210,6 @@ const AcceptInvite = () => {
   }
 
   if (!user) {
-    console.log('[AcceptInvite] Showing sign-in prompt - no user');
     return (
       <main className="min-h-screen bg-gradient-soft">
         <section className="mx-auto max-w-md px-4 py-10">
@@ -267,7 +246,6 @@ const AcceptInvite = () => {
     );
   }
 
-  console.log('[AcceptInvite] Showing main invite UI with invite:', invite);
 
   return (
     <main className="min-h-screen bg-gradient-soft">

@@ -68,7 +68,6 @@ export class GeminiAIService {
 
   constructor() {
     this.initialized = true;
-    console.log('[GeminiAIService] Initialized (operations routed to edge functions)');
   }
 
   /**
@@ -76,7 +75,6 @@ export class GeminiAIService {
    * Determines what type of item it is and extracts relevant data
    */
   async processBrainDump(input: BrainDumpInput): Promise<ProcessedBrainDump> {
-    console.log('[Gemini] Processing brain dump via edge function:', input.text);
 
     try {
       const { data, error } = await supabase.functions.invoke('process-note', {
@@ -126,7 +124,6 @@ export class GeminiAIService {
    * Ask Olive - conversational AI assistant via edge function
    */
   async askOlive(request: AskOliveRequest): Promise<AskOliveResponse> {
-    console.log('[Gemini] Ask Olive via edge function:', request.question);
 
     try {
       const { data, error } = await supabase.functions.invoke('ask-olive', {

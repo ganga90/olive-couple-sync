@@ -44,7 +44,6 @@ const SignInPage = () => {
   // redirect back to the native app
   useEffect(() => {
     if (isNativeRequest && isSignedIn && !isNative) {
-      console.log('[SignIn] User signed in from native request, redirecting to app...');
       window.location.href = 'olive://auth-complete';
     }
   }, [isNativeRequest, isSignedIn, isNative]);
@@ -95,7 +94,6 @@ const SignInPage = () => {
         const effectiveRedirectUrl = isNativeRequest ? '/auth-redirect-native' : redirectUrl;
         navigate(effectiveRedirectUrl);
       } else {
-        console.log('[SignIn] Password sign in not complete:', result);
         toast.error(t('signIn.verificationIncomplete', 'Verification incomplete. Please try again.'));
       }
     } catch (err: any) {
@@ -123,7 +121,6 @@ const SignInPage = () => {
         const effectiveRedirectUrl = isNativeRequest ? '/auth-redirect-native' : redirectUrl;
         navigate(effectiveRedirectUrl);
       } else {
-        console.log('[SignIn] Sign in not complete:', result);
         toast.error(t('signIn.verificationIncomplete', 'Verification incomplete. Please try again.'));
       }
     } catch (err: any) {
@@ -185,7 +182,6 @@ const SignInPage = () => {
         const effectiveRedirectUrl = isNativeRequest ? '/auth-redirect-native' : redirectUrl;
         setTimeout(() => navigate(effectiveRedirectUrl), 300);
       } else {
-        console.log('[SignIn] Passkey sign-in not complete:', result);
         toast.error(t('signIn.verificationIncomplete', 'Verification incomplete. Please try again.'));
       }
     } catch (err: any) {
