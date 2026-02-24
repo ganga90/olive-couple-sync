@@ -352,6 +352,22 @@
     "shareWellness": "Share wellness with partner",
     "shareWellnessDesc": "Let your partner know when you need a lighter day"
   },
+  "email": {
+    "title": "Gmail",
+    "subtitle": "Email triage & task extraction",
+    "connected": "Connected",
+    "connectButton": "Connect Gmail",
+    "connecting": "Connecting...",
+    "disconnect": "Disconnect",
+    "disconnectConfirm": "Are you sure you want to disconnect Gmail? The Email Triage agent will be deactivated.",
+    "disconnected": "Gmail disconnected",
+    "connectedSuccess": "Gmail connected successfully!",
+    "description": "Connect your Gmail to let Olive automatically extract actionable tasks from your inbox.",
+    "error": "Failed to connect Gmail",
+    "permissionNote": "We'll only request read-only access to your inbox. No emails are stored.",
+    "privacyNote": "Read-only access. No emails stored — only extracted task summaries.",
+    "lastSynced": "Last synced:"
+  },
   "agents": {
     "title": "Background Agents",
     "subtitle": "Agents that work for you automatically in the background.",

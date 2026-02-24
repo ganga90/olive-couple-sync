@@ -149,14 +149,26 @@ function AgentCard({
               )}
             </div>
 
-            {/* Connection requirement */}
+            {/* Connection requirement — clickable link to integrations */}
             {needsConnection && (
-              <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-600">
+              <button
+                onClick={() => {
+                  // Scroll to the integrations section where connection cards live
+                  const emailCard = document.querySelector('[data-integration="email"]');
+                  const ouraCard = document.querySelector('[data-integration="oura"]');
+                  const target = agent.requires_connection === 'gmail' ? emailCard : ouraCard;
+                  if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }
+                }}
+                className="flex items-center gap-1.5 mt-2 text-xs text-amber-600 hover:text-amber-700 hover:underline cursor-pointer"
+              >
                 <Link2 className="h-3 w-3" />
                 {t('agents.requiresConnection', 'Requires {{connection}} connection', {
                   connection: agent.requires_connection,
                 })}
-              </div>
+                <span className="text-[10px]">→</span>
+              </button>
             )}
 
             {/* Error message */}

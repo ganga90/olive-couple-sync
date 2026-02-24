@@ -48,6 +48,8 @@ async function runAgent(ctx: AgentContext): Promise<AgentResult> {
       return runBirthdayGiftAgent(ctx);
     case "weekly-couple-sync":
       return runWeeklyCoupleSyncAgent(ctx);
+    case "email-triage-agent":
+      return runEmailTriageAgent(ctx);
     default:
       return { success: false, message: `Unknown agent: ${ctx.agentId}` };
   }
@@ -485,6 +487,62 @@ Start with 💑 Weekly Sync`,
     data: { completedTotal: (completed || []).length, pendingTotal: (pending || []).length, sendToBoth: true, partnerIds },
     notifyUser: true,
     notificationMessage: response.text || "",
+  };
+}
+
+// ─── Agent 7: Email Triage Agent ─────────────────────────────────
+async function runEmailTriageAgent(ctx: AgentContext): Promise<AgentResult> {
+  // Check if Gmail is connected
+  const { data: emailConn } = await ctx.supabase
+    .from("olive_email_connections")
+    .select("is_active")
+    .eq("user_id", ctx.userId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!emailConn) {
+    return { success: true, message: "Gmail not connected", notifyUser: false };
+  }
+
+  // Invoke the olive-email-mcp function to run the triage pipeline
+  const { data, error } = await ctx.supabase.functions.invoke("olive-email-mcp", {
+    body: {
+      action: "triage",
+      user_id: ctx.userId,
+      couple_id: ctx.coupleId,
+    },
+  });
+
+  if (error) {
+    return {
+      success: false,
+      message: `Email triage failed: ${error.message}`,
+      notifyUser: false,
+    };
+  }
+
+  if (!data?.success) {
+    return {
+      success: false,
+      message: data?.error || "Email triage failed",
+      notifyUser: false,
+    };
+  }
+
+  const tasksCreated = data.tasks_created || 0;
+  const emailsProcessed = data.emails_processed || 0;
+
+  return {
+    success: true,
+    message: data.summary || `Processed ${emailsProcessed} emails, created ${tasksCreated} tasks`,
+    data: { tasks_created: tasksCreated, emails_processed: emailsProcessed },
+    notifyUser: tasksCreated > 0, // Only notify if there are actionable items
+    notificationMessage: data.summary,
+    state: {
+      last_triage: new Date().toISOString(),
+      total_tasks_created: ((ctx.previousState.total_tasks_created as number) || 0) + tasksCreated,
+      total_emails_processed: ((ctx.previousState.total_emails_processed as number) || 0) + emailsProcessed,
+    },
   };
 }
 

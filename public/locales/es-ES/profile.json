@@ -375,6 +375,22 @@
     "shareWellness": "Compartir bienestar con tu pareja",
     "shareWellnessDesc": "Permite que tu pareja sepa cuando necesitas un día más tranquilo"
   },
+  "email": {
+    "title": "Gmail",
+    "subtitle": "Triaje de emails y extracción de tareas",
+    "connected": "Conectado",
+    "connectButton": "Conectar Gmail",
+    "connecting": "Conectando...",
+    "disconnect": "Desconectar",
+    "disconnectConfirm": "¿Estás seguro de que quieres desconectar Gmail? El agente de triaje de email será desactivado.",
+    "disconnected": "Gmail desconectado",
+    "connectedSuccess": "¡Gmail conectado exitosamente!",
+    "description": "Conecta tu Gmail para que Olive extraiga automáticamente tareas de tu bandeja de entrada.",
+    "error": "Error al conectar Gmail",
+    "permissionNote": "Solo pediremos acceso de lectura a tu bandeja. No se almacenan emails.",
+    "privacyNote": "Acceso de solo lectura. No se almacenan emails — solo resúmenes de tareas extraídas.",
+    "lastSynced": "Última sincronización:"
+  },
   "contextRail": {
     "stats": "Estadísticas Rápidas",
     "completed": "Completadas",

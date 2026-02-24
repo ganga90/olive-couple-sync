@@ -14,9 +14,10 @@ import { AppPreferencesModals } from "@/components/settings/AppPreferencesModals
 import { OliveProactivePreferences } from "@/components/settings/OliveProactivePreferences";
 import { OliveSkillsManager } from "@/components/settings/OliveSkillsManager";
 import { BackgroundAgentsManager } from "@/components/settings/BackgroundAgentsManager";
+import { EmailConnect } from "@/components/settings/EmailConnect";
 import { DefaultPrivacyCard } from "@/components/settings/DefaultPrivacyCard";
 import { CollapsibleSection } from "@/components/settings/CollapsibleSection";
-import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot } from "lucide-react";
+import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot, Mail } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
 import { useLanguage } from "@/providers/LanguageProvider";
@@ -240,14 +241,27 @@ const Profile = () => {
             <GoogleCalendarConnect />
           </SettingsCard>
 
-          <SettingsCard
-            icon={<Activity className="h-5 w-5 text-primary" />}
-            iconBg="bg-primary/10"
-            title={t('profile:oura.title', 'Oura Ring')}
-            subtitle={t('profile:oura.subtitle', 'Sleep, readiness & activity data')}
-          >
-            <OuraConnect />
-          </SettingsCard>
+          <div data-integration="oura">
+            <SettingsCard
+              icon={<Activity className="h-5 w-5 text-primary" />}
+              iconBg="bg-primary/10"
+              title={t('profile:oura.title', 'Oura Ring')}
+              subtitle={t('profile:oura.subtitle', 'Sleep, readiness & activity data')}
+            >
+              <OuraConnect />
+            </SettingsCard>
+          </div>
+
+          <div data-integration="email">
+            <SettingsCard
+              icon={<Mail className="h-5 w-5 text-red-600" />}
+              iconBg="bg-red-500/10"
+              title={t('profile:email.title', 'Gmail')}
+              subtitle={t('profile:email.subtitle', 'Email triage & task extraction')}
+            >
+              <EmailConnect />
+            </SettingsCard>
+          </div>
 
           <SettingsCard
             icon={<Download className="h-5 w-5 text-blue-600" />}

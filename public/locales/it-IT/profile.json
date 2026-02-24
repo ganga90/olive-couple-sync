@@ -375,6 +375,22 @@
     "shareWellness": "Condividi benessere con il partner",
     "shareWellnessDesc": "Fai sapere al tuo partner quando hai bisogno di una giornata più leggera"
   },
+  "email": {
+    "title": "Gmail",
+    "subtitle": "Triage email ed estrazione attività",
+    "connected": "Collegato",
+    "connectButton": "Collega Gmail",
+    "connecting": "Collegamento...",
+    "disconnect": "Scollega",
+    "disconnectConfirm": "Sei sicuro di voler scollegare Gmail? L'agente di triage email verrà disattivato.",
+    "disconnected": "Gmail scollegato",
+    "connectedSuccess": "Gmail collegato con successo!",
+    "description": "Collega il tuo Gmail per permettere a Olive di estrarre automaticamente le attività dalla tua posta in arrivo.",
+    "error": "Impossibile collegare Gmail",
+    "permissionNote": "Richiederemo solo accesso in sola lettura alla tua posta. Nessuna email viene salvata.",
+    "privacyNote": "Accesso in sola lettura. Nessuna email salvata — solo riassunti delle attività estratte.",
+    "lastSynced": "Ultima sincronizzazione:"
+  },
   "contextRail": {
     "stats": "Statistiche Rapide",
     "completed": "Completate",
