@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { useTranslation } from "react-i18next";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
-import { useSupabaseCouples } from "@/hooks/useSupabaseCouples";
+import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { supabase } from "@/lib/supabaseClient";
 import { useSEO } from "@/hooks/useSEO";
@@ -43,7 +43,7 @@ const NoteDetails = () => {
   const { user } = useUser();
   const { t } = useTranslation('notes');
   const { notes, deleteNote, updateNote } = useSupabaseNotesContext();
-  const { currentCouple } = useSupabaseCouples();
+  const { currentCouple, you, partner } = useSupabaseCouple();
   const { lists } = useSupabaseLists(currentCouple?.id);
   const askOliveOnboarding = useOnboardingTooltip('ask-olive-chat');
   
@@ -101,14 +101,17 @@ const NoteDetails = () => {
 
   const availableOwners = useMemo(() => {
     const owners = [];
-    if (user?.fullName) {
-      owners.push({ id: user.id, name: currentCouple?.you_name || user.fullName, isCurrentUser: true });
+    // Use resolved names (dynamically swapped based on logged-in user)
+    if (you) {
+      owners.push({ id: user?.id || 'you', name: you, isCurrentUser: true });
+    } else if (user?.fullName) {
+      owners.push({ id: user.id, name: user.fullName, isCurrentUser: true });
     }
-    if (currentCouple?.partner_name) {
-      owners.push({ id: 'partner', name: currentCouple.partner_name, isCurrentUser: false });
+    if (partner) {
+      owners.push({ id: 'partner', name: partner, isCurrentUser: false });
     }
     return owners;
-  }, [user, currentCouple]);
+  }, [user, you, partner]);
 
   const isOverdue = note?.dueDate && !note.completed && isPast(parseISO(note.dueDate));
 
