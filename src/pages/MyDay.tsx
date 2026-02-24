@@ -709,7 +709,7 @@ const MyDay = () => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium text-foreground">{workout.calories} {t('profile:myday.calories').toLowerCase()}</p>
+                    <p className="text-sm font-medium text-foreground">{Math.ceil(workout.calories)} {t('profile:myday.calories').toLowerCase()}</p>
                     <p className="text-[10px] text-muted-foreground capitalize">{workout.intensity}</p>
                   </div>
                 </div>
