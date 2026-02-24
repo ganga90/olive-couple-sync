@@ -352,6 +352,29 @@
     "shareWellness": "Share wellness with partner",
     "shareWellnessDesc": "Let your partner know when you need a lighter day"
   },
+  "agents": {
+    "title": "Background Agents",
+    "subtitle": "Agents that work for you automatically in the background.",
+    "activated": "Agent activated",
+    "deactivated": "Agent deactivated",
+    "toggleError": "Failed to update agent",
+    "signInRequired": "Sign in to manage background agents",
+    "activeCount": "{{count}} of {{total}} agents active",
+    "lastRun": "Last run",
+    "runNow": "Run Now",
+    "runStarted": "Agent started",
+    "runFailed": "Failed to start agent",
+    "requiresConnection": "Requires {{connection}} connection",
+    "schedules": {
+      "daily_9am": "Daily at 9:00 AM",
+      "daily_10am": "Daily at 10:00 AM",
+      "daily_morning_briefing": "With morning briefing",
+      "daily_check": "Daily check",
+      "weekly_monday_9am": "Mondays at 9:00 AM",
+      "weekly_sunday_6pm": "Sundays at 6:00 PM",
+      "every_15min": "Every 15 minutes"
+    }
+  },
   "contextRail": {
     "stats": "Quick Stats",
     "completed": "Completed",

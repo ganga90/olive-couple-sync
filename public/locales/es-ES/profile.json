@@ -323,6 +323,29 @@
       "general": "General"
     }
   },
+  "agents": {
+    "title": "Agentes de Fondo",
+    "subtitle": "Agentes que trabajan para ti automáticamente en segundo plano.",
+    "activated": "Agente activado",
+    "deactivated": "Agente desactivado",
+    "toggleError": "Error al actualizar el agente",
+    "signInRequired": "Inicia sesión para gestionar los agentes de fondo",
+    "activeCount": "{{count}} de {{total}} agentes activos",
+    "lastRun": "Última ejecución",
+    "runNow": "Ejecutar Ahora",
+    "runStarted": "Agente iniciado",
+    "runFailed": "Error al iniciar el agente",
+    "requiresConnection": "Requiere conexión de {{connection}}",
+    "schedules": {
+      "daily_9am": "Diario a las 9:00 AM",
+      "daily_10am": "Diario a las 10:00 AM",
+      "daily_morning_briefing": "Con el briefing matutino",
+      "daily_check": "Verificación diaria",
+      "weekly_monday_9am": "Lunes a las 9:00 AM",
+      "weekly_sunday_6pm": "Domingos a las 6:00 PM",
+      "every_15min": "Cada 15 minutos"
+    }
+  },
   "legal": {
     "title": "Legal y Soporte",
     "terms": "Términos de Servicio",

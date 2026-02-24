@@ -13,9 +13,10 @@ import { WhatsAppUnifiedCard } from "@/components/settings/WhatsAppUnifiedCard";
 import { AppPreferencesModals } from "@/components/settings/AppPreferencesModals";
 import { OliveProactivePreferences } from "@/components/settings/OliveProactivePreferences";
 import { OliveSkillsManager } from "@/components/settings/OliveSkillsManager";
+import { BackgroundAgentsManager } from "@/components/settings/BackgroundAgentsManager";
 import { DefaultPrivacyCard } from "@/components/settings/DefaultPrivacyCard";
 import { CollapsibleSection } from "@/components/settings/CollapsibleSection";
-import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock } from "lucide-react";
+import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
 import { useLanguage } from "@/providers/LanguageProvider";
@@ -201,6 +202,15 @@ const Profile = () => {
             subtitle={t('profile:skills.subtitle', 'Enable specialized capabilities')}
           >
             <OliveSkillsManager />
+          </SettingsCard>
+
+          <SettingsCard
+            icon={<Bot className="h-5 w-5 text-indigo-500" />}
+            iconBg="bg-indigo-500/10"
+            title={t('profile:agents.title', 'Background Agents')}
+            subtitle={t('profile:agents.subtitle', 'Agents that work for you automatically')}
+          >
+            <BackgroundAgentsManager />
           </SettingsCard>
         </CollapsibleSection>
 

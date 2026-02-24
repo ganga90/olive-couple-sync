@@ -917,6 +917,161 @@ async function scheduleRecurringJobs(supabase: any): Promise<number> {
   return scheduled;
 }
 
+// ─── Background agent scheduling ─────────────────────────────────────────────
+
+/**
+ * Check active background agents and invoke olive-agent-runner for any that are due.
+ * Uses olive_skills (agent_type='background_agent') + olive_user_skills (enabled) +
+ * olive_agent_runs (last run tracking) to determine which agents need to run.
+ */
+async function processBackgroundAgents(supabase: any): Promise<number> {
+  // Fetch all background agents that at least one user has enabled
+  const { data: activeAgents, error: agentErr } = await supabase
+    .from('olive_user_skills')
+    .select(`
+      user_id,
+      skill_id,
+      config,
+      olive_skills!inner (
+        skill_id,
+        schedule,
+        agent_config,
+        agent_type,
+        requires_connection
+      )
+    `)
+    .eq('enabled', true)
+    .eq('olive_skills.agent_type', 'background_agent');
+
+  if (agentErr || !activeAgents || activeAgents.length === 0) {
+    if (agentErr) console.error('[Heartbeat] Error fetching active agents:', agentErr.message);
+    return 0;
+  }
+
+  let invoked = 0;
+
+  for (const activation of activeAgents) {
+    const skill = activation.olive_skills;
+    const userId = activation.user_id;
+    const agentId = skill.skill_id;
+    const schedule = skill.schedule;
+
+    // Get user preferences for timezone and quiet hours
+    const { data: prefs } = await supabase
+      .from('olive_user_preferences')
+      .select('timezone, quiet_hours_start, quiet_hours_end, proactive_enabled')
+      .eq('user_id', userId)
+      .single();
+
+    const tz = prefs?.timezone || 'UTC';
+
+    // Respect quiet hours
+    if (prefs && isInQuietHours(prefs.quiet_hours_start, prefs.quiet_hours_end, tz)) {
+      continue;
+    }
+
+    // Check if agent requires an external connection
+    if (skill.requires_connection) {
+      let connected = false;
+      if (skill.requires_connection === 'oura') {
+        const { data: oura } = await supabase
+          .from('oura_connections')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .limit(1);
+        connected = oura && oura.length > 0;
+      } else if (skill.requires_connection === 'gmail') {
+        const { data: email } = await supabase
+          .from('olive_email_connections')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .limit(1);
+        connected = email && email.length > 0;
+      }
+      if (!connected) continue;
+    }
+
+    // Determine if it's time to run based on schedule + timezone
+    const { hour: localHour, minute: localMinute, dayOfWeek: localDay } = getUserLocalTime(tz);
+    const isIn15MinWindow = (targetH: number, targetM: number = 0): boolean => {
+      const target = targetH * 60 + targetM;
+      const current = localHour * 60 + localMinute;
+      return current >= target && current < target + 15;
+    };
+
+    let shouldRun = false;
+    switch (schedule) {
+      case 'daily_9am':
+        shouldRun = isIn15MinWindow(9);
+        break;
+      case 'daily_10am':
+        shouldRun = isIn15MinWindow(10);
+        break;
+      case 'daily_morning_briefing':
+        // Run at 8am (slightly before morning briefing)
+        shouldRun = isIn15MinWindow(8);
+        break;
+      case 'daily_check':
+        shouldRun = isIn15MinWindow(9);
+        break;
+      case 'weekly_monday_9am':
+        shouldRun = localDay === 1 && isIn15MinWindow(9);
+        break;
+      case 'weekly_sunday_6pm':
+        shouldRun = localDay === 0 && isIn15MinWindow(18);
+        break;
+      case 'every_15min':
+        shouldRun = true; // Always run on every tick
+        break;
+      default:
+        shouldRun = false;
+    }
+
+    if (!shouldRun) continue;
+
+    // Check if already ran recently (prevent double-runs within cooldown period)
+    const cooldownHours = schedule === 'every_15min' ? 0.2 : // 12 min cooldown for frequent agents
+                          schedule?.startsWith('weekly') ? 144 : // 6 day cooldown for weekly
+                          20; // 20h cooldown for daily
+    const cooldownTime = new Date(Date.now() - cooldownHours * 60 * 60 * 1000);
+
+    const { data: recentRun } = await supabase
+      .from('olive_agent_runs')
+      .select('id')
+      .eq('agent_id', agentId)
+      .eq('user_id', userId)
+      .gte('started_at', cooldownTime.toISOString())
+      .limit(1);
+
+    if (recentRun && recentRun.length > 0) continue;
+
+    // Invoke the agent runner
+    try {
+      console.log(`[Heartbeat] Invoking agent ${agentId} for user ${userId}`);
+      const response = await supabase.functions.invoke('olive-agent-runner', {
+        body: {
+          action: 'run',
+          agent_id: agentId,
+          user_id: userId,
+        },
+      });
+
+      if (response.error) {
+        console.error(`[Heartbeat] Agent ${agentId} invoke error:`, response.error.message);
+      } else {
+        invoked++;
+        console.log(`[Heartbeat] Agent ${agentId} invoked successfully for ${userId}`);
+      }
+    } catch (err) {
+      console.error(`[Heartbeat] Agent ${agentId} invoke exception:`, err);
+    }
+  }
+
+  return invoked;
+}
+
 // ─── Main serve handler ───────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -948,6 +1103,10 @@ serve(async (req) => {
         const nudges = await checkOverdueNudges(supabase);
         console.log(`[Heartbeat] Sent ${nudges} overdue nudges`);
 
+        // Process background agents
+        const agentsInvoked = await processBackgroundAgents(supabase);
+        console.log(`[Heartbeat] Invoked ${agentsInvoked} background agents`);
+
         // Process queued outbound messages
         const queueResponse = await supabase.functions.invoke('whatsapp-gateway', {
           body: { action: 'process_queue' },
@@ -964,6 +1123,7 @@ serve(async (req) => {
               failed_jobs: jobResult.failed,
               reminders_sent: reminders,
               nudges_sent: nudges,
+              agents_invoked: agentsInvoked,
               queue_processed: queueResult.processed,
             },
           }),
