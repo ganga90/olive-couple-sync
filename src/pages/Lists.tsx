@@ -278,7 +278,7 @@ const Lists = () => {
 
           {/* Quick Access Section - Top 4 most used lists */}
           {!loading && lists.length >= 4 && (
-            <QuickAccessLists lists={lists} notes={notes} />
+            <QuickAccessLists lists={lists} notes={notes} privacyFilter={filterBy === 'ai' ? 'all' : filterBy} />
           )}
 
           {/* Actions Row */}

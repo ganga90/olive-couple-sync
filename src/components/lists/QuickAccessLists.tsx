@@ -28,6 +28,7 @@ import type { Note } from "@/types/note";
 interface QuickAccessListsProps {
   lists: SupabaseList[];
   notes: Note[];
+  privacyFilter?: 'all' | 'shared' | 'private';
 }
 
 const getCategoryIcon = (category: string) => {
@@ -95,15 +96,25 @@ const calculateListScore = (list: SupabaseList, notes: Note[]): number => {
   return activeScore + totalScore + recentScore + completionScore + freshnessScore;
 };
 
-export const QuickAccessLists: React.FC<QuickAccessListsProps> = ({ lists, notes }) => {
+export const QuickAccessLists: React.FC<QuickAccessListsProps> = ({ lists, notes, privacyFilter = 'all' }) => {
   const { t } = useTranslation('lists');
   const getLocalizedPath = useLocalizedHref();
   
-  // Calculate scores and get top 4 lists
+  // Calculate scores and get top 4 lists, filtered by privacy preference
   const topLists = React.useMemo(() => {
     if (lists.length === 0) return [];
     
-    const scoredLists = lists.map(list => ({
+    // Filter lists by privacy preference
+    let filteredLists = lists;
+    if (privacyFilter === 'private') {
+      filteredLists = lists.filter(l => !l.couple_id);
+    } else if (privacyFilter === 'shared') {
+      filteredLists = lists.filter(l => !!l.couple_id);
+    }
+    
+    if (filteredLists.length === 0) return [];
+    
+    const scoredLists = filteredLists.map(list => ({
       list,
       score: calculateListScore(list, notes),
       taskCount: notes.filter(n => n.list_id === list.id).length

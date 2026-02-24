@@ -187,9 +187,15 @@ const SignInPage = () => {
     } catch (err: any) {
       console.error('[SignIn] Passkey error:', err);
       const clerkError = err?.errors?.[0];
-      // If passkeys not supported or not set up, show helpful message
-      if (clerkError?.code === 'passkey_not_supported' || err?.name === 'NotAllowedError') {
-        toast.error(t('signIn.passkeyNotAvailable', 'Passkey not available. Please use another sign-in method.'));
+      // If passkeys not supported or user cancelled
+      if (clerkError?.code === 'passkey_not_supported') {
+        toast.error(t('signIn.passkeyNotSupported', 'Passkeys are not supported on this device.'));
+      } else if (err?.name === 'NotAllowedError' || clerkError?.code === 'passkey_registration_required') {
+        // No passkey found — prompt user to sign in first, then create one
+        toast(t('signIn.passkeyNotFound', "No passkey found for this device. Sign in with email first, then create a passkey from your Profile settings."), {
+          duration: 6000,
+          icon: '🔑',
+        });
       } else {
         toast.error(clerkError?.longMessage || t('signIn.passkeyError', 'Passkey sign-in failed. Try another method.'));
       }
