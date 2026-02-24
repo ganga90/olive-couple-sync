@@ -120,11 +120,13 @@ interface GmailMessage {
 
 /**
  * Fetch unread primary inbox messages (max 20).
+ * NOTE: We use gmail.readonly scope, so we can NOT label or modify messages.
+ * Dedup is handled via state (tracking processed message IDs) instead.
  */
-async function fetchUnreadEmails(accessToken: string): Promise<GmailMessage[]> {
+async function fetchUnreadEmails(accessToken: string, processedIds: Set<string>): Promise<GmailMessage[]> {
   // List message IDs
   const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-  listUrl.searchParams.set("q", "is:unread category:primary -label:OLIVE_PROCESSED");
+  listUrl.searchParams.set("q", "is:unread category:primary");
   listUrl.searchParams.set("maxResults", "20");
 
   const listRes = await fetch(listUrl.toString(), {
@@ -138,7 +140,10 @@ async function fetchUnreadEmails(accessToken: string): Promise<GmailMessage[]> {
   }
 
   const listData = await listRes.json();
-  const messageIds: string[] = (listData.messages || []).map((m: { id: string }) => m.id);
+  const allMessageIds: string[] = (listData.messages || []).map((m: { id: string }) => m.id);
+
+  // Filter out already-processed messages (dedup via state)
+  const messageIds = allMessageIds.filter((id) => !processedIds.has(id));
 
   if (messageIds.length === 0) return [];
 
@@ -175,78 +180,8 @@ async function fetchUnreadEmails(accessToken: string): Promise<GmailMessage[]> {
   return messages;
 }
 
-/**
- * Ensure the OLIVE_PROCESSED label exists and return its ID.
- */
-async function getOrCreateOliveLabel(accessToken: string): Promise<string | null> {
-  try {
-    // List existing labels
-    const labelsRes = await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/labels",
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-
-    if (!labelsRes.ok) return null;
-
-    const labelsData = await labelsRes.json();
-    const existing = (labelsData.labels || []).find(
-      (l: { name: string; id: string }) => l.name === "Olive/Processed"
-    );
-
-    if (existing) return existing.id;
-
-    // Create the label
-    const createRes = await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/labels",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: "Olive/Processed",
-          labelListVisibility: "labelShow",
-          messageListVisibility: "show",
-        }),
-      }
-    );
-
-    if (createRes.ok) {
-      const created = await createRes.json();
-      return created.id;
-    }
-
-    console.warn("[email-mcp] Could not create label — label management requires gmail.labels scope");
-    return null;
-  } catch (e) {
-    console.error("[email-mcp] Label management error:", e);
-    return null;
-  }
-}
-
-/**
- * Apply the OLIVE_PROCESSED label to a message.
- */
-async function labelMessageProcessed(accessToken: string, messageId: string, labelId: string): Promise<void> {
-  try {
-    await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          addLabelIds: [labelId],
-        }),
-      }
-    );
-  } catch (e) {
-    console.error(`[email-mcp] Failed to label message ${messageId}:`, e);
-  }
-}
+// NOTE: We do NOT label/modify messages because gmail.readonly scope doesn't allow it.
+// Instead, we track processed message IDs in agent state for dedup.
 
 // ─── PII Filtering ───────────────────────────────────────────────
 
@@ -278,12 +213,15 @@ interface TriageResult {
 
 /**
  * Run the full email triage pipeline.
+ * @param previouslyProcessedIds - Gmail message IDs already triaged in past runs (from agent state)
+ * @returns Result including newly processed IDs for state persistence
  */
 async function runEmailTriage(
   supabase: ReturnType<typeof createClient>,
   userId: string,
-  coupleId?: string
-): Promise<{ tasks_created: number; emails_processed: number; summary: string }> {
+  coupleId?: string,
+  previouslyProcessedIds: string[] = []
+): Promise<{ tasks_created: number; emails_processed: number; summary: string; processed_ids: string[] }> {
   // 1. Load connection
   const { data: conn, error: connErr } = await supabase
     .from("olive_email_connections")
@@ -299,8 +237,9 @@ async function runEmailTriage(
   // 2. Get valid access token (auto-refresh if expired)
   const accessToken = await getValidAccessToken(supabase, conn as EmailConnection);
 
-  // 3. Fetch unread primary emails
-  const emails = await fetchUnreadEmails(accessToken);
+  // 3. Fetch unread primary emails (filtering out previously processed)
+  const processedSet = new Set(previouslyProcessedIds);
+  const emails = await fetchUnreadEmails(accessToken, processedSet);
 
   if (emails.length === 0) {
     await supabase
@@ -308,7 +247,7 @@ async function runEmailTriage(
       .update({ last_sync_at: new Date().toISOString() })
       .eq("id", conn.id);
 
-    return { tasks_created: 0, emails_processed: 0, summary: "No unread emails in your primary inbox." };
+    return { tasks_created: 0, emails_processed: 0, summary: "No unread emails in your primary inbox.", processed_ids: previouslyProcessedIds };
   }
 
   console.log(`[email-mcp] Found ${emails.length} unread primary emails for user ${userId}`);
@@ -368,16 +307,14 @@ Example:
   // 5. Create tasks for ACTION_REQUIRED items
   let tasksCreated = 0;
   const actionItems: string[] = [];
-  const labelId = await getOrCreateOliveLabel(accessToken);
+  const newlyProcessedIds: string[] = [];
 
   for (let i = 0; i < emails.length; i++) {
     const email = emails[i];
     const triage = triageResults.find((t: any) => t.index === i + 1) || { classification: "SKIP" };
 
-    // Label all processed emails (even skipped ones)
-    if (labelId) {
-      await labelMessageProcessed(accessToken, email.id, labelId);
-    }
+    // Track all processed email IDs (even skipped) for state-based dedup
+    newlyProcessedIds.push(email.id);
 
     if (triage.classification !== "ACTION_REQUIRED" || !triage.task_summary) {
       continue;
@@ -399,10 +336,14 @@ Example:
       continue;
     }
 
-    // Insert task
+    // Build the original_text from email metadata (required NOT NULL field)
+    const originalText = `[Email from ${stripPII(email.from)}] ${email.subject}`;
+
+    // Insert task — original_text and summary are both required
     const noteData: Record<string, unknown> = {
       author_id: userId,
       couple_id: coupleId,
+      original_text: originalText,
       summary: cleanSummary,
       category: triage.category || "general",
       priority: triage.priority || "medium",
@@ -420,7 +361,7 @@ Example:
 
     if (!insertErr) {
       tasksCreated++;
-      const priorityEmoji = triage.priority === "high" ? " — HIGH" : triage.priority === "medium" ? " — MEDIUM" : "";
+      const priorityEmoji = triage.priority === "high" ? " \u2014 HIGH" : triage.priority === "medium" ? " \u2014 MEDIUM" : "";
       const dateStr = triage.due_date ? ` (due ${triage.due_date})` : "";
       actionItems.push(`${cleanSummary}${dateStr}${priorityEmoji}`);
     }
@@ -444,9 +385,12 @@ Example:
     summary = `📧 Email Triage Complete\nScanned ${emails.length} email${emails.length > 1 ? "s" : ""} — no action items found. You're all caught up!`;
   }
 
+  // Merge with previously processed IDs (keep last 200 to bound state size)
+  const allProcessedIds = [...previouslyProcessedIds, ...newlyProcessedIds].slice(-200);
+
   console.log(`[email-mcp] Triage complete: ${tasksCreated} tasks from ${emails.length} emails`);
 
-  return { tasks_created: tasksCreated, emails_processed: emails.length, summary };
+  return { tasks_created: tasksCreated, emails_processed: emails.length, summary, processed_ids: allProcessedIds };
 }
 
 // ─── HTTP Handler ────────────────────────────────────────────────
@@ -525,7 +469,8 @@ serve(async (req: Request) => {
         }
 
         const couple_id = body.couple_id;
-        const result = await runEmailTriage(supabase, user_id, couple_id);
+        const previouslyProcessedIds = (body.processed_ids as string[]) || [];
+        const result = await runEmailTriage(supabase, user_id, couple_id, previouslyProcessedIds);
 
         return jsonResponse({ success: true, ...result });
       }

@@ -46,10 +46,12 @@ serve(async (req) => {
     // Store the frontend origin in the state so the callback can redirect back
     const origin = redirect_origin || 'https://witholive.app';
 
-    // Gmail read-only scopes — never request send permission
+    // Gmail read-only scopes — never request send or modify permission
+    // gmail.readonly is sufficient for reading messages and listing labels
+    // We do NOT request gmail.labels or gmail.modify (labeling messages requires modify scope)
+    // Dedup is handled via agent state (tracking processed message IDs) instead
     const scopes = [
       "https://www.googleapis.com/auth/gmail.readonly",
-      "https://www.googleapis.com/auth/gmail.labels",
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/userinfo.profile",
     ];

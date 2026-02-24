@@ -335,10 +335,17 @@ async function runBirthdayGiftAgent(ctx: AgentContext): Promise<AgentResult> {
   const tiers = (ctx.config.reminder_tiers as number[]) || [30, 14, 7];
   const maxDays = Math.max(...tiers);
 
-  // Note: get_upcoming_dates RPC needs to be created. For now, return gracefully.
-  // TODO: Create the get_upcoming_dates database function
-  const dates: any[] = [];
-  // Placeholder - this agent requires a get_upcoming_dates DB function to work
+  // Call the get_upcoming_dates RPC function
+  // Returns: id, event_name, event_date, event_type, days_until, related_person, reminder_days, should_remind
+  const { data: dates, error: datesErr } = await ctx.supabase.rpc("get_upcoming_dates", {
+    p_user_id: ctx.userId,
+    p_days_ahead: maxDays + 2,
+  });
+
+  if (datesErr) {
+    console.error("[birthday-gift] RPC error:", datesErr.message);
+    return { success: true, message: "Could not fetch dates", notifyUser: false };
+  }
 
   if (!dates || dates.length === 0) {
     return { success: true, message: "No upcoming dates", notifyUser: false };
@@ -358,7 +365,8 @@ async function runBirthdayGiftAgent(ctx: AgentContext): Promise<AgentResult> {
   const newState: Record<string, string[]> = { ...previousSuggestions };
 
   for (const date of matchingDates) {
-    const dateKey = `${date.title}_${date.event_date}`;
+    const eventName = date.event_name;
+    const dateKey = `${eventName}_${date.event_date}`;
     const daysUntil = date.days_until;
 
     // Get memory context for personalization
@@ -371,16 +379,18 @@ async function runBirthdayGiftAgent(ctx: AgentContext): Promise<AgentResult> {
 
     if (daysUntil >= 25 && !previousSuggestions[dateKey]) {
       // First reminder (30 days) — generate gift ideas
+      const personContext = date.related_person ? `For: ${date.related_person}` : "";
       const response = await ctx.genai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: `You are a thoughtful gift advisor for a couples app.
 
-Upcoming event: ${date.title} in ${daysUntil} days (${date.event_date})
+Upcoming event: ${eventName} in ${daysUntil} days (${date.event_date})
+${personContext}
 Person's profile context: ${memory?.content || "No specific preferences known"}
 Budget: ${ctx.config.budget_range || "moderate ($30-100)"}
 
 Suggest 3 gift ideas. Format for WhatsApp:
-🎁 ${date.title} is in ${daysUntil} days!
+🎁 ${eventName} is in ${daysUntil} days!
 
 1. [Gift idea] — ~$XX
 2. [Gift idea] — ~$XX
@@ -394,9 +404,9 @@ Keep it warm and personal.`,
       messages.push(suggestion);
       newState[dateKey] = [suggestion];
     } else if (daysUntil >= 10 && daysUntil <= 15) {
-      messages.push(`🔔 Reminder: ${date.title} is in ${daysUntil} days! Have you picked a gift yet?`);
+      messages.push(`🔔 Reminder: ${eventName} is in ${daysUntil} days! Have you picked a gift yet?`);
     } else if (daysUntil <= 8) {
-      messages.push(`⚡ Last call: ${date.title} is in ${daysUntil} days! Time to order if you haven't yet.`);
+      messages.push(`⚡ Last call: ${eventName} is in ${daysUntil} days! Time to order if you haven't yet.`);
     }
   }
 
@@ -504,12 +514,16 @@ async function runEmailTriageAgent(ctx: AgentContext): Promise<AgentResult> {
     return { success: true, message: "Gmail not connected", notifyUser: false };
   }
 
+  // Pass previously processed email IDs from state for dedup (read-only scope, can't label)
+  const previouslyProcessedIds = (ctx.previousState.processed_ids as string[]) || [];
+
   // Invoke the olive-email-mcp function to run the triage pipeline
   const { data, error } = await ctx.supabase.functions.invoke("olive-email-mcp", {
     body: {
       action: "triage",
       user_id: ctx.userId,
       couple_id: ctx.coupleId,
+      processed_ids: previouslyProcessedIds,
     },
   });
 
@@ -542,6 +556,7 @@ async function runEmailTriageAgent(ctx: AgentContext): Promise<AgentResult> {
       last_triage: new Date().toISOString(),
       total_tasks_created: ((ctx.previousState.total_tasks_created as number) || 0) + tasksCreated,
       total_emails_processed: ((ctx.previousState.total_emails_processed as number) || 0) + emailsProcessed,
+      processed_ids: data.processed_ids || previouslyProcessedIds,
     },
   };
 }

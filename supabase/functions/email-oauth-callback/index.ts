@@ -123,7 +123,7 @@ serve(async (req) => {
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token,
           token_expiry: tokenExpiry,
-          scopes: ['gmail.readonly', 'gmail.labels', 'userinfo.email', 'userinfo.profile'],
+          scopes: ['gmail.readonly', 'userinfo.email', 'userinfo.profile'],
           is_active: true,
           error_message: null,
           updated_at: new Date().toISOString(),

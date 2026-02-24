@@ -250,8 +250,8 @@ export function useBackgroundAgents() {
     async (skillId: string) => {
       if (!user?.id) return;
 
-      const { data: profile } = await supabase
-        .from('clerk_profiles')
+      const { data: membership } = await supabase
+        .from('clerk_couple_members')
         .select('couple_id')
         .eq('user_id', user.id)
         .maybeSingle();
@@ -261,7 +261,7 @@ export function useBackgroundAgents() {
           action: 'run',
           agent_id: skillId,
           user_id: user.id,
-          couple_id: profile?.couple_id,
+          couple_id: membership?.couple_id,
         },
       });
 
