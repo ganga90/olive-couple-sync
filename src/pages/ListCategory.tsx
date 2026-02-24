@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Pencil, Trash2, CheckCircle2, Circle, Plus, ChevronDown, ChevronUp, Calendar, User, AlertCircle, Users, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { NoteInput } from "@/components/NoteInput";
@@ -24,7 +25,7 @@ const ListCategory = () => {
   const routerNavigate = useNavigate();
   const navigate = useLocalizedNavigate();
   const { notes, updateNote, deleteNote } = useSupabaseNotesContext();
-  const { currentCouple } = useSupabaseCouple();
+  const { currentCouple, you, partner } = useSupabaseCouple();
   const { lists, loading, updateList, deleteList } = useSupabaseLists(currentCouple?.id || null);
   
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -33,6 +34,7 @@ const ListCategory = () => {
   const [editIsShared, setEditIsShared] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
   const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false);
+  const [ownerFilter, setOwnerFilter] = useState<string>("all");
   
   const currentList = useMemo(() => 
     lists.find(list => list.id === listId), 
@@ -45,12 +47,22 @@ const ListCategory = () => {
   );
 
   const { activeTasks, completedTasks, progress } = useMemo(() => {
-    const active = listNotes.filter(note => !note.completed);
-    const completed = listNotes.filter(note => note.completed);
-    const total = listNotes.length;
+    let filtered = listNotes;
+    
+    // Apply owner filter
+    if (ownerFilter !== "all" && currentCouple) {
+      filtered = filtered.filter(note => {
+        const owner = note.task_owner?.toLowerCase();
+        return owner === ownerFilter.toLowerCase();
+      });
+    }
+    
+    const active = filtered.filter(note => !note.completed);
+    const completed = filtered.filter(note => note.completed);
+    const total = filtered.length;
     const progressPercent = total > 0 ? (completed.length / total) * 100 : 0;
     return { activeTasks: active, completedTasks: completed, progress: progressPercent };
-  }, [listNotes]);
+  }, [listNotes, ownerFilter, currentCouple]);
 
   useSEO({ 
     title: `${currentList?.name || 'List'} — Olive`, 
@@ -249,6 +261,23 @@ const ListCategory = () => {
               <Progress value={progress} className="h-2" />
             </div>
           )}
+
+          {/* Owner Filter - only show for shared lists with couple */}
+          {currentCouple && currentList.couple_id && you && partner && (
+            <div className="flex items-center gap-2 mt-3">
+              <User className="h-4 w-4 text-muted-foreground" />
+              <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+                <SelectTrigger className="h-9 w-auto min-w-[140px] text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All tasks</SelectItem>
+                  <SelectItem value={you}>{you}</SelectItem>
+                  <SelectItem value={partner}>{partner}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
         {/* Add Note Button */}
@@ -419,7 +448,7 @@ const ListCategory = () => {
               </div>
             )}
           </div>
-        )}
+          )}
 
         {/* Add Note Dialog */}
         <Dialog open={addNoteDialogOpen} onOpenChange={setAddNoteDialogOpen}>

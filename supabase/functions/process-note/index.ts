@@ -112,7 +112,7 @@ const singleNoteSchema = {
     task_owner: { 
       type: Type.STRING, 
       nullable: true,
-      description: "Person's name from 'tell [name]' or '[name] should'" 
+      description: "Person's name the task is assigned to. Look for patterns like '[name] check/do/buy...', 'tell [name] to...', '[name] should...'. If both partner names appear, the FIRST name mentioned is usually the person who should DO the task. Use the exact name as provided in the couple context." 
     },
     recurrence_frequency: { 
       type: Type.STRING, 
@@ -1044,7 +1044,7 @@ serve(async (req) => {
       throw new Error('Supabase configuration is missing');
     }
 
-    const { text, user_id, couple_id, timezone, media, mediaTypes, style } = await req.json();
+    const { text, user_id, couple_id, timezone, media, mediaTypes, style, partner_names } = await req.json();
     
     // Validate required fields - allow empty text if media is present
     if (!user_id) {
@@ -1312,7 +1312,38 @@ serve(async (req) => {
     // Extract list names for AI context
     const existingListNames = (existingLists || []).map((l: any) => l.name);
     
-    const systemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions, detectedStyle, memoryContext, existingListNames);
+    // Build couple/partner names context for task_owner assignment
+    let coupleNamesContext = '';
+    if (partner_names && Array.isArray(partner_names) && partner_names.length > 0) {
+      coupleNamesContext = `\n\n**COUPLE/PARTNER NAMES**: ${partner_names.join(', ')}
+When the note text mentions any of these names, use the EXACT name for task_owner assignment.
+- If the note starts with a name (e.g., "${partner_names[0]} check 401k"), assign task_owner to "${partner_names[0]}"
+- If the note says "tell ${partner_names[0]} to...", assign task_owner to "${partner_names[0]}"
+- The first name mentioned as the actor/doer is the task_owner`;
+    } else if (couple_id) {
+      // Fetch couple names from DB if not provided
+      try {
+        const { data: coupleData } = await supabase
+          .from('clerk_couples')
+          .select('you_name, partner_name')
+          .eq('id', couple_id)
+          .maybeSingle();
+        if (coupleData) {
+          const names = [coupleData.you_name, coupleData.partner_name].filter(Boolean);
+          if (names.length > 0) {
+            coupleNamesContext = `\n\n**COUPLE/PARTNER NAMES**: ${names.join(', ')}
+When the note text mentions any of these names, use the EXACT name for task_owner assignment.
+- If the note starts with a name (e.g., "${names[0]} check 401k"), assign task_owner to "${names[0]}"
+- If the note says "tell ${names[0]} to...", assign task_owner to "${names[0]}"
+- The first name mentioned as the actor/doer is the task_owner`;
+          }
+        }
+      } catch (err) {
+        console.warn('[process-note] Could not fetch couple names:', err);
+      }
+    }
+
+    const systemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions, detectedStyle, memoryContext + coupleNamesContext, existingListNames);
     
     // Build user prompt with explicit media-first instruction when text is vague
     let userPrompt: string;
