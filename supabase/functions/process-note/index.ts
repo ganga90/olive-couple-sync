@@ -344,8 +344,9 @@ MEDIA EXTRACTION RULES - ALWAYS extract ALL details into items array:
 
 CRITICAL RULES:
 - If user text is vague ("save this", "remember"), use ALL media content to create summary AND populate items with extracted details.
-- If user caption provides CONTEXT (e.g., "Oura notes for interview", "meeting notes from standup"), use the caption to determine the summary and category, and use the media content for items/details.
-- NEVER produce generic summaries like "WHITEBOARD NOTES" or "APPOINTMENTS:" — always include the SPECIFIC content from the handwriting.`;
+- If user caption provides CONTEXT (e.g., "Oura notes for interview", "meeting notes from standup"), the summary MUST incorporate the user's exact keywords/phrases. The caption IS the user's intent — the extracted content provides supporting details for items/sub-items only.
+- NEVER produce generic summaries like "WHITEBOARD NOTES" or "APPOINTMENTS:" — always include the SPECIFIC content from the handwriting.
+- When a caption says "X for Y" (e.g., "notes for Oura interview"), the summary should be something like "Oura Interview Notes", NOT a description of the document contents.`;
   }
   
   // Style-specific guidance
@@ -1260,10 +1261,10 @@ serve(async (req) => {
     const isVagueText = vagueTextPatterns.some(pattern => pattern.test(safeText.trim()));
     
     if (hasMedia) {
-      // Extract all media content
-      const imageDescriptions = mediaDescriptions
-        .filter(d => d.startsWith('[Image]'))
-        .map(d => d.replace(/^\[Image\]\s*/, ''))
+      // Extract all media content (images AND PDFs - both are visual/document content)
+      const visualMediaDescriptions = mediaDescriptions
+        .filter(d => d.startsWith('[Image]') || d.startsWith('[PDF Document]'))
+        .map(d => d.replace(/^\[(Image|PDF Document)\]\s*/, ''))
         .join('\n');
       
       const audioTranscriptions = mediaDescriptions
@@ -1274,24 +1275,24 @@ serve(async (req) => {
       // Detect if text is a "caption" providing context for the media (not vague, but not the main content)
       // Examples: "Oura notes for interview", "meeting notes from standup", "doctor note"
       const isCaptionContext = !isVagueText && safeText.length > 0 && safeText.length < 80 
-        && imageDescriptions.length > safeText.length * 2;
+        && visualMediaDescriptions.length > safeText.length * 2;
       
-      if (isVagueText && (imageDescriptions || audioTranscriptions)) {
+      if (isVagueText && (visualMediaDescriptions || audioTranscriptions)) {
         // When text is vague, media content becomes the PRIMARY source
         console.log('[process-note] Vague text detected with media - using media content as primary source');
         
-        if (imageDescriptions) {
-          enhancedText = `[User wants to save/remember the following from an image]\n\n${imageDescriptions}`;
+        if (visualMediaDescriptions) {
+          enhancedText = `[User wants to save/remember the following from an attachment]\n\n${visualMediaDescriptions}`;
         }
         if (audioTranscriptions) {
           enhancedText = enhancedText === safeText 
             ? `[User wants to save/remember the following from audio]\n\n${audioTranscriptions}`
             : `${enhancedText}\n\n[Audio content]: ${audioTranscriptions}`;
         }
-      } else if (isCaptionContext && imageDescriptions) {
+      } else if (isCaptionContext && visualMediaDescriptions) {
         // Caption provides CONTEXT for the media — media is the primary content, caption guides categorization
         console.log('[process-note] Caption-as-context detected: "' + safeText + '" — media is primary content');
-        enhancedText = `[USER CAPTION/CONTEXT: "${safeText}" — Use this to determine the summary title, category, and list routing]\n\n[EXTRACTED CONTENT FROM IMAGE — use for items/details]:\n${imageDescriptions}`;
+        enhancedText = `[USER CAPTION/CONTEXT: "${safeText}" — CRITICAL: The summary/title MUST incorporate the user's keywords from this caption. Do NOT ignore the caption in favor of document content.]\n\n[EXTRACTED CONTENT FROM ATTACHMENT — use for items/details but the SUMMARY must reflect the user's caption keywords]:\n${visualMediaDescriptions}`;
         if (audioTranscriptions) {
           enhancedText += `\n\n[Audio content]: ${audioTranscriptions}`;
         }
@@ -1300,9 +1301,9 @@ serve(async (req) => {
         if (audioTranscriptions) {
           enhancedText = `${enhancedText}\n\nAudio content: ${audioTranscriptions}`;
         }
-        // Also add image descriptions to the text if not vague
-        if (imageDescriptions) {
-          enhancedText = `${enhancedText}\n\n[Attached image context]: ${imageDescriptions}`;
+        // Also add visual media descriptions to the text if not vague
+        if (visualMediaDescriptions) {
+          enhancedText = `${enhancedText}\n\n[Attached document context]: ${visualMediaDescriptions}`;
         }
       }
       
@@ -1352,6 +1353,15 @@ When the note text mentions any of these names, use the EXACT name for task_owne
 
 CRITICAL: The user's text ("${safeText}") is vague/generic. You MUST derive the task summary and details ENTIRELY from the media content provided above. 
 Do NOT use the user's text as the summary. Create a meaningful, specific summary based on what was extracted from the media.
+
+Process this note:
+"${enhancedText}"`;
+    } else if (hasMedia && !isVagueText && safeText.length > 0 && safeText.length < 80) {
+      // Caption + media: emphasize that the caption keywords MUST appear in the summary
+      userPrompt = `${systemPrompt}${listsContext}
+
+CRITICAL: The user provided a SHORT CAPTION with their attachment: "${safeText}". 
+The summary/title MUST incorporate the user's keywords from this caption. The attachment content should populate the items/details, NOT override the user's chosen title/keywords.
 
 Process this note:
 "${enhancedText}"`;
