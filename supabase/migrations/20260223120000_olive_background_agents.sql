@@ -44,15 +44,15 @@ CREATE TABLE IF NOT EXISTS olive_email_connections (
 );
 
 -- 4. Seed Tier 1 background agents into olive_skills
-INSERT INTO olive_skills (skill_id, name, description, category, is_active, is_builtin, agent_type, schedule, agent_config, requires_approval, triggers)
+INSERT INTO olive_skills (skill_id, name, description, category, is_active, agent_type, schedule, agent_config, requires_approval, triggers)
 VALUES
-  ('stale-task-strategist', 'Stale Task Strategist', 'Analyzes tasks stuck for 2+ weeks and suggests actions: break down, delegate, reschedule, or archive.', 'general', true, true, 'background_agent', 'weekly_monday_9am', '{"staleness_days": 14}', false, '[]'::jsonb),
-  ('smart-bill-reminder', 'Smart Bill Reminder', 'Scans your notes for upcoming bills and payments, sends reminders before they''re due.', 'finance', true, true, 'background_agent', 'daily_9am', '{"reminder_days": [3, 1]}', false, '[]'::jsonb),
-  ('energy-task-suggester', 'Energy-Aware Task Suggester', 'Reads your Oura energy data and suggests optimal task ordering for the day.', 'general', true, true, 'background_agent', 'daily_morning_briefing', '{}', false, '[]'::jsonb),
-  ('sleep-optimization-coach', 'Sleep Optimization Coach', 'Analyzes your 7-day sleep trends and sends personalized improvement tips.', 'personal', true, true, 'background_agent', 'daily_10am', '{"sensitivity": "actionable_only"}', false, '[]'::jsonb),
-  ('birthday-gift-agent', 'Anniversary & Birthday Gifter', 'Generates personalized gift suggestions 30, 14, and 7 days before important dates.', 'personal', true, true, 'background_agent', 'daily_check', '{"reminder_tiers": [30, 14, 7], "budget_range": "moderate"}', false, '[]'::jsonb),
-  ('weekly-couple-sync', 'Weekly Couple Sync', 'Generates a weekly alignment summary with both partners'' activity and discussion topics.', 'general', true, true, 'background_agent', 'weekly_sunday_6pm', '{}', false, '[]'::jsonb),
-  ('email-triage-agent', 'Email Triage Agent', 'Scans your inbox and extracts actionable tasks from emails automatically.', 'general', true, true, 'background_agent', 'every_15min', '{}', false, '[]'::jsonb)
+  ('stale-task-strategist', 'Stale Task Strategist', 'Analyzes tasks stuck for 2+ weeks and suggests actions: break down, delegate, reschedule, or archive.', 'general', true, 'background_agent', 'weekly_monday_9am', '{"staleness_days": 14}', false, '[]'::jsonb),
+  ('smart-bill-reminder', 'Smart Bill Reminder', 'Scans your notes for upcoming bills and payments, sends reminders before they''re due.', 'finance', true, 'background_agent', 'daily_9am', '{"reminder_days": [3, 1]}', false, '[]'::jsonb),
+  ('energy-task-suggester', 'Energy-Aware Task Suggester', 'Reads your Oura energy data and suggests optimal task ordering for the day.', 'general', true, 'background_agent', 'daily_morning_briefing', '{}', false, '[]'::jsonb),
+  ('sleep-optimization-coach', 'Sleep Optimization Coach', 'Analyzes your 7-day sleep trends and sends personalized improvement tips.', 'personal', true, 'background_agent', 'daily_10am', '{"sensitivity": "actionable_only"}', false, '[]'::jsonb),
+  ('birthday-gift-agent', 'Anniversary & Birthday Gifter', 'Generates personalized gift suggestions 30, 14, and 7 days before important dates.', 'personal', true, 'background_agent', 'daily_check', '{"reminder_tiers": [30, 14, 7], "budget_range": "moderate"}', false, '[]'::jsonb),
+  ('weekly-couple-sync', 'Weekly Couple Sync', 'Generates a weekly alignment summary with both partners'' activity and discussion topics.', 'general', true, 'background_agent', 'weekly_sunday_6pm', '{}', false, '[]'::jsonb),
+  ('email-triage-agent', 'Email Triage Agent', 'Scans your inbox and extracts actionable tasks from emails automatically.', 'general', true, 'background_agent', 'every_15min', '{}', false, '[]'::jsonb)
 ON CONFLICT (skill_id) DO UPDATE SET
   agent_type = EXCLUDED.agent_type,
   schedule = EXCLUDED.schedule,
