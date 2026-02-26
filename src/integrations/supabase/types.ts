@@ -416,6 +416,8 @@ export type Database = {
           recurrence_frequency: string | null
           recurrence_interval: number | null
           reminder_time: string | null
+          source: string | null
+          source_ref: string | null
           summary: string
           tags: string[] | null
           task_owner: string | null
@@ -442,6 +444,8 @@ export type Database = {
           recurrence_frequency?: string | null
           recurrence_interval?: number | null
           reminder_time?: string | null
+          source?: string | null
+          source_ref?: string | null
           summary: string
           tags?: string[] | null
           task_owner?: string | null
@@ -468,6 +472,8 @@ export type Database = {
           recurrence_frequency?: string | null
           recurrence_interval?: number | null
           reminder_time?: string | null
+          source?: string | null
+          source_ref?: string | null
           summary?: string
           tags?: string[] | null
           task_owner?: string | null
@@ -748,6 +754,48 @@ export type Database = {
           },
         ]
       }
+      olive_agent_runs: {
+        Row: {
+          agent_id: string
+          completed_at: string | null
+          couple_id: string | null
+          error_message: string | null
+          id: string
+          result: Json | null
+          started_at: string | null
+          state: Json | null
+          status: string | null
+          steps_completed: number | null
+          user_id: string
+        }
+        Insert: {
+          agent_id: string
+          completed_at?: string | null
+          couple_id?: string | null
+          error_message?: string | null
+          id?: string
+          result?: Json | null
+          started_at?: string | null
+          state?: Json | null
+          status?: string | null
+          steps_completed?: number | null
+          user_id: string
+        }
+        Update: {
+          agent_id?: string
+          completed_at?: string | null
+          couple_id?: string | null
+          error_message?: string | null
+          id?: string
+          result?: Json | null
+          started_at?: string | null
+          state?: Json | null
+          status?: string | null
+          steps_completed?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       olive_conversations: {
         Row: {
           created_at: string
@@ -782,6 +830,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      olive_email_connections: {
+        Row: {
+          access_token: string | null
+          created_at: string | null
+          email_address: string | null
+          error_message: string | null
+          id: string
+          is_active: boolean | null
+          last_sync_at: string | null
+          provider: string
+          refresh_token: string | null
+          scopes: string[] | null
+          token_expiry: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          access_token?: string | null
+          created_at?: string | null
+          email_address?: string | null
+          error_message?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_sync_at?: string | null
+          provider?: string
+          refresh_token?: string | null
+          scopes?: string[] | null
+          token_expiry?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          access_token?: string | null
+          created_at?: string | null
+          email_address?: string | null
+          error_message?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_sync_at?: string | null
+          provider?: string
+          refresh_token?: string | null
+          scopes?: string[] | null
+          token_expiry?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       olive_gateway_sessions: {
         Row: {
@@ -1070,32 +1166,47 @@ export type Database = {
       }
       olive_skills: {
         Row: {
+          agent_config: Json | null
+          agent_type: string | null
           category: string | null
           content: string | null
           created_at: string | null
           description: string | null
           is_active: boolean | null
           name: string
+          requires_approval: boolean | null
+          requires_connection: string | null
+          schedule: string | null
           skill_id: string
           triggers: Json | null
         }
         Insert: {
+          agent_config?: Json | null
+          agent_type?: string | null
           category?: string | null
           content?: string | null
           created_at?: string | null
           description?: string | null
           is_active?: boolean | null
           name: string
+          requires_approval?: boolean | null
+          requires_connection?: string | null
+          schedule?: string | null
           skill_id: string
           triggers?: Json | null
         }
         Update: {
+          agent_config?: Json | null
+          agent_type?: string | null
           category?: string | null
           content?: string | null
           created_at?: string | null
           description?: string | null
           is_active?: boolean | null
           name?: string
+          requires_approval?: boolean | null
+          requires_connection?: string | null
+          schedule?: string | null
           skill_id?: string
           triggers?: Json | null
         }
