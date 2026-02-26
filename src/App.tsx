@@ -23,6 +23,7 @@ import TermsOfService from "./pages/legal/TermsOfService";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
 import BudgetPage from "./pages/Budget";
 import RequestAccessPage from "./pages/RequestAccess";
+import AdminPage from "./pages/Admin";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider } from "./providers/AuthProvider";
 import { SupabaseCoupleProvider } from "./providers/SupabaseCoupleProvider";
@@ -61,6 +62,7 @@ const AppRoutes = () => (
     <Route path="/sign-in" element={<SignInPage />} />
     <Route path="/sign-up" element={<SignUpPage />} />
     <Route path="/request-access" element={<RequestAccessPage />} />
+    <Route path="/admin" element={<AdminPage />} />
     <Route path="/auth-redirect-native" element={<AuthRedirectNative />} />
     <Route path="/native-welcome" element={<NativeWelcome />} />
     <Route path="/accept-invite" element={<AcceptInvite />} />
@@ -105,8 +107,9 @@ const App = () => (
                   <Route path="/auth" element={<AuthPage />} />
                   <Route path="/sign-in" element={<SignInPage />} />
                   <Route path="/sign-up" element={<SignUpPage />} />
-                  <Route path="/request-access" element={<RequestAccessPage />} />
-                  <Route path="/auth-redirect-native" element={<AuthRedirectNative />} />
+                   <Route path="/request-access" element={<RequestAccessPage />} />
+                   <Route path="/admin" element={<AdminPage />} />
+                   <Route path="/auth-redirect-native" element={<AuthRedirectNative />} />
                   <Route path="/native-welcome" element={<NativeWelcome />} />
                   <Route path="/accept-invite" element={<AcceptInvite />} />
                   <Route path="/join/:token" element={<JoinInvite />} />
