@@ -80,3 +80,6 @@ verify_jwt = false
 
 [functions.send-feedback]
 verify_jwt = false
+
+[functions.admin-dashboard]
+verify_jwt = false
