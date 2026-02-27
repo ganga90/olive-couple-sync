@@ -142,8 +142,9 @@ function EmailTriagePreferences() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="2">{t('email.lookback2', '2 days')}</SelectItem>
+            <SelectItem value="1">{t('email.lookback1', '1 day')}</SelectItem>
             <SelectItem value="3">{t('email.lookback3', '3 days')}</SelectItem>
+            <SelectItem value="5">{t('email.lookback5', '5 days')}</SelectItem>
           </SelectContent>
         </Select>
       </div>
