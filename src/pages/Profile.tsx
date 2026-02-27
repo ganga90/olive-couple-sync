@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { PartnerInfo } from "@/components/PartnerInfo";
 import { NoteStyleField } from "@/components/NoteStyleField";
 import { MemoryPersonalization } from "@/components/MemoryPersonalization";
-import { GoogleCalendarConnect } from "@/components/GoogleCalendarConnect";
+import { GoogleServicesSection } from "@/components/settings/GoogleServicesSection";
 import { OuraConnect } from "@/components/OuraConnect";
 import { DataExport } from "@/components/DataExport";
 import { RegionalFormatCard } from "@/components/settings/RegionalFormatCard";
@@ -14,7 +14,6 @@ import { AppPreferencesModals } from "@/components/settings/AppPreferencesModals
 import { OliveProactivePreferences } from "@/components/settings/OliveProactivePreferences";
 import { OliveSkillsManager } from "@/components/settings/OliveSkillsManager";
 import { BackgroundAgentsManager } from "@/components/settings/BackgroundAgentsManager";
-import { EmailConnect } from "@/components/settings/EmailConnect";
 import { DefaultPrivacyCard } from "@/components/settings/DefaultPrivacyCard";
 import { CollapsibleSection } from "@/components/settings/CollapsibleSection";
 import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot, Mail } from "lucide-react";
@@ -233,12 +232,12 @@ const Profile = () => {
           </SettingsCard>
 
           <SettingsCard
-            icon={<Calendar className="h-5 w-5 text-[hsl(var(--accent))]" />}
-            iconBg="bg-[hsl(var(--accent))]/10"
-            title={t('profile:googleCalendar.title')}
-            subtitle={t('profile:googleCalendar.subtitle')}
+            icon={<span className="text-lg">🔗</span>}
+            iconBg="bg-blue-500/10"
+            title={t('profile:googleServices.title', 'Google Services')}
+            subtitle={t('profile:googleServices.subtitle', 'Calendar, Tasks & Gmail')}
           >
-            <GoogleCalendarConnect />
+            <GoogleServicesSection />
           </SettingsCard>
 
           <div data-integration="oura">
@@ -249,17 +248,6 @@ const Profile = () => {
               subtitle={t('profile:oura.subtitle', 'Sleep, readiness & activity data')}
             >
               <OuraConnect />
-            </SettingsCard>
-          </div>
-
-          <div data-integration="email">
-            <SettingsCard
-              icon={<Mail className="h-5 w-5 text-red-600" />}
-              iconBg="bg-red-500/10"
-              title={t('profile:email.title', 'Gmail')}
-              subtitle={t('profile:email.subtitle', 'Email triage & task extraction')}
-            >
-              <EmailConnect />
             </SettingsCard>
           </div>
 

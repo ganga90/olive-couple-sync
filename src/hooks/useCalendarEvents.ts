@@ -25,6 +25,7 @@ export interface CalendarConnection {
   show_google_events: boolean;
   auto_add_to_calendar: boolean;
   last_sync?: string;
+  tasks_enabled?: boolean;
 }
 
 export function useCalendarEvents() {
@@ -44,7 +45,7 @@ export function useCalendarEvents() {
       // Only select non-sensitive columns - exclude access_token, refresh_token, token_expiry
       const { data, error } = await supabase
         .from('calendar_connections')
-        .select('id, user_id, google_user_id, google_email, calendar_name, calendar_type, sync_direction, error_message, auto_add_to_calendar, show_google_events, updated_at, created_at, is_active, last_sync_time, auto_create_events, sync_enabled, couple_id, primary_calendar_id')
+        .select('id, user_id, google_user_id, google_email, calendar_name, calendar_type, sync_direction, error_message, auto_add_to_calendar, show_google_events, updated_at, created_at, is_active, last_sync_time, auto_create_events, sync_enabled, couple_id, primary_calendar_id, tasks_enabled')
         .eq('user_id', userId)
         .eq('is_active', true)
         .maybeSingle();
@@ -61,6 +62,7 @@ export function useCalendarEvents() {
           show_google_events: data.show_google_events ?? true,
           auto_add_to_calendar: data.auto_add_to_calendar ?? true,
           last_sync: data.last_sync_time,
+          tasks_enabled: data.tasks_enabled ?? false,
         };
         setConnection(conn);
         return conn;
