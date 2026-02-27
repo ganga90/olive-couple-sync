@@ -8,6 +8,7 @@ import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { supabase } from "@/lib/supabaseClient";
 import { useSEO } from "@/hooks/useSEO";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
+import { useCalendarEvents } from "@/hooks/useCalendarEvents";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,7 @@ import {
   ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle2, Tag, 
   UserCheck, Calendar as CalendarIcon, Bell, RotateCcw, Loader2,
   Clock, AlertTriangle, ChevronRight, Sparkles, MessageSquare, ExternalLink,
-  Phone, MapPin, FileText, DollarSign, Info, Link2
+  Phone, MapPin, FileText, DollarSign, Info, Link2, ListTodo
 } from "lucide-react";
 import { format, isPast, parseISO, parse, isValid } from "date-fns";
 import { assistWithNote, clearNoteConversation } from "@/utils/oliveAssistant";
@@ -30,7 +31,8 @@ import ReactMarkdown from 'react-markdown';
 import { cn } from "@/lib/utils";
 import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
 import { NoteMediaSection } from "@/components/NoteMediaSection";
-import { AddToCalendarButton } from "@/components/AddToCalendarButton";
+import { AddToCalendarDialog } from "@/components/AddToCalendarDialog";
+import { AddToGoogleTasksDialog } from "@/components/AddToGoogleTasksDialog";
 import { OliveTipsSection } from "@/components/OliveTipsSection";
 import { DueDateChip } from "@/components/DueDateChip";
 import { useOnboardingTooltip } from "@/hooks/useOnboardingTooltip";
@@ -46,7 +48,7 @@ const NoteDetails = () => {
   const { currentCouple, you, partner } = useSupabaseCouple();
   const { lists } = useSupabaseLists(currentCouple?.id);
   const askOliveOnboarding = useOnboardingTooltip('ask-olive-chat');
-  
+  const { connection: calendarConnection } = useCalendarEvents();
   const note = useMemo(() => notes.find((n) => n.id === id), [notes, id]);
 
   useSEO({ title: note ? `${note.summary} — Olive` : "Note — Olive", description: note?.originalText });
@@ -61,6 +63,8 @@ const NoteDetails = () => {
   const [showReminderDialog, setShowReminderDialog] = useState(false);
   const [isAddingItems, setIsAddingItems] = useState(false);
   const [newItems, setNewItems] = useState("");
+  const [calendarDialogOpen, setCalendarDialogOpen] = useState(false);
+  const [tasksDialogOpen, setTasksDialogOpen] = useState(false);
   
   // Helper to safely format dates without timezone shift
   const formatDateSafely = (dateStr: string | null | undefined): string => {
@@ -550,9 +554,30 @@ const NoteDetails = () => {
                   {t('complete')}
                 </Button>
               </div>
-              {/* Add to Google Calendar */}
-              {(note.dueDate || note.reminder_time) && (
-                <AddToCalendarButton note={note} size="lg" className="w-full rounded-full" />
+              {/* Add to Calendar & Tasks pills */}
+              {calendarConnection?.connected && (
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="flex-1 rounded-full"
+                    onClick={() => setCalendarDialogOpen(true)}
+                  >
+                    <CalendarIcon className="h-4 w-4 mr-2" />
+                    Add to Calendar
+                  </Button>
+                  {calendarConnection.tasks_enabled && (
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="flex-1 rounded-full"
+                      onClick={() => setTasksDialogOpen(true)}
+                    >
+                      <ListTodo className="h-4 w-4 mr-2" />
+                      Add to Google Tasks
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -841,6 +866,24 @@ const NoteDetails = () => {
           open={showReminderDialog}
           onOpenChange={setShowReminderDialog}
           note={note}
+        />
+      )}
+
+      {/* Calendar Dialog */}
+      {note && (
+        <AddToCalendarDialog
+          note={note}
+          open={calendarDialogOpen}
+          onOpenChange={setCalendarDialogOpen}
+        />
+      )}
+
+      {/* Google Tasks Dialog */}
+      {note && (
+        <AddToGoogleTasksDialog
+          note={note}
+          open={tasksDialogOpen}
+          onOpenChange={setTasksDialogOpen}
         />
       )}
     </main>

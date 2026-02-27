@@ -70,6 +70,7 @@ export type Database = {
           show_google_events: boolean | null
           sync_direction: string | null
           sync_enabled: boolean | null
+          tasks_enabled: boolean | null
           token_expiry: string | null
           updated_at: string | null
           user_id: string
@@ -93,6 +94,7 @@ export type Database = {
           show_google_events?: boolean | null
           sync_direction?: string | null
           sync_enabled?: boolean | null
+          tasks_enabled?: boolean | null
           token_expiry?: string | null
           updated_at?: string | null
           user_id: string
@@ -116,6 +118,7 @@ export type Database = {
           show_google_events?: boolean | null
           sync_direction?: string | null
           sync_enabled?: boolean | null
+          tasks_enabled?: boolean | null
           token_expiry?: string | null
           updated_at?: string | null
           user_id?: string

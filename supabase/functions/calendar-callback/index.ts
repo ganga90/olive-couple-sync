@@ -109,6 +109,18 @@ serve(async (req) => {
 
     console.log('[calendar-callback] Found primary calendar:', primaryCalendar.summary);
 
+    // Check if Tasks scope was granted by verifying access
+    let tasksEnabled = false;
+    try {
+      const tasksCheck = await fetch("https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=1", {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      tasksEnabled = tasksCheck.ok;
+      console.log('[calendar-callback] Tasks scope enabled:', tasksEnabled);
+    } catch {
+      console.log('[calendar-callback] Tasks scope not available');
+    }
+
     // Store connection
     const { data: connection, error: insertError } = await supabase
       .from("calendar_connections")
@@ -126,6 +138,7 @@ serve(async (req) => {
           sync_enabled: true,
           is_active: true,
           error_message: null,
+          tasks_enabled: tasksEnabled,
         },
         { onConflict: "user_id" }
       )
