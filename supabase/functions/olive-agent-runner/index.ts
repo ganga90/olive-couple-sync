@@ -502,16 +502,31 @@ Start with 💑 Weekly Sync`,
 
 // ─── Agent 7: Email Triage Agent ─────────────────────────────────
 async function runEmailTriageAgent(ctx: AgentContext): Promise<AgentResult> {
-  // Check if Gmail is connected
+  // Check if Gmail is connected and get preferences
   const { data: emailConn } = await ctx.supabase
     .from("olive_email_connections")
-    .select("is_active")
+    .select("is_active, triage_frequency, triage_lookback_days, auto_save_tasks")
     .eq("user_id", ctx.userId)
     .eq("is_active", true)
     .maybeSingle();
 
   if (!emailConn) {
     return { success: true, message: "Gmail not connected", notifyUser: false };
+  }
+
+  // Check frequency — only run if enough time has passed since last triage
+  const frequency = emailConn.triage_frequency || "manual";
+  if (frequency === "manual") {
+    return { success: true, message: "Email triage set to manual — skipping", notifyUser: false };
+  }
+
+  const lastTriage = ctx.previousState.last_triage as string;
+  if (lastTriage) {
+    const hoursSinceLast = (Date.now() - new Date(lastTriage).getTime()) / (1000 * 60 * 60);
+    const freqHours = frequency === "6h" ? 6 : frequency === "12h" ? 12 : 24;
+    if (hoursSinceLast < freqHours * 0.9) { // 10% buffer
+      return { success: true, message: `Too soon (${Math.round(hoursSinceLast)}h since last run, freq=${frequency})`, notifyUser: false };
+    }
   }
 
   // Pass previously processed email IDs from state for dedup (read-only scope, can't label)
@@ -546,12 +561,23 @@ async function runEmailTriageAgent(ctx: AgentContext): Promise<AgentResult> {
   const tasksCreated = data.tasks_created || 0;
   const emailsProcessed = data.emails_processed || 0;
 
+  // Build a clear, structured notification message
+  let notificationMsg = "";
+  if (tasksCreated > 0) {
+    notificationMsg = `📧 *Olive Email Review Complete*\n\n`;
+    notificationMsg += `Scanned ${emailsProcessed} email${emailsProcessed > 1 ? "s" : ""} and found ${tasksCreated} action item${tasksCreated > 1 ? "s" : ""}.\n\n`;
+    notificationMsg += `${data.summary || ""}\n\n`;
+    notificationMsg += `✅ Tasks have been added to your Olive inbox. Open the app to review and assign them to lists.`;
+  } else {
+    notificationMsg = `📧 *Olive Email Review*\n\nScanned ${emailsProcessed} email${emailsProcessed > 1 ? "s" : ""} — all clear! No action items found. 🎉`;
+  }
+
   return {
     success: true,
     message: data.summary || `Processed ${emailsProcessed} emails, created ${tasksCreated} tasks`,
     data: { tasks_created: tasksCreated, emails_processed: emailsProcessed },
     notifyUser: tasksCreated > 0, // Only notify if there are actionable items
-    notificationMessage: data.summary,
+    notificationMessage: notificationMsg,
     state: {
       last_triage: new Date().toISOString(),
       total_tasks_created: ((ctx.previousState.total_tasks_created as number) || 0) + tasksCreated,

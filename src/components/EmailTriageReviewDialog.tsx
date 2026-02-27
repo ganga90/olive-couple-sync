@@ -1,41 +1,33 @@
 /**
  * Email Triage Review Dialog
  *
- * Shows parsed email results for the user to review before saving as tasks.
- * Users can select/deselect individual items, edit priorities, and confirm.
+ * When user clicks "Review my Email":
+ * - If periodic triage is NOT activated → shows a CTA to activate in Settings
+ * - If activated → shows last triage results for review
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, Mail, Calendar, AlertTriangle, CheckCircle2, ArrowRight, Inbox } from 'lucide-react';
+import { Loader2, Mail, Calendar, CheckCircle2, ArrowRight, Settings, Sparkles, Clock, ListTodo } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuth } from '@/providers/AuthProvider';
-import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
-import { useSupabaseNotesContext } from '@/providers/SupabaseNotesProvider';
+import { useLanguage } from '@/providers/LanguageProvider';
 import { supabase } from '@/lib/supabaseClient';
-import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { formatDistanceToNow } from 'date-fns';
 
-interface TriageItem {
-  email_id: string;
-  subject: string;
-  from: string;
-  snippet: string;
-  date: string;
-  classification: string;
-  task_summary: string | null;
-  due_date: string | null;
-  priority: string | null;
-  category: string | null;
-  selected: boolean;
+interface LastRunResult {
+  status: string;
+  result: { message?: string; data?: { tasks_created?: number; emails_processed?: number } } | null;
+  completed_at: string | null;
 }
 
 interface EmailTriageReviewDialogProps {
@@ -44,199 +36,211 @@ interface EmailTriageReviewDialogProps {
 }
 
 export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageReviewDialogProps) {
-  const { t } = useTranslation(['home', 'common']);
+  const { t } = useTranslation(['home', 'common', 'profile']);
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const { user } = useAuth();
-  const { currentCouple } = useSupabaseCouple();
-  const { refetch } = useSupabaseNotesContext();
+  const { getLocalizedPath } = useLanguage();
 
-  const [phase, setPhase] = useState<'idle' | 'scanning' | 'review' | 'saving'>('idle');
-  const [items, setItems] = useState<TriageItem[]>([]);
-  const [emailsScanned, setEmailsScanned] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [frequency, setFrequency] = useState<string>('manual');
+  const [lastRun, setLastRun] = useState<LastRunResult | null>(null);
+  const [recentTasks, setRecentTasks] = useState<Array<{ id: string; summary: string; category: string; priority: string | null; due_date: string | null; created_at: string }>>([]);
 
-  const handleScan = useCallback(async () => {
-    setPhase('scanning');
-    if (!user?.id) {
-      toast.error(t('common:errors.notAuthenticated', 'Please sign in first'));
-      setPhase('idle');
-      return;
-    }
-    try {
-      const { data, error } = await supabase.functions.invoke('olive-email-mcp', {
-        body: { action: 'preview', user_id: user.id },
-      });
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Scan failed');
+  // Load data when dialog opens
+  useEffect(() => {
+    if (!open || !user?.id) return;
+    setLoading(true);
 
-      setItems(data.items || []);
-      setEmailsScanned(data.emails_scanned || 0);
-      setPhase('review');
-    } catch (err: any) {
-      console.error('Email scan failed:', err);
-      toast.error(err.message || t('home:emailTriage.scanFailed', 'Failed to scan emails'));
-      setPhase('idle');
-    }
-  }, [user?.id, t]);
+    const loadData = async () => {
+      try {
+        const [prefRes, runRes, tasksRes] = await Promise.all([
+          supabase.functions.invoke('olive-email-mcp', { body: { action: 'get_preferences', user_id: user.id } }),
+          supabase
+            .from('olive_agent_runs')
+            .select('status, result, completed_at')
+            .eq('agent_id', 'email-triage-agent')
+            .eq('user_id', user.id)
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from('clerk_notes')
+            .select('id, summary, category, priority, due_date, created_at')
+            .eq('author_id', user.id)
+            .eq('source', 'email')
+            .eq('completed', false)
+            .order('created_at', { ascending: false })
+            .limit(10),
+        ]);
 
-  const handleConfirm = useCallback(async () => {
-    if (!user?.id) return;
-    const selectedItems = items.filter(i => i.selected && i.task_summary);
-    if (selectedItems.length === 0) {
-      toast.info(t('home:emailTriage.noItemsSelected', 'No items selected'));
-      return;
-    }
+        if (prefRes.data?.success && prefRes.data?.preferences) {
+          setFrequency(prefRes.data.preferences.triage_frequency || 'manual');
+        }
 
-    setPhase('saving');
-    try {
-      const { data, error } = await supabase.functions.invoke('olive-email-mcp', {
-        body: {
-          action: 'confirm',
-          user_id: user.id,
-          couple_id: currentCouple?.id,
-          items: selectedItems.map(i => ({
-            email_id: i.email_id,
-            subject: i.subject,
-            from: i.from,
-            task_summary: i.task_summary,
-            due_date: i.due_date,
-            priority: i.priority,
-            category: i.category,
-          })),
-        },
-      });
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Save failed');
+        if (runRes.data) {
+          setLastRun(runRes.data as LastRunResult);
+        }
 
-      toast.success(
-        t('home:emailTriage.tasksCreated', {
-          count: data.tasks_created,
-          defaultValue: `Created ${data.tasks_created} task(s) from email`,
-        })
-      );
-      refetch();
-      onOpenChange(false);
-      setPhase('idle');
-      setItems([]);
-    } catch (err: any) {
-      console.error('Confirm failed:', err);
-      toast.error(err.message || t('home:emailTriage.saveFailed', 'Failed to save tasks'));
-      setPhase('review');
-    }
-  }, [user?.id, currentCouple?.id, items, refetch, onOpenChange, t]);
+        setRecentTasks(tasksRes.data || []);
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const toggleItem = (emailId: string) => {
-    setItems(prev => prev.map(i => i.email_id === emailId ? { ...i, selected: !i.selected } : i));
+    loadData();
+  }, [open, user?.id]);
+
+  const isActivated = frequency !== 'manual';
+
+  const goToSettings = () => {
+    onOpenChange(false);
+    navigate(getLocalizedPath('/profile'), { state: { scrollTo: 'intelligence' } });
   };
 
-  const actionItems = items.filter(i => i.classification === 'ACTION_REQUIRED');
-  const otherItems = items.filter(i => i.classification !== 'ACTION_REQUIRED');
-  const selectedCount = items.filter(i => i.selected).length;
-
-  // Start scanning when dialog opens
-  const handleOpenChange = (open: boolean) => {
-    if (open && phase === 'idle') {
-      handleScan();
-    }
-    if (!open) {
-      setPhase('idle');
-      setItems([]);
-    }
-    onOpenChange(open);
+  const frequencyLabels: Record<string, string> = {
+    '6h': t('profile:email.frequency6h', 'Every 6 hours'),
+    '12h': t('profile:email.frequency12h', 'Every 12 hours'),
+    '24h': t('profile:email.frequency24h', 'Every 24 hours'),
   };
 
   const content = (
     <div className="space-y-4">
-      {(phase === 'idle' || phase === 'scanning') && (
+      {loading && (
         <div className="flex flex-col items-center justify-center py-12 gap-3">
-          <div className="relative">
-            <Inbox className="h-10 w-10 text-primary/30" />
-            <Loader2 className="h-5 w-5 animate-spin text-primary absolute -bottom-1 -right-1" />
-          </div>
-          <p className="text-sm font-medium text-foreground">{t('home:emailTriage.scanning', 'Scanning your inbox...')}</p>
-          <p className="text-xs text-muted-foreground text-center max-w-[250px]">{t('home:emailTriage.scanningHint', 'Olive is reading your recent emails and identifying tasks that need your attention')}</p>
-          <div className="flex items-center gap-2 mt-2">
-            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:300ms]" />
-            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:600ms]" />
-          </div>
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
       )}
 
-      {phase === 'review' && items.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 gap-3">
-          <CheckCircle2 className="h-8 w-8 text-[hsl(var(--success))]" />
-          <p className="text-sm font-medium">{t('home:emailTriage.allClear', 'No new emails to review!')}</p>
-          <p className="text-xs text-muted-foreground">{t('home:emailTriage.allClearHint', 'Your inbox is all caught up.')}</p>
-        </div>
-      )}
-
-      {phase === 'review' && items.length > 0 && (
-        <>
-          <div className="flex items-center justify-between px-1">
-            <p className="text-xs text-muted-foreground">
-              {t('home:emailTriage.scanned', { count: emailsScanned, defaultValue: `Scanned ${emailsScanned} emails` })}
+      {!loading && !isActivated && (
+        /* ─── CTA: Activate periodic email checking ───────── */
+        <div className="flex flex-col items-center justify-center py-8 gap-4 text-center px-4">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+            <Mail className="h-8 w-8 text-primary" />
+          </div>
+          <div className="space-y-2 max-w-[300px]">
+            <h3 className="text-base font-semibold text-foreground">
+              {t('home:emailTriage.activateTitle', 'Let Olive check your email')}
+            </h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {t('home:emailTriage.activateDescription', 'Activate automatic email scanning in settings. Olive will periodically check your inbox, identify actionable emails, and create tasks for you.')}
             </p>
-            <Badge variant="outline" className="text-xs">
-              {selectedCount} {t('home:emailTriage.selected', 'selected')}
-            </Badge>
           </div>
 
-          <ScrollArea className="max-h-[50vh]">
-            {/* Action Required items */}
-            {actionItems.length > 0 && (
-              <div className="space-y-1 mb-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-primary px-1 mb-2">
-                  {t('home:emailTriage.actionRequired', 'Action Required')}
-                </p>
-                {actionItems.map(item => (
-                  <TriageItemRow key={item.email_id} item={item} onToggle={toggleItem} />
-                ))}
-              </div>
-            )}
+          <div className="flex flex-col gap-2 w-full max-w-[260px] mt-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Clock className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+              <span>{t('home:emailTriage.featureFrequency', 'Choose frequency: every 6, 12, or 24 hours')}</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Calendar className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+              <span>{t('home:emailTriage.featureLookback', 'Scan past 1, 3, or 5 days of email')}</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <ListTodo className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+              <span>{t('home:emailTriage.featureTasks', 'Auto-creates tasks and notifies you')}</span>
+            </div>
+          </div>
 
-            {/* Informational / Skip items */}
-            {otherItems.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1 mb-2">
-                  {t('home:emailTriage.informational', 'No Action Needed')}
-                </p>
-                {otherItems.map(item => (
-                  <TriageItemRow key={item.email_id} item={item} onToggle={toggleItem} />
-                ))}
+          <Button onClick={goToSettings} className="mt-4 gap-2">
+            <Settings className="h-4 w-4" />
+            {t('home:emailTriage.goToSettings', 'Activate in Settings')}
+          </Button>
+        </div>
+      )}
+
+      {!loading && isActivated && (
+        /* ─── Active: Show status & recent tasks ───────── */
+        <div className="space-y-5">
+          {/* Status banner */}
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-primary/5 border border-primary/10">
+            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <Sparkles className="h-4 w-4 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                {t('home:emailTriage.activeTitle', 'Email monitoring active')}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {frequencyLabels[frequency] || frequency}
+                {lastRun?.completed_at && (
+                  <> · {t('home:emailTriage.lastChecked', 'Last checked')} {formatDistanceToNow(new Date(lastRun.completed_at), { addSuffix: true })}</>
+                )}
+              </p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={goToSettings} className="h-8 px-2">
+              <Settings className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+
+          {/* Last run result */}
+          {lastRun?.result?.data && (
+            <div className="flex items-center gap-4 text-center">
+              <div className="flex-1 p-3 rounded-xl bg-muted/50">
+                <p className="text-lg font-bold text-foreground">{lastRun.result.data.emails_processed || 0}</p>
+                <p className="text-xs text-muted-foreground">{t('home:emailTriage.emailsScanned', 'Emails scanned')}</p>
               </div>
-            )}
-          </ScrollArea>
-        </>
+              <div className="flex-1 p-3 rounded-xl bg-muted/50">
+                <p className="text-lg font-bold text-primary">{lastRun.result.data.tasks_created || 0}</p>
+                <p className="text-xs text-muted-foreground">{t('home:emailTriage.tasksCreated', 'Tasks created')}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Recent email tasks */}
+          {recentTasks.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
+                {t('home:emailTriage.recentEmailTasks', 'Recent email tasks')}
+              </p>
+              <ScrollArea className="max-h-[40vh]">
+                <div className="space-y-1">
+                  {recentTasks.map(task => (
+                    <div key={task.id} className="flex items-start gap-3 p-3 rounded-xl hover:bg-accent/50 transition-colors">
+                      <CheckCircle2 className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0 space-y-0.5">
+                        <p className="text-sm text-foreground truncate">{task.summary}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="outline" className="text-[10px]">{task.category}</Badge>
+                          {task.priority && (
+                            <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                              task.priority === 'high' ? 'bg-red-500/10 text-red-600' :
+                              task.priority === 'medium' ? 'bg-amber-500/10 text-amber-600' :
+                              'bg-muted text-muted-foreground'
+                            )}>
+                              {task.priority}
+                            </span>
+                          )}
+                          {task.due_date && (
+                            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                              <Calendar className="h-2.5 w-2.5" /> {new Date(task.due_date).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-6 gap-2 text-center">
+              <CheckCircle2 className="h-6 w-6 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">
+                {t('home:emailTriage.noEmailTasks', 'No email tasks yet. Olive will check your inbox soon.')}
+              </p>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
 
-  const footer = phase === 'review' && items.length > 0 ? (
-    <div className="flex gap-2 w-full">
-      <Button variant="outline" onClick={() => handleOpenChange(false)} className="flex-1">
-        {t('common:buttons.cancel', 'Cancel')}
-      </Button>
-      <Button
-        onClick={handleConfirm}
-        disabled={selectedCount === 0}
-        className="flex-1 gap-2"
-      >
-        {phase !== 'review' ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <ArrowRight className="h-4 w-4" />
-        )}
-        {t('home:emailTriage.createTasks', {
-          count: selectedCount,
-          defaultValue: `Create ${selectedCount} task(s)`,
-        })}
-      </Button>
-    </div>
-  ) : null;
-
   if (isMobile) {
     return (
-      <Drawer open={open} onOpenChange={handleOpenChange}>
+      <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent className="max-h-[85vh]">
           <DrawerHeader>
             <DrawerTitle className="flex items-center gap-2">
@@ -244,18 +248,19 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
               {t('home:emailTriage.title', 'Email Review')}
             </DrawerTitle>
             <DrawerDescription>
-              {t('home:emailTriage.description', 'Review actionable emails and create tasks')}
+              {isActivated
+                ? t('home:emailTriage.activeDescription', 'Your email monitoring status and recent tasks')
+                : t('home:emailTriage.description', 'Review actionable emails and create tasks')}
             </DrawerDescription>
           </DrawerHeader>
-          <div className="px-4 pb-2">{content}</div>
-          {footer && <DrawerFooter>{footer}</DrawerFooter>}
+          <div className="px-4 pb-4">{content}</div>
         </DrawerContent>
       </Drawer>
     );
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -263,60 +268,14 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
             {t('home:emailTriage.title', 'Email Review')}
           </DialogTitle>
           <DialogDescription>
-            {t('home:emailTriage.description', 'Review actionable emails and create tasks')}
+            {isActivated
+              ? t('home:emailTriage.activeDescription', 'Your email monitoring status and recent tasks')
+              : t('home:emailTriage.description', 'Review actionable emails and create tasks')}
           </DialogDescription>
         </DialogHeader>
         {content}
-        {footer && <DialogFooter>{footer}</DialogFooter>}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function TriageItemRow({ item, onToggle }: { item: TriageItem; onToggle: (id: string) => void }) {
-  const isAction = item.classification === 'ACTION_REQUIRED';
-  const priorityColors: Record<string, string> = {
-    high: 'bg-[hsl(var(--priority-high))]/10 text-[hsl(var(--priority-high))]',
-    medium: 'bg-[hsl(var(--priority-medium))]/10 text-[hsl(var(--priority-medium))]',
-    low: 'bg-muted text-muted-foreground',
-  };
-
-  return (
-    <button
-      onClick={() => onToggle(item.email_id)}
-      className={cn(
-        "flex items-start gap-3 w-full p-3 rounded-xl text-left transition-colors",
-        item.selected ? "bg-primary/5 border border-primary/20" : "hover:bg-accent/50"
-      )}
-    >
-      <Checkbox
-        checked={item.selected}
-        className="mt-0.5"
-        onCheckedChange={() => onToggle(item.email_id)}
-      />
-      <div className="flex-1 min-w-0 space-y-1">
-        <p className="text-sm font-medium text-foreground truncate">{item.subject}</p>
-        <p className="text-xs text-muted-foreground truncate">{item.from}</p>
-        {isAction && item.task_summary && (
-          <p className="text-xs text-primary font-medium">→ {item.task_summary}</p>
-        )}
-        <div className="flex items-center gap-2 flex-wrap">
-          {item.priority && (
-            <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", priorityColors[item.priority] || '')}>
-              {item.priority}
-            </span>
-          )}
-          {item.due_date && (
-            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-              <Calendar className="h-2.5 w-2.5" /> {item.due_date}
-            </span>
-          )}
-          {item.category && (
-            <span className="text-[10px] text-muted-foreground">{item.category}</span>
-          )}
-        </div>
-      </div>
-    </button>
   );
 }
 
