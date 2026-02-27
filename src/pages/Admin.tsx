@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useAdmin } from "@/hooks/useAdmin";
 import { useAuth } from "@/providers/AuthProvider";
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 import { OliveLogo } from "@/components/OliveLogo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

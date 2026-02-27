@@ -2,12 +2,13 @@ import React, { useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Calendar } from '@/components/ui/calendar';
-import { Users, CalendarDays, ArrowRight, List, CheckSquare, TrendingUp, Clock } from 'lucide-react';
+import { Users, CalendarDays, ArrowRight, List, CheckSquare, TrendingUp, Clock, UserPlus } from 'lucide-react';
 import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
 import { useSupabaseNotesContext } from '@/providers/SupabaseNotesProvider';
 import { useSupabaseLists } from '@/hooks/useSupabaseLists';
 import { useLanguage } from '@/providers/LanguageProvider';
-import { format, isSameDay, addDays, isToday, startOfDay } from 'date-fns';
+import { useAuth } from '@/providers/AuthProvider';
+import { format, isSameDay, addDays, isToday, startOfDay, formatDistanceToNow } from 'date-fns';
 import type { Note } from '@/types/note';
 import { cn } from '@/lib/utils';
 
@@ -19,11 +20,13 @@ export const ContextRail: React.FC = () => {
   const { notes } = useSupabaseNotesContext();
   const { lists } = useSupabaseLists(currentCouple?.id || null);
   const { getLocalizedPath, stripLocalePath } = useLanguage();
+  const { user } = useAuth();
   
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(new Date());
   
   const partnerName = partner || t('common:common.partner');
   const cleanPath = stripLocalePath(location.pathname);
+  const userId = user?.id;
 
   // Get upcoming events (tasks with due dates in next 7 days)
   const upcomingEvents = useMemo(() => {
@@ -94,26 +97,92 @@ export const ContextRail: React.FC = () => {
     return format(date, 'EEE, MMM d');
   };
 
-  // Render Partner Status (common across pages)
+  // Get recent partner activity (same logic as PartnerActivityWidget)
+  const partnerActivity = useMemo(() => {
+    if (!userId || !currentCouple) return [];
+    return notes
+      .filter(note => {
+        if (!note.coupleId) return false;
+        if (note.authorId === userId) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 2)
+      .map(note => {
+        const youName = currentCouple?.you_name;
+        const isAssignedToYou = note.task_owner === 'you' ||
+                                note.task_owner === youName ||
+                                note.task_owner === userId;
+        return {
+          id: note.id,
+          summary: note.summary,
+          createdAt: note.createdAt,
+          isAssignedToYou,
+        };
+      });
+  }, [notes, userId, currentCouple]);
+
+  // Render Partner Status with dynamic activity
   const renderPartnerStatus = () => {
     if (!currentCouple) return null;
     
     return (
       <div className="space-y-3">
-        <p className="text-xs font-bold uppercase tracking-widest text-stone-500">
+        <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
           {t('home:partnerActivity.railTitle', 'Partner')}
         </p>
         <div className="flex items-center gap-3 py-3">
-          <div className="w-10 h-10 rounded-full bg-stone-200/60 flex items-center justify-center">
-            <Users className="w-5 h-5 text-stone-500" />
+          <div className="w-10 h-10 rounded-full bg-muted/40 flex items-center justify-center">
+            <Users className="w-5 h-5 text-muted-foreground" />
           </div>
           <div>
-            <p className="text-sm font-medium text-stone-700">{partnerName}</p>
-            <p className="text-xs text-stone-400 italic">
-              {t('home:partnerActivity.empty', { name: '' }).replace('{name}', '').trim() || 'is being suspiciously quiet...'}
-            </p>
+            <p className="text-sm font-medium text-foreground">{partnerName}</p>
+            {partnerActivity.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">
+                {t('home:partnerActivity.empty', { name: partnerName })}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {t('home:partnerActivity.recentCount', { count: partnerActivity.length })}
+              </p>
+            )}
           </div>
         </div>
+        
+        {/* Show recent partner activity items */}
+        {partnerActivity.length > 0 && (
+          <div className="space-y-1.5">
+            {partnerActivity.map((activity) => (
+              <button
+                key={activity.id}
+                onClick={() => navigate(getLocalizedPath(`/notes/${activity.id}`))}
+                className="w-full text-left group py-2 hover:bg-muted/30 rounded-lg transition-colors px-2 -mx-2"
+              >
+                <div className="flex items-start gap-2">
+                  <div className={cn(
+                    "mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0",
+                    activity.isAssignedToYou
+                      ? 'bg-accent/20 text-accent-foreground'
+                      : 'bg-primary/10 text-primary'
+                  )}>
+                    {activity.isAssignedToYou
+                      ? <UserPlus className="w-3 h-3" />
+                      : <Users className="w-3 h-3" />
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-foreground truncate group-hover:text-primary transition-colors">
+                      {activity.summary}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
+                    </p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
