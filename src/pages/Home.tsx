@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2, Bell } from "lucide-react";
+import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2, Bell, Mail } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/providers/AuthProvider";
@@ -24,6 +24,8 @@ import { InsightDiscoveryCard } from "@/components/InsightDiscoveryCard";
 import { useCalendarEvents } from "@/hooks/useCalendarEvents";
 import { PrivacyFilterPills } from "@/components/PrivacyFilterPills";
 import { useDefaultPrivacyFilter } from "@/hooks/useDefaultPrivacyFilter";
+import { EmailTriageReviewDialog } from "@/components/EmailTriageReviewDialog";
+import { supabase } from "@/lib/supabaseClient";
 
 const Home = () => {
   const { t } = useTranslation(['home', 'common']);
@@ -42,6 +44,18 @@ const Home = () => {
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const { privacyFilter, setPrivacyFilter } = useDefaultPrivacyFilter();
   const { connection: calendarConnection } = useCalendarEvents();
+  const [emailTriageOpen, setEmailTriageOpen] = useState(false);
+  const [emailConnected, setEmailConnected] = useState(false);
+
+  // Check if Gmail is connected
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase.functions.invoke('olive-email-mcp', {
+      body: { action: 'status', user_id: user.id },
+    }).then(({ data }) => {
+      if (data?.success && data?.connected) setEmailConnected(true);
+    }).catch(() => {});
+  }, [user?.id]);
 
   // Determine whether there are any shared notes (to conditionally show shared pill)
   const hasSharedNotes = useMemo(() => notes.some(n => n.isShared), [notes]);
@@ -267,6 +281,20 @@ const Home = () => {
           </div>
           )}
 
+          {/* Review my Email - pill button */}
+          {emailConnected && (
+            <div className="flex justify-center animate-fade-up stagger-2">
+              <button
+                onClick={() => setEmailTriageOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground 
+                           hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors group"
+              >
+                <Mail className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                <span>{t('home:emailTriage.reviewButton', 'Review my Email')}</span>
+              </button>
+            </div>
+          )}
+
           {/* Insight Discovery Card - Shows AI-discovered patterns */}
           <InsightDiscoveryCard />
 
@@ -489,6 +517,12 @@ const Home = () => {
         plan={plan}
         onApply={applyPlan}
         isApplying={isApplying}
+      />
+
+      {/* Email Triage Review Dialog */}
+      <EmailTriageReviewDialog
+        open={emailTriageOpen}
+        onOpenChange={setEmailTriageOpen}
       />
     </div>
   );

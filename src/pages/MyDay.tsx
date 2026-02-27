@@ -11,7 +11,7 @@ import { useDateLocale } from '@/hooks/useDateLocale';
 import {
   Sun, Moon, Activity, Flame, TrendingUp, Dumbbell, CheckCircle2,
   Calendar, Loader2, ArrowRight, Zap, Heart, Send, Home, MessageCircle,
-  AlertCircle, RefreshCw, Brain, Shield, Bell
+  AlertCircle, RefreshCw, Brain, Shield, Bell, Mail
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { PrivacyFilterPills } from '@/components/PrivacyFilterPills';
 import { useDefaultPrivacyFilter } from '@/hooks/useDefaultPrivacyFilter';
+import { EmailTriageReviewDialog } from '@/components/EmailTriageReviewDialog';
 
 // ─── Oura Data Types ──────────────────────────────────────────────────────────
 
@@ -154,6 +155,19 @@ const MyDay = () => {
   const userId = user?.id;
   const { privacyFilter, setPrivacyFilter } = useDefaultPrivacyFilter();
   const hasSharedNotes = useMemo(() => notes.some(n => n.isShared), [notes]);
+
+  // Email triage state
+  const [emailTriageOpen, setEmailTriageOpen] = useState(false);
+  const [emailConnected, setEmailConnected] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+    supabase.functions.invoke('olive-email-mcp', {
+      body: { action: 'status', user_id: userId },
+    }).then(({ data }) => {
+      if (data?.success && data?.connected) setEmailConnected(true);
+    }).catch(() => {});
+  }, [userId]);
 
 
 
@@ -393,6 +407,20 @@ const MyDay = () => {
             )}
           </Button>
         </div>
+
+        {/* ─── Review my Email pill ───────────────────────────────────── */}
+        {emailConnected && (
+          <div className="mb-4 animate-fade-up" style={{ animationDelay: '35ms' }}>
+            <Button
+              variant="outline"
+              className="w-full justify-center gap-2 h-11 border-red-500/20 hover:bg-red-500/5"
+              onClick={() => setEmailTriageOpen(true)}
+            >
+              <Mail className="h-4 w-4 text-red-600" />
+              {t('home:emailTriage.reviewButton', 'Review my Email')}
+            </Button>
+          </div>
+        )}
 
         {/* ─── Oura Health Scores ─────────────────────────────────────── */}
         {ouraLoading ? (
@@ -759,6 +787,12 @@ const MyDay = () => {
           </div>
         )}
       </div>
+
+      {/* Email Triage Review Dialog */}
+      <EmailTriageReviewDialog
+        open={emailTriageOpen}
+        onOpenChange={setEmailTriageOpen}
+      />
     </div>
   );
 };
