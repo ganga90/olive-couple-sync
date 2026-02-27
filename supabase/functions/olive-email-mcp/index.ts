@@ -393,7 +393,141 @@ Example:
   return { tasks_created: tasksCreated, emails_processed: emails.length, summary, processed_ids: allProcessedIds };
 }
 
-// ─── HTTP Handler ────────────────────────────────────────────────
+/**
+ * Preview-only triage: scan emails and return classifications WITHOUT saving.
+ */
+async function runEmailTriagePreview(
+  supabase: ReturnType<typeof createClient>,
+  userId: string
+): Promise<{ items: any[]; emails_scanned: number }> {
+  const { data: conn, error: connErr } = await supabase
+    .from("olive_email_connections")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (connErr || !conn) {
+    throw new Error("Gmail not connected — please connect in Settings");
+  }
+
+  const accessToken = await getValidAccessToken(supabase, conn as EmailConnection);
+  const emails = await fetchUnreadEmails(accessToken, new Set());
+
+  if (emails.length === 0) {
+    return { items: [], emails_scanned: 0 };
+  }
+
+  const genai = new GoogleGenAI({ apiKey: geminiKey });
+
+  const emailList = emails
+    .map((e, i) => `${i + 1}. Subject: "${e.subject}" | From: ${e.from} | Preview: "${e.snippet.substring(0, 150)}"`)
+    .join("\n");
+
+  const response = await genai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: `You are an email triage agent. Analyze each email:
+- ACTION_REQUIRED: task, deadline, or request needing follow-up
+- INFORMATIONAL: good to know, no action
+- SKIP: marketing, automated, newsletters
+
+For ACTION_REQUIRED, extract: task_summary (imperative 1-line), due_date (YYYY-MM-DD or null), priority (high/medium/low), category (bills/work/personal/household/health/shopping/general).
+
+Emails:
+${emailList}
+
+Respond ONLY with valid JSON array: [{"index":N,"classification":"...","task_summary":"...","due_date":null,"priority":"...","category":"..."}]`,
+    config: { temperature: 0.1, maxOutputTokens: 2000 },
+  });
+
+  const responseText = (response.text || "").trim();
+  let triageResults: any[] = [];
+  try {
+    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+    if (jsonMatch) triageResults = JSON.parse(jsonMatch[0]);
+  } catch {
+    triageResults = emails.map((_, i) => ({ index: i + 1, classification: "INFORMATIONAL" }));
+  }
+
+  const items = emails.map((email, i) => {
+    const triage = triageResults.find((t: any) => t.index === i + 1) || { classification: "SKIP" };
+    return {
+      email_id: email.id,
+      subject: email.subject,
+      from: stripPII(email.from),
+      snippet: email.snippet.substring(0, 120),
+      date: email.date,
+      classification: triage.classification,
+      task_summary: triage.task_summary ? stripPII(triage.task_summary) : null,
+      due_date: triage.due_date || null,
+      priority: triage.priority || null,
+      category: triage.category || null,
+      selected: triage.classification === "ACTION_REQUIRED",
+    };
+  });
+
+  return { items, emails_scanned: emails.length };
+}
+
+/**
+ * Confirm and save specific triage items selected by the user.
+ */
+async function confirmTriageItems(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  coupleId: string | undefined,
+  items: Array<{ email_id: string; subject: string; from: string; task_summary: string; due_date?: string | null; priority?: string; category?: string }>
+): Promise<{ tasks_created: number; summary: string }> {
+  let tasksCreated = 0;
+  const actionItems: string[] = [];
+
+  for (const item of items) {
+    const { data: existing } = await supabase
+      .from("clerk_notes")
+      .select("id")
+      .eq("author_id", userId)
+      .eq("source_ref", item.email_id)
+      .limit(1);
+
+    if (existing && existing.length > 0) continue;
+
+    const originalText = `[EMAIL] ${item.subject} — from ${item.from}`;
+    const noteData: Record<string, unknown> = {
+      author_id: userId,
+      couple_id: coupleId || null,
+      original_text: originalText,
+      summary: `📧 ${item.task_summary}`,
+      category: item.category || "general",
+      priority: item.priority || "medium",
+      source: "email",
+      source_ref: item.email_id,
+      tags: ["email"],
+      completed: false,
+    };
+
+    if (item.due_date) noteData.due_date = new Date(item.due_date).toISOString();
+
+    const { error: insertErr } = await supabase.from("clerk_notes").insert(noteData);
+    if (!insertErr) {
+      tasksCreated++;
+      const dateStr = item.due_date ? ` (due ${item.due_date})` : "";
+      actionItems.push(`${item.task_summary}${dateStr}`);
+    }
+  }
+
+  await supabase
+    .from("olive_email_connections")
+    .update({ last_sync_at: new Date().toISOString() })
+    .eq("user_id", userId);
+
+  const summary = tasksCreated > 0
+    ? `📧 Created ${tasksCreated} task${tasksCreated > 1 ? "s" : ""} from email:\n${actionItems.map(i => `• ${i}`).join("\n")}`
+    : "No tasks created.";
+
+  return { tasks_created: tasksCreated, summary };
+}
+
+
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -462,7 +596,7 @@ serve(async (req: Request) => {
         return jsonResponse({ success: true });
       }
 
-      // ── Triage pipeline ──
+      // ── Triage pipeline (auto-save) ──
       case "triage": {
         if (!user_id) {
           return jsonResponse({ success: false, error: "user_id required" }, 400);
@@ -473,6 +607,82 @@ serve(async (req: Request) => {
         const result = await runEmailTriage(supabase, user_id, couple_id, previouslyProcessedIds);
 
         return jsonResponse({ success: true, ...result });
+      }
+
+      // ── Preview triage (no save) ──
+      case "preview": {
+        if (!user_id) {
+          return jsonResponse({ success: false, error: "user_id required" }, 400);
+        }
+
+        const previewResult = await runEmailTriagePreview(supabase, user_id);
+        return jsonResponse({ success: true, ...previewResult });
+      }
+
+      // ── Confirm selected items (save chosen tasks) ──
+      case "confirm": {
+        if (!user_id) {
+          return jsonResponse({ success: false, error: "user_id required" }, 400);
+        }
+
+        const items = body.items as Array<{
+          email_id: string;
+          subject: string;
+          from: string;
+          task_summary: string;
+          due_date?: string | null;
+          priority?: string;
+          category?: string;
+        }>;
+
+        if (!items || items.length === 0) {
+          return jsonResponse({ success: true, tasks_created: 0, summary: "No items selected." });
+        }
+
+        const confirmResult = await confirmTriageItems(supabase, user_id, body.couple_id, items);
+        return jsonResponse({ success: true, ...confirmResult });
+      }
+
+      // ── Update email triage preferences ──
+      case "update_preferences": {
+        if (!user_id) {
+          return jsonResponse({ success: false, error: "user_id required" }, 400);
+        }
+
+        const prefs: Record<string, unknown> = {};
+        if (body.triage_frequency !== undefined) prefs.triage_frequency = body.triage_frequency;
+        if (body.triage_lookback_days !== undefined) prefs.triage_lookback_days = body.triage_lookback_days;
+        if (body.auto_save_tasks !== undefined) prefs.auto_save_tasks = body.auto_save_tasks;
+        prefs.updated_at = new Date().toISOString();
+
+        const { error: updateErr } = await supabase
+          .from("olive_email_connections")
+          .update(prefs)
+          .eq("user_id", user_id);
+
+        if (updateErr) {
+          return jsonResponse({ success: false, error: updateErr.message }, 500);
+        }
+
+        return jsonResponse({ success: true });
+      }
+
+      // ── Get preferences ──
+      case "get_preferences": {
+        if (!user_id) {
+          return jsonResponse({ success: false, error: "user_id required" }, 400);
+        }
+
+        const { data: prefConn } = await supabase
+          .from("olive_email_connections")
+          .select("triage_frequency, triage_lookback_days, auto_save_tasks")
+          .eq("user_id", user_id)
+          .maybeSingle();
+
+        return jsonResponse({
+          success: true,
+          preferences: prefConn || { triage_frequency: 'manual', triage_lookback_days: 3, auto_save_tasks: false },
+        });
       }
 
       default:

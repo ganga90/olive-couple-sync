@@ -86,3 +86,6 @@ verify_jwt = false
 
 [functions.google-tasks]
 verify_jwt = false
+
+[functions.olive-email-mcp]
+verify_jwt = false

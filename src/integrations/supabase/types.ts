@@ -837,6 +837,7 @@ export type Database = {
       olive_email_connections: {
         Row: {
           access_token: string | null
+          auto_save_tasks: boolean | null
           created_at: string | null
           email_address: string | null
           error_message: string | null
@@ -847,11 +848,14 @@ export type Database = {
           refresh_token: string | null
           scopes: string[] | null
           token_expiry: string | null
+          triage_frequency: string | null
+          triage_lookback_days: number | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
           access_token?: string | null
+          auto_save_tasks?: boolean | null
           created_at?: string | null
           email_address?: string | null
           error_message?: string | null
@@ -862,11 +866,14 @@ export type Database = {
           refresh_token?: string | null
           scopes?: string[] | null
           token_expiry?: string | null
+          triage_frequency?: string | null
+          triage_lookback_days?: number | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
           access_token?: string | null
+          auto_save_tasks?: boolean | null
           created_at?: string | null
           email_address?: string | null
           error_message?: string | null
@@ -877,6 +884,8 @@ export type Database = {
           refresh_token?: string | null
           scopes?: string[] | null
           token_expiry?: string | null
+          triage_frequency?: string | null
+          triage_lookback_days?: number | null
           updated_at?: string | null
           user_id?: string
         }
