@@ -451,6 +451,38 @@ const NoteDetails = () => {
                   </PopoverContent>
                 </Popover>
 
+                {/* Priority Chip */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className={cn("meta-chip whitespace-nowrap hover:bg-stone-100 transition-colors", priorityConfig.text)}>
+                      {note.priority === 'high' ? '🔥' : note.priority === 'medium' ? '⚡' : '🟢'} {priorityConfig.label}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 p-2" align="start">
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-stone-400 px-2 py-1 uppercase tracking-wider">Set priority</p>
+                      {([
+                        { value: 'high', label: 'High', emoji: '🔥' },
+                        { value: 'medium', label: 'Medium', emoji: '⚡' },
+                        { value: 'low', label: 'Low', emoji: '🟢' },
+                      ] as const).map((p) => (
+                        <Button
+                          key={p.value}
+                          variant={note.priority === p.value ? "secondary" : "ghost"}
+                          size="sm"
+                          className="w-full justify-start rounded-lg"
+                          onClick={async () => {
+                            await updateNote(note.id, { priority: p.value });
+                            toast.success(`Priority set to ${p.label}!`);
+                          }}
+                        >
+                          {p.emoji} {p.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
                 {/* Reminder Chip */}
                 <button 
                   className="meta-chip whitespace-nowrap hover:bg-stone-100 transition-colors"
