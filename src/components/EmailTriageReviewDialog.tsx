@@ -55,8 +55,12 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
   const [emailsScanned, setEmailsScanned] = useState(0);
 
   const handleScan = useCallback(async () => {
-    if (!user?.id) return;
     setPhase('scanning');
+    if (!user?.id) {
+      toast.error(t('common:errors.notAuthenticated', 'Please sign in first'));
+      setPhase('idle');
+      return;
+    }
     try {
       const { data, error } = await supabase.functions.invoke('olive-email-mcp', {
         body: { action: 'preview', user_id: user.id },
@@ -142,11 +146,19 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
 
   const content = (
     <div className="space-y-4">
-      {phase === 'scanning' && (
+      {(phase === 'idle' || phase === 'scanning') && (
         <div className="flex flex-col items-center justify-center py-12 gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">{t('home:emailTriage.scanning', 'Scanning your inbox...')}</p>
-          <p className="text-xs text-muted-foreground">{t('home:emailTriage.scanningHint', 'Only primary, unread emails are checked')}</p>
+          <div className="relative">
+            <Inbox className="h-10 w-10 text-primary/30" />
+            <Loader2 className="h-5 w-5 animate-spin text-primary absolute -bottom-1 -right-1" />
+          </div>
+          <p className="text-sm font-medium text-foreground">{t('home:emailTriage.scanning', 'Scanning your inbox...')}</p>
+          <p className="text-xs text-muted-foreground text-center max-w-[250px]">{t('home:emailTriage.scanningHint', 'Olive is reading your recent emails and identifying tasks that need your attention')}</p>
+          <div className="flex items-center gap-2 mt-2">
+            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:300ms]" />
+            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:600ms]" />
+          </div>
         </div>
       )}
 
