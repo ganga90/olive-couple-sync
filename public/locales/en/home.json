@@ -91,7 +91,9 @@
     "railTitle": "Partner",
     "added": "added a shared task",
     "assignedYou": "assigned you a task",
-    "empty": "{{name}} is being suspiciously quiet... 🤔"
+    "empty": "{{name}} is being suspiciously quiet... 🤔",
+    "recentCount": "{{count}} recent update",
+    "recentCount_plural": "{{count}} recent updates"
   },
   "contextRail": {
     "calendar": "Calendar",
