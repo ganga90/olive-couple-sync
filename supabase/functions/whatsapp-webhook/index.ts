@@ -1904,7 +1904,41 @@ serve(async (req) => {
     return new Response('Method not allowed', { status: 405 });
   }
 
+  // ==========================================================================
+  // ASYNC ACKNOWLEDGMENT PATTERN
+  // Meta requires 200 OK within ~3 seconds or it retries the webhook.
+  // Our LLM processing takes 5-30s. Solution:
+  //   1. Parse the JSON payload (fast, <1ms)
+  //   2. Return 200 "EVENT_RECEIVED" immediately
+  //   3. Use EdgeRuntime.waitUntil() to process in the background
+  // ==========================================================================
+
+  let webhookBody: any;
   try {
+    webhookBody = await req.json();
+  } catch (parseErr) {
+    console.error('[Meta Webhook] Failed to parse JSON body:', parseErr);
+    return new Response('EVENT_RECEIVED', { status: 200 });
+  }
+
+  console.log('[Meta Webhook] Received:', JSON.stringify(webhookBody).substring(0, 500));
+
+  // Extract message data from Meta's nested structure
+  const messageData = extractMetaMessage(webhookBody);
+
+  if (!messageData) {
+    // Status update (delivered, read, etc.) — nothing to process
+    console.log('[Meta Webhook] No message to process (status update or empty)');
+    return new Response('EVENT_RECEIVED', { status: 200 });
+  }
+
+  // ── Acknowledge Meta IMMEDIATELY — processing continues in background ──
+  console.log('[Meta Webhook] ✅ Webhook Acknowledged — returning 200 to Meta');
+
+  // Declare the background processing promise
+  const backgroundProcessing = (async () => {
+    console.log('[Meta Webhook] 🔄 Background Processing Started');
+
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const WHATSAPP_ACCESS_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN')!;
@@ -1912,32 +1946,19 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Parse Meta webhook JSON body
-    const webhookBody = await req.json();
-    console.log('[Meta Webhook] Received:', JSON.stringify(webhookBody).substring(0, 500));
-    
-    // Extract message data from Meta's nested structure
-    const messageData = extractMetaMessage(webhookBody);
-    
-    if (!messageData) {
-      // This could be a status update (delivered, read, etc.) - acknowledge it
-      console.log('[Meta Webhook] No message to process (status update or empty)');
-      return new Response(JSON.stringify({ status: 'ok' }), { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      });
-    }
-    
+  try {
     const { fromNumber: rawFromNumber, messageBody: rawMessageBody, mediaItems, latitude, longitude, phoneNumberId, messageId } = messageData;
     const fromNumber = standardizePhoneNumber(rawFromNumber);
-    
+
     // Mutable ref for userId so reply() can access it after auth
     let _authenticatedUserId: string | null = null;
-    
+
     // Helper to send reply via Meta Cloud API
-    const reply = async (text: string, mediaUrl?: string): Promise<Response> => {
+    // NOTE: In async-ack mode, reply() just sends the WhatsApp message —
+    // the HTTP response (200) was already returned to Meta above.
+    const reply = async (text: string, mediaUrl?: string): Promise<void> => {
       await sendWhatsAppReply(phoneNumberId || WHATSAPP_PHONE_NUMBER_ID, rawFromNumber, text, WHATSAPP_ACCESS_TOKEN, mediaUrl);
-      
+
       // Save last_outbound_context so bare replies can reference it
       if (_authenticatedUserId) {
         try {
@@ -1956,13 +1977,8 @@ serve(async (req) => {
           console.warn('[Context] Failed to save last_outbound_context:', ctxErr);
         }
       }
-      
-      return new Response(JSON.stringify({ status: 'ok' }), { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      });
     };
-    
+
     // Mark message as read
     try {
       await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId || WHATSAPP_PHONE_NUMBER_ID}/messages`, {
@@ -5399,11 +5415,33 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
     }
 
   } catch (error) {
-    console.error('WhatsApp webhook error:', error);
-    // For unexpected errors, we can't send a reply via Meta API since we may not have the user info
-    return new Response(JSON.stringify({ status: 'error', message: 'Internal error' }), { 
-      status: 200, // Meta requires 200 even on errors to prevent retries
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-    });
+    console.error('[Meta Webhook] ❌ Background processing error:', error);
+    // Try to notify the user if we have enough context
+    try {
+      const { fromNumber: rawFromNumber, phoneNumberId } = messageData;
+      const WHATSAPP_ACCESS_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN')!;
+      const WHATSAPP_PHONE_NUMBER_ID = Deno.env.get('WHATSAPP_PHONE_NUMBER_ID')!;
+      await sendWhatsAppReply(
+        phoneNumberId || WHATSAPP_PHONE_NUMBER_ID,
+        rawFromNumber,
+        'Sorry, something went wrong. Please try again.',
+        WHATSAPP_ACCESS_TOKEN
+      );
+    } catch (replyErr) {
+      console.error('[Meta Webhook] Failed to send error reply:', replyErr);
+    }
   }
+
+  console.log('[Meta Webhook] 🏁 Background Processing Finished');
+  })(); // end of background processing IIFE
+
+  // Use EdgeRuntime.waitUntil() to keep the function alive for background processing
+  // while we return 200 immediately to Meta
+  // @ts-ignore — EdgeRuntime is a Supabase Deno runtime global
+  if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+    EdgeRuntime.waitUntil(backgroundProcessing);
+  }
+
+  // Return 200 immediately — Meta gets its response in <100ms
+  return new Response('EVENT_RECEIVED', { status: 200 });
 });
