@@ -515,69 +515,67 @@ const NoteDetails = () => {
             )}
           </div>
 
-          {/* Action Buttons - Glass Style */}
+          {/* Action Buttons - Responsive Grid */}
           {!note.completed && (
-            <div className="flex flex-col gap-3 animate-fade-up" style={{ animationDelay: '150ms' }}>
-              <div className="flex gap-3">
-                <div className="relative flex-1">
-                  <Button 
-                    variant="accent"
-                    size="lg" 
-                    className="w-full rounded-full shadow-lg"
-                    onClick={() => {
-                      askOliveOnboarding.dismiss();
-                      setChatOpen(true);
-                    }}
-                  >
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    {t('askOlive')}
-                  </Button>
-                  <OnboardingTooltip
-                    isVisible={askOliveOnboarding.isVisible}
-                    onDismiss={askOliveOnboarding.dismiss}
-                    title={t('askOliveChat.onboarding.title')}
-                    description={t('askOliveChat.onboarding.description')}
-                    position="bottom"
-                  />
-                </div>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="flex-1 rounded-full border-[hsl(var(--success))]/30 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10"
-                  onClick={async () => {
-                    await updateNote(note.id, { completed: true });
-                    toast.success(t('toast.markedComplete'));
-                    navigate(getLocalizedPath(note.list_id ? `/lists/${note.list_id}` : "/home"));
+            <div className="grid grid-cols-2 gap-3 animate-fade-up" style={{ animationDelay: '150ms' }}>
+              <div className="relative">
+                <Button 
+                  variant="accent"
+                  size="lg" 
+                  className="w-full rounded-full shadow-lg text-sm"
+                  onClick={() => {
+                    askOliveOnboarding.dismiss();
+                    setChatOpen(true);
                   }}
                 >
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                  {t('complete')}
+                  <Sparkles className="h-4 w-4 mr-2 shrink-0" />
+                  <span className="truncate">{t('askOlive')}</span>
                 </Button>
+                <OnboardingTooltip
+                  isVisible={askOliveOnboarding.isVisible}
+                  onDismiss={askOliveOnboarding.dismiss}
+                  title={t('askOliveChat.onboarding.title')}
+                  description={t('askOliveChat.onboarding.description')}
+                  position="bottom"
+                />
               </div>
+              <Button
+                variant="outline"
+                size="lg"
+                className="rounded-full border-[hsl(var(--success))]/30 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 text-sm"
+                onClick={async () => {
+                  await updateNote(note.id, { completed: true });
+                  toast.success(t('toast.markedComplete'));
+                  navigate(getLocalizedPath(note.list_id ? `/lists/${note.list_id}` : "/home"));
+                }}
+              >
+                <CheckCircle2 className="h-4 w-4 mr-2 shrink-0" />
+                <span className="truncate">{t('complete')}</span>
+              </Button>
               {/* Add to Calendar & Tasks pills */}
               {calendarConnection?.connected && (
-                <div className="flex gap-3">
+                <>
                   <Button
                     variant="outline"
                     size="lg"
-                    className="flex-1 rounded-full"
+                    className="rounded-full text-sm"
                     onClick={() => setCalendarDialogOpen(true)}
                   >
-                    <CalendarIcon className="h-4 w-4 mr-2" />
-                    Add to Calendar
+                    <CalendarIcon className="h-4 w-4 mr-2 shrink-0" />
+                    <span className="truncate">Add to Calendar</span>
                   </Button>
                   {calendarConnection.tasks_enabled && (
                     <Button
                       variant="outline"
                       size="lg"
-                      className="flex-1 rounded-full"
+                      className="rounded-full text-sm"
                       onClick={() => setTasksDialogOpen(true)}
                     >
-                      <ListTodo className="h-4 w-4 mr-2" />
-                      Add to Google Tasks
+                      <ListTodo className="h-4 w-4 mr-2 shrink-0" />
+                      <span className="truncate">Add to Google Tasks</span>
                     </Button>
                   )}
-                </div>
+                </>
               )}
             </div>
           )}
