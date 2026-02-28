@@ -515,10 +515,11 @@ const NoteDetails = () => {
             )}
           </div>
 
-          {/* Action Buttons - Responsive Grid */}
+          {/* Action Buttons */}
           {!note.completed && (
-            <div className="grid grid-cols-2 gap-3 animate-fade-up" style={{ animationDelay: '150ms' }}>
-              <div className="relative">
+            <div className="flex items-center gap-3 animate-fade-up" style={{ animationDelay: '150ms' }}>
+              {/* Primary actions */}
+              <div className="relative flex-1 min-w-0">
                 <Button 
                   variant="accent"
                   size="lg" 
@@ -529,7 +530,7 @@ const NoteDetails = () => {
                   }}
                 >
                   <Sparkles className="h-4 w-4 mr-2 shrink-0" />
-                  <span className="truncate">{t('askOlive')}</span>
+                  {t('askOlive')}
                 </Button>
                 <OnboardingTooltip
                   isVisible={askOliveOnboarding.isVisible}
@@ -542,7 +543,7 @@ const NoteDetails = () => {
               <Button
                 variant="outline"
                 size="lg"
-                className="rounded-full border-[hsl(var(--success))]/30 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 text-sm"
+                className="flex-1 min-w-0 rounded-full border-[hsl(var(--success))]/30 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 text-sm"
                 onClick={async () => {
                   await updateNote(note.id, { completed: true });
                   toast.success(t('toast.markedComplete'));
@@ -550,29 +551,29 @@ const NoteDetails = () => {
                 }}
               >
                 <CheckCircle2 className="h-4 w-4 mr-2 shrink-0" />
-                <span className="truncate">{t('complete')}</span>
+                {t('complete')}
               </Button>
-              {/* Add to Calendar & Tasks pills */}
+              {/* Sync icon buttons */}
               {calendarConnection?.connected && (
                 <>
                   <Button
                     variant="outline"
-                    size="lg"
-                    className="rounded-full text-sm"
+                    size="icon-lg"
+                    className="rounded-full shrink-0"
                     onClick={() => setCalendarDialogOpen(true)}
+                    title="Add to Calendar"
                   >
-                    <CalendarIcon className="h-4 w-4 mr-2 shrink-0" />
-                    <span className="truncate">Add to Calendar</span>
+                    <CalendarIcon className="h-5 w-5" />
                   </Button>
                   {calendarConnection.tasks_enabled && (
                     <Button
                       variant="outline"
-                      size="lg"
-                      className="rounded-full text-sm"
+                      size="icon-lg"
+                      className="rounded-full shrink-0"
                       onClick={() => setTasksDialogOpen(true)}
+                      title="Add to Google Tasks"
                     >
-                      <ListTodo className="h-4 w-4 mr-2 shrink-0" />
-                      <span className="truncate">Add to Google Tasks</span>
+                      <ListTodo className="h-5 w-5" />
                     </Button>
                   )}
                 </>
