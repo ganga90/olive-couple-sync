@@ -185,7 +185,7 @@ async function runStaleTaskStrategist(ctx: AgentContext): Promise<AgentResult> {
     .join("\n");
 
   const response = await ctx.genai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-2.5-pro", // Pro: complex reasoning about task relevance + priorities
     contents: `You are a productivity coach for a couples app called Olive.
 
 Analyze these stale tasks (not completed, no due date, older than ${stalenessdays} days). For each, suggest ONE action:
@@ -551,7 +551,7 @@ async function runBirthdayGiftAgent(ctx: AgentContext): Promise<AgentResult> {
     if (date.daysUntil >= 25 && !previousSuggestions[dateKey]) {
       // First reminder (30 days) — generate gift ideas
       const response = await ctx.genai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-pro", // Pro: creative + personalized gift suggestions
         contents: `You are a thoughtful gift advisor for a couples app.
 
 Upcoming event: ${date.name} in ${date.daysUntil} days (${date.date.toLocaleDateString("en-US")})
@@ -660,7 +660,7 @@ async function runWeeklyCoupleSyncAgent(ctx: AgentContext): Promise<AgentResult>
   });
 
   const response = await ctx.genai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-2.5-pro", // Pro: relationship-sensitive analysis across two people
     contents: `You are a couples coordination assistant. Generate a brief weekly sync summary.
 
 This week's activity:

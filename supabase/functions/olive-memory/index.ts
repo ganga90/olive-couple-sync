@@ -499,7 +499,7 @@ async function extractMemorableFacts(conversation: string): Promise<Array<{
   type: 'preference' | 'fact' | 'pattern' | 'personal_info';
   importance: number;
 }>> {
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY') || Deno.env.get('VITE_GEMINI_API_KEY');
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API') || Deno.env.get('GEMINI_API_KEY') || Deno.env.get('VITE_GEMINI_API_KEY');
 
   if (!GEMINI_API_KEY) {
     console.log('No Gemini API key, skipping fact extraction');

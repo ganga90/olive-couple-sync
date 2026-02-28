@@ -323,9 +323,9 @@ async function classifyIntentForChat(
   userMemories: Array<{ title: string; content: string; category: string }>,
   activatedSkills: Array<{ skill_id: string; name: string }>,
 ): Promise<ClassifiedIntent | null> {
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY') || Deno.env.get('GEMINI_API');
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API') || Deno.env.get('GEMINI_API_KEY');
     if (!GEMINI_API_KEY) {
-      console.warn('[classifyIntentForChat] No GEMINI_API_KEY or GEMINI_API');
+      console.warn('[classifyIntentForChat] No GEMINI_API env var');
     return null;
   }
 
@@ -386,7 +386,7 @@ ${memoryList || 'No memories stored.'}
 ${skillsList || 'No skills activated.'}`;
 
     const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite", // Lite: fast JSON classification for in-app chat
       contents: `Classify this message: "${message}"`,
       config: {
         systemInstruction: systemPrompt,

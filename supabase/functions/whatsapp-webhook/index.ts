@@ -497,9 +497,9 @@ async function classifyIntent(
   activatedSkills: Array<{ skill_id: string; name: string }>,
   userLanguage: string
 ): Promise<ClassifiedIntent | null> {
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY') || Deno.env.get('GEMINI_API');
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API') || Deno.env.get('GEMINI_API_KEY');
   if (!GEMINI_API_KEY) {
-    console.warn('[classifyIntent] No GEMINI_API_KEY or GEMINI_API, falling back to regex');
+    console.warn('[classifyIntent] No GEMINI_API env var, falling back to regex');
     return null;
   }
 
@@ -576,7 +576,7 @@ ${memoryList || 'No memories stored.'}
 ${skillsList || 'No skills activated.'}`;
 
     const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite", // Lite: fast JSON classification, speed critical for webhook latency
       contents: `Classify this message: "${message}"`,
       config: {
         systemInstruction: systemPrompt,
@@ -4133,34 +4133,13 @@ Description: "${description}"`;
         });
       }
 
-      // Fetch recent agent insights (last 48h)
+      // Fetch recent agent insights (last 48h) — uses shared orchestrator helper
       let agentInsightsContext = '';
       try {
-        const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-        const { data: agentRuns } = await supabase
-          .from('olive_agent_runs')
-          .select('agent_id, result, completed_at')
-          .eq('user_id', userId)
-          .eq('status', 'completed')
-          .gte('completed_at', fortyEightHoursAgo)
-          .order('completed_at', { ascending: false })
-          .limit(10);
-
-        if (agentRuns && agentRuns.length > 0) {
-          const seen = new Set<string>();
-          const insights: string[] = [];
-          const trivialPrefixes = ['no stale tasks', 'no upcoming bills', 'oura not connected', 'no oura data', 'no tasks scheduled', 'gmail not connected', 'email triage set to manual', 'too soon', 'sleep looks good', 'no upcoming dates', 'no couple linked'];
-          for (const run of agentRuns) {
-            if (seen.has(run.agent_id)) continue;
-            seen.add(run.agent_id);
-            const msg = (run.result?.message || '').trim();
-            if (!msg || trivialPrefixes.some(p => msg.toLowerCase().startsWith(p))) continue;
-            const agentName = run.agent_id.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-            insights.push(`- ${agentName}: ${msg.substring(0, 300)}`);
-          }
-          if (insights.length > 0) {
-            agentInsightsContext = '\n## RECENT AGENT INSIGHTS (Background AI analysis):\n' + insights.join('\n') + '\n';
-          }
+        const { fetchAgentInsightsContext } = await import("../_shared/orchestrator.ts");
+        agentInsightsContext = await fetchAgentInsightsContext(supabase, userId);
+        if (agentInsightsContext) {
+          agentInsightsContext = '\n' + agentInsightsContext;
         }
       } catch (agentErr) {
         console.warn('[WhatsApp] Agent insights fetch error (non-blocking):', agentErr);
@@ -4722,36 +4701,16 @@ IMPORTANT: Use the above skill knowledge to enhance your response with domain-sp
       }
       
       // ================================================================
-      // RECENT AGENT INSIGHTS (for CHAT handler)
+      // RECENT AGENT INSIGHTS (for CHAT handler) — uses shared orchestrator
       // ================================================================
       let chatAgentInsightsContext = '';
       try {
-        const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-        const { data: chatAgentRuns } = await supabase
-          .from('olive_agent_runs')
-          .select('agent_id, result, completed_at')
-          .eq('user_id', userId)
-          .eq('status', 'completed')
-          .gte('completed_at', fortyEightHoursAgo)
-          .order('completed_at', { ascending: false })
-          .limit(10);
-
-        if (chatAgentRuns && chatAgentRuns.length > 0) {
-          const seen = new Set<string>();
-          const insights: string[] = [];
-          const trivialPrefixes = ['no stale tasks', 'no upcoming bills', 'oura not connected', 'no oura data', 'no tasks scheduled', 'gmail not connected', 'email triage set to manual', 'too soon', 'sleep looks good', 'no upcoming dates', 'no couple linked'];
-          for (const run of chatAgentRuns) {
-            if (seen.has(run.agent_id)) continue;
-            seen.add(run.agent_id);
-            const msg = (run.result?.message || '').trim();
-            if (!msg || trivialPrefixes.some(p => msg.toLowerCase().startsWith(p))) continue;
-            const agentName = run.agent_id.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-            insights.push(`- ${agentName}: ${msg.substring(0, 300)}`);
-          }
-          if (insights.length > 0) {
-            chatAgentInsightsContext = insights.join('\n');
-          }
-        }
+        const { fetchAgentInsightsContext } = await import("../_shared/orchestrator.ts");
+        const fullContext = await fetchAgentInsightsContext(supabase, userId);
+        // Strip the header for inline use in baseContext (header added in template literal)
+        chatAgentInsightsContext = fullContext
+          .replace(/^## Recent Agent Insights.*\n/m, '')
+          .trim();
       } catch (agentErr) {
         console.warn('[WhatsApp Chat] Agent insights fetch error (non-blocking):', agentErr);
       }
