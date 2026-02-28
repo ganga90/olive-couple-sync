@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/providers/AuthProvider';
 import { useBackgroundAgents, AgentWithStatus, AgentRun } from '@/hooks/useBackgroundAgents';
 import { agentIcons, agentColors } from '@/constants/agentConfig';
+import { useLanguage } from '@/providers/LanguageProvider';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
@@ -142,6 +144,7 @@ function AgentCard({
   onRunNow,
   onWhatsAppToggle,
   onViewHistory,
+  onNavigateDetail,
   isToggling,
 }: {
   agent: AgentWithStatus;
@@ -149,6 +152,7 @@ function AgentCard({
   onRunNow: (id: string) => void;
   onWhatsAppToggle: (id: string, enabled: boolean) => void;
   onViewHistory: (id: string) => void;
+  onNavigateDetail: (id: string) => void;
   isToggling: boolean;
 }) {
   const { t } = useTranslation('profile');
@@ -194,7 +198,9 @@ function AgentCard({
           {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
-              <h4 className="font-medium text-sm truncate">{agent.name}</h4>
+              <button onClick={() => onNavigateDetail(agent.skill_id)} className="font-medium text-sm truncate text-left hover:text-primary transition-colors">
+                {agent.name}
+              </button>
               <AgentStatusBadge agent={agent} />
             </div>
 
@@ -333,6 +339,8 @@ function AgentCard({
 export function BackgroundAgentsManager() {
   const { t } = useTranslation('profile');
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { getLocalizedPath } = useLanguage();
   const {
     agents,
     isLoading,
@@ -413,6 +421,7 @@ export function BackgroundAgentsManager() {
             onRunNow={runAgentNow as any}
             onWhatsAppToggle={handleWhatsAppToggle}
             onViewHistory={handleViewHistory}
+            onNavigateDetail={(id) => navigate(getLocalizedPath(`/agents/${id}`))}
             isToggling={togglingAgent === agent.skill_id}
           />
         ))}
