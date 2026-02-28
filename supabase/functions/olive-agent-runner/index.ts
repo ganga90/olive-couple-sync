@@ -656,12 +656,13 @@ async function runEmailTriageAgent(ctx: AgentContext): Promise<AgentResult> {
 
   // Check frequency — only skip if explicitly set to manual
   const frequency = emailConn.triage_frequency || "12h"; // Default to 12h if not set
-  if (frequency === "manual") {
+  const forceRun = ctx.config.force_run === true;
+  if (frequency === "manual" && !forceRun) {
     return { success: true, message: "Email triage set to manual — skipping", notifyUser: false };
   }
 
   const lastTriage = ctx.previousState.last_triage as string;
-  if (lastTriage) {
+  if (lastTriage && !forceRun) {
     const hoursSinceLast = (Date.now() - new Date(lastTriage).getTime()) / (1000 * 60 * 60);
     const freqHours = frequency === "1h" ? 1 : frequency === "6h" ? 6 : frequency === "12h" ? 12 : 24;
     if (hoursSinceLast < freqHours * 0.9) { // 10% buffer

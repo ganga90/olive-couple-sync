@@ -133,14 +133,21 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
     });
 
     try {
-      const { data, error } = await supabase.functions.invoke('olive-email-mcp', {
-        body: { action: 'triage', user_id: user.id },
+      // Route through olive-agent-runner so WhatsApp notification fires
+      const { data, error } = await supabase.functions.invoke('olive-agent-runner', {
+        body: { 
+          action: 'run', 
+          agent_id: 'email-triage-agent', 
+          user_id: user.id,
+          config_override: { force_run: true },
+        },
       });
 
       if (error) throw error;
 
-      const tasksCreated = data?.tasks_created ?? data?.data?.tasks_created ?? 0;
-      const emailsProcessed = data?.emails_processed ?? data?.data?.emails_processed ?? 0;
+      const result = data?.result || {};
+      const tasksCreated = result?.data?.tasks_created ?? 0;
+      const emailsProcessed = result?.data?.emails_processed ?? 0;
 
       if (tasksCreated > 0) {
         toast.success(
