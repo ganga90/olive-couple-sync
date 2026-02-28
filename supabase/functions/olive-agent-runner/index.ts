@@ -457,24 +457,75 @@ async function runBirthdayGiftAgent(ctx: AgentContext): Promise<AgentResult> {
   const tiers = (ctx.config.reminder_tiers as number[]) || [30, 14, 7];
   const maxDays = Math.max(...tiers);
 
-  // Call the get_upcoming_dates RPC function
-  // Returns: id, event_name, event_date, event_type, days_until, related_person, reminder_days, should_remind
-  const { data: dates, error: datesErr } = await ctx.supabase.rpc("get_upcoming_dates", {
-    p_user_id: ctx.userId,
-    p_days_ahead: maxDays + 2,
-  });
+  // Scan clerk_notes for date-related events (birthdays, anniversaries)
+  const dateKeywords = ["birthday", "anniversary", "bday", "compleanno", "cumpleaños", "aniversario"];
 
-  if (datesErr) {
-    console.error("[birthday-gift] RPC error:", datesErr.message);
-    return { success: true, message: "Could not fetch dates", notifyUser: false };
+  const { data: dateNotes } = await ctx.supabase
+    .from("clerk_notes")
+    .select("id, summary, due_date, tags, category, author_id")
+    .or(`author_id.eq.${ctx.userId},couple_id.eq.${ctx.coupleId || "00000000-0000-0000-0000-000000000000"}`)
+    .eq("completed", false)
+    .not("due_date", "is", null)
+    .order("due_date", { ascending: true });
+
+  // Also check calendar events if connected
+  let calendarDates: Array<{ title: string; start_time: string }> = [];
+  try {
+    const { data: calConn } = await ctx.supabase
+      .from("calendar_connections")
+      .select("id")
+      .eq("user_id", ctx.userId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (calConn) {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + maxDays + 2);
+      const { data: calEvents } = await ctx.supabase
+        .from("calendar_events")
+        .select("title, start_time")
+        .eq("connection_id", calConn.id)
+        .gte("start_time", new Date().toISOString())
+        .lte("start_time", futureDate.toISOString());
+      calendarDates = (calEvents || []).filter((e: { title: string }) => {
+        const t = e.title.toLowerCase();
+        return dateKeywords.some((k) => t.includes(k));
+      });
+    }
+  } catch {
+    // Calendar not available — continue with notes only
   }
 
-  if (!dates || dates.length === 0) {
+  // Filter notes to date-related ones
+  const now = new Date();
+  const upcomingDates: Array<{ name: string; date: Date; daysUntil: number; source: string }> = [];
+
+  for (const note of dateNotes || []) {
+    const text = `${note.summary} ${(note.tags || []).join(" ")} ${note.category || ""}`.toLowerCase();
+    const isDateRelated = dateKeywords.some((k) => text.includes(k));
+    if (!isDateRelated) continue;
+
+    const dueDate = new Date(note.due_date);
+    const daysUntil = Math.floor((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysUntil >= 0 && daysUntil <= maxDays + 2) {
+      upcomingDates.push({ name: note.summary, date: dueDate, daysUntil, source: "note" });
+    }
+  }
+
+  for (const cal of calendarDates) {
+    const startDate = new Date(cal.start_time);
+    const daysUntil = Math.floor((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysUntil >= 0 && daysUntil <= maxDays + 2) {
+      upcomingDates.push({ name: cal.title, date: startDate, daysUntil, source: "calendar" });
+    }
+  }
+
+  if (upcomingDates.length === 0) {
     return { success: true, message: "No upcoming dates", notifyUser: false };
   }
 
   // Filter to dates matching our tiers (±1 day buffer)
-  const matchingDates = dates.filter((d: { days_until: number }) => tiers.some((tier) => Math.abs(d.days_until - tier) <= 1));
+  const matchingDates = upcomingDates.filter((d) => tiers.some((tier) => Math.abs(d.daysUntil - tier) <= 1));
 
   if (matchingDates.length === 0) {
     return { success: true, message: "No dates in reminder window", notifyUser: false };
@@ -487,9 +538,7 @@ async function runBirthdayGiftAgent(ctx: AgentContext): Promise<AgentResult> {
   const newState: Record<string, string[]> = { ...previousSuggestions };
 
   for (const date of matchingDates) {
-    const eventName = date.event_name;
-    const dateKey = `${eventName}_${date.event_date}`;
-    const daysUntil = date.days_until;
+    const dateKey = `${date.name}_${date.date.toISOString().split("T")[0]}`;
 
     // Get memory context for personalization
     const { data: memory } = await ctx.supabase
@@ -499,20 +548,18 @@ async function runBirthdayGiftAgent(ctx: AgentContext): Promise<AgentResult> {
       .eq("file_type", "profile")
       .maybeSingle();
 
-    if (daysUntil >= 25 && !previousSuggestions[dateKey]) {
+    if (date.daysUntil >= 25 && !previousSuggestions[dateKey]) {
       // First reminder (30 days) — generate gift ideas
-      const personContext = date.related_person ? `For: ${date.related_person}` : "";
       const response = await ctx.genai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: `You are a thoughtful gift advisor for a couples app.
 
-Upcoming event: ${eventName} in ${daysUntil} days (${date.event_date})
-${personContext}
+Upcoming event: ${date.name} in ${date.daysUntil} days (${date.date.toLocaleDateString("en-US")})
 Person's profile context: ${memory?.content || "No specific preferences known"}
 Budget: ${ctx.config.budget_range || "moderate ($30-100)"}
 
 Suggest 3 gift ideas. Format for WhatsApp:
-🎁 ${eventName} is in ${daysUntil} days!
+🎁 ${date.name} is in ${date.daysUntil} days!
 
 1. [Gift idea] — ~$XX
 2. [Gift idea] — ~$XX
@@ -525,10 +572,10 @@ Keep it warm and personal.`,
       const suggestion = response.text || "";
       messages.push(suggestion);
       newState[dateKey] = [suggestion];
-    } else if (daysUntil >= 10 && daysUntil <= 15) {
-      messages.push(`🔔 Reminder: ${eventName} is in ${daysUntil} days! Have you picked a gift yet?`);
-    } else if (daysUntil <= 8) {
-      messages.push(`⚡ Last call: ${eventName} is in ${daysUntil} days! Time to order if you haven't yet.`);
+    } else if (date.daysUntil >= 10 && date.daysUntil <= 15) {
+      messages.push(`🔔 Reminder: ${date.name} is in ${date.daysUntil} days! Have you picked a gift yet?`);
+    } else if (date.daysUntil <= 8) {
+      messages.push(`⚡ Last call: ${date.name} is in ${date.daysUntil} days! Time to order if you haven't yet.`);
     }
   }
 
@@ -536,14 +583,13 @@ Keep it warm and personal.`,
     return { success: true, message: "No messages to send", notifyUser: false };
   }
 
-  // Richer data for frontend
-  const eventsData = matchingDates.map((d: { event_name: string; event_date: string; days_until: number }) => ({
-    name: d.event_name,
-    date: d.event_date,
-    daysUntil: d.days_until,
+  const eventsData = matchingDates.map((d) => ({
+    name: d.name,
+    date: d.date.toISOString(),
+    daysUntil: d.daysUntil,
   }));
 
-  // State cleanup: prune suggestions for events more than 60 days old (Phase 3d)
+  // State cleanup: prune suggestions for events more than 60 days old
   const prunedState: Record<string, string[]> = {};
   for (const [key, val] of Object.entries(newState)) {
     const datePart = key.split("_").pop() || "";
@@ -872,17 +918,26 @@ serve(async (req: Request) => {
         const partnerIds = result.data.partnerIds as string[];
         const partnerId = partnerIds.find((id) => id !== user_id);
         if (partnerId && result.notificationMessage) {
-          await supabase.functions.invoke("whatsapp-gateway", {
-            body: {
-              action: "send",
-              message: {
-                user_id: partnerId,
-                message_type: "agent_insight",
-                content: result.notificationMessage,
-                priority: "normal",
+          try {
+            const { error: partnerGwErr } = await supabase.functions.invoke("whatsapp-gateway", {
+              body: {
+                action: "send",
+                message: {
+                  user_id: partnerId,
+                  message_type: "agent_insight",
+                  content: result.notificationMessage,
+                  priority: "normal",
+                },
               },
-            },
-          });
+            });
+            if (partnerGwErr) {
+              console.error(`[Agent Runner] Partner WhatsApp failed for ${agent_id}:`, partnerGwErr);
+            } else {
+              console.log(`[Agent Runner] Partner WhatsApp sent for ${agent_id} to ${partnerId}`);
+            }
+          } catch (partnerErr) {
+            console.error(`[Agent Runner] Partner WhatsApp threw for ${agent_id}:`, partnerErr);
+          }
         }
       }
 
