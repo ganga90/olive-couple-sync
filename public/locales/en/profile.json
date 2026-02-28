@@ -458,5 +458,18 @@
       "linkWhatsApp": "Link WhatsApp for Briefings",
       "linkWhatsAppFirst": "Link your WhatsApp number first to receive briefings."
     }
+  },
+  "agentDetail": {
+    "back": "Back",
+    "notFound": "Agent not found",
+    "backToSettings": "Back to Settings",
+    "latestResult": "Latest Result",
+    "settings": "Settings",
+    "whatsappNotifications": "WhatsApp Notifications",
+    "whatsappDesc": "Send results via WhatsApp when this agent runs",
+    "schedule": "Schedule",
+    "noSchedule": "No schedule configured",
+    "connection": "Required Connection",
+    "runHistory": "Run History"
   }
 }

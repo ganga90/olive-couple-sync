@@ -86,12 +86,17 @@ function AgentDataBadges({ agentId, data }: { agentId: string; data?: Record<str
 
 function InsightCard({ run }: { run: AgentRun }) {
   const [expanded, setExpanded] = useState(false);
+  const navigate = useNavigate();
+  const { getLocalizedPath } = useLanguage();
   const message = run.result?.message || '';
   const isLong = message.length > 150;
   const iconColorClass = agentColors[run.agent_id] || 'text-stone-600 bg-stone-100';
 
   return (
-    <div className="p-3 rounded-xl bg-accent/30 space-y-1.5">
+    <div
+      className="p-3 rounded-xl bg-accent/30 space-y-1.5 cursor-pointer hover:bg-accent/50 transition-colors"
+      onClick={() => navigate(getLocalizedPath(`/agents/${run.agent_id}`))}
+    >
       <div className="flex items-center gap-2">
         <div className={cn('w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0', iconColorClass)}>
           {agentIconsSmall[run.agent_id] || <Zap className="h-3 w-3" />}
@@ -109,7 +114,7 @@ function InsightCard({ run }: { run: AgentRun }) {
       </p>
       {isLong && (
         <button
-          onClick={() => setExpanded(!expanded)}
+          onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
           className="flex items-center gap-0.5 text-[10px] text-primary"
         >
           {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}

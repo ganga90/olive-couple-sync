@@ -24,6 +24,7 @@ import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
 import BudgetPage from "./pages/Budget";
 import RequestAccessPage from "./pages/RequestAccess";
 import AdminPage from "./pages/Admin";
+import AgentDetail from "./pages/AgentDetail";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider } from "./providers/AuthProvider";
 import { SupabaseCoupleProvider } from "./providers/SupabaseCoupleProvider";
@@ -57,6 +58,7 @@ const AppRoutes = () => (
     <Route path="/onboarding" element={<Onboarding />} />
     <Route path="/welcome" element={<Welcome />} />
     <Route path="/profile" element={<Profile />} />
+    <Route path="/agents/:agentId" element={<AgentDetail />} />
     <Route path="/notes/:id" element={<NoteDetails />} />
     <Route path="/auth" element={<AuthPage />} />
     <Route path="/sign-in" element={<SignInPage />} />
@@ -103,6 +105,7 @@ const App = () => (
                   <Route path="/onboarding" element={<Onboarding />} />
                   <Route path="/welcome" element={<Welcome />} />
                   <Route path="/profile" element={<Profile />} />
+                  <Route path="/agents/:agentId" element={<AgentDetail />} />
                   <Route path="/notes/:id" element={<NoteDetails />} />
                   <Route path="/auth" element={<AuthPage />} />
                   <Route path="/sign-in" element={<SignInPage />} />
