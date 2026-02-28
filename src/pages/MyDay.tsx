@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { PrivacyFilterPills } from '@/components/PrivacyFilterPills';
 import { useDefaultPrivacyFilter } from '@/hooks/useDefaultPrivacyFilter';
 import { EmailTriageReviewDialog } from '@/components/EmailTriageReviewDialog';
+import { AgentInsightsSection } from '@/components/AgentInsightsSection';
 
 // ─── Oura Data Types ──────────────────────────────────────────────────────────
 
@@ -421,6 +422,9 @@ const MyDay = () => {
             </Button>
           </div>
         )}
+
+        {/* ─── Agent Insights ───────────────────────────────────────── */}
+        <AgentInsightsSection />
 
         {/* ─── Oura Health Scores ─────────────────────────────────────── */}
         {ouraLoading ? (

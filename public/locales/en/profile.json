@@ -381,6 +381,14 @@
     "runStarted": "Agent started",
     "runFailed": "Failed to start agent",
     "requiresConnection": "Requires {{connection}} connection",
+    "latestResult": "Latest result",
+    "viewHistory": "History",
+    "whatsappNotify": "WhatsApp",
+    "whatsappEnabled": "WhatsApp notifications enabled",
+    "whatsappDisabled": "WhatsApp notifications disabled",
+    "runHistory": "Run History",
+    "noHistory": "No runs yet",
+    "runCompleted": "Agent completed",
     "schedules": {
       "daily_9am": "Daily at 9:00 AM",
       "daily_10am": "Daily at 10:00 AM",
@@ -438,6 +446,8 @@
     "resilienceLimited": "Limited",
     "resilienceNoData": "No data",
     "minRecovery": "min recovery",
+    "agentInsights": "Agent Insights",
+    "manageAgents": "Manage",
     "briefing": {
       "button": "Get Morning Briefing",
       "loading": "Generating briefing...",

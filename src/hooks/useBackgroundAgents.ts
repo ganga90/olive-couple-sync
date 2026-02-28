@@ -65,6 +65,9 @@ function getScheduleLabelI18n(schedule: string | null, t: (key: string, fallback
   return t(`agents.schedules.${schedule}`, getScheduleLabel(schedule));
 }
 
+// Helper: wait for ms
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export function useBackgroundAgents() {
   const { user } = useAuth();
   const [agents, setAgents] = useState<AgentWithStatus[]>([]);
@@ -181,11 +184,6 @@ export function useBackgroundAgents() {
       setTogglingAgent(skillId);
 
       try {
-        const existing = agents.find((a) => a.skill_id === skillId);
-        const hasActivation = existing?.isEnabled !== undefined && agents.some(
-          (a) => a.skill_id === skillId && a.lastUsedAt !== null
-        );
-
         // Check for existing record
         const { data: existingRow } = await supabase
           .from('olive_user_skills')
@@ -246,9 +244,85 @@ export function useBackgroundAgents() {
     [user?.id]
   );
 
-  const runAgentNow = useCallback(
-    async (skillId: string) => {
+  /**
+   * Toggle WhatsApp notifications for a specific agent.
+   * Merges { whatsapp_notify: boolean } into the existing olive_user_skills.config JSONB.
+   */
+  const updateAgentWhatsAppNotify = useCallback(
+    async (skillId: string, enabled: boolean) => {
       if (!user?.id) return;
+
+      const agent = agents.find((a) => a.skill_id === skillId);
+      const currentConfig = agent?.userConfig || {};
+      const newConfig = { ...currentConfig, whatsapp_notify: enabled };
+
+      // Ensure the user_skills row exists
+      const { data: existingRow } = await supabase
+        .from('olive_user_skills')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('skill_id', skillId)
+        .maybeSingle();
+
+      if (existingRow) {
+        await supabase
+          .from('olive_user_skills')
+          .update({ config: newConfig })
+          .eq('user_id', user.id)
+          .eq('skill_id', skillId);
+      } else {
+        await supabase
+          .from('olive_user_skills')
+          .insert({
+            user_id: user.id,
+            skill_id: skillId,
+            enabled: agent?.isEnabled ?? false,
+            config: newConfig,
+          });
+      }
+
+      // Update local state immediately
+      setAgents((prev) =>
+        prev.map((a) =>
+          a.skill_id === skillId ? { ...a, userConfig: newConfig } : a
+        )
+      );
+    },
+    [user?.id, agents]
+  );
+
+  /**
+   * Fetch run history for a specific agent (last N runs).
+   */
+  const fetchAgentHistory = useCallback(
+    async (agentId: string, limit = 10): Promise<AgentRun[]> => {
+      if (!user?.id) return [];
+
+      const { data, error } = await supabase
+        .from('olive_agent_runs')
+        .select('id, agent_id, status, result, error_message, started_at, completed_at')
+        .eq('user_id', user.id)
+        .eq('agent_id', agentId)
+        .order('started_at', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error('Failed to fetch agent history:', error);
+        return [];
+      }
+
+      return (data || []) as AgentRun[];
+    },
+    [user?.id]
+  );
+
+  /**
+   * Run an agent immediately and poll for completion (3 attempts, 3s interval).
+   * Returns the completed AgentRun if polling succeeds, or null on timeout.
+   */
+  const runAgentNow = useCallback(
+    async (skillId: string): Promise<AgentRun | null> => {
+      if (!user?.id) return null;
 
       const { data: membership } = await supabase
         .from('clerk_couple_members')
@@ -265,8 +339,33 @@ export function useBackgroundAgents() {
         },
       });
 
-      // Refresh to get updated run status
+      // Poll for completion (3 attempts, 3s apart)
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await sleep(3000);
+
+        const { data: latestRun } = await supabase
+          .from('olive_agent_runs')
+          .select('id, agent_id, status, result, error_message, started_at, completed_at')
+          .eq('user_id', user.id)
+          .eq('agent_id', skillId)
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (latestRun && (latestRun.status === 'completed' || latestRun.status === 'failed')) {
+          // Update local state with this run
+          setAgents((prev) =>
+            prev.map((a) =>
+              a.skill_id === skillId ? { ...a, lastRun: latestRun as AgentRun } : a
+            )
+          );
+          return latestRun as AgentRun;
+        }
+      }
+
+      // Polling timed out — fall back to full refresh
       await loadAgents();
+      return null;
     },
     [user?.id, loadAgents]
   );
@@ -281,11 +380,92 @@ export function useBackgroundAgents() {
     totalCount: agents.length,
     toggleAgent,
     updateAgentConfig,
+    updateAgentWhatsAppNotify,
+    fetchAgentHistory,
     runAgentNow,
     refreshAgents: loadAgents,
     getScheduleLabel,
     getScheduleLabelI18n,
   };
+}
+
+/**
+ * Lightweight hook for MyDay — fetches recent meaningful agent insights.
+ * Queries olive_agent_runs directly for completed runs in the last 24h.
+ */
+export function useAgentInsights() {
+  const { user } = useAuth();
+  const [insights, setInsights] = useState<AgentRun[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchInsights = async () => {
+      try {
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+        const { data, error } = await supabase
+          .from('olive_agent_runs')
+          .select('id, agent_id, status, result, error_message, started_at, completed_at')
+          .eq('user_id', user.id)
+          .eq('status', 'completed')
+          .gte('completed_at', since)
+          .order('completed_at', { ascending: false })
+          .limit(20);
+
+        if (error) throw error;
+
+        // Deduplicate: keep only the latest run per agent
+        const seen = new Set<string>();
+        const deduped: AgentRun[] = [];
+        for (const run of data || []) {
+          if (!seen.has(run.agent_id)) {
+            seen.add(run.agent_id);
+            deduped.push(run as AgentRun);
+          }
+        }
+
+        // Filter to runs with meaningful result.message
+        const trivialMessages = [
+          'no stale tasks found',
+          'no upcoming bills',
+          'no bill-related due dates',
+          'oura not connected',
+          'no oura data available',
+          'no tasks scheduled for today',
+          'not enough sleep data',
+          'too soon since last tip',
+          'sleep looks good, no tip needed',
+          'no upcoming dates',
+          'no dates in reminder window',
+          'no messages to send',
+          'no couple linked',
+          'couple members not found',
+          'gmail not connected',
+        ];
+
+        const meaningful = deduped.filter((run) => {
+          const msg = run.result?.message;
+          if (!msg || msg.trim().length === 0) return false;
+          return !trivialMessages.some((t) => msg.toLowerCase().includes(t));
+        });
+
+        setInsights(meaningful);
+      } catch (error) {
+        console.error('Failed to fetch agent insights:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchInsights();
+  }, [user?.id]);
+
+  return { insights, isLoading };
 }
 
 export default useBackgroundAgents;

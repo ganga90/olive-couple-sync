@@ -336,6 +336,14 @@
     "runStarted": "Agente iniciado",
     "runFailed": "Error al iniciar el agente",
     "requiresConnection": "Requiere conexión de {{connection}}",
+    "latestResult": "Último resultado",
+    "viewHistory": "Historial",
+    "whatsappNotify": "WhatsApp",
+    "whatsappEnabled": "Notificaciones WhatsApp activadas",
+    "whatsappDisabled": "Notificaciones WhatsApp desactivadas",
+    "runHistory": "Historial de Ejecuciones",
+    "noHistory": "Sin ejecuciones aún",
+    "runCompleted": "Agente completado",
     "schedules": {
       "daily_9am": "Diario a las 9:00 AM",
       "daily_10am": "Diario a las 10:00 AM",
@@ -438,6 +446,8 @@
     "resilienceLimited": "Limitado",
     "resilienceNoData": "Sin datos",
     "minRecovery": "min recuperación",
+    "agentInsights": "Análisis de Agentes",
+    "manageAgents": "Gestionar",
     "briefing": {
       "button": "Obtener Resumen Matutino",
       "loading": "Generando resumen...",

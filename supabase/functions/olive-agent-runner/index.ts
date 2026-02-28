@@ -665,28 +665,44 @@ serve(async (req: Request) => {
 
       // Send notification if needed
       if (result.notifyUser && result.notificationMessage) {
-        // Queue via WhatsApp gateway
-        await supabase.functions.invoke("whatsapp-gateway", {
-          body: {
-            action: "send",
-            message: {
-              user_id,
-              message_type: "system_alert",
-              content: result.notificationMessage,
-              priority: "normal",
-            },
-          },
-        });
+        // Check per-agent WhatsApp opt-out preference
+        const { data: userSkill } = await supabase
+          .from("olive_user_skills")
+          .select("config")
+          .eq("user_id", user_id)
+          .eq("skill_id", agent_id)
+          .maybeSingle();
 
-        // Also create in-app notification
-        await supabase.from("notifications").insert({
-          user_id,
-          type: "agent_result",
-          title: agent_id.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
-          message: result.notificationMessage.substring(0, 200),
-          metadata: { agent_id, run_id: run!.id },
-          priority: 5,
-        });
+        const whatsAppEnabled = (userSkill?.config as Record<string, unknown>)?.whatsapp_notify !== false;
+
+        if (whatsAppEnabled) {
+          // Queue via WhatsApp gateway
+          await supabase.functions.invoke("whatsapp-gateway", {
+            body: {
+              action: "send",
+              message: {
+                user_id,
+                message_type: "system_alert",
+                content: result.notificationMessage,
+                priority: "normal",
+              },
+            },
+          });
+        }
+
+        // Create in-app notification (guarded — table may not exist)
+        try {
+          await supabase.from("notifications").insert({
+            user_id,
+            type: "agent_result",
+            title: agent_id.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
+            message: result.notificationMessage.substring(0, 200),
+            metadata: { agent_id, run_id: run!.id },
+            priority: 5,
+          });
+        } catch {
+          // notifications table may not exist yet — silently skip
+        }
       }
 
       // For couple sync, also notify partner
