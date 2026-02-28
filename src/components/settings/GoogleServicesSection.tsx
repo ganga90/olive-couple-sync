@@ -57,6 +57,7 @@ function EmailTriagePreferences() {
   const [lookbackDays, setLookbackDays] = useState(3);
   const [autoSave, setAutoSave] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -73,7 +74,10 @@ function EmailTriagePreferences() {
           setLookbackDays(p.triage_lookback_days || 3);
           setAutoSave(p.auto_save_tasks || false);
         }
-      } catch {}
+      } catch (err) {
+        console.error('[EmailTriagePreferences] Failed to load:', err);
+        setError('Failed to load preferences');
+      }
       setLoading(false);
     })();
   }, [userId]);
@@ -81,16 +85,20 @@ function EmailTriagePreferences() {
   const updatePref = async (updates: Record<string, unknown>) => {
     if (!userId) return;
     try {
-      await supabase.functions.invoke('olive-email-mcp', {
+      const res = await supabase.functions.invoke('olive-email-mcp', {
         body: { action: 'update_preferences', user_id: userId, ...updates },
       });
-      toast.success(t('email.preferencesUpdated', 'Preferences updated'));
+      if (res.data?.success) {
+        toast.success(t('email.preferencesUpdated', 'Preferences updated'));
+      } else {
+        toast.error(t('email.preferencesError', 'Failed to update preferences'));
+      }
     } catch {
       toast.error(t('email.preferencesError', 'Failed to update preferences'));
     }
   };
 
-  if (!connected || loading) return null;
+  if (loading || !connected) return null;
 
   return (
     <div className="mt-4 pt-4 border-t border-border/50 space-y-4">
