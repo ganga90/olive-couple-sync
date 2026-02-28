@@ -1212,6 +1212,54 @@ export type Database = {
           },
         ]
       }
+      olive_router_log: {
+        Row: {
+          chat_type: string | null
+          classification_latency_ms: number | null
+          classification_model: string | null
+          classified_intent: string | null
+          confidence: number | null
+          created_at: string | null
+          id: string
+          raw_text: string | null
+          response_model: string | null
+          route_reason: string | null
+          source: string
+          total_latency_ms: number | null
+          user_id: string | null
+        }
+        Insert: {
+          chat_type?: string | null
+          classification_latency_ms?: number | null
+          classification_model?: string | null
+          classified_intent?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          id?: string
+          raw_text?: string | null
+          response_model?: string | null
+          route_reason?: string | null
+          source: string
+          total_latency_ms?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          chat_type?: string | null
+          classification_latency_ms?: number | null
+          classification_model?: string | null
+          classified_intent?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          id?: string
+          raw_text?: string | null
+          response_model?: string | null
+          route_reason?: string | null
+          source?: string
+          total_latency_ms?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       olive_skills: {
         Row: {
           agent_config: Json | null
