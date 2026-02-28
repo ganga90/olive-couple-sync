@@ -53,7 +53,7 @@ function EmailTriagePreferences() {
   const { user } = useAuth();
   const userId = user?.id;
   const [loading, setLoading] = useState(true);
-  const [frequency, setFrequency] = useState('manual');
+  const [frequency, setFrequency] = useState('12h');
   const [lookbackDays, setLookbackDays] = useState(3);
   const [autoSave, setAutoSave] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -69,7 +69,7 @@ function EmailTriagePreferences() {
         if (statusRes.data?.success && statusRes.data?.connected) setConnected(true);
         if (prefRes.data?.success && prefRes.data?.preferences) {
           const p = prefRes.data.preferences;
-          setFrequency(p.triage_frequency || 'manual');
+          setFrequency(p.triage_frequency || '12h');
           setLookbackDays(p.triage_lookback_days || 3);
           setAutoSave(p.auto_save_tasks || false);
         }
@@ -118,6 +118,7 @@ function EmailTriagePreferences() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="manual">{t('email.frequencyManual', 'Manual')}</SelectItem>
+            <SelectItem value="1h">{t('email.frequency1h', 'Every hour')}</SelectItem>
             <SelectItem value="6h">{t('email.frequency6h', 'Every 6 hrs')}</SelectItem>
             <SelectItem value="12h">{t('email.frequency12h', 'Every 12 hrs')}</SelectItem>
             <SelectItem value="24h">{t('email.frequency24h', 'Every 24 hrs')}</SelectItem>

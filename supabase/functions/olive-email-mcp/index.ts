@@ -26,7 +26,7 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const geminiKey = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_AI_API_KEY") || "";
+const geminiKey = Deno.env.get("GEMINI_API") || Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_AI_API_KEY") || "";
 
 // ─── Token Management ────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ interface EmailConnection {
  * Refresh Gmail OAuth token if expired. Returns the current valid access_token.
  */
 async function getValidAccessToken(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   conn: EmailConnection
 ): Promise<string> {
   // Check if token is still valid (with 5-min buffer)
@@ -217,7 +217,7 @@ interface TriageResult {
  * @returns Result including newly processed IDs for state persistence
  */
 async function runEmailTriage(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   userId: string,
   coupleId?: string,
   previouslyProcessedIds: string[] = []
@@ -397,7 +397,7 @@ Example:
  * Preview-only triage: scan emails and return classifications WITHOUT saving.
  */
 async function runEmailTriagePreview(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   userId: string
 ): Promise<{ items: any[]; emails_scanned: number }> {
   const { data: conn, error: connErr } = await supabase
@@ -473,7 +473,7 @@ Respond ONLY with valid JSON array: [{"index":N,"classification":"...","task_sum
  * Confirm and save specific triage items selected by the user.
  */
 async function confirmTriageItems(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   userId: string,
   coupleId: string | undefined,
   items: Array<{ email_id: string; subject: string; from: string; task_summary: string; due_date?: string | null; priority?: string; category?: string }>
@@ -681,7 +681,7 @@ serve(async (req: Request) => {
 
         return jsonResponse({
           success: true,
-          preferences: prefConn || { triage_frequency: 'manual', triage_lookback_days: 3, auto_save_tasks: false },
+          preferences: prefConn || { triage_frequency: '12h', triage_lookback_days: 3, auto_save_tasks: false },
         });
       }
 

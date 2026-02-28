@@ -5448,8 +5448,8 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
   // Use EdgeRuntime.waitUntil() to keep the function alive for background processing
   // while we return 200 immediately to Meta
   // @ts-ignore — EdgeRuntime is a Supabase Deno runtime global
-  if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
-    EdgeRuntime.waitUntil(backgroundProcessing);
+  if (typeof (globalThis as any).EdgeRuntime !== 'undefined' && (globalThis as any).EdgeRuntime.waitUntil) {
+    (globalThis as any).EdgeRuntime.waitUntil(backgroundProcessing);
   }
 
   // Return 200 immediately — Meta gets its response in <100ms
