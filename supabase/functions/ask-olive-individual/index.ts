@@ -266,6 +266,153 @@ interface ActionResult {
   details?: Record<string, any>;
 }
 
+// ============================================================================
+// WEB SESSION STATE MANAGEMENT
+// Mirrors WhatsApp's session context for ordinal/pronoun resolution
+// ============================================================================
+
+interface WebSessionContext {
+  last_referenced_entity?: {
+    type: 'task' | 'event';
+    id: string;
+    summary: string;
+    timestamp: string;
+  };
+  last_displayed_list?: Array<{ id: string; summary: string; position: number }>;
+  list_displayed_at?: string;
+}
+
+async function getWebSession(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<{ id: string; context: WebSessionContext }> {
+  const { data } = await supabase
+    .from('olive_gateway_sessions')
+    .select('id, conversation_context')
+    .eq('user_id', userId)
+    .eq('channel', 'web')
+    .eq('is_active', true)
+    .order('last_activity', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (data) {
+    return { id: data.id, context: (data.conversation_context || {}) as WebSessionContext };
+  }
+
+  // Create a new web session
+  const { data: newSession } = await supabase
+    .from('olive_gateway_sessions')
+    .insert({ user_id: userId, channel: 'web', is_active: true, conversation_context: {} })
+    .select('id')
+    .single();
+
+  return { id: newSession?.id || '', context: {} };
+}
+
+async function updateWebSession(
+  supabase: SupabaseClient,
+  userId: string,
+  contextUpdate: Partial<WebSessionContext>
+): Promise<void> {
+  try {
+    const session = await getWebSession(supabase, userId);
+    const merged = { ...session.context, ...contextUpdate };
+
+    await supabase
+      .from('olive_gateway_sessions')
+      .update({
+        conversation_context: merged,
+        last_activity: new Date().toISOString(),
+      })
+      .eq('id', session.id);
+  } catch (err) {
+    console.warn('[WebSession] Update error (non-blocking):', err);
+  }
+}
+
+async function saveWebReferencedEntity(
+  supabase: SupabaseClient,
+  userId: string,
+  task: { id: string; summary: string } | null,
+  displayedList?: Array<{ id: string; summary: string }>
+): Promise<void> {
+  const update: Partial<WebSessionContext> = {};
+
+  if (task) {
+    update.last_referenced_entity = {
+      type: 'task',
+      id: task.id,
+      summary: task.summary,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  if (displayedList && displayedList.length > 0) {
+    update.last_displayed_list = displayedList.map((t, i) => ({
+      id: t.id,
+      summary: t.summary,
+      position: i + 1,
+    }));
+    update.list_displayed_at = new Date().toISOString();
+  }
+
+  if (Object.keys(update).length > 0) {
+    await updateWebSession(supabase, userId, update);
+  }
+}
+
+// ============================================================================
+// ORDINAL RESOLUTION for web chat
+// ============================================================================
+
+const ORDINAL_PATTERNS = [
+  /(?:the\s+)?(first|second|third|fourth|fifth|sixth|seventh|eighth|1st|2nd|3rd|4th|5th|6th|7th|8th)\s*(?:one|task|item)?/i,
+  /(?:#|number\s+|no\.?\s*)(\d+)/i,
+  // Italian ordinals
+  /(?:il\s+)?(primo|secondo|terzo|quarto|quinto|sesto|settimo|ottavo)\s*(?:elemento|compito)?/i,
+  // Spanish ordinals
+  /(?:el\s+)?(primero|segundo|tercero|cuarto|quinto|sexto|séptimo|octavo)\s*(?:elemento|tarea)?/i,
+];
+
+const ORDINAL_MAP: Record<string, number> = {
+  first: 0, second: 1, third: 2, fourth: 3, fifth: 4, sixth: 5, seventh: 6, eighth: 7,
+  '1st': 0, '2nd': 1, '3rd': 2, '4th': 3, '5th': 4, '6th': 5, '7th': 6, '8th': 7,
+  // Italian
+  primo: 0, secondo: 1, terzo: 2, quarto: 3, quinto: 4, sesto: 5, settimo: 6, ottavo: 7,
+  // Spanish
+  primero: 0, segundo_es: 1, tercero: 2, cuarto_es: 3, quinto_es: 4, sexto_es: 5, séptimo: 6, octavo: 7,
+};
+
+function resolveOrdinalIndex(message: string): number {
+  for (const pat of ORDINAL_PATTERNS) {
+    const m = message.match(pat);
+    if (!m) continue;
+    const val = m[1].toLowerCase();
+    if (ORDINAL_MAP[val] !== undefined) return ORDINAL_MAP[val];
+    // Handle Spanish "segundo" which conflicts with Italian
+    if (val === 'segundo') return 1;
+    if (val === 'cuarto') return 3;
+    if (val === 'quinto') return 4;
+    const numMatch = val.match(/\d+/);
+    if (numMatch) return parseInt(numMatch[0]) - 1;
+  }
+  return -1;
+}
+
+// ============================================================================
+// PRONOUN DETECTION for "it", "that", "lo", "quello", "eso"
+// ============================================================================
+
+const PRONOUN_PATTERNS = [
+  /^(?:complete|done|finish|mark|delete|remove|cancel|remind)\s+(?:it|that|this|lo|quello|questa?|eso|esto|esa)$/i,
+  /^(?:it|that|this|lo|quello|questa?|eso|esto|esa)(?:\s+(?:is\s+)?(?:done|finished|completed|completato|hecho|listo))?$/i,
+];
+
+function isPronounRef(message: string): boolean {
+  return PRONOUN_PATTERNS.some(p => p.test(message.trim()));
+}
+
 // Relative reference patterns for "last task", "latest one", etc.
 const RELATIVE_REF_PATTERNS = [
   /^(?:the\s+)?(?:last|latest|most\s+recent|previous|newest|recent)\s+(?:task|one|item|note|thing)$/i,
@@ -284,7 +431,8 @@ async function executeTaskAction(
   supabase: SupabaseClient,
   intent: ClassifiedIntent,
   userId: string,
-  coupleId: string | null
+  coupleId: string | null,
+  userMessage: string = ''
 ): Promise<ActionResult | null> {
   const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind'];
     if (!taskActions.includes(intent.intent)) return null;
@@ -295,8 +443,53 @@ async function executeTaskAction(
     let taskId = intent.target_task_id;
     let taskSummary = intent.target_task_name;
 
-    // Check for relative references first ("last task", "latest one", etc.)
-    if (taskSummary && isRelativeRef(taskSummary)) {
+    // ── 1. ORDINAL RESOLUTION: "the second one", "number 2", "#3" ──
+    if (!taskId) {
+      const ordinalIndex = resolveOrdinalIndex(userMessage);
+      if (ordinalIndex >= 0) {
+        console.log(`[executeTaskAction] Detected ordinal reference: index=${ordinalIndex}`);
+        const session = await getWebSession(supabase, userId);
+        if (session.context.last_displayed_list && session.context.list_displayed_at) {
+          const listAge = Date.now() - new Date(session.context.list_displayed_at).getTime();
+          if (listAge < 15 * 60 * 1000) { // 15 min TTL
+            if (ordinalIndex < session.context.last_displayed_list.length) {
+              const listItem = session.context.last_displayed_list[ordinalIndex];
+              const { data: listTask } = await supabase
+                .from('clerk_notes')
+                .select('id, summary, due_date, priority')
+                .eq('id', listItem.id)
+                .maybeSingle();
+              if (listTask) {
+                taskId = listTask.id;
+                taskSummary = listTask.summary;
+                console.log(`[executeTaskAction] Resolved ordinal #${ordinalIndex + 1} to: ${taskSummary}`);
+              }
+            } else {
+              console.log(`[executeTaskAction] Ordinal #${ordinalIndex + 1} out of range (list has ${session.context.last_displayed_list.length} items)`);
+            }
+          } else {
+            console.log('[executeTaskAction] Displayed list expired (>15 min)');
+          }
+        }
+      }
+    }
+
+    // ── 2. PRONOUN RESOLUTION: "it", "that", "lo", "quello", "eso" ──
+    if (!taskId && isPronounRef(userMessage)) {
+      console.log('[executeTaskAction] Detected pronoun reference:', userMessage);
+      const session = await getWebSession(supabase, userId);
+      if (session.context.last_referenced_entity) {
+        const entityAge = Date.now() - new Date(session.context.last_referenced_entity.timestamp).getTime();
+        if (entityAge < 10 * 60 * 1000) { // 10 min TTL
+          taskId = session.context.last_referenced_entity.id;
+          taskSummary = session.context.last_referenced_entity.summary;
+          console.log(`[executeTaskAction] Resolved pronoun to: ${taskSummary}`);
+        }
+      }
+    }
+
+    // ── 3. RELATIVE REFERENCE: "last task", "latest one" ──
+    if (!taskId && taskSummary && isRelativeRef(taskSummary)) {
       console.log('[executeTaskAction] Detected relative reference:', taskSummary);
       let query = supabase
         .from('clerk_notes')
@@ -319,8 +512,8 @@ async function executeTaskAction(
       }
     }
 
+    // ── 4. NAME SEARCH: semantic match by summary ──
     if (!taskId && taskSummary && !isRelativeRef(taskSummary)) {
-      // Search by name if no UUID provided
       const { data: tasks } = await supabase
         .from('clerk_notes')
         .select('id, summary, due_date, priority')
@@ -837,8 +1030,23 @@ serve(async (req) => {
           const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind'];
           if (taskActions.includes(aiResult.intent)) {
             console.log(`[Ask Olive Individual] Task action detected: ${aiResult.intent} (confidence: ${aiResult.confidence})`);
-            actionResult = await executeTaskAction(supabase, aiResult, actualUserId, actualCoupleId);
+            actionResult = await executeTaskAction(supabase, aiResult, actualUserId, actualCoupleId, actualMessage);
+
+            // Save the referenced entity to web session for future pronoun/ordinal resolution
+            if (actionResult?.success && actionResult.task_id && actionResult.task_summary) {
+              saveWebReferencedEntity(supabase, actualUserId, {
+                id: actionResult.task_id,
+                summary: actionResult.task_summary,
+              }).catch(err => console.warn('[WebSession] Non-blocking save error:', err));
+            }
           }
+        }
+
+        // For search/contextual_ask intents, save the displayed task list for ordinal resolution
+        if (aiResult && (aiResult.intent === 'search' || aiResult.intent === 'contextual_ask') && activeTasks.length > 0) {
+          const displayedTasks = activeTasks.slice(0, 10);
+          saveWebReferencedEntity(supabase, actualUserId, displayedTasks[0], displayedTasks)
+            .catch(err => console.warn('[WebSession] Non-blocking list save error:', err));
         }
       } catch (err) {
         console.warn('[Ask Olive Individual] Intent classification error (non-fatal):', err);
