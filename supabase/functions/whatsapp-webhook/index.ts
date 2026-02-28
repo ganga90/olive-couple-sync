@@ -2960,7 +2960,10 @@ serve(async (req) => {
         
         const moreText = urgentTasks.length > 8 ? `\n\n...and ${urgentTasks.length - 8} more urgent tasks` : '';
         
-        return reply(`🔥 ${urgentTasks.length} Urgent Task${urgentTasks.length === 1 ? '' : 's'}:\n\n${urgentList}${moreText}\n\n🔗 Manage: https://witholive.app`);
+        const urgentResponse = `🔥 ${urgentTasks.length} Urgent Task${urgentTasks.length === 1 ? '' : 's'}:\n\n${urgentList}${moreText}\n\n🔗 Manage: https://witholive.app`;
+        const displayedUrgent = urgentTasks.slice(0, 8);
+        await saveReferencedEntity(displayedUrgent[0], urgentResponse, displayedUrgent.map(t => ({ id: t.id, summary: t.summary })));
+        return reply(urgentResponse);
       }
       
       if (queryType === 'today') {
@@ -2975,7 +2978,10 @@ serve(async (req) => {
         
         const moreText = dueTodayTasks.length > 8 ? `\n\n...and ${dueTodayTasks.length - 8} more` : '';
         
-        return reply(`📅 ${dueTodayTasks.length} Task${dueTodayTasks.length === 1 ? '' : 's'} Due Today:\n\n${todayList}${moreText}\n\n🔗 Manage: https://witholive.app`);
+        const todayResponse = `📅 ${dueTodayTasks.length} Task${dueTodayTasks.length === 1 ? '' : 's'} Due Today:\n\n${todayList}${moreText}\n\n🔗 Manage: https://witholive.app`;
+        const displayedToday = dueTodayTasks.slice(0, 8);
+        await saveReferencedEntity(displayedToday[0], todayResponse, displayedToday.map(t => ({ id: t.id, summary: t.summary })));
+        return reply(todayResponse);
       }
       
       if (queryType === 'tomorrow') {
@@ -3043,6 +3049,10 @@ serve(async (req) => {
         
         response += '\n\n🔗 Manage: https://witholive.app';
         
+        const displayedTomorrow = dueTomorrowTasks.slice(0, 8);
+        if (displayedTomorrow.length > 0) {
+          await saveReferencedEntity(displayedTomorrow[0], response, displayedTomorrow.map(t => ({ id: t.id, summary: t.summary })));
+        }
         return reply(response);
       }
       
@@ -3121,6 +3131,10 @@ serve(async (req) => {
         
         response += '\n\n🔗 Manage: https://witholive.app';
         
+        const displayedWeek = dueThisWeekTasks.slice(0, 10);
+        if (displayedWeek.length > 0) {
+          await saveReferencedEntity(displayedWeek[0], response, displayedWeek.map(t => ({ id: t.id, summary: t.summary })));
+        }
         return reply(response);
       }
       
@@ -3163,7 +3177,10 @@ serve(async (req) => {
         
         const moreText = overdueTasks.length > 8 ? `\n\n...and ${overdueTasks.length - 8} more` : '';
         
-        return reply(`⚠️ ${overdueTasks.length} Overdue Task${overdueTasks.length === 1 ? '' : 's'}:\n\n${overdueList}${moreText}\n\n🔗 Manage: https://witholive.app`);
+        const overdueResponse = `⚠️ ${overdueTasks.length} Overdue Task${overdueTasks.length === 1 ? '' : 's'}:\n\n${overdueList}${moreText}\n\n🔗 Manage: https://witholive.app`;
+        const displayedOverdue = overdueTasks.slice(0, 8);
+        await saveReferencedEntity(displayedOverdue[0], overdueResponse, displayedOverdue.map(t => ({ id: t.id, summary: t.summary })));
+        return reply(overdueResponse);
       }
 
       // Default: General task summary
