@@ -813,6 +813,8 @@ serve(async (req: Request) => {
 
       // Send notification if needed
       if (result.notifyUser && result.notificationMessage) {
+        console.log(`[Agent Runner] notifyUser=true for ${agent_id}, sending WhatsApp...`);
+        
         // Check per-agent WhatsApp opt-out preference
         const { data: userSkill } = await supabase
           .from("olive_user_skills")
@@ -822,20 +824,31 @@ serve(async (req: Request) => {
           .maybeSingle();
 
         const whatsAppEnabled = (userSkill?.config as Record<string, unknown>)?.whatsapp_notify !== false;
+        console.log(`[Agent Runner] WhatsApp enabled for ${agent_id}: ${whatsAppEnabled}`);
 
         if (whatsAppEnabled) {
           // Queue via WhatsApp gateway (using agent_insight template for rich content)
-          await supabase.functions.invoke("whatsapp-gateway", {
-            body: {
-              action: "send",
-              message: {
-                user_id,
-                message_type: "agent_insight",
-                content: result.notificationMessage,
-                priority: "normal",
+          try {
+            const { data: gwData, error: gwError } = await supabase.functions.invoke("whatsapp-gateway", {
+              body: {
+                action: "send",
+                message: {
+                  user_id,
+                  message_type: "agent_insight",
+                  content: result.notificationMessage,
+                  priority: "normal",
+                },
               },
-            },
-          });
+            });
+            
+            if (gwError) {
+              console.error(`[Agent Runner] WhatsApp gateway invocation error for ${agent_id}:`, gwError);
+            } else {
+              console.log(`[Agent Runner] WhatsApp gateway result for ${agent_id}:`, JSON.stringify(gwData));
+            }
+          } catch (gwCatchErr) {
+            console.error(`[Agent Runner] WhatsApp gateway threw for ${agent_id}:`, gwCatchErr);
+          }
         }
 
         // Create in-app notification (guarded — table may not exist)

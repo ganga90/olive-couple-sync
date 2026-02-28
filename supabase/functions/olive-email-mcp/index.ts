@@ -251,6 +251,8 @@ async function runEmailTriage(
   }
 
   console.log(`[email-mcp] Found ${emails.length} unread primary emails for user ${userId}`);
+  // DEBUG: Log email subjects for debugging triage accuracy
+  emails.forEach((e, i) => console.log(`[email-mcp] Email ${i+1}: "${e.subject}" from ${e.from}`));
 
   // 4. AI Triage via Gemini
   const genai = new GoogleGenAI({ apiKey: geminiKey });
@@ -264,44 +266,75 @@ async function runEmailTriage(
     contents: `You are an expert email triage agent for a couples productivity app called Olive. Your job is to find ACTIONABLE items hidden in emails.
 
 Analyze each email and classify it:
-- ACTION_REQUIRED: Contains ANY of these: a task, deadline, request, appointment, payment, RSVP, follow-up needed, decision required, someone waiting for a response, a booking/reservation to confirm, a document to review/sign, a meeting to prepare for
+- ACTION_REQUIRED: Contains ANY of these: a task, deadline, request, appointment, payment, RSVP, follow-up needed, decision required, someone waiting for a response, a booking/reservation to confirm, a document to review/sign, a meeting to prepare for, a medical result to review, an insurance/contract matter, a job/gig opportunity, a forwarded item needing attention
 - INFORMATIONAL: Useful information but genuinely no action needed (e.g., order shipped, account statement, read-only updates)
 - SKIP: Marketing, promotional, automated newsletters, spam, social media notifications
 
 IMPORTANT: Be AGGRESSIVE about finding action items. When in doubt, classify as ACTION_REQUIRED. Real humans miss tasks in emails all the time — your job is to catch them.
 
 For ACTION_REQUIRED emails, extract:
-- task_summary: A clear imperative 1-line task (e.g., "Reply to landlord about lease renewal", "Pay electric bill $127", "RSVP to Sarah's dinner party by Friday", "Review and sign attached contract")
-- due_date: If ANY deadline, date, or time reference is mentioned, extract it in YYYY-MM-DD format. Look for words like "by", "before", "due", "deadline", "this week", "tomorrow", "Friday", etc. Use today's date ${new Date().toISOString().split("T")[0]} as reference. If no date, use null.
-- priority: "high" if urgent/time-sensitive/financial, "medium" for normal follow-ups, "low" for nice-to-have
+- task_summary: A clear imperative 1-line task (e.g., "Reply to landlord about lease renewal", "Review insurance contract from Redpiso", "Check new test results in MyChart", "RSVP to Sarah's dinner by Friday")
+- due_date: If ANY deadline, date, or time reference is mentioned, extract it in YYYY-MM-DD format. Use today's date ${new Date().toISOString().split("T")[0]} as reference. If no date, use null.
+- priority: "high" if urgent/time-sensitive/financial/medical, "medium" for normal follow-ups, "low" for nice-to-have
 - category: One of: bills, work, personal, household, health, shopping, general
 
 Emails:
 ${emailList}
 
-Respond ONLY with a valid JSON array. Each element must have:
-{ "index": number, "classification": "ACTION_REQUIRED"|"INFORMATIONAL"|"SKIP", "task_summary": string|null, "due_date": string|null, "priority": string|null, "category": string|null }`,
-    config: { temperature: 0.1, maxOutputTokens: 2000 },
+Respond ONLY with a valid JSON array (no markdown, no code blocks). Keep each entry compact. Each element:
+{"index":N,"classification":"ACTION_REQUIRED"|"INFORMATIONAL"|"SKIP","task_summary":"..."|null,"due_date":"YYYY-MM-DD"|null,"priority":"high"|"medium"|"low"|null,"category":"..."|null}`,
+    config: { temperature: 0.1, maxOutputTokens: 4096 },
   });
 
   const responseText = (response.text || "").trim();
 
+  // DEBUG: Log raw AI response so we can see classifications
+  console.log(`[email-mcp] Gemini raw response (first 1500 chars):`, responseText.substring(0, 1500));
+
   // Parse AI response
   let triageResults: TriageResult[] = [];
   try {
-    // Extract JSON array from response (handle markdown code blocks)
-    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+    // Strip markdown code blocks if present
+    let cleanJson = responseText.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+    
+    // Try to extract JSON array
+    const jsonMatch = cleanJson.match(/\[[\s\S]*\]/);
     if (jsonMatch) {
       triageResults = JSON.parse(jsonMatch[0]);
+    } else {
+      // JSON might be truncated (no closing ]). Try to fix it.
+      const arrayStart = cleanJson.indexOf("[");
+      if (arrayStart >= 0) {
+        let partial = cleanJson.substring(arrayStart);
+        // Find the last complete object (ends with })
+        const lastBrace = partial.lastIndexOf("}");
+        if (lastBrace > 0) {
+          partial = partial.substring(0, lastBrace + 1) + "]";
+          try {
+            triageResults = JSON.parse(partial);
+            console.log(`[email-mcp] Recovered ${triageResults.length} results from truncated JSON`);
+          } catch {
+            console.error("[email-mcp] Could not recover truncated JSON");
+          }
+        }
+      }
+      if (triageResults.length === 0) {
+        console.error("[email-mcp] No JSON array found in response");
+      }
     }
   } catch (parseErr) {
     console.error("[email-mcp] Failed to parse Gemini response:", parseErr, "Raw:", responseText.substring(0, 500));
-    // Fallback: treat all as informational
     triageResults = emails.map((_, i) => ({
       index: i + 1,
       classification: "INFORMATIONAL" as const,
     }));
   }
+
+  // DEBUG: Log classification summary
+  const actionCount = triageResults.filter((t: any) => t.classification === "ACTION_REQUIRED").length;
+  const infoCount = triageResults.filter((t: any) => t.classification === "INFORMATIONAL").length;
+  const skipCount = triageResults.filter((t: any) => t.classification === "SKIP").length;
+  console.log(`[email-mcp] Triage classifications: ${actionCount} ACTION, ${infoCount} INFO, ${skipCount} SKIP out of ${triageResults.length} results`);
 
   // 5. Create tasks for ACTION_REQUIRED items
   let tasksCreated = 0;
