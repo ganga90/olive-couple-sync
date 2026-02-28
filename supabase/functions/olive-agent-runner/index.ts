@@ -33,6 +33,108 @@ interface AgentResult {
   notificationMessage?: string;
 }
 
+// ─── Trivial results that should NOT be persisted to memory ────
+const TRIVIAL_MESSAGES = [
+  "no stale tasks found",
+  "no upcoming bills",
+  "no bill-related due dates",
+  "oura not connected",
+  "no oura data available",
+  "no tasks scheduled for today",
+  "not enough sleep data",
+  "too soon since last tip",
+  "sleep looks good, no tip needed",
+  "no upcoming dates",
+  "no dates in reminder window",
+  "no messages to send",
+  "no couple linked",
+  "couple members not found",
+  "gmail not connected",
+  "email triage set to manual",
+  "could not fetch dates",
+];
+
+function isTrivialResult(message: string): boolean {
+  const lower = (message || "").toLowerCase().trim();
+  return TRIVIAL_MESSAGES.some((t) => lower.startsWith(t)) || lower.startsWith("too soon (");
+}
+
+// ─── Persist Agent Result to Memory Systems ─────────────────────
+async function persistAgentResultToMemory(
+  supabase: ReturnType<typeof createClient<any>>,
+  userId: string,
+  agentId: string,
+  result: AgentResult
+): Promise<void> {
+  // Skip trivial/non-meaningful results
+  if (!result.success || !result.message || isTrivialResult(result.message)) {
+    return;
+  }
+
+  const agentDisplayName = agentId
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c: string) => c.toUpperCase());
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" });
+  const truncatedMessage = result.message.substring(0, 1000);
+
+  // 1. Append to daily log (olive_memory_files via append_to_daily_log RPC)
+  try {
+    const logContent = `### Agent: ${agentDisplayName}\n${truncatedMessage}`;
+    await supabase.rpc("append_to_daily_log", {
+      p_user_id: userId,
+      p_source: `agent:${agentId}`,
+      p_content: logContent,
+    });
+    console.log(`[Agent Memory] Appended daily log for ${agentId}`);
+  } catch (err) {
+    console.error(`[Agent Memory] append_to_daily_log failed for ${agentId}:`, err);
+  }
+
+  // 2. Upsert into user_memories for immediate webhook access
+  try {
+    const memoryTitle = `${agentDisplayName} - ${dateStr}`;
+    const { error: memErr } = await supabase
+      .from("user_memories")
+      .upsert(
+        {
+          user_id: userId,
+          title: memoryTitle,
+          content: truncatedMessage,
+          category: "agent_insight",
+          importance: result.notifyUser ? 4 : 2,
+          metadata: {
+            agent_id: agentId,
+            data: result.data || {},
+            generated_at: now.toISOString(),
+          },
+          is_active: true,
+        },
+        { onConflict: "user_id,title" }
+      );
+    if (memErr) {
+      // Fallback: try plain insert if upsert fails (no unique index yet)
+      console.warn(`[Agent Memory] upsert failed, trying insert: ${memErr.message}`);
+      await supabase.from("user_memories").insert({
+        user_id: userId,
+        title: memoryTitle,
+        content: truncatedMessage,
+        category: "agent_insight",
+        importance: result.notifyUser ? 4 : 2,
+        metadata: {
+          agent_id: agentId,
+          data: result.data || {},
+          generated_at: now.toISOString(),
+        },
+        is_active: true,
+      });
+    }
+    console.log(`[Agent Memory] Saved user_memory for ${agentId}`);
+  } catch (err) {
+    console.error(`[Agent Memory] user_memories insert failed for ${agentId}:`, err);
+  }
+}
+
 // ─── Agent Dispatcher ───────────────────────────────────────────
 async function runAgent(ctx: AgentContext): Promise<AgentResult> {
   switch (ctx.agentId) {
@@ -107,10 +209,16 @@ End with a motivational one-liner.`,
 
   const analysis = response.text || "Could not analyze tasks.";
 
+  // Build richer data for frontend rendering
+  const tasksSummary = staleTasks.map((t) => {
+    const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60 * 24));
+    return { id: t.id, summary: t.summary, ageDays: age, priority: t.priority || "none" };
+  });
+
   return {
     success: true,
     message: analysis,
-    data: { tasksAnalyzed: staleTasks.length },
+    data: { tasksAnalyzed: staleTasks.length, tasks: tasksSummary },
     notifyUser: true,
     notificationMessage: analysis,
   };
@@ -168,12 +276,24 @@ async function runSmartBillReminder(ctx: AgentContext): Promise<AgentResult> {
   if (overdue.length > 0) message += `🔴 OVERDUE:\n${overdue.map((b) => `• ${b}`).join("\n")}\n\n`;
   if (dueToday.length > 0) message += `🟡 DUE TODAY:\n${dueToday.map((b) => `• ${b}`).join("\n")}\n\n`;
   if (dueSoon.length > 0) message += `🟢 Coming up:\n${dueSoon.map((b) => `• ${b}`).join("\n")}\n\n`;
-  message += 'Reply "show bills" to see all details.';
+  message += 'Open Olive to see bill details: https://witholive.app';
+
+  // Build richer data for frontend rendering
+  const billsData = billNotes.map((bill) => {
+    const dueDate = new Date(bill.due_date);
+    const daysUntil = Math.floor((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    return {
+      summary: bill.summary,
+      due_date: bill.due_date,
+      daysUntil,
+      urgency: daysUntil < 0 ? "overdue" : daysUntil === 0 ? "today" : "upcoming",
+    };
+  });
 
   return {
     success: true,
     message,
-    data: { overdue: overdue.length, dueToday: dueToday.length, dueSoon: dueSoon.length },
+    data: { overdue: overdue.length, dueToday: dueToday.length, dueSoon: dueSoon.length, bills: billsData },
     notifyUser: true,
     notificationMessage: message,
   };
@@ -247,11 +367,13 @@ Based on their energy level, suggest the optimal order to tackle these tasks. Ke
     config: { temperature: 0.3, maxOutputTokens: 400 },
   });
 
+  const energyMessage = response.text || "";
   return {
     success: true,
-    message: response.text || "",
-    data: { readiness: latestOura.readiness_score, taskCount: tasks.length },
-    notifyUser: false, // This appends to morning briefing, not separate message
+    message: energyMessage,
+    data: { readiness: latestOura.readiness_score, sleepScore: latestOura.sleep_score, taskCount: tasks.length },
+    notifyUser: true,
+    notificationMessage: energyMessage,
   };
 }
 
@@ -414,12 +536,30 @@ Keep it warm and personal.`,
     return { success: true, message: "No messages to send", notifyUser: false };
   }
 
+  // Richer data for frontend
+  const eventsData = matchingDates.map((d: { event_name: string; event_date: string; days_until: number }) => ({
+    name: d.event_name,
+    date: d.event_date,
+    daysUntil: d.days_until,
+  }));
+
+  // State cleanup: prune suggestions for events more than 60 days old (Phase 3d)
+  const prunedState: Record<string, string[]> = {};
+  for (const [key, val] of Object.entries(newState)) {
+    const datePart = key.split("_").pop() || "";
+    const eventDate = new Date(datePart);
+    if (isNaN(eventDate.getTime()) || (Date.now() - eventDate.getTime()) < 60 * 86400000) {
+      prunedState[key] = val;
+    }
+  }
+
   return {
     success: true,
     message: messages.join("\n\n"),
+    data: { events: eventsData },
     notifyUser: true,
     notificationMessage: messages.join("\n\n"),
-    state: { suggestions: newState },
+    state: { suggestions: prunedState },
   };
 }
 
@@ -582,7 +722,8 @@ async function runEmailTriageAgent(ctx: AgentContext): Promise<AgentResult> {
       last_triage: new Date().toISOString(),
       total_tasks_created: ((ctx.previousState.total_tasks_created as number) || 0) + tasksCreated,
       total_emails_processed: ((ctx.previousState.total_emails_processed as number) || 0) + emailsProcessed,
-      processed_ids: data.processed_ids || previouslyProcessedIds,
+      // Cap processed_ids at 500 to prevent unbounded state growth (Phase 3d)
+      processed_ids: (data.processed_ids || previouslyProcessedIds).slice(-500),
     },
   };
 }
@@ -663,6 +804,9 @@ serve(async (req: Request) => {
         })
         .eq("id", run!.id);
 
+      // Persist meaningful results to memory systems (Phase 1)
+      await persistAgentResultToMemory(supabase, user_id, agent_id, result);
+
       // Send notification if needed
       if (result.notifyUser && result.notificationMessage) {
         // Check per-agent WhatsApp opt-out preference
@@ -676,13 +820,13 @@ serve(async (req: Request) => {
         const whatsAppEnabled = (userSkill?.config as Record<string, unknown>)?.whatsapp_notify !== false;
 
         if (whatsAppEnabled) {
-          // Queue via WhatsApp gateway
+          // Queue via WhatsApp gateway (using agent_insight template for rich content)
           await supabase.functions.invoke("whatsapp-gateway", {
             body: {
               action: "send",
               message: {
                 user_id,
-                message_type: "system_alert",
+                message_type: "agent_insight",
                 content: result.notificationMessage,
                 priority: "normal",
               },
@@ -715,7 +859,7 @@ serve(async (req: Request) => {
               action: "send",
               message: {
                 user_id: partnerId,
-                message_type: "system_alert",
+                message_type: "agent_insight",
                 content: result.notificationMessage,
                 priority: "normal",
               },

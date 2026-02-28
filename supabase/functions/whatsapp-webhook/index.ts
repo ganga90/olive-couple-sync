@@ -543,7 +543,7 @@ You are NOT a rigid command parser. You understand natural, conversational langu
 - "remind": User wants a reminder — EITHER on an existing task OR creating a new one with a reminder. Examples: "remind me at 5 PM" (existing context), "remind me about this tomorrow" (existing task), "Moonswatch - remind me to check it out on March 6th" (NEW item + reminder), "remind me to call the dentist next Monday" (NEW task + reminder). Use target_task_name for the subject/task name and due_date_expression for the time. The system will auto-create a new task if no existing one matches.
 - "expense": User wants to log spending (e.g., "spent $45 on dinner", "$20 gas")
 - "chat": User wants conversational interaction — briefings, motivation, planning, greetings (e.g., "good morning", "how am I doing?", "summarize my week", "what should I focus on?", "help me plan my day")
-- "contextual_ask": User is asking a question about their saved data or wants AI-powered advice (e.g., "when is the dentist?", "what restaurants did I save?", "any date ideas?", "what books are on my list?")
+- "contextual_ask": User is asking a question about their saved data, agent results, or wants AI-powered advice (e.g., "when is the dentist?", "what restaurants did I save?", "any date ideas?", "what books are on my list?", "what did my agents find?", "any agent insights?", "what did olive analyze?")
 - "merge": User wants to merge duplicate tasks (exactly "merge")
 - "partner_message": User wants to send a message TO their partner via Olive (e.g., "remind Marco to buy lemons", "tell Almu to pick up the kids", "ask partner to call the dentist", "let Marcus know dinner is ready", "dile a Marco que compre limones", "ricorda a Marco di comprare i limoni"). The user is asking YOU to relay a message or task to their partner. Set partner_message_content to the message/task for the partner, and partner_action to the type (remind/tell/ask/notify).
 
@@ -4132,7 +4132,40 @@ Description: "${description}"`;
           memoryContext += `- ${m.title}: ${m.content}\n`;
         });
       }
-      
+
+      // Fetch recent agent insights (last 48h)
+      let agentInsightsContext = '';
+      try {
+        const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+        const { data: agentRuns } = await supabase
+          .from('olive_agent_runs')
+          .select('agent_id, result, completed_at')
+          .eq('user_id', userId)
+          .eq('status', 'completed')
+          .gte('completed_at', fortyEightHoursAgo)
+          .order('completed_at', { ascending: false })
+          .limit(10);
+
+        if (agentRuns && agentRuns.length > 0) {
+          const seen = new Set<string>();
+          const insights: string[] = [];
+          const trivialPrefixes = ['no stale tasks', 'no upcoming bills', 'oura not connected', 'no oura data', 'no tasks scheduled', 'gmail not connected', 'email triage set to manual', 'too soon', 'sleep looks good', 'no upcoming dates', 'no couple linked'];
+          for (const run of agentRuns) {
+            if (seen.has(run.agent_id)) continue;
+            seen.add(run.agent_id);
+            const msg = (run.result?.message || '').trim();
+            if (!msg || trivialPrefixes.some(p => msg.toLowerCase().startsWith(p))) continue;
+            const agentName = run.agent_id.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+            insights.push(`- ${agentName}: ${msg.substring(0, 300)}`);
+          }
+          if (insights.length > 0) {
+            agentInsightsContext = '\n## RECENT AGENT INSIGHTS (Background AI analysis):\n' + insights.join('\n') + '\n';
+          }
+        }
+      } catch (agentErr) {
+        console.warn('[WhatsApp] Agent insights fetch error (non-blocking):', agentErr);
+      }
+
       // Build conversation history context for pronoun resolution
       let conversationHistoryContext = '';
       if (sessionContext.conversation_history && sessionContext.conversation_history.length > 0) {
@@ -4159,6 +4192,7 @@ CRITICAL INSTRUCTIONS:
 
 ${savedItemsContext}
 ${memoryContext}
+${agentInsightsContext}
 ${conversationHistoryContext}
 ${entityContext}
 
@@ -4688,11 +4722,46 @@ IMPORTANT: Use the above skill knowledge to enhance your response with domain-sp
       }
       
       // ================================================================
+      // RECENT AGENT INSIGHTS (for CHAT handler)
+      // ================================================================
+      let chatAgentInsightsContext = '';
+      try {
+        const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+        const { data: chatAgentRuns } = await supabase
+          .from('olive_agent_runs')
+          .select('agent_id, result, completed_at')
+          .eq('user_id', userId)
+          .eq('status', 'completed')
+          .gte('completed_at', fortyEightHoursAgo)
+          .order('completed_at', { ascending: false })
+          .limit(10);
+
+        if (chatAgentRuns && chatAgentRuns.length > 0) {
+          const seen = new Set<string>();
+          const insights: string[] = [];
+          const trivialPrefixes = ['no stale tasks', 'no upcoming bills', 'oura not connected', 'no oura data', 'no tasks scheduled', 'gmail not connected', 'email triage set to manual', 'too soon', 'sleep looks good', 'no upcoming dates', 'no couple linked'];
+          for (const run of chatAgentRuns) {
+            if (seen.has(run.agent_id)) continue;
+            seen.add(run.agent_id);
+            const msg = (run.result?.message || '').trim();
+            if (!msg || trivialPrefixes.some(p => msg.toLowerCase().startsWith(p))) continue;
+            const agentName = run.agent_id.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+            insights.push(`- ${agentName}: ${msg.substring(0, 300)}`);
+          }
+          if (insights.length > 0) {
+            chatAgentInsightsContext = insights.join('\n');
+          }
+        }
+      } catch (agentErr) {
+        console.warn('[WhatsApp Chat] Agent insights fetch error (non-blocking):', agentErr);
+      }
+
+      // ================================================================
       // SPECIALIZED SYSTEM PROMPTS BY CHAT TYPE
       // ================================================================
       let systemPrompt: string;
       let userPromptEnhancement = '';
-      
+
       const baseContext = `
 ## User Task Analytics:
 - Active tasks: ${taskContext.total_active}
@@ -4713,6 +4782,7 @@ ${memoryContext}
 ${patternContext}
 ${partnerContext}
 ${skillContext}
+${chatAgentInsightsContext ? `## Recent Agent Insights (Background AI analysis):\n${chatAgentInsightsContext}\n` : ''}
 ## Current Priorities:
 - Urgent tasks: ${topUrgentTasks.join(', ') || 'None'}
 - Overdue tasks: ${topOverdueTasks.join(', ') || 'None'}

@@ -29,7 +29,8 @@ type MessageType =
   | 'weekly_summary'
   | 'task_update'
   | 'partner_notification'
-  | 'system_alert';
+  | 'system_alert'
+  | 'agent_insight';
 
 interface OutboundMessage {
   user_id: string;
@@ -72,6 +73,7 @@ const TEMPLATE_MAP: Record<string, string> = {
   proactive_nudge: 'olive_daily_summary',
   system_alert: 'olive_welcome',
   partner_notification: 'olive_task_reminder',
+  agent_insight: 'olive_daily_summary', // Uses name+content template for rich agent results
 };
 
 // 24h window (in milliseconds)
@@ -273,6 +275,10 @@ function buildTemplateParams(
     case 'system_alert':
       // olive_welcome: {{1}} = name
       return [name];
+
+    case 'agent_insight':
+      // olive_daily_summary: {{1}} = name, {{2}} = agent insight content
+      return [name, truncatedContent];
 
     default:
       return [name, truncatedContent];

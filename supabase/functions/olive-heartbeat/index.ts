@@ -309,6 +309,65 @@ async function generateMorningBriefing(supabase: any, userId: string): Promise<s
     briefing += '\n';
   }
 
+  // ── Fetch recent agent highlights (last 24h) ──
+  try {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentAgentRuns } = await supabase
+      .from('olive_agent_runs')
+      .select('agent_id, result, completed_at')
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .gte('completed_at', twentyFourHoursAgo)
+      .order('completed_at', { ascending: false })
+      .limit(10);
+
+    if (recentAgentRuns && recentAgentRuns.length > 0) {
+      // Deduplicate by agent_id (keep most recent), filter trivial
+      const trivialPrefixes = [
+        'no stale tasks', 'no upcoming bills', 'no bill-related', 'oura not connected',
+        'no oura data', 'no tasks scheduled', 'not enough sleep', 'too soon',
+        'sleep looks good', 'no upcoming dates', 'no dates in reminder', 'no messages to send',
+        'no couple linked', 'couple members not found', 'gmail not connected',
+        'email triage set to manual', 'could not fetch dates',
+      ];
+      const seen = new Set<string>();
+      const highlights: string[] = [];
+
+      for (const run of recentAgentRuns) {
+        if (seen.has(run.agent_id)) continue;
+        seen.add(run.agent_id);
+
+        const msg = (run.result?.message || '').trim();
+        if (!msg) continue;
+        const lower = msg.toLowerCase();
+        if (trivialPrefixes.some(p => lower.startsWith(p)) || lower.startsWith('too soon (')) continue;
+
+        // Truncate to first meaningful line, max 80 chars
+        const firstLine = msg.split('\n').find((l: string) => l.trim().length > 5) || msg;
+        const truncated = firstLine.length > 80 ? firstLine.substring(0, 77) + '...' : firstLine;
+        const agentLabel = run.agent_id
+          .replace(/-/g, ' ')
+          .replace(/\b\w/g, (c: string) => c.toUpperCase())
+          .replace('Stale Task Strategist', 'Task Strategist')
+          .replace('Smart Bill Reminder', 'Bill Reminder')
+          .replace('Energy Task Suggester', 'Energy Coach')
+          .replace('Sleep Optimization Coach', 'Sleep Coach')
+          .replace('Birthday Gift Agent', 'Birthday Reminder')
+          .replace('Weekly Couple Sync', 'Couple Sync')
+          .replace('Email Triage Agent', 'Email Triage');
+        highlights.push(`• ${agentLabel}: ${truncated}`);
+      }
+
+      if (highlights.length > 0) {
+        briefing += `\n🤖 Agent Highlights:\n`;
+        highlights.slice(0, 2).forEach(h => { briefing += `${h}\n`; });
+        briefing += '\n';
+      }
+    }
+  } catch (agentErr) {
+    console.error('[Heartbeat] Agent highlights fetch error (non-blocking):', agentErr);
+  }
+
   briefing += `💬 Reply with your plan for the day or "what's urgent" to see more.`;
 
   return briefing;
