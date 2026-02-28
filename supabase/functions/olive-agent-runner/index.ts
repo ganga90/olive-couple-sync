@@ -9,7 +9,7 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const geminiKey = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_AI_API_KEY") || "";
+const geminiKey = Deno.env.get("GEMINI_API") || Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_AI_API_KEY") || "";
 
 // ─── Agent Context ──────────────────────────────────────────────
 interface AgentContext {
@@ -654,8 +654,8 @@ async function runEmailTriageAgent(ctx: AgentContext): Promise<AgentResult> {
     return { success: true, message: "Gmail not connected", notifyUser: false };
   }
 
-  // Check frequency — only run if enough time has passed since last triage
-  const frequency = emailConn.triage_frequency || "manual";
+  // Check frequency — only skip if explicitly set to manual
+  const frequency = emailConn.triage_frequency || "12h"; // Default to 12h if not set
   if (frequency === "manual") {
     return { success: true, message: "Email triage set to manual — skipping", notifyUser: false };
   }
@@ -663,7 +663,7 @@ async function runEmailTriageAgent(ctx: AgentContext): Promise<AgentResult> {
   const lastTriage = ctx.previousState.last_triage as string;
   if (lastTriage) {
     const hoursSinceLast = (Date.now() - new Date(lastTriage).getTime()) / (1000 * 60 * 60);
-    const freqHours = frequency === "6h" ? 6 : frequency === "12h" ? 12 : 24;
+    const freqHours = frequency === "1h" ? 1 : frequency === "6h" ? 6 : frequency === "12h" ? 12 : 24;
     if (hoursSinceLast < freqHours * 0.9) { // 10% buffer
       return { success: true, message: `Too soon (${Math.round(hoursSinceLast)}h since last run, freq=${frequency})`, notifyUser: false };
     }
