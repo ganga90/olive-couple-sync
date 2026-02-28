@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@1.0.0";
+import { GoogleGenAI } from "https://esm.sh/@google/genai@1.0.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -432,173 +432,14 @@ interface ConversationContext {
 }
 
 // ============================================================================
-// AI-POWERED INTENT CLASSIFICATION
-// Replaces regex-based determineIntent() with Gemini structured output
+// SHARED INTENT CLASSIFIER (imported from _shared/intent-classifier.ts)
 // ============================================================================
-interface ClassifiedIntent {
-  intent: string;
-  target_task_id: string | null;
-  target_task_name: string | null;
-  matched_skill_id: string | null;
-  parameters: {
-    priority: string | null;
-    due_date_expression: string | null;
-    query_type: string | null;
-    chat_type: string | null;
-    list_name: string | null;
-    amount: number | null;
-    expense_description: string | null;
-    is_urgent: boolean | null;
-    partner_message_content: string | null;
-    partner_action: string | null;
-  };
-  confidence: number;
-  reasoning: string;
-}
+// Uses gemini-2.5-flash-lite for fast JSON classification.
+// Both whatsapp-webhook and ask-olive-individual share this module.
+// See _shared/intent-classifier.ts for the full implementation.
 
-const intentClassificationSchema = {
-  type: Type.OBJECT,
-  properties: {
-    intent: {
-      type: Type.STRING,
-      enum: ['search', 'create', 'complete', 'set_priority', 'set_due', 'delete', 'move', 'assign', 'remind', 'expense', 'chat', 'contextual_ask', 'merge', 'partner_message'],
-    },
-    target_task_id: { type: Type.STRING, nullable: true },
-    target_task_name: { type: Type.STRING, nullable: true },
-    matched_skill_id: { type: Type.STRING, nullable: true },
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        priority: { type: Type.STRING, nullable: true },
-        due_date_expression: { type: Type.STRING, nullable: true },
-        query_type: { type: Type.STRING, nullable: true, enum: ['urgent', 'today', 'tomorrow', 'this_week', 'recent', 'overdue', 'general'] },
-        chat_type: { type: Type.STRING, nullable: true, enum: ['briefing', 'weekly_summary', 'daily_focus', 'productivity_tips', 'progress_check', 'motivation', 'planning', 'greeting', 'general'] },
-        list_name: { type: Type.STRING, nullable: true },
-        amount: { type: Type.NUMBER, nullable: true },
-        expense_description: { type: Type.STRING, nullable: true },
-        is_urgent: { type: Type.BOOLEAN, nullable: true },
-        partner_message_content: { type: Type.STRING, nullable: true },
-        partner_action: { type: Type.STRING, nullable: true, enum: ['remind', 'tell', 'ask', 'notify'] },
-      },
-      required: [],
-    },
-    confidence: { type: Type.NUMBER },
-    reasoning: { type: Type.STRING },
-  },
-  required: ['intent', 'confidence', 'reasoning'],
-};
-
-async function classifyIntent(
-  message: string,
-  conversationHistory: Array<{ role: string; content: string; timestamp: string }>,
-  recentOutboundMessages: string[],
-  activeTasks: Array<{ id: string; summary: string; due_date: string | null; priority: string }>,
-  userMemories: Array<{ title: string; content: string; category: string }>,
-  activatedSkills: Array<{ skill_id: string; name: string }>,
-  userLanguage: string
-): Promise<ClassifiedIntent | null> {
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API') || Deno.env.get('GEMINI_API_KEY');
-  if (!GEMINI_API_KEY) {
-    console.warn('[classifyIntent] No GEMINI_API env var, falling back to regex');
-    return null;
-  }
-
-  try {
-    const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-    // Build conversation context (last 3 exchanges)
-    const recentConvo = conversationHistory.slice(-6).map(msg =>
-      `${msg.role === 'user' ? 'User' : 'Olive'}: ${msg.content}`
-    ).join('\n');
-
-    // Build task list (compact)
-    const taskList = activeTasks.slice(0, 30).map(t =>
-      `- [${t.id}] "${t.summary}" (due: ${t.due_date || 'none'}, priority: ${t.priority})`
-    ).join('\n');
-
-    // Build memory context (compact)
-    const memoryList = userMemories.slice(0, 10).map(m =>
-      `- [${m.category}] ${m.title}: ${m.content}`
-    ).join('\n');
-
-    // Build skills context (just names)
-    const skillsList = activatedSkills.map(s => `- ${s.skill_id}: ${s.name}`).join('\n');
-
-    // Build outbound context
-    const outboundCtx = recentOutboundMessages.slice(0, 3).map(m => `- Olive said: "${m}"`).join('\n');
-
-    const systemPrompt = `You are the intent classifier for Olive, an AI personal assistant that helps people manage their lives. You are the "brain" that decides what action to take. Classify the user's message into exactly ONE intent. Return structured JSON.
-
-You are NOT a rigid command parser. You understand natural, conversational language — the user talks to you like a friend or personal assistant. Interpret the MEANING behind their words, not just keywords.
-
-## INTENTS:
-- "search": User wants to see/find/list their tasks, items, or lists (e.g., "what's urgent?", "show my tasks", "what's due today?", "groceries list", "my tasks")
-- "create": User wants to save something new — a task, note, idea, or brain-dump (e.g., "buy milk", "call mom tomorrow", "reminder to pick up dry cleaning")
-- "complete": User wants to mark a task as done (e.g., "done with groceries", "finished!", "the dentist one is done", "cancel the last task" when they mean it's done)
-- "set_priority": User wants to change importance (e.g., "make it urgent", "this is important", "low priority")
-- "set_due": User wants to change when something is due (e.g., "change it to 7:30 AM", "postpone to Friday", "move it to tomorrow", "reschedule", "can you set it for next week?")
-- "delete": User wants to remove/cancel a task (e.g., "delete the dentist task", "never mind about that", "remove it", "cancel that")
-- "move": User wants to move a task to a different list (e.g., "move it to groceries", "put it in the work list")
-- "assign": User wants to assign a task to their partner (e.g., "give this to Marcus", "assign it to my partner", "let her handle it")
-- "remind": User wants a reminder — EITHER on an existing task OR creating a new one with a reminder. Examples: "remind me at 5 PM" (existing context), "remind me about this tomorrow" (existing task), "Moonswatch - remind me to check it out on March 6th" (NEW item + reminder), "remind me to call the dentist next Monday" (NEW task + reminder). Use target_task_name for the subject/task name and due_date_expression for the time. The system will auto-create a new task if no existing one matches.
-- "expense": User wants to log spending (e.g., "spent $45 on dinner", "$20 gas")
-- "chat": User wants conversational interaction — briefings, motivation, planning, greetings (e.g., "good morning", "how am I doing?", "summarize my week", "what should I focus on?", "help me plan my day")
-- "contextual_ask": User is asking a question about their saved data, agent results, or wants AI-powered advice (e.g., "when is the dentist?", "what restaurants did I save?", "any date ideas?", "what books are on my list?", "what did my agents find?", "any agent insights?", "what did olive analyze?")
-- "merge": User wants to merge duplicate tasks (exactly "merge")
-- "partner_message": User wants to send a message TO their partner via Olive (e.g., "remind Marco to buy lemons", "tell Almu to pick up the kids", "ask partner to call the dentist", "let Marcus know dinner is ready", "dile a Marco que compre limones", "ricorda a Marco di comprare i limoni"). The user is asking YOU to relay a message or task to their partner. Set partner_message_content to the message/task for the partner, and partner_action to the type (remind/tell/ask/notify).
-
-## CRITICAL RULES:
-1. **Conversational context is king.** Use CONVERSATION HISTORY to resolve "it", "that", "this", "the last one", pronouns in any language. If someone says "cancel it" after discussing a task, the target is that task.
-2. **Match tasks PRECISELY.** Use ACTIVE TASKS to find which task the user refers to. The user's query words must closely match the task summary. If the user says "Dental Milka complete", match ONLY tasks whose summary contains BOTH "Dental" AND "Milka" — do NOT match tasks that only contain "Milka" (e.g., "Research The Happy Howl for Milka" is NOT a match for "Dental Milka"). Return the UUID in target_task_id. If multiple tasks match equally well (e.g., "Milka Dental" and "Dental Milka"), return target_task_id as null and set target_task_name to the user's query — the system will handle disambiguation.
-3. **Use memories for personalization.** MEMORIES tell you who Marcus is, what Milka is (a dog?), dietary preferences, etc. Use this to disambiguate.
-4. **"Cancel" is context-dependent.** "Cancel the dentist" = delete. "Cancel that" after a reminder = delete. But "cancel my subscription" = probably create (a task to cancel).
-5. **Time expressions = set_due, not create.** "Change it to 7am", "move it to Friday", "postpone", "reschedule" → always set_due. The word "change/move/postpone" implies modifying existing, never creating.
-6. **Relative references.** "Last task", "the latest one", "previous task", "l'ultima attività", "última tarea" → preserve the EXACT phrase in target_task_name. The system resolves it. These are action intents, never "create".
-7. **Questions about data = contextual_ask.** "When is X?", "What did I save about Y?", "Do I have any Z?" → contextual_ask.
-8. **Ambiguity → lean towards the most helpful intent.** If someone says "groceries" with no verb, check context: after "show me" → search. After nothing → probably search (they want to see their grocery list). Only classify as "create" if it clearly reads as a new item to save.
-9. **Language:** The user speaks ${userLanguage}. Understand their message natively in that language.
-10. **Confidence:** 0.9+ clear, 0.7-0.9 moderate, 0.5-0.7 uncertain, <0.5 very ambiguous.
-11. For chat_type, use: briefing, weekly_summary, daily_focus, productivity_tips, progress_check, motivation, planning, greeting, general.
-
-## CONVERSATION HISTORY:
-${recentConvo || 'No previous conversation.'}
-
-## RECENT OLIVE MESSAGES:
-${outboundCtx || 'None.'}
-
-## USER'S ACTIVE TASKS:
-${taskList || 'No active tasks.'}
-
-## USER'S MEMORIES:
-${memoryList || 'No memories stored.'}
-
-## USER'S ACTIVATED SKILLS:
-${skillsList || 'No skills activated.'}`;
-
-    const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash-lite", // Lite: fast JSON classification, speed critical for webhook latency
-      contents: `Classify this message: "${message}"`,
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json",
-        responseSchema: intentClassificationSchema,
-        temperature: 0.1,
-        maxOutputTokens: 500,
-      },
-    });
-
-    const responseText = response.text || '';
-    console.log('[classifyIntent] Raw response:', responseText);
-
-    const result: ClassifiedIntent = JSON.parse(responseText);
-    console.log(`[classifyIntent] intent=${result.intent}, confidence=${result.confidence}, task_id=${result.target_task_id}, skill=${result.matched_skill_id}, reasoning=${result.reasoning}`);
-
-    return result;
-  } catch (error) {
-    console.error('[classifyIntent] Error, falling back to regex:', error);
-    return null;
-  }
-}
+// Type re-export for local usage
+type ClassifiedIntent = import("../_shared/intent-classifier.ts").ClassifiedIntent;
 
 // Bridge: Convert AI ClassifiedIntent → existing IntentResult format
 function mapAIResultToIntentResult(
@@ -818,36 +659,27 @@ function formatFriendlyDate(dateStr: string, includeTime: boolean = true): strin
   return result;
 }
 
-// Call Lovable AI
-async function callAI(systemPrompt: string, userMessage: string, temperature = 0.7): Promise<string> {
-  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-  if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY not configured');
+// Call Gemini AI — uses GEMINI_API directly via GoogleGenAI SDK
+// Supports dynamic model tier selection: "lite" | "standard" | "pro"
+async function callAI(systemPrompt: string, userMessage: string, temperature = 0.7, tier: string = "standard"): Promise<string> {
+  const { GEMINI_KEY, getModel } = await import("../_shared/gemini.ts");
+  if (!GEMINI_KEY) throw new Error('GEMINI_API not configured');
 
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage }
-      ],
+  const model = getModel(tier as any);
+  console.log(`[callAI] Using ${model} (tier=${tier})`);
+
+  const genai = new GoogleGenAI({ apiKey: GEMINI_KEY });
+  const response = await genai.models.generateContent({
+    model,
+    contents: userMessage,
+    config: {
+      systemInstruction: systemPrompt,
       temperature,
-      max_tokens: 1000
-    })
+      maxOutputTokens: tier === "pro" ? 2000 : 1000,
+    },
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Lovable AI error:', response.status, errorText);
-    throw new Error(`AI call failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content;
+  const text = response.text;
   if (!text) throw new Error('No response from AI');
   return text;
 }
@@ -2811,16 +2643,27 @@ serve(async (req) => {
     // Build outbound context strings for AI
     const outboundContextStrings = recentOutbound.map(m => m.content).filter(Boolean);
 
-    // Call AI classifier
-    const aiResult = await classifyIntent(
-      messageBody || '',
-      conversationHistory,
-      outboundContextStrings,
+    // Call shared AI classifier (from _shared/intent-classifier.ts)
+    const { classifyIntent: sharedClassifyIntent } = await import("../_shared/intent-classifier.ts");
+    const classificationResult = await sharedClassifyIntent({
+      message: messageBody || '',
+      conversationHistory: conversationHistory.map(m => ({ role: m.role, content: m.content })),
+      recentOutboundMessages: outboundContextStrings,
       activeTasks,
       userMemories,
       activatedSkills,
-      userLang
+      userLanguage: userLang,
+    });
+    const aiResult = classificationResult.intent;
+    const classificationLatencyMs = classificationResult.latencyMs;
+
+    // Route intent → model tier (from _shared/model-router.ts)
+    const { routeIntent } = await import("../_shared/model-router.ts");
+    const route = routeIntent(
+      aiResult?.intent || 'chat',
+      aiResult?.parameters?.chat_type || undefined
     );
+    console.log(`[Router] intent=${aiResult?.intent} → tier=${route.responseTier} reason=${route.reason}`);
 
     let intentResult: IntentResult & { queryType?: string; chatType?: string; actionType?: string; actionTarget?: string; cleanMessage?: string; _aiTaskId?: string; _aiSkillId?: string };
 
@@ -2841,6 +2684,27 @@ serve(async (req) => {
     const { intent, isUrgent, cleanMessage } = intentResult;
     const effectiveMessage = cleanMessage ?? messageBody;
     console.log('Final intent:', intent, 'isUrgent:', isUrgent, 'for message:', effectiveMessage?.substring(0, 50));
+
+    // Router telemetry — non-blocking, fire-and-forget
+    try {
+      const { logRouterDecision } = await import("../_shared/router-logger.ts");
+      const { getModel } = await import("../_shared/gemini.ts");
+      logRouterDecision(supabase, {
+        userId,
+        source: "whatsapp",
+        rawText: messageBody || '',
+        classifiedIntent: aiResult?.intent || intent.toLowerCase(),
+        confidence: aiResult?.confidence || 0,
+        chatType: aiResult?.parameters?.chat_type || undefined,
+        classificationModel: getModel("lite"),
+        responseModel: getModel(route.responseTier as any),
+        routeReason: route.reason,
+        classificationLatencyMs: classificationLatencyMs,
+        totalLatencyMs: classificationLatencyMs, // Classification is the main measurable latency
+      });
+    } catch (logErr) {
+      console.warn('[RouterLogger] Non-blocking error:', logErr);
+    }
 
     // ========================================================================
     // MERGE COMMAND HANDLER
@@ -3977,7 +3841,7 @@ Respond with ONLY valid JSON: {"merchant": "name", "category": "one_of_these"}
 Categories: food, transport, shopping, entertainment, utilities, health, groceries, travel, personal, education, subscriptions, other
 
 Description: "${description}"`;
-        const aiResult = await callAI(categorizationPrompt, description, 0.3);
+        const aiResult = await callAI(categorizationPrompt, description, 0.3, "lite");
         const parsed = JSON.parse(aiResult.replace(/```json?|```/g, '').trim());
         if (parsed.merchant) merchant = parsed.merchant;
         if (parsed.category) category = parsed.category;
@@ -4186,7 +4050,18 @@ Respond with helpful, specific information from their saved items. If asking for
       }
 
       try {
-        const response = await callAI(systemPrompt, effectiveMessage || '', 0.7);
+        // Dynamic model selection — standard for most contextual asks
+        let response: string;
+        try {
+          response = await callAI(systemPrompt, effectiveMessage || '', 0.7, route.responseTier);
+        } catch (escalationErr) {
+          if (route.responseTier === 'pro') {
+            console.warn('[Router] Pro failed for CONTEXTUAL_ASK, falling back to standard:', escalationErr);
+            response = await callAI(systemPrompt, effectiveMessage || '', 0.7, 'standard');
+          } else {
+            throw escalationErr;
+          }
+        }
 
         // Store conversation context: identify which task/event was discussed
         try {
@@ -4941,7 +4816,18 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
           systemPrompt += `\n\nIMPORTANT: Respond entirely in ${langName}.`;
         }
 
-        const chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7);
+        // Dynamic model selection — Pro for weekly_summary/planning, standard for rest
+        let chatResponse: string;
+        try {
+          chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7, route.responseTier);
+        } catch (escalationErr) {
+          if (route.responseTier === 'pro') {
+            console.warn('[Router] Pro failed for CHAT, falling back to standard:', escalationErr);
+            chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7, 'standard');
+          } else {
+            throw escalationErr;
+          }
+        }
 
         // Save conversation history (no specific entity for CHAT)
         await saveReferencedEntity(null, chatResponse);

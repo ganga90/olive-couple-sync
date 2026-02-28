@@ -13,7 +13,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@1.0.0";
+// GoogleGenAI is now used via shared _shared/intent-classifier.ts
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -251,30 +251,12 @@ function buildRAGContext(documents: RAGDocument[]): string {
 }
 
 // ============================================================================
-// AI INTENT CLASSIFICATION (for web chat task actions)
-// Same pattern as whatsapp-webhook classifyIntent()
+// SHARED INTENT CLASSIFIER (imported from _shared/intent-classifier.ts)
+// Uses gemini-2.5-flash-lite for fast JSON classification.
+// Both whatsapp-webhook and ask-olive-individual share this module.
 // ============================================================================
-
-interface ClassifiedIntent {
-  intent: string;
-  target_task_id: string | null;
-  target_task_name: string | null;
-  matched_skill_id: string | null;
-  parameters: {
-    priority: string | null;
-    due_date_expression: string | null;
-    query_type: string | null;
-    chat_type: string | null;
-    list_name: string | null;
-    amount: number | null;
-    expense_description: string | null;
-    is_urgent: boolean | null;
-    partner_message_content: string | null;
-    partner_action: string | null;
-  };
-  confidence: number;
-  reasoning: string;
-}
+// Type re-export for local usage
+type ClassifiedIntent = import("../_shared/intent-classifier.ts").ClassifiedIntent;
 
 interface ActionResult {
   type: string;
@@ -282,132 +264,6 @@ interface ActionResult {
   task_summary?: string;
   success: boolean;
   details?: Record<string, any>;
-}
-
-const intentClassificationSchema = {
-  type: Type.OBJECT,
-  properties: {
-    intent: {
-      type: Type.STRING,
-      enum: ['search', 'create', 'complete', 'set_priority', 'set_due', 'delete', 'move', 'assign', 'remind', 'expense', 'chat', 'contextual_ask', 'partner_message'],
-    },
-    target_task_id: { type: Type.STRING, nullable: true },
-    target_task_name: { type: Type.STRING, nullable: true },
-    matched_skill_id: { type: Type.STRING, nullable: true },
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        priority: { type: Type.STRING, nullable: true },
-        due_date_expression: { type: Type.STRING, nullable: true },
-        query_type: { type: Type.STRING, nullable: true },
-        chat_type: { type: Type.STRING, nullable: true },
-        list_name: { type: Type.STRING, nullable: true },
-        amount: { type: Type.NUMBER, nullable: true },
-        expense_description: { type: Type.STRING, nullable: true },
-        is_urgent: { type: Type.BOOLEAN, nullable: true },
-        partner_message_content: { type: Type.STRING, nullable: true },
-        partner_action: { type: Type.STRING, nullable: true, enum: ['remind', 'tell', 'ask', 'notify'] },
-      },
-      required: [],
-    },
-    confidence: { type: Type.NUMBER },
-    reasoning: { type: Type.STRING },
-  },
-  required: ['intent', 'confidence', 'reasoning'],
-};
-
-async function classifyIntentForChat(
-  message: string,
-  conversationHistory: Array<{ role: string; content: string }>,
-  activeTasks: Array<{ id: string; summary: string; due_date: string | null; priority: string }>,
-  userMemories: Array<{ title: string; content: string; category: string }>,
-  activatedSkills: Array<{ skill_id: string; name: string }>,
-): Promise<ClassifiedIntent | null> {
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API') || Deno.env.get('GEMINI_API_KEY');
-    if (!GEMINI_API_KEY) {
-      console.warn('[classifyIntentForChat] No GEMINI_API env var');
-    return null;
-  }
-
-  try {
-    const genai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-    const recentConvo = conversationHistory.slice(-6).map(msg =>
-      `${msg.role === 'user' ? 'User' : 'Olive'}: ${msg.content}`
-    ).join('\n');
-
-    const taskList = activeTasks.slice(0, 30).map(t =>
-      `- [${t.id}] "${t.summary}" (due: ${t.due_date || 'none'}, priority: ${t.priority})`
-    ).join('\n');
-
-    const memoryList = userMemories.slice(0, 10).map(m =>
-      `- [${m.category}] ${m.title}: ${m.content}`
-    ).join('\n');
-
-    const skillsList = activatedSkills.map(s => `- ${s.skill_id}: ${s.name}`).join('\n');
-
-    const systemPrompt = `You are the intent classifier for Olive, an AI personal assistant. You understand natural, conversational language — the user talks to you like a friend. Interpret the MEANING behind their words, not just keywords. Return structured JSON.
-
-## INTENTS:
-- "search": User wants to see/find/list their tasks or items (e.g., "what's urgent?", "show my tasks")
-- "create": User wants to save something new (e.g., "buy milk", "call mom tomorrow")
-- "complete": User wants to mark a task as done (e.g., "done with groceries", "finished!")
-- "set_priority": User wants to change importance (e.g., "make it urgent")
-- "set_due": User wants to change when something is due (e.g., "change it to 7:30 AM", "postpone to Friday")
-- "delete": User wants to remove/cancel a task (e.g., "delete the dentist task", "cancel that", "never mind about that")
-- "move": User wants to move a task to a different list
-- "assign": User wants to assign a task to someone
-- "remind": User wants a reminder
-- "expense": User wants to log spending
-- "chat": User wants conversational interaction (e.g., "morning briefing", "how am I doing?", "motivate me")
-- "contextual_ask": User is asking about their saved data (e.g., "when is dental?", "what restaurants did I save?")
-- "partner_message": User wants to send a message TO their partner via Olive (e.g., "remind Marco to buy lemons", "tell Almu to pick up the kids", "ask partner to call the dentist"). Set partner_message_content to the message/task content, and partner_action to the type (remind/tell/ask/notify).
-
-## CRITICAL RULES:
-1. **Conversational context is king.** Use CONVERSATION HISTORY to resolve "it", "that", "this", "the last one" and pronouns. If someone says "cancel it" after discussing a task, the target is that task.
-2. **Match tasks by meaning.** Use ACTIVE TASKS to find the referred task. Fuzzy match — "dentist" matches "Dental checkup for Milka". Return UUID in target_task_id.
-3. **Use memories for personalization.** MEMORIES tell you who people are, what things mean, preferences, etc.
-4. **"Cancel" is context-dependent.** "Cancel the dentist" = delete. "Cancel my subscription" = probably create (a task to cancel).
-5. **Time expressions = set_due, not create.** "Change/move/postpone/reschedule" → always set_due.
-6. **Relative references.** "Last task", "the latest one", "previous task" → preserve the EXACT phrase in target_task_name. These are action intents, never "create".
-7. **Ambiguity → lean towards most helpful intent.** Check context before defaulting to "create".
-8. **Confidence:** 0.9+ clear, 0.7-0.9 moderate, 0.5-0.7 uncertain.
-
-## CONVERSATION HISTORY:
-${recentConvo || 'No previous conversation.'}
-
-## USER'S ACTIVE TASKS:
-${taskList || 'No active tasks.'}
-
-## USER'S MEMORIES:
-${memoryList || 'No memories stored.'}
-
-## USER'S ACTIVATED SKILLS:
-${skillsList || 'No skills activated.'}`;
-
-    const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash-lite", // Lite: fast JSON classification for in-app chat
-      contents: `Classify this message: "${message}"`,
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json",
-        responseSchema: intentClassificationSchema,
-        temperature: 0.1,
-        maxOutputTokens: 500,
-      },
-    });
-
-    const responseText = response.text || '';
-    console.log('[classifyIntentForChat] Raw response:', responseText);
-
-    const result: ClassifiedIntent = JSON.parse(responseText);
-    console.log(`[classifyIntentForChat] intent=${result.intent}, confidence=${result.confidence}, task_id=${result.target_task_id}, reasoning=${result.reasoning}`);
-
-    return result;
-  } catch (error) {
-    console.error('[classifyIntentForChat] Error:', error);
-    return null;
-  }
 }
 
 // Relative reference patterns for "last task", "latest one", etc.
@@ -893,6 +749,7 @@ serve(async (req) => {
     // AI INTENT CLASSIFICATION + ACTION EXECUTION (global chat only)
     // =========================================================================
     let actionResult: ActionResult | null = null;
+    let route: { responseTier: string; reason: string } | undefined;
 
     if (isGlobalChat && supabase && actualUserId && actualMessage) {
       try {
@@ -934,14 +791,46 @@ serve(async (req) => {
         const userMems = memoriesRes.data || [];
         const activeSkills = skillsRes.data || [];
 
-        // Classify intent
-        const aiResult = await classifyIntentForChat(
-          actualMessage,
-          conversationHist,
+        // Classify intent using shared classifier
+        const { classifyIntent: sharedClassifyIntent } = await import("../_shared/intent-classifier.ts");
+        const classificationResult = await sharedClassifyIntent({
+          message: actualMessage,
+          conversationHistory: conversationHist,
           activeTasks,
-          userMems,
-          activeSkills,
+          userMemories: userMems,
+          activatedSkills: activeSkills,
+        });
+        const aiResult = classificationResult.intent;
+        const classificationLatencyMs = classificationResult.latencyMs;
+
+        // Route intent → model tier
+        const { routeIntent } = await import("../_shared/model-router.ts");
+        const route = routeIntent(
+          aiResult?.intent || 'chat',
+          aiResult?.parameters?.chat_type || undefined
         );
+        console.log(`[Router] intent=${aiResult?.intent} → tier=${route.responseTier} reason=${route.reason}`);
+
+        // Router telemetry — non-blocking
+        try {
+          const { logRouterDecision } = await import("../_shared/router-logger.ts");
+          const { getModel } = await import("../_shared/gemini.ts");
+          logRouterDecision(supabase, {
+            userId: actualUserId,
+            source: "in_app_chat",
+            rawText: actualMessage,
+            classifiedIntent: aiResult?.intent || 'unknown',
+            confidence: aiResult?.confidence || 0,
+            chatType: aiResult?.parameters?.chat_type || undefined,
+            classificationModel: getModel("lite"),
+            responseModel: getModel(route.responseTier as any),
+            routeReason: route.reason,
+            classificationLatencyMs,
+            totalLatencyMs: classificationLatencyMs,
+          });
+        } catch (logErr) {
+          console.warn('[RouterLogger] Non-blocking error:', logErr);
+        }
 
         // Execute task actions server-side (complete, set_priority, set_due, delete)
         if (aiResult && aiResult.confidence >= 0.5) {
@@ -1037,11 +926,22 @@ serve(async (req) => {
 User's Question: ${actualMessage}`;
     }
 
+    // Dynamic model selection based on intent classification
+    let responseModelName = "gemini-2.5-flash"; // default
+    try {
+      if (typeof route !== 'undefined') {
+        const { getModel } = await import("../_shared/gemini.ts");
+        responseModelName = getModel(route.responseTier as any);
+        console.log(`[Ask Olive Individual] Using model ${responseModelName} (tier=${route.responseTier}, reason=${route.reason})`);
+      }
+    } catch {
+      // route may not be defined if classification was skipped
+    }
     console.log('[Ask Olive Individual] Calling Gemini API...');
 
     // Use Gemini Interactions API for stateful multi-turn conversations
     const interactionPayload: any = {
-      model: "gemini-2.5-flash",
+      model: responseModelName,
       config: {
         systemInstruction: OLIVE_SYSTEM_PROMPT,
         tools: [
@@ -1072,7 +972,7 @@ User's Question: ${actualMessage}`;
 
       // Fallback to standard generateContent if Interactions API fails
       console.log('[Ask Olive Individual] Falling back to standard generateContent...');
-      return await fallbackToGenerateContent(geminiApiKey, fullContext, corsHeaders, citations, actionResult);
+      return await fallbackToGenerateContent(geminiApiKey, fullContext, corsHeaders, citations, actionResult, responseModelName);
     }
 
     const data = await response.json();
@@ -1144,10 +1044,11 @@ async function fallbackToGenerateContent(
   fullContext: string,
   corsHeaders: Record<string, string>,
   citations: Citation[] = [],
-  actionResult: ActionResult | null = null
+  actionResult: ActionResult | null = null,
+  modelName: string = "gemini-2.5-flash"
 ): Promise<Response> {
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
