@@ -261,27 +261,26 @@ async function runEmailTriage(
 
   const response = await genai.models.generateContent({
     model: "gemini-2.5-flash",
-    contents: `You are an email triage agent for a couples productivity app called Olive.
+    contents: `You are an expert email triage agent for a couples productivity app called Olive. Your job is to find ACTIONABLE items hidden in emails.
 
 Analyze each email and classify it:
-- ACTION_REQUIRED: Contains a task, deadline, or request requiring follow-up
-- INFORMATIONAL: Good to know but no action needed
-- SKIP: Marketing, automated, newsletters, or irrelevant
+- ACTION_REQUIRED: Contains ANY of these: a task, deadline, request, appointment, payment, RSVP, follow-up needed, decision required, someone waiting for a response, a booking/reservation to confirm, a document to review/sign, a meeting to prepare for
+- INFORMATIONAL: Useful information but genuinely no action needed (e.g., order shipped, account statement, read-only updates)
+- SKIP: Marketing, promotional, automated newsletters, spam, social media notifications
 
-For ACTION_REQUIRED emails, also extract:
-- task_summary: A clear 1-line task description (imperative form, e.g., "Reply to landlord about lease renewal")
-- due_date: If a deadline is mentioned, provide in YYYY-MM-DD format. Otherwise null.
-- priority: "high" if urgent/time-sensitive, "medium" for normal follow-ups, "low" for nice-to-have
+IMPORTANT: Be AGGRESSIVE about finding action items. When in doubt, classify as ACTION_REQUIRED. Real humans miss tasks in emails all the time — your job is to catch them.
+
+For ACTION_REQUIRED emails, extract:
+- task_summary: A clear imperative 1-line task (e.g., "Reply to landlord about lease renewal", "Pay electric bill $127", "RSVP to Sarah's dinner party by Friday", "Review and sign attached contract")
+- due_date: If ANY deadline, date, or time reference is mentioned, extract it in YYYY-MM-DD format. Look for words like "by", "before", "due", "deadline", "this week", "tomorrow", "Friday", etc. Use today's date ${new Date().toISOString().split("T")[0]} as reference. If no date, use null.
+- priority: "high" if urgent/time-sensitive/financial, "medium" for normal follow-ups, "low" for nice-to-have
 - category: One of: bills, work, personal, household, health, shopping, general
 
 Emails:
 ${emailList}
 
 Respond ONLY with a valid JSON array. Each element must have:
-{ "index": number, "classification": "ACTION_REQUIRED"|"INFORMATIONAL"|"SKIP", "task_summary": string|null, "due_date": string|null, "priority": string|null, "category": string|null }
-
-Example:
-[{"index":1,"classification":"ACTION_REQUIRED","task_summary":"Pay electric bill $127","due_date":"2026-02-28","priority":"high","category":"bills"},{"index":2,"classification":"SKIP","task_summary":null,"due_date":null,"priority":null,"category":null}]`,
+{ "index": number, "classification": "ACTION_REQUIRED"|"INFORMATIONAL"|"SKIP", "task_summary": string|null, "due_date": string|null, "priority": string|null, "category": string|null }`,
     config: { temperature: 0.1, maxOutputTokens: 2000 },
   });
 
@@ -426,12 +425,14 @@ async function runEmailTriagePreview(
 
   const response = await genai.models.generateContent({
     model: "gemini-2.5-flash",
-    contents: `You are an email triage agent. Analyze each email:
-- ACTION_REQUIRED: task, deadline, or request needing follow-up
-- INFORMATIONAL: good to know, no action
-- SKIP: marketing, automated, newsletters
+    contents: `You are an expert email triage agent. Be AGGRESSIVE about finding action items. When in doubt, classify as ACTION_REQUIRED.
 
-For ACTION_REQUIRED, extract: task_summary (imperative 1-line), due_date (YYYY-MM-DD or null), priority (high/medium/low), category (bills/work/personal/household/health/shopping/general).
+Analyze each email:
+- ACTION_REQUIRED: ANY task, deadline, request, appointment, payment, RSVP, follow-up, decision, someone waiting for response, booking to confirm, document to review/sign, meeting to prepare for
+- INFORMATIONAL: useful info but genuinely no action (order shipped, statements, read-only)
+- SKIP: marketing, automated, newsletters, spam
+
+For ACTION_REQUIRED, extract: task_summary (imperative 1-line), due_date (YYYY-MM-DD or null, use ${new Date().toISOString().split("T")[0]} as reference), priority (high/medium/low), category (bills/work/personal/household/health/shopping/general).
 
 Emails:
 ${emailList}

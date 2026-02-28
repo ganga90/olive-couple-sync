@@ -701,22 +701,26 @@ async function runEmailTriageAgent(ctx: AgentContext): Promise<AgentResult> {
   const tasksCreated = data.tasks_created || 0;
   const emailsProcessed = data.emails_processed || 0;
 
-  // Build a clear, structured notification message
-  let notificationMsg = "";
+  // Build a clear, structured notification message with date range
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  
+  let notificationMsg = `📧 *Olive Email Review — ${dateStr}*\n\n`;
+  notificationMsg += `Scanned ${emailsProcessed} email${emailsProcessed > 1 ? "s" : ""} from your primary inbox.\n\n`;
+  
   if (tasksCreated > 0) {
-    notificationMsg = `📧 *Olive Email Review Complete*\n\n`;
-    notificationMsg += `Scanned ${emailsProcessed} email${emailsProcessed > 1 ? "s" : ""} and found ${tasksCreated} action item${tasksCreated > 1 ? "s" : ""}.\n\n`;
+    notificationMsg += `✅ Found ${tasksCreated} action item${tasksCreated > 1 ? "s" : ""}:\n\n`;
     notificationMsg += `${data.summary || ""}\n\n`;
-    notificationMsg += `✅ Tasks have been added to your Olive inbox. Open the app to review and assign them to lists.`;
+    notificationMsg += `Tasks have been added to your Olive inbox. Open the app to review.`;
   } else {
-    notificationMsg = `📧 *Olive Email Review*\n\nScanned ${emailsProcessed} email${emailsProcessed > 1 ? "s" : ""} — all clear! No action items found. 🎉`;
+    notificationMsg += `All clear — no action items found. You're on top of it! 🎉`;
   }
 
   return {
     success: true,
     message: data.summary || `Processed ${emailsProcessed} emails, created ${tasksCreated} tasks`,
     data: { tasks_created: tasksCreated, emails_processed: emailsProcessed },
-    notifyUser: tasksCreated > 0, // Only notify if there are actionable items
+    notifyUser: true, // Always notify user after email triage (they want to know it ran)
     notificationMessage: notificationMsg,
     state: {
       last_triage: new Date().toISOString(),

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useMemo } from "react";
 import { useSupabaseCouple } from "./SupabaseCoupleProvider";
 import { useSupabaseNotes, SupabaseNote } from "@/hooks/useSupabaseNotes";
 import { useAuth } from "./AuthProvider";
+import { useDefaultPrivacy } from "@/hooks/useDefaultPrivacy";
 import type { Note } from "@/types/note";
 import { categories } from "@/constants/categories";
 
@@ -131,7 +132,7 @@ const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "upda
 export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentCouple } = useSupabaseCouple();
   const { user } = useAuth();
-  
+  const { defaultPrivacy } = useDefaultPrivacy();
   
   const { 
     notes: supabaseNotes, 
@@ -151,9 +152,26 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   const addNote = async (noteData: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => {
+    // Determine couple_id based on privacy:
+    // 1. Explicit isShared flag from UI takes priority
+    // 2. Explicit coupleId from edge functions (e.g. process-note) takes priority
+    // 3. Otherwise, use user's default privacy preference
+    let resolvedCoupleId: string | null;
+
+    if (noteData.isShared === true) {
+      resolvedCoupleId = currentCouple?.id || null;
+    } else if (noteData.isShared === false) {
+      resolvedCoupleId = null;
+    } else if (noteData.coupleId !== undefined) {
+      resolvedCoupleId = noteData.coupleId || null;
+    } else {
+      // Use default privacy preference
+      resolvedCoupleId = defaultPrivacy === "private" ? null : (currentCouple?.id || null);
+    }
+
     const supabaseNoteData = {
       ...convertNoteToSupabaseInsert(noteData),
-      couple_id: currentCouple?.id || null, // Allow null for personal notes
+      couple_id: resolvedCoupleId,
     };
     const result = await addSupabaseNote(supabaseNoteData);
     return result ? convertSupabaseNoteToNote(result, user, currentCouple) : null;
