@@ -22,7 +22,7 @@ import {
   ArrowLeft, Pencil, Trash2, User, CalendarDays, CheckCircle2, Tag, 
   UserCheck, Calendar as CalendarIcon, Bell, RotateCcw, Loader2,
   Clock, AlertTriangle, ChevronRight, Sparkles, MessageSquare, ExternalLink,
-  Phone, MapPin, FileText, DollarSign, Info, Link2, ListTodo
+  Phone, MapPin, FileText, DollarSign, Info, Link2, ListTodo, Mail
 } from "lucide-react";
 import { format, isPast, parseISO, parse, isValid } from "date-fns";
 import { assistWithNote, clearNoteConversation } from "@/utils/oliveAssistant";
@@ -731,6 +731,35 @@ const NoteDetails = () => {
           <div className="animate-fade-up" style={{ animationDelay: '300ms' }}>
             <NoteMediaSection mediaUrls={note.media_urls} location={note.location} />
           </div>
+
+          {/* Email Source Info — show sender & subject for email-sourced notes */}
+          {note.originalText?.startsWith('[Email from') && (
+            <Card className="border-border/50 shadow-card bg-primary/5 animate-fade-up" style={{ animationDelay: '350ms' }}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Mail className="h-4 w-4 text-primary" />
+                  <span className="text-xs font-medium text-primary uppercase tracking-wide">Email Source</span>
+                </div>
+                {(() => {
+                  const match = note.originalText.match(/^\[Email from\s+<?([^>\]]+)>?\]\s*(.+)$/);
+                  const sender = match?.[1] || 'Unknown sender';
+                  const subject = match?.[2] || note.originalText;
+                  return (
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">From</span>
+                        <p className="text-sm text-foreground font-medium">{sender}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Subject</span>
+                        <p className="text-sm text-foreground">{subject}</p>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Original Text */}
           <Card className="border-border/50 shadow-card bg-muted/30 animate-fade-up" style={{ animationDelay: '400ms' }}>
