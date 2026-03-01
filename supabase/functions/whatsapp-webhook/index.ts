@@ -429,6 +429,9 @@ interface ConversationContext {
   // Numbered list tracking for ordinal references ("the first one", "the third one")
   last_displayed_list?: Array<{ id: string; summary: string; position: number }>;
   list_displayed_at?: string; // ISO timestamp for TTL
+  // Store last user message for "schedule it" / "then create it" context resolution
+  last_user_message?: string;
+  last_user_message_at?: string;
 }
 
 // ============================================================================
@@ -1173,27 +1176,65 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
 
   // === MONTH + DAY EXPRESSIONS ===
   if (!targetDate) {
-    for (const [monthWord, monthNum] of Object.entries(monthNames)) {
-      const monthDayMatch = lowerExpr.match(new RegExp(`${monthWord}\\s+(\\d{1,2})(?:st|nd|rd|th)?`, 'i'));
-      if (monthDayMatch) {
-        const dayNum = parseInt(monthDayMatch[1]);
-        if (dayNum >= 1 && dayNum <= 31) {
-          targetDate = new Date(now.getFullYear(), monthNum, dayNum);
-          if (hours !== null) {
-            targetDate.setHours(hours, minutes, 0, 0);
-          } else {
-            targetDate.setHours(9, 0, 0, 0);
-          }
-          
-          if (targetDate < now) {
-            targetDate.setFullYear(targetDate.getFullYear() + 1);
-          }
-          
-          const monthDisplayNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                                      'July', 'August', 'September', 'October', 'November', 'December'];
-          readable = `${monthDisplayNames[monthNum]} ${dayNum}`;
+    // Handle "DD-Mon" or "DD Mon" format (e.g., "20-Mar", "15 Jan", "3-abril")
+    const ddMonMatch = lowerExpr.match(/(\d{1,2})[\s-]+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|gennaio|febbraio|aprile|maggio|giugno|luglio|settembre|ottobre|novembre|dicembre)/i);
+    if (ddMonMatch) {
+      const dayNum = parseInt(ddMonMatch[1]);
+      const monthWord = ddMonMatch[2].toLowerCase();
+      // Map abbreviated/full month names to month number
+      const abbrMonthMap: Record<string, number> = {
+        'jan': 0, 'january': 0, 'feb': 1, 'february': 1, 'mar': 2, 'march': 2,
+        'apr': 3, 'april': 3, 'may': 4, 'jun': 5, 'june': 5, 'jul': 6, 'july': 6,
+        'aug': 7, 'august': 7, 'sep': 8, 'sept': 8, 'september': 8,
+        'oct': 9, 'october': 9, 'nov': 10, 'november': 10, 'dec': 11, 'december': 11,
+        // Spanish
+        'enero': 0, 'febrero': 1, 'marzo': 2, 'abril': 3, 'mayo': 4, 'junio': 5,
+        'julio': 6, 'agosto': 7, 'septiembre': 8, 'octubre': 9, 'noviembre': 10, 'diciembre': 11,
+        // Italian
+        'gennaio': 0, 'febbraio': 1, 'aprile': 3, 'maggio': 4, 'giugno': 5,
+        'luglio': 6, 'settembre': 8, 'ottobre': 9, 'novembre': 10,
+      };
+      const monthNum = abbrMonthMap[monthWord] ?? monthNames[monthWord];
+      if (monthNum !== undefined && dayNum >= 1 && dayNum <= 31) {
+        targetDate = new Date(now.getFullYear(), monthNum, dayNum);
+        if (hours !== null) {
+          targetDate.setHours(hours, minutes, 0, 0);
+        } else {
+          targetDate.setHours(9, 0, 0, 0);
         }
-        break;
+        if (targetDate < now) {
+          targetDate.setFullYear(targetDate.getFullYear() + 1);
+        }
+        const monthDisplayNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                    'July', 'August', 'September', 'October', 'November', 'December'];
+        readable = `${monthDisplayNames[monthNum]} ${dayNum}`;
+      }
+    }
+
+    // Handle "Month DD" format (original)
+    if (!targetDate) {
+      for (const [monthWord, monthNum] of Object.entries(monthNames)) {
+        const monthDayMatch = lowerExpr.match(new RegExp(`${monthWord}\\s+(\\d{1,2})(?:st|nd|rd|th)?`, 'i'));
+        if (monthDayMatch) {
+          const dayNum = parseInt(monthDayMatch[1]);
+          if (dayNum >= 1 && dayNum <= 31) {
+            targetDate = new Date(now.getFullYear(), monthNum, dayNum);
+            if (hours !== null) {
+              targetDate.setHours(hours, minutes, 0, 0);
+            } else {
+              targetDate.setHours(9, 0, 0, 0);
+            }
+            
+            if (targetDate < now) {
+              targetDate.setFullYear(targetDate.getFullYear() + 1);
+            }
+            
+            const monthDisplayNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                                        'July', 'August', 'September', 'October', 'November', 'December'];
+            readable = `${monthDisplayNames[monthNum]} ${dayNum}`;
+          }
+          break;
+        }
       }
     }
   }
@@ -2223,6 +2264,9 @@ serve(async (req) => {
         const updatedContext: ConversationContext = {
           ...currentContext,
           conversation_history: updatedHistory,
+          // Always store the current user message for "schedule it" / "then create it" fallback
+          last_user_message: (messageBody || '').substring(0, 1000),
+          last_user_message_at: new Date().toISOString(),
         };
 
         // Only update entity if a task was identified
@@ -3454,14 +3498,44 @@ serve(async (req) => {
           const parsed = parseNaturalDate(reminderExpr, profile.timezone || 'America/New_York');
           
           // Insert the new note with reminder already set
+          const eventDueDate = parsed.date || processData.due_date || null;
+          
+          // Compute smart reminder time based on event date
+          let reminderTime = parsed.date || null;
+          if (!reminderTime && eventDueDate) {
+            // If we have a due date but no explicit reminder time, compute smart reminder
+            const eventDate = new Date(eventDueDate);
+            const hoursUntilEvent = (eventDate.getTime() - Date.now()) / (1000 * 60 * 60);
+            
+            if (hoursUntilEvent <= 4) {
+              reminderTime = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 min from now
+            } else if (hoursUntilEvent <= 24) {
+              reminderTime = new Date(eventDate.getTime() - 2 * 60 * 60 * 1000).toISOString(); // 2h before
+            } else {
+              // Morning of event day (9 AM user timezone)
+              const morningOf = new Date(eventDate);
+              morningOf.setUTCHours(9, 0, 0, 0);
+              try {
+                const utcStr = morningOf.toLocaleString('en-US', { timeZone: 'UTC' });
+                const tzStr = morningOf.toLocaleString('en-US', { timeZone: profile.timezone || 'America/New_York' });
+                const utcDate = new Date(utcStr);
+                const tzDate = new Date(tzStr);
+                const offsetMs = utcDate.getTime() - tzDate.getTime();
+                reminderTime = new Date(morningOf.getTime() + offsetMs).toISOString();
+              } catch {
+                reminderTime = morningOf.toISOString();
+              }
+            }
+          }
+          
           const noteData: any = {
             author_id: userId,
             couple_id: coupleId,
             original_text: messageBody || taskDescription,
             summary: processData.summary || taskDescription,
             category: processData.category || 'Task',
-            due_date: parsed.date || processData.due_date || null,
-            reminder_time: parsed.date || null,
+            due_date: eventDueDate,
+            reminder_time: reminderTime,
             priority: processData.priority || 'medium',
             tags: processData.tags || [],
             items: processData.items || [],
@@ -3492,7 +3566,7 @@ serve(async (req) => {
             if (list) listName = list.name;
           }
           
-          const friendlyDate = parsed.date ? formatFriendlyDate(parsed.date) : 'tomorrow at 9:00 AM';
+          const friendlyDate = reminderTime ? formatFriendlyDate(reminderTime) : (eventDueDate ? formatFriendlyDate(eventDueDate) : 'tomorrow at 9:00 AM');
           
           const confirmationMessage = [
             `✅ Saved: ${insertedNote.summary}`,
@@ -3767,9 +3841,63 @@ serve(async (req) => {
             return reply(`⏰ Set reminder for "${foundTask.summary}" ${parsed.readable}?\n\nReply "yes" to confirm.`);
           }
 
-          const tomorrowReminder = new Date();
-          tomorrowReminder.setDate(tomorrowReminder.getDate() + 1);
-          tomorrowReminder.setHours(9, 0, 0, 0);
+          // SMART REMINDER DEFAULTS: Based on task's due_date or event time
+          const taskDueDate = foundTask.due_date ? new Date(foundTask.due_date) : null;
+          let smartReminderDate: Date;
+          let smartReadable: string;
+
+          if (taskDueDate && taskDueDate.getTime() > Date.now()) {
+            const hoursUntilDue = (taskDueDate.getTime() - Date.now()) / (1000 * 60 * 60);
+            const dueHour = taskDueDate.getUTCHours();
+
+            if (hoursUntilDue <= 4) {
+              // Due very soon: remind in 30 minutes
+              smartReminderDate = new Date(Date.now() + 30 * 60 * 1000);
+              smartReadable = 'in 30 minutes';
+            } else if (hoursUntilDue <= 24) {
+              // Due today: remind 2 hours before
+              smartReminderDate = new Date(taskDueDate.getTime() - 2 * 60 * 60 * 1000);
+              smartReadable = '2 hours before it\'s due';
+            } else {
+              // Due in future: remind morning of the event day (9 AM user timezone)
+              smartReminderDate = new Date(taskDueDate);
+              smartReminderDate.setUTCHours(9, 0, 0, 0);
+              // Adjust for timezone
+              try {
+                const utcStr = smartReminderDate.toLocaleString('en-US', { timeZone: 'UTC' });
+                const tzStr = smartReminderDate.toLocaleString('en-US', { timeZone: profile.timezone || 'America/New_York' });
+                const utcDate = new Date(utcStr);
+                const tzDate = new Date(tzStr);
+                const offsetMs = utcDate.getTime() - tzDate.getTime();
+                smartReminderDate = new Date(smartReminderDate.getTime() + offsetMs);
+              } catch { /* keep as-is */ }
+
+              // If the event is in the afternoon (after 1pm), also consider evening-before reminder
+              if (dueHour >= 13) {
+                // Set reminder to evening before at 8 PM
+                const eveningBefore = new Date(taskDueDate);
+                eveningBefore.setDate(eveningBefore.getDate() - 1);
+                eveningBefore.setUTCHours(20, 0, 0, 0);
+                try {
+                  const utcStr = eveningBefore.toLocaleString('en-US', { timeZone: 'UTC' });
+                  const tzStr = eveningBefore.toLocaleString('en-US', { timeZone: profile.timezone || 'America/New_York' });
+                  const utcDate = new Date(utcStr);
+                  const tzDate = new Date(tzStr);
+                  const offsetMs = utcDate.getTime() - tzDate.getTime();
+                  smartReminderDate = new Date(eveningBefore.getTime() + offsetMs);
+                } catch { /* keep as-is */ }
+                smartReadable = 'the evening before (8:00 PM) + morning of (9:00 AM)';
+              } else {
+                smartReadable = 'the morning of (9:00 AM)';
+              }
+            }
+          } else {
+            // No due date: default to tomorrow 9am
+            smartReminderDate = new Date();
+            smartReminderDate.setDate(smartReminderDate.getDate() + 1);
+            smartReminderDate.setHours(9, 0, 0, 0);
+            smartReadable = 'tomorrow at 9:00 AM';
+          }
 
           await supabase
             .from('user_sessions')
@@ -3781,8 +3909,8 @@ serve(async (req) => {
                   type: 'set_reminder',
                   task_id: foundTask.id,
                   task_summary: foundTask.summary,
-                  time: tomorrowReminder.toISOString(),
-                  readable: 'tomorrow at 9:00 AM',
+                  time: smartReminderDate.toISOString(),
+                  readable: smartReadable,
                   has_due_date: !!foundTask.due_date
                 }
               },
@@ -3790,7 +3918,7 @@ serve(async (req) => {
             })
             .eq('id', session.id);
 
-          return reply(`⏰ Set reminder for "${foundTask.summary}" tomorrow at 9:00 AM?\n\nReply "yes" to confirm.`);
+          return reply(`⏰ Set reminder for "${foundTask.summary}" ${smartReadable}?\n\nReply "yes" to confirm.`);
         }
         
         default:
@@ -5176,8 +5304,27 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
     // ========================================================================
     // CREATE INTENT (Default) - Capture First
     // ========================================================================
+    
+    // CONTEXT RESOLUTION: If the user says "schedule it", "then create it",
+    // "save that", etc. and the effective message is just a pronoun/short phrase,
+    // pull the previous user message from session context to use as the actual content.
+    let createMessage = effectiveMessage || '';
+    const isPronounOnlyCreate = /^(then\s+)?(schedule|create|save|add|set|do|make)\s+(it|that|this|lo|eso|esto|quello|questo)\s*[.!]?$/i.test(createMessage.trim());
+    if (isPronounOnlyCreate) {
+      const prevMsg = sessionContext.last_user_message;
+      const prevMsgAt = sessionContext.last_user_message_at;
+      const isRecent = prevMsgAt && (Date.now() - new Date(prevMsgAt).getTime()) < 10 * 60 * 1000; // 10 min TTL
+      
+      if (prevMsg && isRecent) {
+        console.log('[CREATE] Pronoun-only create detected, using previous message:', prevMsg.substring(0, 80));
+        createMessage = prevMsg;
+      } else {
+        console.log('[CREATE] Pronoun-only but no recent context, proceeding with original message');
+      }
+    }
+
     const notePayload: any = { 
-      text: effectiveMessage || '', 
+      text: createMessage, 
       user_id: userId,
       couple_id: coupleId,
       timezone: profile.timezone || 'America/New_York',
