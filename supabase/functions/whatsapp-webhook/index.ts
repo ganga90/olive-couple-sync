@@ -4900,14 +4900,14 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
     if (intent === 'PARTNER_MESSAGE') {
       const partnerAction = (intentResult as any)._partnerAction || 'tell';
       const partnerMessageContent = cleanMessage || effectiveMessage || '';
-      console.log('[WhatsApp] Processing PARTNER_MESSAGE:', partnerAction, '→', partnerMessageContent?.substring(0, 80));
+      console.log('[PARTNER_MESSAGE] Processing:', partnerAction, '→', partnerMessageContent?.substring(0, 80));
 
       // 1. Verify couple space exists
       if (!coupleId) {
         return reply(t('partner_no_space', userLang));
       }
 
-      // 2. Get couple data + resolve partner (prefer partner WITH a phone number)
+      // 2. Get couple data + resolve partner
       const { data: coupleData } = await supabase
         .from('clerk_couples')
         .select('you_name, partner_name, created_by')
@@ -4918,7 +4918,7 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
         return reply('I couldn\'t find your shared space. Make sure it\'s set up correctly!');
       }
 
-      // Get ALL other members in the couple (there may be >1 due to test/stale accounts)
+      // Get ALL other members in the couple
       const { data: otherMembers } = await supabase
         .from('clerk_couple_members')
         .select('user_id')
@@ -4931,10 +4931,19 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
 
       // Look up profiles for ALL other members and pick the one with a phone number
       const otherUserIds = otherMembers.map(m => m.user_id);
+      console.log('[PARTNER_MESSAGE] Other members found:', otherUserIds.length, 'IDs:', otherUserIds.join(', '));
+
       const { data: candidateProfiles } = await supabase
         .from('clerk_profiles')
         .select('id, phone_number, display_name, last_user_message_at')
         .in('id', otherUserIds);
+
+      console.log('[PARTNER_MESSAGE] Candidate profiles:', candidateProfiles?.map(p => ({
+        id: p.id?.substring(0, 15),
+        hasPhone: !!p.phone_number,
+        phone_last4: p.phone_number ? '...' + p.phone_number.slice(-4) : 'none',
+        lastMsg: p.last_user_message_at || 'never',
+      })));
 
       // Prefer the member who has a phone number linked
       const partnerProfile = candidateProfiles?.find(p => p.phone_number)
@@ -4950,17 +4959,22 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
       const partnerName = isCreator ? (coupleData.partner_name || partnerProfile.display_name || 'Partner') : (coupleData.you_name || partnerProfile.display_name || 'Partner');
       const senderName = isCreator ? (coupleData.you_name || 'Your partner') : (coupleData.partner_name || 'Your partner');
 
+      console.log('[PARTNER_MESSAGE] Resolved: sender=' + senderName + ', partner=' + partnerName + ', partnerId=' + partnerId?.substring(0, 15));
+
       if (!partnerProfile.phone_number) {
         return reply(t('partner_no_phone', userLang, { partner: partnerName }));
       }
 
-      // 4. Determine if this is a task to save or just a message to relay
-      const isTaskLike = /\b(buy|get|pick up|call|book|make|schedule|clean|fix|do|send|bring|take|comprar|llamar|hacer|enviar|traer|comprare|chiamare|fare|inviare|portare)\b/i.test(partnerMessageContent);
+      const partnerPhone = partnerProfile.phone_number;
+      const partnerPhoneLast4 = partnerPhone.slice(-4);
+      console.log('[PARTNER_MESSAGE] Partner phone ends in:', partnerPhoneLast4);
+
+      // 3. Determine if this is a task to save or just a message to relay
+      const isTaskLike = /\b(buy|get|pick up|call|book|make|schedule|clean|fix|do|send|bring|take|remind|comprar|llamar|hacer|enviar|traer|comprare|chiamare|fare|inviare|portare)\b/i.test(partnerMessageContent);
 
       let savedTask: { id: string; summary: string } | null = null;
 
       if (isTaskLike) {
-        // Save as a task assigned to partner
         try {
           const { data: processData } = await supabase.functions.invoke('process-note', {
             body: {
@@ -5002,7 +5016,7 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
         }
       }
 
-      // 5. Compose the WhatsApp message to partner
+      // 4. Compose the WhatsApp message to partner
       const actionEmoji: Record<string, string> = {
         remind: '⏰',
         tell: '💬',
@@ -5020,57 +5034,130 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
         partnerWhatsAppMsg = `${emoji} Message from ${senderName}:\n\n${savedTask?.summary || partnerMessageContent}\n\n🫒 Olive`;
       }
 
-      // 6. Send via gateway (handles 24h window + template fallback)
+      // 5. Send DIRECTLY via Meta API (no gateway intermediary)
+      //    This eliminates function-to-function latency/failure points
+      const PARTNER_WA_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN')!;
+      const PARTNER_WA_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_NUMBER_ID')!;
+      const cleanPartnerNumber = partnerPhone.replace(/\D/g, '');
+
+      let messageSent = false;
+      let sendError = '';
+
+      // Check if partner is within 24h window
+      const partnerLastMsg = partnerProfile.last_user_message_at;
+      const partnerIn24h = partnerLastMsg && (Date.now() - new Date(partnerLastMsg).getTime()) < 24 * 60 * 60 * 1000;
+      console.log('[PARTNER_MESSAGE] Partner 24h window:', partnerIn24h ? 'INSIDE' : 'OUTSIDE', '| lastMsg:', partnerLastMsg || 'never');
+
+      // 5a. Try free-form text first (free, works inside 24h window)
       try {
-        const { data: gatewayResult, error: gatewayError } = await supabase.functions.invoke('whatsapp-gateway', {
-          body: {
-            action: 'send',
-            message: {
-              user_id: partnerId,
-              message_type: 'partner_notification',
-              content: partnerWhatsAppMsg,
-              priority: 'normal',
-              metadata: {
-                from_user_id: userId,
-                from_name: senderName,
-                action: partnerAction,
-                task_id: savedTask?.id || null,
-              },
-            },
+        const apiUrl = `https://graph.facebook.com/v21.0/${PARTNER_WA_PHONE_ID}/messages`;
+        const freeFormPayload = {
+          messaging_product: 'whatsapp',
+          to: cleanPartnerNumber,
+          type: 'text',
+          text: { preview_url: true, body: partnerWhatsAppMsg }
+        };
+
+        console.log('[PARTNER_MESSAGE] Attempting free-form send to:', cleanPartnerNumber);
+        const freeFormRes = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${PARTNER_WA_TOKEN}`,
+            'Content-Type': 'application/json',
           },
+          body: JSON.stringify(freeFormPayload),
         });
 
-        if (gatewayError || !gatewayResult?.success) {
-          console.error('[PARTNER_MESSAGE] Gateway error:', gatewayError || gatewayResult?.error);
+        const freeFormBody = await freeFormRes.text();
+        console.log('[PARTNER_MESSAGE] Free-form response:', freeFormRes.status, freeFormBody.substring(0, 300));
 
-          // Fallback: try direct Meta API send
-          const cleanNumber = partnerProfile.phone_number.replace(/\D/g, '');
-          const directResult = await sendWhatsAppReply(
-            Deno.env.get('WHATSAPP_PHONE_NUMBER_ID')!,
-            cleanNumber,
-            partnerWhatsAppMsg,
-            Deno.env.get('WHATSAPP_ACCESS_TOKEN')!
-          );
+        if (freeFormRes.ok) {
+          const freeFormData = JSON.parse(freeFormBody);
+          const msgId = freeFormData.messages?.[0]?.id || '';
+          console.log('[PARTNER_MESSAGE] ✅ Free-form sent! Meta message_id:', msgId);
+          messageSent = true;
+        } else {
+          // Check for specific Meta errors
+          const errorData = JSON.parse(freeFormBody);
+          const errorCode = errorData?.error?.code;
+          const errorSubcode = errorData?.error?.error_subcode;
+          console.log('[PARTNER_MESSAGE] Free-form failed. Code:', errorCode, 'Subcode:', errorSubcode);
 
-          if (!directResult) {
-            // Task was still saved even if message failed
-            if (savedTask) {
-              return reply(`📋 I saved "${savedTask.summary}" and assigned it to ${partnerName}, but couldn't send the WhatsApp notification right now.\n\nThey'll see it in the app!`);
+          // 131047 = outside 24h window → try template
+          if (errorCode === 131047 || errorSubcode === 131047 || freeFormBody.includes('131047')) {
+            console.log('[PARTNER_MESSAGE] Outside 24h window → trying template message');
+
+            // Try olive_task_reminder template: {{1}} = title, {{2}} = details
+            const templatePayload = {
+              messaging_product: 'whatsapp',
+              to: cleanPartnerNumber,
+              type: 'template',
+              template: {
+                name: 'olive_task_reminder',
+                language: { code: 'en' },
+                components: [{
+                  type: 'body',
+                  parameters: [
+                    { type: 'text', text: `Message from ${senderName}` },
+                    { type: 'text', text: (savedTask?.summary || partnerMessageContent).substring(0, 800) },
+                  ],
+                }],
+              },
+            };
+
+            const templateRes = await fetch(apiUrl, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${PARTNER_WA_TOKEN}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(templatePayload),
+            });
+
+            const templateBody = await templateRes.text();
+            console.log('[PARTNER_MESSAGE] Template response:', templateRes.status, templateBody.substring(0, 300));
+
+            if (templateRes.ok) {
+              const templateData = JSON.parse(templateBody);
+              console.log('[PARTNER_MESSAGE] ✅ Template sent! Meta message_id:', templateData.messages?.[0]?.id);
+              messageSent = true;
+            } else {
+              sendError = `Template failed (${templateRes.status}): ${templateBody.substring(0, 200)}`;
+              console.error('[PARTNER_MESSAGE] ❌ Template also failed:', sendError);
             }
-            return reply(`Sorry, I couldn't reach ${partnerName} on WhatsApp right now. Please try again later.`);
+          } else {
+            sendError = `Free-form failed (${freeFormRes.status}): ${freeFormBody.substring(0, 200)}`;
+            console.error('[PARTNER_MESSAGE] ❌ Non-window error:', sendError);
           }
         }
-
-        console.log('[PARTNER_MESSAGE] Message sent successfully to', partnerName);
       } catch (sendErr) {
-        console.error('[PARTNER_MESSAGE] Send error:', sendErr);
-        if (savedTask) {
-          return reply(`📋 I saved "${savedTask.summary}" for ${partnerName}, but couldn't send the WhatsApp notification. They'll see it in the app!`);
-        }
-        return reply(t('error_generic', userLang));
+        sendError = `Send exception: ${String(sendErr)}`;
+        console.error('[PARTNER_MESSAGE] ❌ Exception during send:', sendErr);
       }
 
-      // 7. Respond to sender with confirmation
+      // 6. Log the outbound message for tracking
+      try {
+        await supabase.from('olive_outbound_queue').insert({
+          user_id: partnerId,
+          message_type: 'partner_notification',
+          content: partnerWhatsAppMsg,
+          status: messageSent ? 'sent' : 'failed',
+          sent_at: messageSent ? new Date().toISOString() : null,
+          error_message: messageSent ? null : sendError,
+          priority: 'normal',
+        });
+      } catch (logErr) {
+        console.error('[PARTNER_MESSAGE] Log insert error (non-critical):', logErr);
+      }
+
+      // 7. Respond to sender with confirmation or error
+      if (!messageSent) {
+        if (savedTask) {
+          return reply(`📋 I saved "${savedTask.summary}" and assigned it to ${partnerName}, but couldn't reach them on WhatsApp right now (phone ...${partnerPhoneLast4}).\n\nThey'll see it in the app!`);
+        }
+        return reply(`😕 I couldn't reach ${partnerName} on WhatsApp right now (phone ...${partnerPhoneLast4}). ${sendError ? 'Error: ' + sendError.substring(0, 100) : 'Please try again later.'}`);
+      }
+
       if (savedTask) {
         const confirmResponse = t('partner_message_and_task', userLang, {
           partner: partnerName,
