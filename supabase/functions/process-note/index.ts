@@ -810,7 +810,92 @@ Max 500 words.`;
   }
 }
 
-// Determine media type from URL or content type
+// Analyze video using Gemini's native multimodal video understanding
+async function analyzeVideoWithGemini(genai: GoogleGenAI, videoUrl: string): Promise<string> {
+  try {
+    console.log('[Gemini Video] Analyzing video:', videoUrl);
+
+    // Download the video file
+    const videoResponse = await fetch(videoUrl);
+    if (!videoResponse.ok) {
+      console.error('[Gemini Video] Failed to download video:', videoResponse.status);
+      return '';
+    }
+
+    const videoBlob = await videoResponse.blob();
+    const videoSizeBytes = videoBlob.size;
+    const videoSizeMB = videoSizeBytes / (1024 * 1024);
+    console.log('[Gemini Video] Video downloaded, size:', videoSizeMB.toFixed(1), 'MB, type:', videoBlob.type);
+
+    // Gemini inline data limit is ~20MB. Skip huge files.
+    if (videoSizeMB > 18) {
+      console.warn('[Gemini Video] Video too large for inline analysis:', videoSizeMB.toFixed(1), 'MB');
+      return '';
+    }
+
+    const arrayBuffer = await videoBlob.arrayBuffer();
+    const base64Video = arrayBufferToBase64(arrayBuffer);
+    const mimeType = videoBlob.type || 'video/mp4';
+
+    const extractionPrompt = `Analyze this video thoroughly and extract ALL useful information. Consider BOTH visual content and any spoken audio/narration.
+
+**VISUAL CONTENT:**
+- Describe what is shown: scenes, objects, text overlays, UI screenshots, products, locations
+- If there are text overlays, titles, or captions — transcribe them VERBATIM
+- If it shows a product, brand, app, or website — identify it specifically
+- If it shows a recipe, tutorial, or how-to — extract the steps
+- If it shows a place, restaurant, or event — identify name, location, details
+
+**AUDIO/SPEECH:**
+- If there is narration or dialogue, transcribe the key points
+- If there is a song or music, identify it if possible
+- If someone gives instructions or recommendations, capture them
+
+**SOCIAL MEDIA / REEL / STORY:**
+- If this is a social media clip (Instagram Reel, TikTok, YouTube Short):
+  - What is the main topic or recommendation?
+  - Any products, places, books, movies mentioned?
+  - Any links, handles, or references?
+
+**ACTIONABLE ITEMS:**
+- If the video contains recommendations, tips, or to-dos, list them as actionable items
+- If it mentions dates, events, or appointments, extract them with "Date:" and "Time:" prefixes
+
+Start with the PRIMARY subject clearly identified. Be specific and extract actual content, not generic descriptions.
+Max 500 words.`;
+
+    const response = await genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: extractionPrompt },
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: base64Video
+              }
+            }
+          ]
+        }
+      ],
+      config: {
+        temperature: 0.1,
+        maxOutputTokens: 800
+      }
+    });
+
+    const description = response.text || '';
+    console.log('[Gemini Video] Analysis result:', description.substring(0, 300));
+
+    return description;
+  } catch (error) {
+    console.error('[Gemini Video] Error analyzing video:', error);
+    return '';
+  }
+}
+
 function getMediaType(url: string, contentType?: string): 'image' | 'audio' | 'video' | 'pdf' | 'unknown' {
   const urlLower = url.toLowerCase();
   
@@ -1156,10 +1241,20 @@ serve(async (req) => {
             mediaDescriptions.push(`[Audio transcription] ${transcription}`);
           }
         } else if (mediaType === 'video') {
-          // For videos, try to transcribe audio track
-          const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
-          if (transcription) {
-            mediaDescriptions.push(`[Video audio transcription] ${transcription}`);
+          // For videos, use Gemini's native multimodal video understanding
+          // This analyzes both visual content AND audio simultaneously
+          const videoAnalysis = await analyzeVideoWithGemini(genai, mediaUrl);
+          if (videoAnalysis) {
+            mediaDescriptions.push(`[Video] ${videoAnalysis}`);
+          } else {
+            // Fallback: try audio-only transcription if visual analysis fails
+            console.log('[process-note] Video visual analysis failed, trying audio-only fallback');
+            const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
+            if (transcription) {
+              mediaDescriptions.push(`[Video audio transcription] ${transcription}`);
+            } else {
+              mediaDescriptions.push(`[Video] Video attachment (analysis unavailable)`);
+            }
           }
         }
       }
