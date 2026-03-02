@@ -21,6 +21,8 @@ export interface RouterLogEntry {
   routeReason: string;
   classificationLatencyMs: number;
   totalLatencyMs: number;
+  /** Whether the message included media (image/video/document) — for cost analytics */
+  mediaPresent?: boolean;
 }
 
 /**
@@ -44,6 +46,7 @@ export async function logRouterDecision(
       route_reason: entry.routeReason,
       classification_latency_ms: entry.classificationLatencyMs,
       total_latency_ms: entry.totalLatencyMs,
+      media_present: entry.mediaPresent ?? false,
     });
   } catch (err) {
     console.warn("[RouterLogger] Non-blocking log error:", err);

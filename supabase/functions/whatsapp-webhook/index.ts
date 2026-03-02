@@ -2703,11 +2703,13 @@ serve(async (req) => {
 
     // Route intent → model tier (from _shared/model-router.ts)
     const { routeIntent } = await import("../_shared/model-router.ts");
+    const hasMedia = mediaUrls.length > 0;
     const route = routeIntent(
       aiResult?.intent || 'chat',
-      aiResult?.parameters?.chat_type || undefined
+      aiResult?.parameters?.chat_type || undefined,
+      hasMedia,
     );
-    console.log(`[Router] intent=${aiResult?.intent} → tier=${route.responseTier} reason=${route.reason}`);
+    console.log(`[Router] intent=${aiResult?.intent} → tier=${route.responseTier} reason=${route.reason} hasMedia=${hasMedia}`);
 
     let intentResult: IntentResult & { queryType?: string; chatType?: string; actionType?: string; actionTarget?: string; cleanMessage?: string; _aiTaskId?: string; _aiSkillId?: string };
 
@@ -2744,7 +2746,8 @@ serve(async (req) => {
         responseModel: getModel(route.responseTier as any),
         routeReason: route.reason,
         classificationLatencyMs: classificationLatencyMs,
-        totalLatencyMs: classificationLatencyMs, // Classification is the main measurable latency
+        totalLatencyMs: classificationLatencyMs,
+        mediaPresent: hasMedia,
       });
     } catch (logErr) {
       console.warn('[RouterLogger] Non-blocking error:', logErr);
