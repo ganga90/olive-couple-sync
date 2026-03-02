@@ -1020,6 +1020,7 @@ serve(async (req) => {
             routeReason: route.reason,
             classificationLatencyMs,
             totalLatencyMs: classificationLatencyMs,
+            mediaPresent: false, // in-app chat doesn't send media through this path
           });
         } catch (logErr) {
           console.warn('[RouterLogger] Non-blocking error:', logErr);
