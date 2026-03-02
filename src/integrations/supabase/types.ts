@@ -1221,6 +1221,7 @@ export type Database = {
           confidence: number | null
           created_at: string | null
           id: string
+          media_present: boolean | null
           raw_text: string | null
           response_model: string | null
           route_reason: string | null
@@ -1236,6 +1237,7 @@ export type Database = {
           confidence?: number | null
           created_at?: string | null
           id?: string
+          media_present?: boolean | null
           raw_text?: string | null
           response_model?: string | null
           route_reason?: string | null
@@ -1251,6 +1253,7 @@ export type Database = {
           confidence?: number | null
           created_at?: string | null
           id?: string
+          media_present?: boolean | null
           raw_text?: string | null
           response_model?: string | null
           route_reason?: string | null
