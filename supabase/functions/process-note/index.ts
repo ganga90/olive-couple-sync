@@ -435,17 +435,29 @@ CORE FIELD RULES:
    - **Appointments**: Type + provider if known ("Doctor Appointment" or "Dr. Smith Appointment")
    - For media with promo codes: "[Brand] promo code: [CODE] - [DISCOUNT]"
 
-2. category: Use lowercase with underscores
-   - concerts/events/shows → "entertainment"
-   - restaurants/dinner plans → "date_ideas"
-   - repairs/fix/maintenance → "home_improvement"
-   - vacation/flights/hotels → "travel"
-   - groceries/supermarket → "groceries"
-   - clothes/electronics/promo codes → "shopping"
-   - appointments/bills/rent → "personal"
-   - books/reading → "books"
-   - movies/tv shows/series → "movies_tv"
-   - medical/doctor/dentist → "health"
+ 2. category: Use lowercase with underscores
+    
+    **INTENT-FIRST RULE (HIGHEST PRIORITY)**:
+    When the user's primary intent is an ACTION verb (cancel, return, call, schedule, book, reschedule, pay, refund, exchange, fix, repair, renew, update, check, follow up, confirm, remind), the category MUST be "task" or "personal" — NOT the domain category of the noun.
+    Examples:
+    - "cancel restaurant booking" → "task" (NOT "date_ideas" — the intent is to CANCEL, not to plan a date)
+    - "return Amazon package" → "task" (NOT "shopping" — the intent is a to-do action)
+    - "call dentist to reschedule" → "task" (NOT "health" — it's an action item)
+    - "pay electricity bill" → "personal" (action: pay a bill)
+    - "book flight to Rome" → "travel" (exception: booking travel IS travel planning)
+    - "fix leaking faucet" → "home_improvement" (exception: fixing IS the domain action)
+    
+    **DOMAIN RULES (apply only when intent is NOT an action/to-do)**:
+    - concerts/events/shows → "entertainment"
+    - restaurants/dinner plans (SAVING a restaurant, NOT canceling/calling one) → "date_ideas"
+    - repairs/fix/maintenance → "home_improvement"
+    - vacation/flights/hotels/booking travel → "travel"
+    - groceries/supermarket → "groceries"
+    - clothes/electronics/promo codes → "shopping"
+    - appointments/bills/rent → "personal"
+    - books/reading → "books"
+    - movies/tv shows/series → "movies_tv"
+    - medical/doctor/dentist (saving info, not calling to cancel) → "health"
 
 3. target_list: If user has existing lists and content matches one, output the EXACT list name
    - Books/reading material → match "Books" list if exists
