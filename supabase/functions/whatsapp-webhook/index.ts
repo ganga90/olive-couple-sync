@@ -3832,15 +3832,50 @@ serve(async (req) => {
         }
         
         case 'move': {
-          const targetListName = effectiveMessage?.trim();
+          const targetListName = (effectiveMessage || '').trim();
           
-          const { data: existingList } = await supabase
+          if (!targetListName) {
+            return reply('Which list should I move this task to? Please provide a list name.');
+          }
+          
+          // ROBUST LIST MATCHING: exact name match (case-insensitive), scoped to user's lists
+          // Step 1: Fetch all lists the user has access to
+          let listsQuery = supabase
             .from('clerk_lists')
-            .select('id, name')
-            .ilike('name', `%${targetListName}%`)
-            .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
-            .limit(1)
-            .single();
+            .select('id, name');
+          
+          if (coupleId) {
+            // User has a couple — fetch both personal and couple lists
+            listsQuery = listsQuery.or(`author_id.eq.${userId},couple_id.eq.${coupleId}`);
+          } else {
+            listsQuery = listsQuery.eq('author_id', userId);
+          }
+          
+          const { data: allLists } = await listsQuery;
+          
+          // Step 2: Find best match — prefer exact match, then case-insensitive, then partial
+          let existingList: { id: string; name: string } | null = null;
+          const targetLower = targetListName.toLowerCase().trim();
+          
+          if (allLists && allLists.length > 0) {
+            // Priority 1: Exact case-insensitive match
+            existingList = allLists.find(l => l.name.toLowerCase().trim() === targetLower) || null;
+            
+            // Priority 2: Starts-with match (e.g., "Tasks" matches "Tasks & Projects")
+            if (!existingList) {
+              existingList = allLists.find(l => l.name.toLowerCase().trim().startsWith(targetLower)) || null;
+            }
+            
+            // Priority 3: Target contains list name or vice versa
+            if (!existingList) {
+              existingList = allLists.find(l => {
+                const listLower = l.name.toLowerCase().trim();
+                return listLower.includes(targetLower) || targetLower.includes(listLower);
+              }) || null;
+            }
+          }
+          
+          console.log(`[MOVE] Target: "${targetListName}" | Found: ${existingList ? `"${existingList.name}" (${existingList.id})` : 'NONE'} | Total lists: ${allLists?.length || 0}`);
           
           if (existingList) {
             const { error } = await supabase
@@ -3855,6 +3890,7 @@ serve(async (req) => {
             }
           }
           
+          // No existing list found — create a new one
           const { data: newList, error: createError } = await supabase
             .from('clerk_lists')
             .insert({ 
@@ -3872,7 +3908,9 @@ serve(async (req) => {
               .update({ list_id: newList.id, updated_at: new Date().toISOString() })
               .eq('id', foundTask.id);
             
-            return reply(`📂 Created "${newList.name}" list and moved "${foundTask.summary}" there!`);
+            const moveResponse = `📂 Created "${newList.name}" list and moved "${foundTask.summary}" there!`;
+            await saveReferencedEntity({ ...foundTask, list_id: newList.id }, moveResponse);
+            return reply(moveResponse);
           }
           
           return reply('Sorry, I couldn\'t move that task. Please try again.');
