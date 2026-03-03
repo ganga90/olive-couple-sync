@@ -2163,6 +2163,13 @@ serve(async (req) => {
         }
 
         const confirmMsg = `✅ Saved: ${insertedNote.summary}\n📂 Added to: ${listName}\n\n🔗 Manage: https://witholive.app`;
+        
+        // Store as referenced entity so follow-up commands ("move that task") work
+        await saveReferencedEntity(
+          { id: insertedNote.id, summary: insertedNote.summary, list_id: insertedNote.list_id || undefined },
+          confirmMsg
+        );
+        
         return reply(confirmMsg);
       } catch (insertErr) {
         console.error('Database insertion error for media note:', insertErr);
