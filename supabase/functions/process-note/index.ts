@@ -72,7 +72,7 @@ const singleNoteSchema = {
   properties: {
     summary: { 
       type: Type.STRING, 
-      description: "Concise title (max 100 chars). Extract the MAIN entity name. Examples: 'Restaurant Name', 'Doctor Appointment', 'Book Title'. For links, extract the business/entity name from URL or context." 
+      description: "Concise title (max 100 chars). Extract the MAIN entity name. For PRODUCTS: use exact brand + model (e.g., 'Apple Watch Ultra 2', 'Sony WH-1000XM5'). For restaurants: 'Restaurant Name'. For appointments: 'Doctor Appointment'. For books: 'Book Title'. For links: extract the business/entity name. NEVER use generic category prefixes like 'PRODUCTS:' or 'SHOPPING:' as the summary." 
     },
     category: { 
       type: Type.STRING, 
@@ -238,7 +238,15 @@ function deriveSummaryFromMedia(mediaDescriptions: string[]): string {
   // Get the first media description and clean it up
   const raw = mediaDescriptions[0] || '';
   // Strip leading "[Image]", "[Audio transcription]" etc.
-  const cleaned = raw.replace(/^\[.*?\]\s*/, '').trim();
+  let cleaned = raw.replace(/^\[.*?\]\s*/, '').trim();
+  
+  if (!cleaned) {
+    return 'Saved media';
+  }
+  
+  // Strip category label prefixes that Gemini sometimes produces
+  // e.g., "PRODUCTS:", "APPOINTMENT:", "BUSINESS:", "BOOK:", "EVENT:"
+  cleaned = cleaned.replace(/^(PRODUCTS?|APPOINTMENTS?|BUSINESS|BOOKS?|EVENTS?|CONTACTS?|RECEIPTS?|PROMO\s*CODES?|HANDWRITTEN)\s*[:—–-]\s*/i, '').trim();
   
   if (!cleaned) {
     return 'Saved media';
@@ -747,8 +755,16 @@ FORMAT: Extract the ACTUAL content being shared, not "social media post"
 **BOOKS/MEDIA:**
 - Title, Author, ISBN, Publisher - format as "Book: [TITLE] by [AUTHOR]"
 
-**PRODUCTS:**
-- Product name, brand, model, price - format as "[BRAND] [PRODUCT NAME]"
+**PRODUCTS / ELECTRONICS / PHYSICAL OBJECTS — CRITICAL:**
+- This is a PHOTO of a real-world product or object. Identify the SPECIFIC product.
+- Product Name: Use the exact brand + model name (e.g., "Apple Watch Series 10", "Sony WH-1000XM5", "Nike Air Max 90")
+- If the brand/logo is visible, ALWAYS include it
+- If the model/version is visible or identifiable, ALWAYS include it
+- Price: Include if visible on a tag or screen
+- Color/variant: Note the specific color or variant shown
+- Format: Start with the specific product name as the PRIMARY subject, e.g., "Apple Watch Ultra 2"
+- NEVER use generic labels like "PRODUCTS:" or "a smartwatch" when the brand is clearly identifiable
+- NEVER start with "PRODUCTS:" as a prefix — just state the product name directly
 
 **PROMO CODES/COUPONS:**
 - Code, discount amount, expiration date, conditions
@@ -769,9 +785,10 @@ FORMAT YOUR RESPONSE AS STRUCTURED DATA with the PRIMARY SUBJECT clearly identif
 For HANDWRITTEN content: Start with "HANDWRITTEN:" and transcribe ALL text verbatim
 For STOCKS: Start with "[TICKER] [COMPANY] - [PRICE]"
 For SOCIAL MEDIA about stocks: Start with the stock ticker(s) and company name(s)
+For PRODUCTS: Start with the EXACT product name (e.g., "Apple Watch Ultra 2" or "Sony WH-1000XM5"). NEVER prefix with "PRODUCTS:" — just state the name directly.
 For other content types, start with the MAIN SUBJECT clearly identified.
 
-CRITICAL: Extract EVERY piece of visible information. Be specific and complete. Never return generic labels like "whiteboard notes" or "sticky note" - extract the ACTUAL content written.
+CRITICAL: Extract EVERY piece of visible information. Be specific and complete. Never return generic labels like "whiteboard notes", "sticky note", or "PRODUCTS:" - extract the ACTUAL content, brand, model, or product name.
 Max 500 words.`;
 
 
