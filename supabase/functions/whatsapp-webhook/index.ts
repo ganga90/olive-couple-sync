@@ -1907,7 +1907,7 @@ serve(async (req) => {
     // ======================================================================
     // AUDIO TRANSCRIPTION — Payload Replacement Pattern
     // If the message is audio (voice note), transcribe via ElevenLabs STT
-    // and replace the empty messageBody BEFORE any routing decisions.
+    // with Gemini fallback. Replace the empty messageBody BEFORE any routing.
     // This lets voice notes flow through the full intent pipeline (search,
     // create, complete, expense, etc.) just like typed text.
     // ======================================================================
@@ -1916,19 +1916,12 @@ serve(async (req) => {
     if (isAudioMessage && !messageBody) {
       console.log('[STT] Audio message detected — starting transcription pipeline');
 
-      const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
-      if (!ELEVENLABS_API_KEY) {
-        console.error('[STT] ELEVENLABS_API_KEY not configured');
-        return reply('I received your voice note, but my audio processor is temporarily down.');
-      }
-
       try {
         // Step 1: Find the audio media item
         const audioMediaItem = mediaItems.find(m => m.mimeType.startsWith('audio/'));
         if (!audioMediaItem) throw new Error('No audio media item found in mediaItems');
 
         // Step 2: Download raw audio bytes from Meta (WhatsApp Media API)
-        // This is a two-step process: get media URL, then download the file.
         const metaInfoRes = await fetch(`https://graph.facebook.com/v21.0/${audioMediaItem.id}`, {
           headers: { 'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}` }
         });
@@ -1948,41 +1941,105 @@ serve(async (req) => {
 
         if (audioBlob.size === 0) throw new Error('Audio blob is empty (0 bytes)');
 
-        // Step 3: Send to ElevenLabs Speech-to-Text API
-        const sttFormData = new FormData();
-        const audioFile = new File([audioBlob], 'voice_note.ogg', { type: audioMediaItem.mimeType });
-        sttFormData.append('file', audioFile);
-        sttFormData.append('model_id', 'scribe_v2');
-        sttFormData.append('tag_audio_events', 'false');
-        sttFormData.append('diarize', 'false');
+        let transcribedText = '';
 
-        const sttResponse = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
-          method: 'POST',
-          headers: { 'xi-api-key': ELEVENLABS_API_KEY },
-          body: sttFormData,
-        });
+        // ── Strategy 1: ElevenLabs STT ──
+        const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
+        if (ELEVENLABS_API_KEY) {
+          try {
+            const sttFormData = new FormData();
+            const audioFile = new File([audioBlob], 'voice_note.ogg', { type: audioMediaItem.mimeType });
+            sttFormData.append('file', audioFile);
+            sttFormData.append('model_id', 'scribe_v2');
+            sttFormData.append('tag_audio_events', 'false');
+            sttFormData.append('diarize', 'false');
 
-        if (!sttResponse.ok) {
-          const sttErr = await sttResponse.text().catch(() => '');
-          throw new Error(`ElevenLabs STT failed: ${sttResponse.status} ${sttErr}`);
+            const sttResponse = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+              method: 'POST',
+              headers: { 'xi-api-key': ELEVENLABS_API_KEY },
+              body: sttFormData,
+            });
+
+            if (!sttResponse.ok) {
+              const sttErr = await sttResponse.text().catch(() => '');
+              console.warn(`[STT] ElevenLabs failed (${sttResponse.status}): ${sttErr.substring(0, 200)}`);
+              throw new Error(`ElevenLabs STT failed: ${sttResponse.status}`);
+            }
+
+            const sttResult = await sttResponse.json();
+            transcribedText = sttResult.text?.trim() || '';
+            if (transcribedText) {
+              console.log('[STT] ✅ ElevenLabs transcription succeeded:', transcribedText.substring(0, 200));
+            } else {
+              throw new Error('ElevenLabs returned empty text');
+            }
+          } catch (elError) {
+            console.warn('[STT] ElevenLabs unavailable, falling back to Gemini:', (elError as Error).message);
+          }
+        } else {
+          console.log('[STT] No ELEVENLABS_API_KEY, using Gemini directly');
         }
 
-        const sttResult = await sttResponse.json();
-        const transcribedText = sttResult.text?.trim() || '';
-        console.log('[STT] Transcribed text:', transcribedText.substring(0, 200));
+        // ── Strategy 2: Gemini STT fallback ──
+        if (!transcribedText) {
+          const GEMINI_API_KEY = Deno.env.get('GEMINI_API');
+          if (!GEMINI_API_KEY) {
+            throw new Error('Neither ElevenLabs nor Gemini API keys are configured for STT');
+          }
+
+          console.log('[STT] Using Gemini Flash for audio transcription...');
+          
+          // Convert audio blob to base64 for Gemini inline_data
+          const audioArrayBuffer = await audioBlob.arrayBuffer();
+          const audioUint8 = new Uint8Array(audioArrayBuffer);
+          let binaryStr = '';
+          for (let i = 0; i < audioUint8.length; i++) {
+            binaryStr += String.fromCharCode(audioUint8[i]);
+          }
+          const audioBase64 = btoa(binaryStr);
+
+          const geminiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+          const geminiResult = await geminiClient.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [{
+              role: 'user',
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: audioMediaItem.mimeType || 'audio/ogg',
+                    data: audioBase64,
+                  }
+                },
+                {
+                  text: 'Transcribe this audio message exactly as spoken. Return ONLY the transcribed text, nothing else. No quotes, no labels, no prefixes. If the audio is in a language other than English, transcribe in that original language.'
+                }
+              ]
+            }]
+          });
+
+          transcribedText = (geminiResult as any)?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() 
+            || (geminiResult as any)?.text?.trim()
+            || '';
+          
+          if (transcribedText) {
+            console.log('[STT] ✅ Gemini transcription succeeded:', transcribedText.substring(0, 200));
+          } else {
+            throw new Error('Gemini transcription returned empty text');
+          }
+        }
 
         if (!transcribedText) {
-          throw new Error('Transcription returned empty text');
+          throw new Error('All transcription strategies returned empty text');
         }
 
         // Step 4: PAYLOAD REPLACEMENT — inject transcribed text as messageBody
-        // The rest of the function will process this as if the user typed it.
         messageBody = transcribedText;
         console.log('[STT] ✅ Payload replaced — voice note will flow through normal text pipeline');
 
       } catch (sttError) {
         console.error('[STT] ❌ Transcription pipeline failed:', sttError);
-        return reply('I received your voice note, but my audio processor is temporarily down.');
+        return reply('I received your voice note, but my audio processor is temporarily down. Please try again or type your message.');
       }
     }
 
