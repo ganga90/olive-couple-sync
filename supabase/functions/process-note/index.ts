@@ -456,11 +456,15 @@ CORE FIELD RULES:
     - "book flight to Rome" → "travel" (exception: booking travel IS travel planning)
     - "fix leaking faucet" → "home_improvement" (exception: fixing IS the domain action)
     
+    **DOCUMENT-TYPE OVERRIDE (applies BEFORE intent-first rule for media/images)**:
+    - If the attached media is a FLIGHT ITINERARY, BOARDING PASS, TRAIN TICKET, HOTEL CONFIRMATION, or any travel booking document → ALWAYS "travel", regardless of any action verbs
+    - If the media shows a TRAVEL DOCUMENT with airline names, flight numbers, airport codes, departure/arrival times → ALWAYS "travel"
+    
     **DOMAIN RULES (apply only when intent is NOT an action/to-do)**:
     - concerts/events/shows/karaoke/DJ nights/happy hours/festivals/live music/comedy/sports events/trivia/nightlife/themed nights/bar promotions → "entertainment"
     - restaurants/dinner plans (SAVING a restaurant, NOT canceling/calling one) → "date_ideas"
     - repairs/fix/maintenance → "home_improvement"
-    - vacation/flights/hotels/booking travel → "travel"
+    - vacation/flights/hotels/booking travel/flight itineraries/boarding passes/train tickets → "travel"
     - groceries/supermarket → "groceries"
     - clothes/electronics/promo codes → "shopping"
     - appointments/bills/rent → "personal"
