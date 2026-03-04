@@ -340,13 +340,21 @@ MEDIA EXTRACTION RULES - ALWAYS extract ALL details into items array:
    - Category: "health" or "personal"
 
 4. **Events/Tickets/Nightlife/Shows**: 
-   - Summary: "[Event name] at [Venue]" or "[Event name]"
-   - Items: ["Venue: [VENUE]", "Date: [DATE]", "Time: [TIME]", "Tickets: [info]", "Price: [COST]", "DJ: [name]", "Happy Hour: [details]"]
-   - Category: "entertainment" — this includes karaoke nights, DJ events, happy hours, concerts, comedy shows, festivals, sports events, trivia nights, live music, themed nights, club events, bar promotions
-   - NEVER categorize entertainment/events as "task" — if it's something fun to attend or an event/promotion at a venue, it's "entertainment"
+    - Summary: "[Event name] at [Venue]" or "[Event name]"
+    - Items: ["Venue: [VENUE]", "Date: [DATE]", "Time: [TIME]", "Tickets: [info]", "Price: [COST]", "DJ: [name]", "Happy Hour: [details]"]
+    - Category: "entertainment" — this includes karaoke nights, DJ events, happy hours, concerts, comedy shows, festivals, sports events, trivia nights, live music, themed nights, club events, bar promotions
+    - NEVER categorize entertainment/events as "task" — if it's something fun to attend or an event/promotion at a venue, it's "entertainment"
+
+4b. **TRAVEL DOCUMENTS (Flight itineraries, boarding passes, train tickets, hotel bookings)**:
+    - Summary: "[Airline/Carrier] [Origin] → [Destination]" (e.g., "Air Nostrum Madrid → Bologna")
+    - Items: ["Flight: [number]", "Date: [date]", "Departure: [time] from [airport/terminal]", "Arrival: [time] at [airport]", "Passenger: [name]", "Cabin: [class]", "Seat: [if assigned]", "Booking Ref: [PNR]"]
+    - Category: ALWAYS "travel" — flight itineraries, boarding passes, train tickets, hotel confirmations, car rental confirmations are ALWAYS travel
+    - NEVER categorize travel documents as "task" or "personal" — they are travel planning/reference items
+    - Set due_date to the travel date
+    - Priority: "high" if travel date is within 7 days, "medium" otherwise
 
 5. **Books**:
-   - Summary: "[Book Title]" or "[Book Title] by [Author]"
+    - Summary: "[Book Title]" or "[Book Title] by [Author]"
    - Items: ["Author: [NAME]", "ISBN: [NUMBER]", "Publisher: [NAME]"]
    - Category: "books"
    - target_list: match to Books list if exists
