@@ -117,6 +117,11 @@ export function routeIntent(
     return { responseTier: "standard", reason: "search" };
   }
 
+  // ── Web search — lite for query formatting ─────────────
+  if (intent === "web_search") {
+    return { responseTier: "lite", reason: "web_search" };
+  }
+
   // ── Partner message — standard for relay formatting ─────
   if (intent === "partner_message") {
     return { responseTier: "standard", reason: "partner_relay" };
