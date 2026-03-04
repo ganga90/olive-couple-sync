@@ -4181,9 +4181,10 @@ Description: "${description}"`;
     if (intent === 'CONTEXTUAL_ASK') {
       console.log('[WhatsApp] Processing CONTEXTUAL_ASK for:', effectiveMessage?.substring(0, 50));
       
+      // Fetch notes WITH original_text for full detail access
       const { data: allTasks } = await supabase
         .from('clerk_notes')
-        .select('id, summary, category, list_id, items, tags, priority, due_date, completed')
+        .select('id, summary, original_text, category, list_id, items, tags, priority, due_date, reminder_time, completed, created_at')
         .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
         .order('created_at', { ascending: false })
         .limit(200);
@@ -4193,26 +4194,110 @@ Description: "${description}"`;
         .select('id, name, description')
         .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
       
+      // Fetch calendar events for the next 30 days
+      let calendarContext = '';
+      try {
+        const { data: calConnections } = await supabase
+          .from('calendar_connections')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('is_active', true);
+        
+        if (calConnections && calConnections.length > 0) {
+          const connIds = calConnections.map(c => c.id);
+          const now = new Date();
+          const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+          
+          const { data: calEvents } = await supabase
+            .from('calendar_events')
+            .select('title, start_time, end_time, location, description, all_day')
+            .in('connection_id', connIds)
+            .gte('start_time', now.toISOString())
+            .lte('start_time', thirtyDaysFromNow.toISOString())
+            .order('start_time', { ascending: true })
+            .limit(30);
+          
+          if (calEvents && calEvents.length > 0) {
+            calendarContext = '\n## UPCOMING CALENDAR EVENTS:\n';
+            calEvents.forEach(ev => {
+              const start = new Date(ev.start_time);
+              const end = ev.end_time ? new Date(ev.end_time) : null;
+              const dayStr = start.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+              const timeStr = ev.all_day ? 'All day' : start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+              const endStr = end && !ev.all_day ? ` - ${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : '';
+              const loc = ev.location ? ` | 📍 ${ev.location}` : '';
+              calendarContext += `- ${ev.title}: ${dayStr} at ${timeStr}${endStr}${loc}\n`;
+              if (ev.description) calendarContext += `  Details: ${ev.description}\n`;
+            });
+          }
+        }
+      } catch (calErr) {
+        console.warn('[WhatsApp] Calendar fetch error (non-blocking):', calErr);
+      }
+      
       const { data: memories } = await supabase
-        .from('user_memories')
-        .select('title, content, category')
+        .from('olive_memory_chunks')
+        .select('content, chunk_type')
         .eq('user_id', userId)
-        .eq('is_active', true)
+        .order('importance', { ascending: false })
         .limit(15);
       
       const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
       
-      let savedItemsContext = '\n## USER\'S LISTS AND SAVED ITEMS:\n';
+      // ---- Smart relevance: find items most relevant to the question ----
+      const questionLower = (effectiveMessage || '').toLowerCase();
+      const questionWords = questionLower.split(/\s+/).filter(w => w.length > 2);
       
+      // Score each task by relevance to the question
+      const scoredTasks = (allTasks || []).map(task => {
+        const summaryLower = task.summary.toLowerCase();
+        const originalLower = (task.original_text || '').toLowerCase();
+        const combined = `${summaryLower} ${originalLower}`;
+        
+        let score = 0;
+        questionWords.forEach(w => {
+          if (combined.includes(w)) score += 1;
+          if (summaryLower.includes(w)) score += 1; // bonus for summary match
+        });
+        return { ...task, relevanceScore: score };
+      });
+      
+      // Separate highly relevant items (show full detail) from the rest (show summary only)
+      const relevantTasks = scoredTasks.filter(t => t.relevanceScore >= 2).sort((a, b) => b.relevanceScore - a.relevanceScore);
+      const otherTasks = scoredTasks.filter(t => t.relevanceScore < 2);
+      
+      // Build context: FULL DETAILS for relevant items
+      let savedItemsContext = '';
+      
+      if (relevantTasks.length > 0) {
+        savedItemsContext += '\n## MOST RELEVANT SAVED ITEMS (full details):\n';
+        relevantTasks.slice(0, 10).forEach(task => {
+          const listName = task.list_id && listIdToName.has(task.list_id) ? listIdToName.get(task.list_id) : task.category;
+          const status = task.completed ? '✓' : '○';
+          const dueInfo = task.due_date ? ` | Due: ${formatFriendlyDate(task.due_date)}` : '';
+          const reminderInfo = task.reminder_time ? ` | Reminder: ${formatFriendlyDate(task.reminder_time)}` : '';
+          savedItemsContext += `\n📌 ${status} "${task.summary}" [${listName}]${dueInfo}${reminderInfo}\n`;
+          // Include original_text for full details (addresses, times, flight info, etc.)
+          if (task.original_text && task.original_text !== task.summary) {
+            savedItemsContext += `   Full details: ${task.original_text.substring(0, 800)}\n`;
+          }
+          if (task.items && task.items.length > 0) {
+            task.items.forEach((item: string) => {
+              savedItemsContext += `   • ${item}\n`;
+            });
+          }
+        });
+      }
+      
+      // Build summary context for remaining items (grouped by list)
+      savedItemsContext += '\n## ALL LISTS AND SAVED ITEMS:\n';
       const tasksByList = new Map<string, any[]>();
       const uncategorizedTasks: any[] = [];
       
-      allTasks?.forEach(task => {
+      otherTasks.forEach(task => {
         if (task.list_id && listIdToName.has(task.list_id)) {
-          const listName = listIdToName.get(task.list_id);
-          if (!tasksByList.has(listName)) {
-            tasksByList.set(listName, []);
-          }
+          const listName = listIdToName.get(task.list_id)!;
+          if (!tasksByList.has(listName)) tasksByList.set(listName, []);
           tasksByList.get(listName)!.push(task);
         } else {
           uncategorizedTasks.push(task);
@@ -4221,25 +4306,17 @@ Description: "${description}"`;
       
       tasksByList.forEach((tasks, listName) => {
         savedItemsContext += `\n### ${listName}:\n`;
-        tasks.slice(0, 20).forEach(task => {
+        tasks.slice(0, 15).forEach(task => {
           const status = task.completed ? '✓' : '○';
           const priority = task.priority === 'high' ? ' 🔥' : '';
           const dueInfo = task.due_date ? ` (Due: ${formatFriendlyDate(task.due_date)})` : '';
           savedItemsContext += `- ${status} ${task.summary}${priority}${dueInfo}\n`;
-          
-          if (task.items && task.items.length > 0) {
-            task.items.slice(0, 5).forEach((item: string) => {
-              savedItemsContext += `  • ${item}\n`;
-            });
-          }
         });
-        if (tasks.length > 20) {
-          savedItemsContext += `  ...and ${tasks.length - 20} more items\n`;
-        }
+        if (tasks.length > 15) savedItemsContext += `  ...and ${tasks.length - 15} more items\n`;
       });
       
       if (uncategorizedTasks.length > 0) {
-        savedItemsContext += `\n### Uncategorized Tasks:\n`;
+        savedItemsContext += `\n### Other Items:\n`;
         uncategorizedTasks.slice(0, 10).forEach(task => {
           const status = task.completed ? '✓' : '○';
           savedItemsContext += `- ${status} ${task.summary}\n`;
@@ -4250,7 +4327,7 @@ Description: "${description}"`;
       if (memories && memories.length > 0) {
         memoryContext = '\n## USER MEMORIES & PREFERENCES:\n';
         memories.forEach(m => {
-          memoryContext += `- ${m.title}: ${m.content}\n`;
+          memoryContext += `- [${m.chunk_type}] ${m.content}\n`;
         });
       }
 
@@ -4275,22 +4352,24 @@ Description: "${description}"`;
         });
       }
 
-      // Entity context is now handled by AI router via conversation history
       const entityContext = '';
 
-      let systemPrompt = `You are Olive, a friendly and intelligent AI assistant for the Olive app. The user is asking a question about their saved items.
+      let systemPrompt = `You are Olive, a friendly and intelligent AI assistant for the Olive app. The user is asking a question about their saved items, calendar, or personal data.
 
 CRITICAL INSTRUCTIONS:
-1. You MUST answer based on the user's actual saved data provided below
-2. Be specific - reference actual item names, lists, and details from their data
-3. If they ask for recommendations, ONLY suggest items from their saved lists
-4. If you can't find what they're looking for in their data, say so clearly
-5. Be concise (max 400 chars for WhatsApp) but helpful
-6. Use emojis sparingly for warmth
-7. When mentioning dates, always include the day of the week and time if available (e.g. "Friday, February 20th at 12:00 PM"), never just a bare date
-8. When the user uses pronouns like "it", "that", "this task", refer to the RECENT CONVERSATION and CURRENTLY REFERENCED ENTITY sections to understand what they mean
+1. You MUST answer based on the user's actual saved data provided below — including the "Full details" field which contains rich information like addresses, flight arrival/departure times, booking references, ingredients, etc.
+2. Be SPECIFIC and PRECISE — if the user asks "when do I land?", look at the full details for arrival time; if they ask for an address, extract it from the details.
+3. If you find a relevant saved item, extract the EXACT answer from its full details, don't just repeat the summary.
+4. If they ask for recommendations, ONLY suggest items from their saved lists.
+5. If you can't find what they're looking for in their data, say so clearly.
+6. Be concise (max 500 chars for WhatsApp) but include all key details the user asked for.
+7. Use emojis sparingly for warmth.
+8. When mentioning dates, always include the day of the week and time if available (e.g. "Friday, February 20th at 12:00 PM").
+9. When the user uses pronouns like "it", "that", "this task", refer to the RECENT CONVERSATION section to understand what they mean.
+10. Check CALENDAR EVENTS when questions involve timing, scheduling, or "when" questions.
 
 ${savedItemsContext}
+${calendarContext}
 ${memoryContext}
 ${agentInsightsContext}
 ${conversationHistoryContext}
@@ -4298,7 +4377,7 @@ ${entityContext}
 
 USER'S QUESTION: ${effectiveMessage}
 
-Respond with helpful, specific information from their saved items. If asking for a restaurant, book, or recommendation, check their lists first!`;
+Respond with helpful, specific information extracted from their saved data. Answer the EXACT question asked — don't just describe what you found, give the precise answer.`;
 
       // Inject language instruction
       const ctxLangName = LANG_NAMES[userLang] || LANG_NAMES[userLang.split('-')[0]] || 'English';
