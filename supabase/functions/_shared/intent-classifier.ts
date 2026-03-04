@@ -75,6 +75,7 @@ const INTENT_SCHEMA = {
         "expense",
         "chat",
         "contextual_ask",
+        "web_search",
         "merge",
         "partner_message",
       ],
@@ -188,6 +189,7 @@ You are NOT a rigid command parser. You understand natural, conversational langu
 - "expense": User wants to log spending (e.g., "spent $45 on dinner", "$20 gas")
 - "chat": User wants conversational interaction — briefings, motivation, planning, greetings (e.g., "good morning", "how am I doing?", "summarize my week", "what should I focus on?", "help me plan my day")
 - "contextual_ask": User is asking a QUESTION about their EXISTING saved data, agent results, or wants AI-powered advice (e.g., "when is the dentist?", "what restaurants did I save?", "any date ideas?", "what books are on my list?", "what did my agents find?", "any agent insights?", "what did olive analyze?"). IMPORTANT: If the message describes a NEW item/event/appointment (especially with a date, time, or location), it is NOT contextual_ask — it is "create". Only use contextual_ask when the user is clearly querying/asking about data they already saved.
+- "web_search": User wants EXTERNAL information from the web — booking links, reviews, directions, prices, availability, or any information NOT already in their saved data. Examples: "can you give me the link to book it?", "search for more information on X", "find me reviews for Y", "what's the address of Z?", "how do I get there?", "is it open now?", "find me a link", "look it up online", "search the web for X". IMPORTANT: If the user asks about something they already saved BUT wants ADDITIONAL external info (booking link, website, directions), classify as "web_search" NOT "contextual_ask". The key signal is that they want info from the INTERNET, not from their saved items.
 - "merge": User wants to merge duplicate tasks (exactly "merge")
 - "partner_message": User wants to send a message TO their partner via Olive (e.g., "remind Marco to buy lemons", "tell Almu to pick up the kids", "ask partner to call the dentist", "let Marcus know dinner is ready", "dile a Marco que compre limones", "ricorda a Marco di comprare i limoni"). The user is asking YOU to relay a message or task to their partner. Set partner_message_content to the message/task for the partner, and partner_action to the type (remind/tell/ask/notify).
 

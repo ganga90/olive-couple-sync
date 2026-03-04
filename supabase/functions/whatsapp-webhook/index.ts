@@ -15,7 +15,7 @@ const corsHeaders = {
 // CREATE: Everything else (default)
 // ============================================================================
 
-type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'TASK_ACTION' | 'EXPENSE' | 'PARTNER_MESSAGE'; isUrgent?: boolean; cleanMessage?: string };
+type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'WEB_SEARCH' | 'TASK_ACTION' | 'EXPENSE' | 'PARTNER_MESSAGE'; isUrgent?: boolean; cleanMessage?: string };
 
 // ============================================================================
 // RECENT OUTBOUND MESSAGE CONTEXT
@@ -545,6 +545,13 @@ function mapAIResultToIntentResult(
     case 'contextual_ask':
       return {
         intent: 'CONTEXTUAL_ASK',
+        cleanMessage: ai.target_task_name || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'web_search':
+      return {
+        intent: 'WEB_SEARCH',
         cleanMessage: ai.target_task_name || undefined,
         _aiSkillId: ai.matched_skill_id || undefined,
       };
@@ -4348,6 +4355,166 @@ Respond with helpful, specific information from their saved items. If asking for
         }
 
         return reply('I couldn\'t find matching items in your lists. Try "show my tasks" to see everything.');
+      }
+    }
+
+    // ========================================================================
+    // WEB SEARCH HANDLER - Perplexity-powered external web search
+    // ========================================================================
+    if (intent === 'WEB_SEARCH') {
+      console.log('[WhatsApp] Processing WEB_SEARCH for:', effectiveMessage?.substring(0, 80));
+
+      try {
+        const PERPLEXITY_KEY = Deno.env.get('OLIVE_PERPLEXITY');
+        if (!PERPLEXITY_KEY) {
+          console.error('[WebSearch] OLIVE_PERPLEXITY not configured');
+          return reply('🔍 Web search is not available right now. Please try again later.');
+        }
+
+        // Build search context from conversation history and saved data
+        let searchQuery = effectiveMessage || '';
+        let savedItemContext = '';
+
+        // Check conversation history to resolve pronouns ("it", "that restaurant")
+        if (sessionContext.conversation_history && sessionContext.conversation_history.length > 0) {
+          const recentMessages = sessionContext.conversation_history.slice(-6);
+          const conversationContext = recentMessages.map(m => `${m.role === 'user' ? 'User' : 'Olive'}: ${m.content}`).join('\n');
+
+          // If the query is vague (e.g., "can you find more info?", "link to book it?"), 
+          // use AI to extract the actual search subject from conversation
+          const vaguePatterns = /\b(it|that|this|the link|book it|more info|search for it|look it up)\b/i;
+          if (vaguePatterns.test(searchQuery)) {
+            try {
+              const resolvedQuery = await callAI(
+                `You are a query resolver. Given a conversation history and a vague user request, extract the SPECIFIC entity or topic they want to search for on the web. Return ONLY the search query text, nothing else. Be specific - include the entity name, location if relevant.
+
+CONVERSATION:
+${conversationContext}
+
+The user's latest message: "${searchQuery}"
+
+Return the resolved search query:`,
+                searchQuery,
+                0.1,
+                'lite'
+              );
+              if (resolvedQuery && resolvedQuery.length > 3) {
+                searchQuery = resolvedQuery.trim();
+                console.log('[WebSearch] Resolved vague query to:', searchQuery);
+              }
+            } catch (resolveErr) {
+              console.warn('[WebSearch] Query resolution failed, using original:', resolveErr);
+            }
+          }
+        }
+
+        // Also check if we have matching saved items to enrich context
+        const { data: matchingItems } = await supabase
+          .from('clerk_notes')
+          .select('summary, items, category')
+          .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+          .eq('completed', false)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (matchingItems) {
+          const searchLower = searchQuery.toLowerCase();
+          const relevant = matchingItems.filter(item => {
+            const summaryLower = item.summary.toLowerCase();
+            const queryWords = searchLower.split(/\s+/).filter(w => w.length > 2);
+            return queryWords.some(w => summaryLower.includes(w));
+          }).slice(0, 3);
+
+          if (relevant.length > 0) {
+            savedItemContext = '\n\nUser has these related saved items:\n';
+            relevant.forEach(item => {
+              savedItemContext += `- ${item.summary}`;
+              if (item.items && item.items.length > 0) {
+                const details = item.items.slice(0, 5).join(', ');
+                savedItemContext += ` (${details})`;
+              }
+              savedItemContext += '\n';
+            });
+          }
+        }
+
+        // Call Perplexity API for web search
+        console.log('[WebSearch] Searching Perplexity for:', searchQuery);
+        const perplexityResponse = await fetch('https://api.perplexity.ai/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${PERPLEXITY_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'sonar',
+            messages: [
+              {
+                role: 'system',
+                content: `You are a helpful search assistant for Olive, a personal organization app. The user wants external information from the web. Provide concise, actionable results with links when available. Focus on: booking links, official websites, addresses, phone numbers, ratings, hours, and practical details. Keep responses under 500 characters for WhatsApp readability. Always include the most relevant URL/link if one exists.${savedItemContext}`
+              },
+              {
+                role: 'user',
+                content: searchQuery
+              }
+            ],
+            temperature: 0.1,
+          }),
+        });
+
+        if (!perplexityResponse.ok) {
+          const errText = await perplexityResponse.text();
+          console.error('[WebSearch] Perplexity API error:', perplexityResponse.status, errText);
+          // Fallback: try to answer from saved data
+          return reply(`🔍 Web search temporarily unavailable. Try asking "what do I have saved about ${searchQuery.split(' ').slice(0, 3).join(' ')}?" to check your saved items.`);
+        }
+
+        const perplexityData = await perplexityResponse.json();
+        const searchResult = perplexityData.choices?.[0]?.message?.content || '';
+        const citations = perplexityData.citations || [];
+
+        if (!searchResult) {
+          return reply('🔍 I couldn\'t find relevant results. Try rephrasing your search.');
+        }
+
+        // Use AI to format the Perplexity result for WhatsApp  
+        const ctxLangName = LANG_NAMES[userLang] || LANG_NAMES[userLang.split('-')[0]] || 'English';
+        let formattedResponse: string;
+        try {
+          formattedResponse = await callAI(
+            `You are Olive, a friendly AI assistant. Format this web search result for WhatsApp (max 1200 chars). Be warm but concise. Include the most important details: name, link/URL, rating, price, address, phone. Use emojis sparingly. If there are booking or website links, ALWAYS include them prominently.${ctxLangName !== 'English' ? `\n\nIMPORTANT: Respond entirely in ${ctxLangName}.` : ''}
+
+USER'S ORIGINAL QUESTION: ${effectiveMessage}
+
+WEB SEARCH RESULTS:
+${searchResult}
+
+${citations.length > 0 ? 'SOURCES:\n' + citations.map((c: string, i: number) => `[${i+1}] ${c}`).join('\n') : ''}
+
+Format a helpful, concise WhatsApp response with the key information and links:`,
+            searchResult,
+            0.5,
+            'lite'
+          );
+        } catch (formatErr) {
+          console.warn('[WebSearch] Formatting failed, using raw result');
+          formattedResponse = `🔍 Here's what I found:\n\n${searchResult.slice(0, 1200)}`;
+          if (citations.length > 0) {
+            formattedResponse += `\n\n🔗 ${citations[0]}`;
+          }
+        }
+
+        // Save conversation context
+        try {
+          await saveReferencedEntity(null, formattedResponse);
+        } catch (ctxErr) {
+          console.warn('[Context] Error saving context after WEB_SEARCH:', ctxErr);
+        }
+
+        return reply(formattedResponse.slice(0, 1500));
+      } catch (webSearchErr) {
+        console.error('[WebSearch] Unexpected error:', webSearchErr);
+        return reply('🔍 Sorry, I had trouble searching the web. Please try again.');
       }
     }
 

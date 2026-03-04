@@ -76,7 +76,7 @@ const singleNoteSchema = {
     },
     category: { 
       type: Type.STRING, 
-      description: "Category using lowercase with underscores: entertainment, date_ideas, home_improvement, travel, groceries, shopping, personal, task, books, movies_tv, health" 
+      description: "Category using lowercase with underscores. IMPORTANT - choose the MOST SPECIFIC match: entertainment (concerts, karaoke, shows, events, festivals, nightlife, comedy, sports events, DJ nights, happy hours, live music, themed nights), date_ideas (restaurants to try, romantic activities, couple activities), home_improvement (repairs, renovations, maintenance), travel (trips, flights, hotels, vacation plans), groceries (food items to buy), shopping (products, clothes, electronics, promo codes), personal (bills, admin, appointments, errands), task (generic to-do items, action items without a better category), books (books to read), movies_tv (movies, TV shows, series), health (medical, wellness, fitness)" 
     },
     target_list: {
       type: Type.STRING,
@@ -339,10 +339,11 @@ MEDIA EXTRACTION RULES - ALWAYS extract ALL details into items array:
    - Set due_date and reminder_time (24h before)
    - Category: "health" or "personal"
 
-4. **Events/Tickets**: 
-   - Summary: "[Event name] at [Venue]"
-   - Items: ["Venue: [VENUE]", "Date: [DATE]", "Time: [TIME]", "Tickets: [info]", "Price: [COST]"]
-   - Category: "entertainment"
+4. **Events/Tickets/Nightlife/Shows**: 
+   - Summary: "[Event name] at [Venue]" or "[Event name]"
+   - Items: ["Venue: [VENUE]", "Date: [DATE]", "Time: [TIME]", "Tickets: [info]", "Price: [COST]", "DJ: [name]", "Happy Hour: [details]"]
+   - Category: "entertainment" — this includes karaoke nights, DJ events, happy hours, concerts, comedy shows, festivals, sports events, trivia nights, live music, themed nights, club events, bar promotions
+   - NEVER categorize entertainment/events as "task" — if it's something fun to attend or an event/promotion at a venue, it's "entertainment"
 
 5. **Books**:
    - Summary: "[Book Title]" or "[Book Title] by [Author]"
@@ -448,7 +449,7 @@ CORE FIELD RULES:
     - "fix leaking faucet" → "home_improvement" (exception: fixing IS the domain action)
     
     **DOMAIN RULES (apply only when intent is NOT an action/to-do)**:
-    - concerts/events/shows → "entertainment"
+    - concerts/events/shows/karaoke/DJ nights/happy hours/festivals/live music/comedy/sports events/trivia/nightlife/themed nights/bar promotions → "entertainment"
     - restaurants/dinner plans (SAVING a restaurant, NOT canceling/calling one) → "date_ideas"
     - repairs/fix/maintenance → "home_improvement"
     - vacation/flights/hotels/booking travel → "travel"
@@ -458,6 +459,8 @@ CORE FIELD RULES:
     - books/reading → "books"
     - movies/tv shows/series → "movies_tv"
     - medical/doctor/dentist (saving info, not calling to cancel) → "health"
+    
+    **DISAMBIGUATION RULE**: When an image/media shows an event poster, flyer, bar sign, or venue promotion → ALWAYS "entertainment", NEVER "task". Event flyers with drink specials, DJ names, or event schedules are entertainment content.
 
 3. target_list: If user has existing lists and content matches one, output the EXACT list name
    - Books/reading material → match "Books" list if exists
