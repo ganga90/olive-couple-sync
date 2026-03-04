@@ -790,6 +790,20 @@ FORMAT: Extract the ACTUAL content being shared, not "social media post"
 **EVENTS:**
 - Event name, venue, date, time, ticket info, price
 
+**TRAVEL DOCUMENTS / FLIGHT ITINERARIES / BOARDING PASSES / TRAIN TICKETS — CRITICAL:**
+- This is a TRAVEL DOCUMENT. Start with "TRAVEL:" prefix.
+- Airline/Carrier name (e.g., "Air Nostrum", "Ryanair", "Iberia")
+- Flight number (e.g., "IB1237")
+- Departure: Airport code + City + Terminal (e.g., "MAD - Madrid, Terminal 4")
+- Arrival: Airport code + City (e.g., "BLQ - Bologna")
+- Date and Time of departure and arrival
+- Passenger name
+- Booking reference / PNR
+- Seat, Cabin class
+- Connection details if multi-leg
+- For train tickets: Train number, station names, platform
+- Format: "TRAVEL: [Airline/Carrier] [Flight/Train #] [Origin] → [Destination] on [Date]"
+
 **RECEIPTS:**
 - Store name, items, amounts, date
 
@@ -801,6 +815,7 @@ For HANDWRITTEN content: Start with "HANDWRITTEN:" and transcribe ALL text verba
 For STOCKS: Start with "[TICKER] [COMPANY] - [PRICE]"
 For SOCIAL MEDIA about stocks: Start with the stock ticker(s) and company name(s)
 For PRODUCTS: Start with the EXACT product name (e.g., "Apple Watch Ultra 2" or "Sony WH-1000XM5"). NEVER prefix with "PRODUCTS:" — just state the name directly.
+For TRAVEL documents: Start with "TRAVEL:" followed by carrier and route (e.g., "TRAVEL: Air Nostrum IB1237 Madrid → Bologna on 7 March 2026")
 For other content types, start with the MAIN SUBJECT clearly identified.
 
 CRITICAL: Extract EVERY piece of visible information. Be specific and complete. Never return generic labels like "whiteboard notes", "sticky note", or "PRODUCTS:" - extract the ACTUAL content, brand, model, or product name.
