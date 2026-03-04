@@ -449,7 +449,7 @@ CORE FIELD RULES:
     - "fix leaking faucet" → "home_improvement" (exception: fixing IS the domain action)
     
     **DOMAIN RULES (apply only when intent is NOT an action/to-do)**:
-    - concerts/events/shows → "entertainment"
+    - concerts/events/shows/karaoke/DJ nights/happy hours/festivals/live music/comedy/sports events/trivia/nightlife/themed nights/bar promotions → "entertainment"
     - restaurants/dinner plans (SAVING a restaurant, NOT canceling/calling one) → "date_ideas"
     - repairs/fix/maintenance → "home_improvement"
     - vacation/flights/hotels/booking travel → "travel"
@@ -459,6 +459,8 @@ CORE FIELD RULES:
     - books/reading → "books"
     - movies/tv shows/series → "movies_tv"
     - medical/doctor/dentist (saving info, not calling to cancel) → "health"
+    
+    **DISAMBIGUATION RULE**: When an image/media shows an event poster, flyer, bar sign, or venue promotion → ALWAYS "entertainment", NEVER "task". Event flyers with drink specials, DJ names, or event schedules are entertainment content.
 
 3. target_list: If user has existing lists and content matches one, output the EXACT list name
    - Books/reading material → match "Books" list if exists
