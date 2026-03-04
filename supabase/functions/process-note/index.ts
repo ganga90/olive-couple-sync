@@ -76,7 +76,7 @@ const singleNoteSchema = {
     },
     category: { 
       type: Type.STRING, 
-      description: "Category using lowercase with underscores: entertainment, date_ideas, home_improvement, travel, groceries, shopping, personal, task, books, movies_tv, health" 
+      description: "Category using lowercase with underscores. IMPORTANT - choose the MOST SPECIFIC match: entertainment (concerts, karaoke, shows, events, festivals, nightlife, comedy, sports events, DJ nights, happy hours, live music, themed nights), date_ideas (restaurants to try, romantic activities, couple activities), home_improvement (repairs, renovations, maintenance), travel (trips, flights, hotels, vacation plans), groceries (food items to buy), shopping (products, clothes, electronics, promo codes), personal (bills, admin, appointments, errands), task (generic to-do items, action items without a better category), books (books to read), movies_tv (movies, TV shows, series), health (medical, wellness, fitness)" 
     },
     target_list: {
       type: Type.STRING,
