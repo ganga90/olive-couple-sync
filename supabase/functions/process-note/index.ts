@@ -340,13 +340,21 @@ MEDIA EXTRACTION RULES - ALWAYS extract ALL details into items array:
    - Category: "health" or "personal"
 
 4. **Events/Tickets/Nightlife/Shows**: 
-   - Summary: "[Event name] at [Venue]" or "[Event name]"
-   - Items: ["Venue: [VENUE]", "Date: [DATE]", "Time: [TIME]", "Tickets: [info]", "Price: [COST]", "DJ: [name]", "Happy Hour: [details]"]
-   - Category: "entertainment" — this includes karaoke nights, DJ events, happy hours, concerts, comedy shows, festivals, sports events, trivia nights, live music, themed nights, club events, bar promotions
-   - NEVER categorize entertainment/events as "task" — if it's something fun to attend or an event/promotion at a venue, it's "entertainment"
+    - Summary: "[Event name] at [Venue]" or "[Event name]"
+    - Items: ["Venue: [VENUE]", "Date: [DATE]", "Time: [TIME]", "Tickets: [info]", "Price: [COST]", "DJ: [name]", "Happy Hour: [details]"]
+    - Category: "entertainment" — this includes karaoke nights, DJ events, happy hours, concerts, comedy shows, festivals, sports events, trivia nights, live music, themed nights, club events, bar promotions
+    - NEVER categorize entertainment/events as "task" — if it's something fun to attend or an event/promotion at a venue, it's "entertainment"
+
+4b. **TRAVEL DOCUMENTS (Flight itineraries, boarding passes, train tickets, hotel bookings)**:
+    - Summary: "[Airline/Carrier] [Origin] → [Destination]" (e.g., "Air Nostrum Madrid → Bologna")
+    - Items: ["Flight: [number]", "Date: [date]", "Departure: [time] from [airport/terminal]", "Arrival: [time] at [airport]", "Passenger: [name]", "Cabin: [class]", "Seat: [if assigned]", "Booking Ref: [PNR]"]
+    - Category: ALWAYS "travel" — flight itineraries, boarding passes, train tickets, hotel confirmations, car rental confirmations are ALWAYS travel
+    - NEVER categorize travel documents as "task" or "personal" — they are travel planning/reference items
+    - Set due_date to the travel date
+    - Priority: "high" if travel date is within 7 days, "medium" otherwise
 
 5. **Books**:
-   - Summary: "[Book Title]" or "[Book Title] by [Author]"
+    - Summary: "[Book Title]" or "[Book Title] by [Author]"
    - Items: ["Author: [NAME]", "ISBN: [NUMBER]", "Publisher: [NAME]"]
    - Category: "books"
    - target_list: match to Books list if exists
@@ -448,11 +456,15 @@ CORE FIELD RULES:
     - "book flight to Rome" → "travel" (exception: booking travel IS travel planning)
     - "fix leaking faucet" → "home_improvement" (exception: fixing IS the domain action)
     
+    **DOCUMENT-TYPE OVERRIDE (applies BEFORE intent-first rule for media/images)**:
+    - If the attached media is a FLIGHT ITINERARY, BOARDING PASS, TRAIN TICKET, HOTEL CONFIRMATION, or any travel booking document → ALWAYS "travel", regardless of any action verbs
+    - If the media shows a TRAVEL DOCUMENT with airline names, flight numbers, airport codes, departure/arrival times → ALWAYS "travel"
+    
     **DOMAIN RULES (apply only when intent is NOT an action/to-do)**:
     - concerts/events/shows/karaoke/DJ nights/happy hours/festivals/live music/comedy/sports events/trivia/nightlife/themed nights/bar promotions → "entertainment"
     - restaurants/dinner plans (SAVING a restaurant, NOT canceling/calling one) → "date_ideas"
     - repairs/fix/maintenance → "home_improvement"
-    - vacation/flights/hotels/booking travel → "travel"
+    - vacation/flights/hotels/booking travel/flight itineraries/boarding passes/train tickets → "travel"
     - groceries/supermarket → "groceries"
     - clothes/electronics/promo codes → "shopping"
     - appointments/bills/rent → "personal"
@@ -790,6 +802,20 @@ FORMAT: Extract the ACTUAL content being shared, not "social media post"
 **EVENTS:**
 - Event name, venue, date, time, ticket info, price
 
+**TRAVEL DOCUMENTS / FLIGHT ITINERARIES / BOARDING PASSES / TRAIN TICKETS — CRITICAL:**
+- This is a TRAVEL DOCUMENT. Start with "TRAVEL:" prefix.
+- Airline/Carrier name (e.g., "Air Nostrum", "Ryanair", "Iberia")
+- Flight number (e.g., "IB1237")
+- Departure: Airport code + City + Terminal (e.g., "MAD - Madrid, Terminal 4")
+- Arrival: Airport code + City (e.g., "BLQ - Bologna")
+- Date and Time of departure and arrival
+- Passenger name
+- Booking reference / PNR
+- Seat, Cabin class
+- Connection details if multi-leg
+- For train tickets: Train number, station names, platform
+- Format: "TRAVEL: [Airline/Carrier] [Flight/Train #] [Origin] → [Destination] on [Date]"
+
 **RECEIPTS:**
 - Store name, items, amounts, date
 
@@ -801,6 +827,7 @@ For HANDWRITTEN content: Start with "HANDWRITTEN:" and transcribe ALL text verba
 For STOCKS: Start with "[TICKER] [COMPANY] - [PRICE]"
 For SOCIAL MEDIA about stocks: Start with the stock ticker(s) and company name(s)
 For PRODUCTS: Start with the EXACT product name (e.g., "Apple Watch Ultra 2" or "Sony WH-1000XM5"). NEVER prefix with "PRODUCTS:" — just state the name directly.
+For TRAVEL documents: Start with "TRAVEL:" followed by carrier and route (e.g., "TRAVEL: Air Nostrum IB1237 Madrid → Bologna on 7 March 2026")
 For other content types, start with the MAIN SUBJECT clearly identified.
 
 CRITICAL: Extract EVERY piece of visible information. Be specific and complete. Never return generic labels like "whiteboard notes", "sticky note", or "PRODUCTS:" - extract the ACTUAL content, brand, model, or product name.
@@ -1589,6 +1616,7 @@ Process this note:
       'movies': ['movie', 'film', 'tv show', 'series', 'watch', 'streaming', 'netflix', 'hulu', 'disney', 'hbo', 'prime video', 'actor', 'director'],
       'recipes': ['recipe', 'cook', 'bake', 'ingredients', 'cuisine', 'dish', 'meal'],
       'music': ['song', 'album', 'artist', 'band', 'playlist', 'spotify', 'music'],
+      'travel': ['flight', 'airline', 'boarding pass', 'itinerary', 'departure', 'arrival', 'airport', 'terminal', 'passenger', 'booking', 'hotel', 'check-in', 'check-out', 'reservation', 'train ticket', 'car rental', 'airbnb', 'hostel', 'vacation', 'trip', 'travel', 'pnr', 'cabin', 'economy', 'business class', 'first class', 'layover', 'connection'],
       'stocks': ['stock', 'ticker', '$', 'share', 'shares', 'invest', 'portfolio', 'market', 'trading', 'dividend', 'earnings', 'nasdaq', 'nyse', 'price target', 'buy rating', 'sell rating', 'analyst', 'ferrari', 'apple', 'amazon', 'tesla', 'nvidia', 'microsoft', 'google', 'meta'],
       'finance': ['finance', 'investment', 'crypto', 'bitcoin', 'ethereum', 'currency', 'forex', 'bond', 'etf', 'mutual fund'],
       'groceries': ['milk', 'eggs', 'bread', 'butter', 'cheese', 'chicken', 'beef', 'pork', 'fish', 'rice', 'pasta', 'flour', 'sugar', 'salt', 'pepper', 'oil', 'vinegar', 'tomato', 'potato', 'onion', 'garlic', 'lemon', 'lime', 'orange', 'apple', 'banana', 'avocado', 'lettuce', 'spinach', 'carrot', 'broccoli', 'cucumber', 'yogurt', 'cream', 'cereal', 'coffee', 'tea', 'juice', 'water', 'soda', 'beer', 'wine', 'snack', 'chips', 'crackers', 'cookies', 'fruit', 'vegetable', 'meat', 'produce', 'dairy', 'frozen', 'canned', 'sauce', 'condiment', 'spice', 'herb', 'nut', 'seed', 'grain', 'bean', 'tofu', 'soy', 'almond', 'oat']
@@ -1787,6 +1815,27 @@ Process this note:
       if (groceryMatchCount >= 1 && normalizeName(category) !== 'groceries') {
         console.log('[findOrCreateList] Content override: detected', groceryMatchCount, 'grocery keywords, overriding category from', category, 'to groceries');
         effectiveCategory = 'groceries';
+      }
+
+      // Travel content override: if media/summary contains strong travel signals, force travel
+      const travelKeywords = contentKeywords['travel'] || [];
+      const allContentForOverride = [safeText, summary, ...mediaDescriptions].filter(Boolean).join(' ').toLowerCase();
+      const travelMatchCount = travelKeywords.filter(kw => {
+        const regex = new RegExp(`\\b${kw.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i');
+        return regex.test(allContentForOverride);
+      }).length;
+      
+      if (travelMatchCount >= 2 && !['travel'].includes(normalizeName(effectiveCategory))) {
+        console.log('[findOrCreateList] Content override: detected', travelMatchCount, 'travel keywords, overriding category from', effectiveCategory, 'to travel');
+        effectiveCategory = 'travel';
+      }
+
+      // Entertainment content override: if media contains entertainment signals, force entertainment
+      const entertainmentSignals = ['karaoke', 'dj ', 'dj night', 'happy hour', 'concert', 'festival', 'live music', 'comedy show', 'trivia', 'nightlife', 'club event', 'themed night'];
+      const entertainmentMatchCount = entertainmentSignals.filter(kw => allContentForOverride.includes(kw)).length;
+      if (entertainmentMatchCount >= 1 && !['entertainment'].includes(normalizeName(effectiveCategory))) {
+        console.log('[findOrCreateList] Content override: detected entertainment keywords, overriding from', effectiveCategory, 'to entertainment');
+        effectiveCategory = 'entertainment';
       }
 
       // ================================================================
