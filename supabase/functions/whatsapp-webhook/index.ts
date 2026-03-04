@@ -549,6 +549,13 @@ function mapAIResultToIntentResult(
         _aiSkillId: ai.matched_skill_id || undefined,
       };
 
+    case 'web_search':
+      return {
+        intent: 'WEB_SEARCH',
+        cleanMessage: ai.target_task_name || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
     case 'merge':
       return { intent: 'MERGE' };
 
