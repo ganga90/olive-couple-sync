@@ -75,6 +75,7 @@ const INTENT_SCHEMA = {
         "expense",
         "chat",
         "contextual_ask",
+        "web_search",
         "merge",
         "partner_message",
       ],
