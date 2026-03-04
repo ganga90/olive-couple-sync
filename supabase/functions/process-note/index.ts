@@ -339,10 +339,11 @@ MEDIA EXTRACTION RULES - ALWAYS extract ALL details into items array:
    - Set due_date and reminder_time (24h before)
    - Category: "health" or "personal"
 
-4. **Events/Tickets**: 
-   - Summary: "[Event name] at [Venue]"
-   - Items: ["Venue: [VENUE]", "Date: [DATE]", "Time: [TIME]", "Tickets: [info]", "Price: [COST]"]
-   - Category: "entertainment"
+4. **Events/Tickets/Nightlife/Shows**: 
+   - Summary: "[Event name] at [Venue]" or "[Event name]"
+   - Items: ["Venue: [VENUE]", "Date: [DATE]", "Time: [TIME]", "Tickets: [info]", "Price: [COST]", "DJ: [name]", "Happy Hour: [details]"]
+   - Category: "entertainment" — this includes karaoke nights, DJ events, happy hours, concerts, comedy shows, festivals, sports events, trivia nights, live music, themed nights, club events, bar promotions
+   - NEVER categorize entertainment/events as "task" — if it's something fun to attend or an event/promotion at a venue, it's "entertainment"
 
 5. **Books**:
    - Summary: "[Book Title]" or "[Book Title] by [Author]"
