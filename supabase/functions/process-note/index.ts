@@ -1817,6 +1817,27 @@ Process this note:
         effectiveCategory = 'groceries';
       }
 
+      // Travel content override: if media/summary contains strong travel signals, force travel
+      const travelKeywords = contentKeywords['travel'] || [];
+      const allContentForOverride = [safeText, summary, ...mediaDescriptions].filter(Boolean).join(' ').toLowerCase();
+      const travelMatchCount = travelKeywords.filter(kw => {
+        const regex = new RegExp(`\\b${kw.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i');
+        return regex.test(allContentForOverride);
+      }).length;
+      
+      if (travelMatchCount >= 2 && !['travel'].includes(normalizeName(effectiveCategory))) {
+        console.log('[findOrCreateList] Content override: detected', travelMatchCount, 'travel keywords, overriding category from', effectiveCategory, 'to travel');
+        effectiveCategory = 'travel';
+      }
+
+      // Entertainment content override: if media contains entertainment signals, force entertainment
+      const entertainmentSignals = ['karaoke', 'dj ', 'dj night', 'happy hour', 'concert', 'festival', 'live music', 'comedy show', 'trivia', 'nightlife', 'club event', 'themed night'];
+      const entertainmentMatchCount = entertainmentSignals.filter(kw => allContentForOverride.includes(kw)).length;
+      if (entertainmentMatchCount >= 1 && !['entertainment'].includes(normalizeName(effectiveCategory))) {
+        console.log('[findOrCreateList] Content override: detected entertainment keywords, overriding from', effectiveCategory, 'to entertainment');
+        effectiveCategory = 'entertainment';
+      }
+
       // ================================================================
       // PRIORITY 5: Create new list only if no match found
       // ================================================================
