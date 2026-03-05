@@ -1837,10 +1837,9 @@ Process this note:
       }
       
       // ================================================================
-      // PRIORITY 4.5: Content-based category override for new list creation
-      // If the summary/text contains common grocery items but AI said "personal",
-      // override to "groceries" so the right list gets created
-      // ================================================================
+      // PRIORITY 4.5: Universal content-based category override
+      // If the AI classified as generic ("task"/"personal") but content
+      // strongly matches a domain, override for better routing.
       // ================================================================
       // PRIORITY 4.5: Universal content-based category override
       // Checks ALL keyword categories, not just hardcoded ones.
