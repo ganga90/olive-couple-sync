@@ -470,7 +470,8 @@ CORE FIELD RULES:
     - appointments/bills/rent → "personal"
     - books/reading → "books"
     - movies/tv shows/series → "movies_tv"
-    - medical/doctor/dentist (saving info, not calling to cancel) → "health"
+    - medical/doctor/dentist (saving info, not calling to cancel), supplements, vitamins, medication schedules, dosage plans, wellness routines, fitness logs, nutrition → "health"
+    - **SUPPLEMENT/VITAMIN SCHEDULES**: Notes listing which supplements to take on which days (e.g., "Sunday = lion's mane, Monday = vit C") are ALWAYS "health", NEVER "task"
     
     **DISAMBIGUATION RULE**: When an image/media shows an event poster, flyer, bar sign, or venue promotion → ALWAYS "entertainment", NEVER "task". Event flyers with drink specials, DJ names, or event schedules are entertainment content.
 
