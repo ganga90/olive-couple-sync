@@ -1383,9 +1383,45 @@ serve(async (req) => {
       console.error('Error fetching existing lists:', listsError);
     }
 
-    // Prepare context
+    // Fetch recent note categories to learn user routing patterns
+    let recentNotePatterns: Record<string, string> = {}; // keyword -> list_name
+    try {
+      const recentQuery = supabase
+        .from('clerk_notes')
+        .select('summary, category, list_id')
+        .eq('author_id', user_id)
+        .eq('completed', false)
+        .not('list_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      
+      const { data: recentNotes } = await recentQuery;
+      
+      if (recentNotes && existingLists) {
+        // Build a map of content patterns → list names
+        for (const note of recentNotes) {
+          const matchedList = existingLists.find((l: any) => l.id === note.list_id);
+          if (matchedList) {
+            // Store category → list name mapping for pattern learning
+            const catKey = note.category?.toLowerCase();
+            if (catKey && !recentNotePatterns[catKey]) {
+              recentNotePatterns[catKey] = matchedList.name;
+            }
+          }
+        }
+        if (Object.keys(recentNotePatterns).length > 0) {
+          console.log('[process-note] Learned routing patterns:', recentNotePatterns);
+        }
+      }
+    } catch (err) {
+      console.warn('[process-note] Could not fetch recent note patterns:', err);
+    }
+
+    // Prepare context - include list descriptions for richer AI matching
     const listsContext = existingLists && existingLists.length > 0 
-      ? `\n\nExisting lists: ${existingLists.map(list => list.name).join(', ')}`
+      ? `\n\nExisting lists: ${existingLists.map((list: any) => 
+          list.description ? `${list.name} (${list.description})` : list.name
+        ).join(', ')}`
       : '';
 
     const userTimezone = timezone || 'UTC';
