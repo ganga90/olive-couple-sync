@@ -2358,6 +2358,9 @@ serve(async (req) => {
             priority: task.priority,
           };
           updatedContext.entity_referenced_at = new Date().toISOString();
+          // Also set the outbound task reference for reply() to persist
+          _lastReferencedTaskId = task.id;
+          _lastReferencedTaskSummary = task.summary;
         }
 
         // Store numbered list for ordinal reference resolution ("the first one", "the third one")
