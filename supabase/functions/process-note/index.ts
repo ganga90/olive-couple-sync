@@ -1604,18 +1604,23 @@ Process this note:
       }
     }
 
-    // Smart list pattern detection - expanded with media types
-    const categoryMap: Record<string, string[]> = {
+    // Category synonym map — used ONLY for matching AI categories to existing list names
+    // This is NOT used for classification — the AI handles that via the prompt
+    const categorySynonyms: Record<string, string[]> = {
       'groceries': ['grocery', 'groceries', 'food', 'supermarket', 'shopping list'],
-      'travel': ['travel idea', 'travel', 'trip', 'vacation', 'flight', 'hotel'],
-      'home improvement': ['home', 'repair', 'fix', 'maintenance', 'renovation', 'home_improvement'],
-      'entertainment': ['date idea', 'date_ideas', 'concert', 'event', 'entertainment'],
-      'personal': ['task', 'personal', 'appointment', 'errand'],
-      'shopping': ['shopping', 'buy', 'purchase', 'store'],
-      'health': ['health', 'fitness', 'exercise', 'doctor', 'medical'],
-      'finance': ['finance', 'bill', 'payment', 'budget', 'money'],
-      'books': ['books', 'book', 'reading', 'novel', 'author', 'literature'],
-      'movies_tv': ['movies_tv', 'movie', 'movies', 'tv', 'tv show', 'tv shows', 'series', 'film', 'watch', 'streaming']
+      'travel': ['travel idea', 'travel', 'trip', 'vacation', 'flight', 'hotel', 'trips'],
+      'home_improvement': ['home', 'home improvement', 'repair', 'fix', 'maintenance', 'renovation'],
+      'entertainment': ['entertainment', 'date idea', 'date_ideas', 'concert', 'event', 'events', 'fun'],
+      'personal': ['personal', 'appointment', 'errand', 'errands', 'admin'],
+      'shopping': ['shopping', 'buy', 'purchase', 'store', 'wishlist', 'wish list'],
+      'health': ['health', 'fitness', 'exercise', 'doctor', 'medical', 'wellness', 'supplements', 'vitamins'],
+      'finance': ['finance', 'bill', 'bills', 'payment', 'budget', 'money', 'investments', 'stocks'],
+      'books': ['books', 'book', 'reading', 'novel', 'author', 'literature', 'to read'],
+      'movies_tv': ['movies_tv', 'movie', 'movies', 'tv', 'tv show', 'tv shows', 'series', 'film', 'watch', 'streaming', 'to watch'],
+      'recipes': ['recipes', 'recipe', 'cooking', 'cook', 'bake', 'meal'],
+      'date_ideas': ['date ideas', 'date_ideas', 'restaurant', 'restaurants', 'romantic', 'couples'],
+      'work': ['work', 'office', 'project', 'meeting', 'career', 'professional'],
+      'gift_ideas': ['gift ideas', 'gift_ideas', 'gifts', 'gift', 'present', 'presents'],
     };
 
     // Content-based keywords for smart matching
