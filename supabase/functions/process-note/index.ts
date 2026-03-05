@@ -404,16 +404,23 @@ Examples:
 - User says "buy dog food" + memory "dog named Milka eats Royal Canine" → Summary: "Buy Royal Canine for Milka"`;
   }
 
-  // Build existing lists section for intelligent routing
+  // Build existing lists section with rich context for intelligent routing
   let listsSection = '';
   if (existingListNames.length > 0) {
     listsSection = `\n\n**USER'S EXISTING LISTS**: ${existingListNames.join(', ')}
 
 **LIST ROUTING RULES (CRITICAL - FOLLOW IN THIS EXACT ORDER)**:
-1. **DIRECT NAME MATCH**: If any word or phrase in the note text EXACTLY matches an existing list name (case-insensitive), output that list name in target_list. Example: Note "LLC check business account" + list "LLC" exists → target_list: "LLC"
-2. **Memory-based routing**: If user memories specify routing preferences, ALWAYS follow them
-3. **Content matching**: When content clearly matches a list name, output that exact list name in target_list
-4. Only leave target_list null if content doesn't match any list`;
+1. **DIRECT NAME MATCH**: If any word or phrase in the note text EXACTLY matches an existing list name (case-insensitive), set target_list to that list name. Example: Note "LLC check business account" + list "LLC" exists → target_list: "LLC"
+2. **SEMANTIC MATCH**: If the note's content is semantically related to an existing list name, ALWAYS route to that list via target_list. Examples:
+   - Note about supplements/vitamins + list "Health" exists → target_list: "Health"
+   - Note about a flight + list "Travel" exists → target_list: "Travel"  
+   - Note about a book + list "Books" exists → target_list: "Books"
+   - Note about a recipe + list "Recipes" exists → target_list: "Recipes"
+3. **Memory-based routing**: If user memories specify routing preferences, ALWAYS follow them
+4. **Category as NEW list**: If no existing list matches AND the content is clearly a specific domain (health, travel, etc.), set category appropriately — the system will auto-create a list. NEVER default to "task" when a more specific category exists.
+5. **"task" is LAST RESORT**: Only use category "task" for truly generic to-do items that don't fit ANY domain category. If in doubt, choose a domain category.
+
+**ANTI-PATTERN**: Do NOT classify domain-specific content as "task". A supplement schedule is "health". A movie recommendation is "movies_tv". A restaurant is "date_ideas". "task" means ONLY "a generic action item with no domain."`;
   }
 
   return `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
