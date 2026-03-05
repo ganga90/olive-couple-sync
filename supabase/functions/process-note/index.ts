@@ -1789,6 +1789,22 @@ Process this note:
       }
 
       // ================================================================
+      // PRIORITY 2.5: Pattern-based routing from recent user behavior
+      // If user previously routed "health" notes to a specific list, do it again
+      // ================================================================
+      if (category && Object.keys(recentNotePatterns).length > 0) {
+        const catNorm = normalizeName(category);
+        const patternListName = recentNotePatterns[catNorm];
+        if (patternListName && existingLists) {
+          const patternMatch = existingLists.find((l: any) => normalizeName(l.name) === normalizeName(patternListName));
+          if (patternMatch) {
+            console.log('[findOrCreateList] Pattern-based routing: category', category, '→ list', patternMatch.name, '(learned from recent notes)');
+            return patternMatch.id;
+          }
+        }
+      }
+
+      // ================================================================
       // PRIORITY 3: Content-based matching - check if summary contains keywords that match a list
       // ================================================================
       if (summary && existingLists && existingLists.length > 0) {
