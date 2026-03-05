@@ -1779,36 +1779,17 @@ Process this note:
       }
       
       // ================================================================
-      // PRIORITY 1: Exact or near-exact match by category name
-      // This handles "books" -> "Books" case
+      // PRIORITY 1: Exact, singular/plural, or alias match by category name
+      // Uses areNamesEquivalent to catch "grocery" → "Groceries", etc.
       // ================================================================
       if (existingLists && existingLists.length > 0) {
-        const categoryNorm = normalizeName(category);
-        
-        // First check: exact match (case-insensitive)
-        const exactMatch = existingLists.find((l: any) => normalizeName(l.name) === categoryNorm);
-        if (exactMatch) {
-          console.log('[findOrCreateList] Exact category match found:', exactMatch.name);
-          return exactMatch.id;
-        }
-        
-        // Second check: singular/plural variations (books/book, movies/movie)
-        const singularCategory = categoryNorm.replace(/s$/, '');
-        const pluralCategory = categoryNorm + 's';
-        
-        const singularPluralMatch = existingLists.find((l: any) => {
-          const listNorm = normalizeName(l.name);
-          const listSingular = listNorm.replace(/s$/, '');
-          return listNorm === singularCategory || 
-                 listNorm === pluralCategory || 
-                 listSingular === singularCategory;
-        });
-        
-        if (singularPluralMatch) {
-          console.log('[findOrCreateList] Singular/plural match found:', singularPluralMatch.name);
-          return singularPluralMatch.id;
+        const equivMatch = findEquivalentList(category);
+        if (equivMatch) {
+          console.log('[findOrCreateList] Category equivalence match found:', equivMatch.name, '(from category:', category, ')');
+          return equivMatch.id;
         }
       }
+      
       
       // ================================================================
       // PRIORITY 2: Use AI-suggested target_list if it matches an existing list
