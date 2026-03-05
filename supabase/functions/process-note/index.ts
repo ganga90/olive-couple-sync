@@ -1795,16 +1795,15 @@ Process this note:
       // PRIORITY 2: Use AI-suggested target_list if it matches an existing list
       // ================================================================
       if (targetList && existingLists && existingLists.length > 0) {
-        const targetNorm = normalizeName(targetList);
-        
-        // Exact match first
-        const exactMatch = existingLists.find((l: any) => normalizeName(l.name) === targetNorm);
-        if (exactMatch) {
-          console.log('[findOrCreateList] AI target_list exact match:', exactMatch.name);
-          return exactMatch.id;
+        // Use equivalence matching (catches "Health" → "Health", "Grocery" → "Groceries", etc.)
+        const equivMatch = findEquivalentList(targetList);
+        if (equivMatch) {
+          console.log('[findOrCreateList] AI target_list equivalence match:', equivMatch.name);
+          return equivMatch.id;
         }
         
-        // Partial match
+        // Partial/contains match as fallback
+        const targetNorm = normalizeName(targetList);
         const partialMatch = existingLists.find((l: any) => {
           const listNorm = normalizeName(l.name);
           return listNorm.includes(targetNorm) || targetNorm.includes(listNorm);
