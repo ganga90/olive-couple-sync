@@ -1611,15 +1611,39 @@ Process this note:
     };
 
     // Content-based keywords for smart matching
+    // Each category maps to keywords AND a minimum match threshold for override
     const contentKeywords: Record<string, string[]> = {
       'books': ['book', 'author', 'novel', 'reading', 'chapter', 'isbn', 'publisher', 'paperback', 'hardcover', 'ebook', 'kindle'],
-      'movies': ['movie', 'film', 'tv show', 'series', 'watch', 'streaming', 'netflix', 'hulu', 'disney', 'hbo', 'prime video', 'actor', 'director'],
+      'movies_tv': ['movie', 'film', 'tv show', 'series', 'watch', 'streaming', 'netflix', 'hulu', 'disney', 'hbo', 'prime video', 'actor', 'director'],
       'recipes': ['recipe', 'cook', 'bake', 'ingredients', 'cuisine', 'dish', 'meal'],
       'music': ['song', 'album', 'artist', 'band', 'playlist', 'spotify', 'music'],
       'travel': ['flight', 'airline', 'boarding pass', 'itinerary', 'departure', 'arrival', 'airport', 'terminal', 'passenger', 'booking', 'hotel', 'check-in', 'check-out', 'reservation', 'train ticket', 'car rental', 'airbnb', 'hostel', 'vacation', 'trip', 'travel', 'pnr', 'cabin', 'economy', 'business class', 'first class', 'layover', 'connection'],
       'stocks': ['stock', 'ticker', '$', 'share', 'shares', 'invest', 'portfolio', 'market', 'trading', 'dividend', 'earnings', 'nasdaq', 'nyse', 'price target', 'buy rating', 'sell rating', 'analyst', 'ferrari', 'apple', 'amazon', 'tesla', 'nvidia', 'microsoft', 'google', 'meta'],
-      'finance': ['finance', 'investment', 'crypto', 'bitcoin', 'ethereum', 'currency', 'forex', 'bond', 'etf', 'mutual fund'],
-      'groceries': ['milk', 'eggs', 'bread', 'butter', 'cheese', 'chicken', 'beef', 'pork', 'fish', 'rice', 'pasta', 'flour', 'sugar', 'salt', 'pepper', 'oil', 'vinegar', 'tomato', 'potato', 'onion', 'garlic', 'lemon', 'lime', 'orange', 'apple', 'banana', 'avocado', 'lettuce', 'spinach', 'carrot', 'broccoli', 'cucumber', 'yogurt', 'cream', 'cereal', 'coffee', 'tea', 'juice', 'water', 'soda', 'beer', 'wine', 'snack', 'chips', 'crackers', 'cookies', 'fruit', 'vegetable', 'meat', 'produce', 'dairy', 'frozen', 'canned', 'sauce', 'condiment', 'spice', 'herb', 'nut', 'seed', 'grain', 'bean', 'tofu', 'soy', 'almond', 'oat']
+      'finance': ['finance', 'investment', 'crypto', 'bitcoin', 'ethereum', 'currency', 'forex', 'bond', 'etf', 'mutual fund', 'bill', 'payment', 'budget', 'invoice', '401k', 'ira', 'savings', 'bank', 'credit card', 'loan', 'mortgage', 'insurance', 'tax'],
+      'health': ['supplement', 'supplements', 'vitamin', 'vitamins', 'medication', 'medicine', 'prescription', 'dosage', 'dose', 'mg', 'mcg', 'capsule', 'tablet', 'pill', 'pills', 'health', 'wellness', 'fitness', 'workout', 'exercise', 'gym', 'yoga', 'meditation', 'sleep', 'nutrition', 'diet', 'calories', 'protein', 'creatine', 'omega', 'magnesium', 'zinc', 'iron', 'calcium', 'probiotic', 'collagen', 'ashwagandha', 'melatonin', 'turmeric', 'lion\'s mane', 'lions mane', 'tart cherry', 'fish oil', 'cbd', 'multivitamin', 'b12', 'vitamin c', 'vitamin d', 'vit c', 'vit d', 'vit b', 'doctor', 'dentist', 'appointment', 'medical', 'therapy', 'therapist', 'blood test', 'checkup', 'vaccination', 'allergy'],
+      'groceries': ['milk', 'eggs', 'bread', 'butter', 'cheese', 'chicken', 'beef', 'pork', 'fish', 'rice', 'pasta', 'flour', 'sugar', 'salt', 'pepper', 'oil', 'vinegar', 'tomato', 'potato', 'onion', 'garlic', 'lemon', 'lime', 'orange', 'banana', 'avocado', 'lettuce', 'spinach', 'carrot', 'broccoli', 'cucumber', 'yogurt', 'cream', 'cereal', 'coffee', 'tea', 'juice', 'water', 'soda', 'beer', 'wine', 'snack', 'chips', 'crackers', 'cookies', 'fruit', 'vegetable', 'meat', 'produce', 'dairy', 'frozen', 'canned', 'sauce', 'condiment', 'spice', 'herb', 'nut', 'seed', 'grain', 'bean', 'tofu', 'soy', 'almond', 'oat'],
+      'entertainment': ['karaoke', 'dj ', 'dj night', 'happy hour', 'concert', 'festival', 'live music', 'comedy show', 'trivia', 'nightlife', 'club event', 'themed night', 'show', 'theater', 'theatre', 'standup', 'stand-up', 'open mic'],
+      'shopping': ['promo code', 'coupon', 'discount', 'sale', 'deal', 'price', 'store', 'amazon', 'ebay', 'walmart', 'target', 'zara', 'nike', 'adidas', 'electronics', 'gadget', 'clothes', 'shoes', 'accessory', 'order', 'delivery'],
+      'home_improvement': ['repair', 'fix', 'plumber', 'electrician', 'paint', 'renovation', 'contractor', 'leak', 'faucet', 'pipe', 'drywall', 'tile', 'flooring', 'cabinet', 'shelf', 'furniture', 'ikea', 'hardware', 'drill', 'hammer', 'maintenance'],
+      'personal': ['errand', 'admin', 'register', 'renew', 'passport', 'license', 'dmv', 'post office', 'notary', 'laundry', 'dry clean', 'car wash', 'oil change', 'inspection']
+    };
+    
+    // Minimum keyword matches required per category to trigger an override
+    // Higher = more conservative (avoids false positives for broad categories)
+    const overrideThresholds: Record<string, number> = {
+      'groceries': 1,
+      'health': 2,
+      'travel': 2,
+      'entertainment': 1,
+      'finance': 2,
+      'shopping': 2,
+      'home_improvement': 2,
+      'books': 1,
+      'movies_tv': 1,
+      'personal': 2,
+      'stocks': 2,
+      'recipes': 2,
+      'music': 2,
     };
 
     const findOrCreateList = async (category: string, tags: string[] = [], targetList?: string, summary?: string) => {
