@@ -14,7 +14,7 @@ import { NoteInput } from "@/components/NoteInput";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { format, addDays, startOfDay, isSameDay, formatDistanceToNow } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { categories } from "@/constants/categories";
+// Categories are now derived dynamically from user's actual notes
 import { useOrganizeAgent } from "@/hooks/useOrganizeAgent";
 import { OptimizationReviewModal } from "@/components/OptimizationReviewModal";
 import { useOnboardingTooltip } from "@/hooks/useOnboardingTooltip";
@@ -337,9 +337,15 @@ const Home = () => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">{t('common:common.allCategories')}</SelectItem>
-                        {categories.map(cat => (
-                          <SelectItem key={cat} value={cat.toLowerCase()}>{t(`common:categories.${cat.toLowerCase().replace(/\s+/g, '_')}`, cat)}</SelectItem>
-                        ))}
+                        {/* Dynamic categories from user's actual notes */}
+                        {(() => {
+                          const uniqueCategories = [...new Set(notes.map(n => n.category))].sort();
+                          return uniqueCategories.map(cat => (
+                            <SelectItem key={cat} value={cat.toLowerCase()}>
+                              {t(`common:categories.${cat.toLowerCase().replace(/\s+/g, '_')}`, cat)}
+                            </SelectItem>
+                          ));
+                        })()}
                       </SelectContent>
                     </Select>
                     

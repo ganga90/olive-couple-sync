@@ -4,7 +4,6 @@ import { useSupabaseNotes, SupabaseNote } from "@/hooks/useSupabaseNotes";
 import { useAuth } from "./AuthProvider";
 import { useDefaultPrivacy } from "@/hooks/useDefaultPrivacy";
 import type { Note } from "@/types/note";
-import { categories } from "@/constants/categories";
 
 type SupabaseNotesContextValue = {
   notes: Note[];
@@ -18,30 +17,48 @@ type SupabaseNotesContextValue = {
 
 const SupabaseNotesContext = createContext<SupabaseNotesContextValue | undefined>(undefined);
 
-// Map AI categories (lowercase with underscores) to display categories
+// Well-known AI category → display name mappings (for common cases)
+const KNOWN_CATEGORY_MAP: Record<string, string> = {
+  'groceries': 'Groceries',
+  'task': 'Task',
+  'home_improvement': 'Home Improvement',
+  'travel_idea': 'Travel Idea',
+  'travel': 'Travel',
+  'date_idea': 'Date Idea',
+  'date_ideas': 'Date Ideas',
+  'shopping': 'Shopping',
+  'health': 'Health',
+  'finance': 'Finance',
+  'work': 'Work',
+  'personal': 'Personal',
+  'gift_ideas': 'Gift Ideas',
+  'recipes': 'Recipes',
+  'movies_tv': 'Movies & TV',
+  'movies_to_watch': 'Movies to Watch',
+  'books_to_read': 'Books to Read',
+  'books': 'Books',
+  'restaurants': 'Restaurants',
+  'entertainment': 'Entertainment',
+  'general': 'Task',
+  'stocks': 'Investments',
+};
+
+// Dynamic category mapping: accepts ANY category from the AI
+// Known categories get clean display names; unknown ones get auto-formatted
 const mapAICategory = (aiCategory: string): string => {
-  const categoryMap: Record<string, string> = {
-    'groceries': 'Groceries',
-    'task': 'Task',
-    'home_improvement': 'Home Improvement',
-    'travel_idea': 'Travel Idea',
-    'date_idea': 'Date Idea',
-    'shopping': 'Shopping',
-    'health': 'Health',
-    'finance': 'Finance',
-    'work': 'Work',
-    'personal': 'Personal',
-    'gift_ideas': 'Gift Ideas',
-    'recipes': 'Recipes',
-    'movies_to_watch': 'Movies to Watch',
-    'books_to_read': 'Books to Read',
-    'restaurants': 'Restaurants',
-    'general': 'Task',
-  };
+  if (!aiCategory) return 'Task';
+  const lower = aiCategory.toLowerCase().trim();
   
-  return categoryMap[aiCategory.toLowerCase()] || categories.find(cat => 
-    cat.toLowerCase().replace(/\s+/g, '_') === aiCategory.toLowerCase()
-  ) || 'Task';
+  // Check known mappings first
+  if (KNOWN_CATEGORY_MAP[lower]) return KNOWN_CATEGORY_MAP[lower];
+  
+  // For any unknown category, auto-format to Title Case
+  // e.g. "real_estate" → "Real Estate", "child_care" → "Child Care", "networking" → "Networking"
+  return lower
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 };
 
 // Convert Supabase note to app Note type

@@ -76,7 +76,7 @@ const singleNoteSchema = {
     },
     category: { 
       type: Type.STRING, 
-      description: "Category using lowercase with underscores. IMPORTANT - choose the MOST SPECIFIC match: health (supplements, vitamins, medication, dosage schedules, wellness routines, fitness plans, workout logs, medical notes, doctor appointments, therapy, nutrition plans, diet tracking), entertainment (concerts, karaoke, shows, events, festivals, nightlife, comedy, sports events, DJ nights, happy hours, live music, themed nights), date_ideas (restaurants to try, romantic activities, couple activities), home_improvement (repairs, renovations, maintenance), travel (trips, flights, hotels, vacation plans), groceries (food items to buy), shopping (products, clothes, electronics, promo codes), personal (bills, admin, appointments, errands), task (generic to-do items ONLY when no better category exists), books (books to read), movies_tv (movies, TV shows, series), finance (investments, stocks, budgets, bills)" 
+      description: "Category using lowercase with underscores. Choose the MOST SPECIFIC domain category. COMMON categories: health, entertainment, date_ideas, home_improvement, travel, groceries, shopping, personal, books, movies_tv, finance, work, recipes, gift_ideas. BUT you are NOT limited to these — if the content fits a domain not listed (e.g., real_estate, networking, childcare, pets, automotive, education, legal, photography, gardening, spirituality, volunteering, sports, music, art, technology, gaming, parenting), CREATE a new category using lowercase_underscore format. 'task' is ONLY for truly generic to-do items with no domain. NEVER default to 'task' when a specific domain exists." 
     },
     target_list: {
       type: Type.STRING,
@@ -417,10 +417,10 @@ Examples:
    - Note about a book + list "Books" exists → target_list: "Books"
    - Note about a recipe + list "Recipes" exists → target_list: "Recipes"
 3. **Memory-based routing**: If user memories specify routing preferences, ALWAYS follow them
-4. **Category as NEW list**: If no existing list matches AND the content is clearly a specific domain (health, travel, etc.), set category appropriately — the system will auto-create a list. NEVER default to "task" when a more specific category exists.
-5. **"task" is LAST RESORT**: Only use category "task" for truly generic to-do items that don't fit ANY domain category. If in doubt, choose a domain category.
+4. **NEW DOMAIN CATEGORY**: If no existing list matches AND the content clearly belongs to a specific domain, use a descriptive lowercase_underscore category (e.g., "real_estate", "childcare", "pets", "automotive", "gardening"). The system will auto-create a new list. You are NOT limited to predefined categories — Olive adapts to each user's unique life.
+5. **"task" is LAST RESORT**: Only use category "task" for truly generic to-do items that don't fit ANY domain category. If in doubt, choose or invent a domain category.
 
-**ANTI-PATTERN**: Do NOT classify domain-specific content as "task". A supplement schedule is "health". A movie recommendation is "movies_tv". A restaurant is "date_ideas". "task" means ONLY "a generic action item with no domain."`;
+**ANTI-PATTERN**: Do NOT classify domain-specific content as "task". A supplement schedule is "health". A movie recommendation is "movies_tv". A restaurant is "date_ideas". A property listing is "real_estate". A babysitter contact is "childcare". "task" means ONLY "a generic action item with no domain."`;
   }
 
   return `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
@@ -1696,8 +1696,9 @@ Process this note:
     };
 
     // ================================================================
-    // CANONICAL NAME MAP: Maps category keys to user-friendly list names
-    // and defines known equivalences to prevent duplicates.
+    // CANONICAL NAME MAP: Known category → display name mappings.
+    // NOT exhaustive — the AI can create ANY category. Unknown categories
+    // are auto-formatted to Title Case (e.g., "real_estate" → "Real Estate").
     // ================================================================
     const canonicalListNames: Record<string, { displayName: string; aliases: string[] }> = {
       'groceries': { displayName: 'Groceries', aliases: ['grocery', 'groceries', 'food shopping', 'supermarket'] },
@@ -1716,6 +1717,7 @@ Process this note:
       'gift_ideas': { displayName: 'Gift Ideas', aliases: ['gift ideas', 'gift idea', 'gifts', 'gift', 'presents'] },
       'task': { displayName: 'Tasks', aliases: ['task', 'tasks', 'to do', 'todo'] },
       'stocks': { displayName: 'Investments', aliases: ['stocks', 'stock', 'investing', 'portfolio', 'trading'] },
+      // Novel categories from AI are auto-formatted: "real_estate" → "Real Estate"
     };
 
     const findOrCreateList = async (category: string, tags: string[] = [], targetList?: string, summary?: string) => {
