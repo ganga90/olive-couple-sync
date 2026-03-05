@@ -1957,20 +1957,21 @@ Process this note:
 
       // ================================================================
       // PRIORITY 5: Create new list only if no match found
+      // Use canonical name map for clean, user-friendly names
       // ================================================================
-      const listName = effectiveCategory
+      const catKey = normalizeName(effectiveCategory).replace(/\s+/g, '_');
+      const canonical = canonicalListNames[catKey] || canonicalListNames[effectiveCategory];
+      const listName = canonical?.displayName || effectiveCategory
         .replace(/_/g, ' ')
         .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
       
-      // FINAL SAFETY CHECK: Double-check we're not creating a duplicate
+      // FINAL SAFETY CHECK: Use equivalence matching to prevent "Grocery" vs "Groceries"
       if (existingLists && existingLists.length > 0) {
-        const finalCheck = existingLists.find((l: any) => 
-          normalizeName(l.name) === normalizeName(listName)
-        );
+        const finalCheck = findEquivalentList(listName);
         if (finalCheck) {
-          console.log('[findOrCreateList] Final safety check caught duplicate, using:', finalCheck.name);
+          console.log('[findOrCreateList] Final equivalence check caught duplicate, using:', finalCheck.name);
           return finalCheck.id;
         }
       }
