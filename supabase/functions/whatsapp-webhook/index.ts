@@ -1842,19 +1842,23 @@ serve(async (req) => {
     const reply = async (text: string, mediaUrl?: string): Promise<void> => {
       await sendWhatsAppReply(phoneNumberId || WHATSAPP_PHONE_NUMBER_ID, rawFromNumber, text, WHATSAPP_ACCESS_TOKEN, mediaUrl);
 
-      // Save last_outbound_context so bare replies can reference it
+      // Save last_outbound_context WITH task_id so follow-up commands resolve correctly
       if (_authenticatedUserId) {
         try {
+          const outboundCtx: any = {
+            message_type: 'reply',
+            content: text.substring(0, 500),
+            sent_at: new Date().toISOString(),
+            status: 'sent'
+          };
+          // Attach task reference if one was recently created/modified
+          if (_lastReferencedTaskId) {
+            outboundCtx.task_id = _lastReferencedTaskId;
+            outboundCtx.task_summary = _lastReferencedTaskSummary || '';
+          }
           await supabase
             .from('clerk_profiles')
-            .update({
-              last_outbound_context: {
-                message_type: 'reply',
-                content: text.substring(0, 500),
-                sent_at: new Date().toISOString(),
-                status: 'sent'
-              }
-            })
+            .update({ last_outbound_context: outboundCtx })
             .eq('id', _authenticatedUserId);
         } catch (ctxErr) {
           console.warn('[Context] Failed to save last_outbound_context:', ctxErr);
