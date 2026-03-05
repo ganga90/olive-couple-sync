@@ -81,7 +81,7 @@ const singleNoteSchema = {
     target_list: {
       type: Type.STRING,
       nullable: true,
-      description: "CRITICAL: The exact name of an existing user list where this note should be saved. Use when user has preferences or when content clearly matches a list name."
+      description: "CRITICAL: Match to an existing user list name. ALWAYS check the provided list names and set this to the EXACT name of the best-matching list. For example: health content → 'Health' list, travel content → 'Travel' list, book → 'Books' list. Only leave null if absolutely no list matches."
     },
     due_date: { 
       type: Type.STRING, 
@@ -404,16 +404,23 @@ Examples:
 - User says "buy dog food" + memory "dog named Milka eats Royal Canine" → Summary: "Buy Royal Canine for Milka"`;
   }
 
-  // Build existing lists section for intelligent routing
+  // Build existing lists section with rich context for intelligent routing
   let listsSection = '';
   if (existingListNames.length > 0) {
     listsSection = `\n\n**USER'S EXISTING LISTS**: ${existingListNames.join(', ')}
 
 **LIST ROUTING RULES (CRITICAL - FOLLOW IN THIS EXACT ORDER)**:
-1. **DIRECT NAME MATCH**: If any word or phrase in the note text EXACTLY matches an existing list name (case-insensitive), output that list name in target_list. Example: Note "LLC check business account" + list "LLC" exists → target_list: "LLC"
-2. **Memory-based routing**: If user memories specify routing preferences, ALWAYS follow them
-3. **Content matching**: When content clearly matches a list name, output that exact list name in target_list
-4. Only leave target_list null if content doesn't match any list`;
+1. **DIRECT NAME MATCH**: If any word or phrase in the note text EXACTLY matches an existing list name (case-insensitive), set target_list to that list name. Example: Note "LLC check business account" + list "LLC" exists → target_list: "LLC"
+2. **SEMANTIC MATCH**: If the note's content is semantically related to an existing list name, ALWAYS route to that list via target_list. Examples:
+   - Note about supplements/vitamins + list "Health" exists → target_list: "Health"
+   - Note about a flight + list "Travel" exists → target_list: "Travel"  
+   - Note about a book + list "Books" exists → target_list: "Books"
+   - Note about a recipe + list "Recipes" exists → target_list: "Recipes"
+3. **Memory-based routing**: If user memories specify routing preferences, ALWAYS follow them
+4. **Category as NEW list**: If no existing list matches AND the content is clearly a specific domain (health, travel, etc.), set category appropriately — the system will auto-create a list. NEVER default to "task" when a more specific category exists.
+5. **"task" is LAST RESORT**: Only use category "task" for truly generic to-do items that don't fit ANY domain category. If in doubt, choose a domain category.
+
+**ANTI-PATTERN**: Do NOT classify domain-specific content as "task". A supplement schedule is "health". A movie recommendation is "movies_tv". A restaurant is "date_ideas". "task" means ONLY "a generic action item with no domain."`;
   }
 
   return `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
@@ -1376,9 +1383,45 @@ serve(async (req) => {
       console.error('Error fetching existing lists:', listsError);
     }
 
-    // Prepare context
+    // Fetch recent note categories to learn user routing patterns
+    let recentNotePatterns: Record<string, string> = {}; // keyword -> list_name
+    try {
+      const recentQuery = supabase
+        .from('clerk_notes')
+        .select('summary, category, list_id')
+        .eq('author_id', user_id)
+        .eq('completed', false)
+        .not('list_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      
+      const { data: recentNotes } = await recentQuery;
+      
+      if (recentNotes && existingLists) {
+        // Build a map of content patterns → list names
+        for (const note of recentNotes) {
+          const matchedList = existingLists.find((l: any) => l.id === note.list_id);
+          if (matchedList) {
+            // Store category → list name mapping for pattern learning
+            const catKey = note.category?.toLowerCase();
+            if (catKey && !recentNotePatterns[catKey]) {
+              recentNotePatterns[catKey] = matchedList.name;
+            }
+          }
+        }
+        if (Object.keys(recentNotePatterns).length > 0) {
+          console.log('[process-note] Learned routing patterns:', recentNotePatterns);
+        }
+      }
+    } catch (err) {
+      console.warn('[process-note] Could not fetch recent note patterns:', err);
+    }
+
+    // Prepare context - include list descriptions for richer AI matching
     const listsContext = existingLists && existingLists.length > 0 
-      ? `\n\nExisting lists: ${existingLists.map(list => list.name).join(', ')}`
+      ? `\n\nExisting lists: ${existingLists.map((list: any) => 
+          list.description ? `${list.name} (${list.description})` : list.name
+        ).join(', ')}`
       : '';
 
     const userTimezone = timezone || 'UTC';
@@ -1597,18 +1640,23 @@ Process this note:
       }
     }
 
-    // Smart list pattern detection - expanded with media types
-    const categoryMap: Record<string, string[]> = {
+    // Category synonym map — used ONLY for matching AI categories to existing list names
+    // This is NOT used for classification — the AI handles that via the prompt
+    const categorySynonyms: Record<string, string[]> = {
       'groceries': ['grocery', 'groceries', 'food', 'supermarket', 'shopping list'],
-      'travel': ['travel idea', 'travel', 'trip', 'vacation', 'flight', 'hotel'],
-      'home improvement': ['home', 'repair', 'fix', 'maintenance', 'renovation', 'home_improvement'],
-      'entertainment': ['date idea', 'date_ideas', 'concert', 'event', 'entertainment'],
-      'personal': ['task', 'personal', 'appointment', 'errand'],
-      'shopping': ['shopping', 'buy', 'purchase', 'store'],
-      'health': ['health', 'fitness', 'exercise', 'doctor', 'medical'],
-      'finance': ['finance', 'bill', 'payment', 'budget', 'money'],
-      'books': ['books', 'book', 'reading', 'novel', 'author', 'literature'],
-      'movies_tv': ['movies_tv', 'movie', 'movies', 'tv', 'tv show', 'tv shows', 'series', 'film', 'watch', 'streaming']
+      'travel': ['travel idea', 'travel', 'trip', 'vacation', 'flight', 'hotel', 'trips'],
+      'home_improvement': ['home', 'home improvement', 'repair', 'fix', 'maintenance', 'renovation'],
+      'entertainment': ['entertainment', 'date idea', 'date_ideas', 'concert', 'event', 'events', 'fun'],
+      'personal': ['personal', 'appointment', 'errand', 'errands', 'admin'],
+      'shopping': ['shopping', 'buy', 'purchase', 'store', 'wishlist', 'wish list'],
+      'health': ['health', 'fitness', 'exercise', 'doctor', 'medical', 'wellness', 'supplements', 'vitamins'],
+      'finance': ['finance', 'bill', 'bills', 'payment', 'budget', 'money', 'investments', 'stocks'],
+      'books': ['books', 'book', 'reading', 'novel', 'author', 'literature', 'to read'],
+      'movies_tv': ['movies_tv', 'movie', 'movies', 'tv', 'tv show', 'tv shows', 'series', 'film', 'watch', 'streaming', 'to watch'],
+      'recipes': ['recipes', 'recipe', 'cooking', 'cook', 'bake', 'meal'],
+      'date_ideas': ['date ideas', 'date_ideas', 'restaurant', 'restaurants', 'romantic', 'couples'],
+      'work': ['work', 'office', 'project', 'meeting', 'career', 'professional'],
+      'gift_ideas': ['gift ideas', 'gift_ideas', 'gifts', 'gift', 'present', 'presents'],
     };
 
     // Content-based keywords for smart matching
@@ -1741,6 +1789,22 @@ Process this note:
       }
 
       // ================================================================
+      // PRIORITY 2.5: Pattern-based routing from recent user behavior
+      // If user previously routed "health" notes to a specific list, do it again
+      // ================================================================
+      if (category && Object.keys(recentNotePatterns).length > 0) {
+        const catNorm = normalizeName(category);
+        const patternListName = recentNotePatterns[catNorm];
+        if (patternListName && existingLists) {
+          const patternMatch = existingLists.find((l: any) => normalizeName(l.name) === normalizeName(patternListName));
+          if (patternMatch) {
+            console.log('[findOrCreateList] Pattern-based routing: category', category, '→ list', patternMatch.name, '(learned from recent notes)');
+            return patternMatch.id;
+          }
+        }
+      }
+
+      // ================================================================
       // PRIORITY 3: Content-based matching - check if summary contains keywords that match a list
       // ================================================================
       if (summary && existingLists && existingLists.length > 0) {
@@ -1784,8 +1848,8 @@ Process this note:
           // Exact match gets highest score (should already be caught above, but safety check)
           if (listNameNorm === categoryNorm) score += 15;
           
-          // Check categoryMap synonyms
-          Object.entries(categoryMap).forEach(([canonical, synonyms]) => {
+           // Check categorySynonyms for semantic matching
+          Object.entries(categorySynonyms).forEach(([canonical, synonyms]) => {
             const normalizedSynonyms = synonyms.map(s => normalizeName(s));
             const categoryMatchesSynonyms = normalizedSynonyms.includes(categoryNorm) || 
                                             normalizedSynonyms.some(s => categoryNorm.includes(s));
@@ -1825,10 +1889,9 @@ Process this note:
       }
       
       // ================================================================
-      // PRIORITY 4.5: Content-based category override for new list creation
-      // If the summary/text contains common grocery items but AI said "personal",
-      // override to "groceries" so the right list gets created
-      // ================================================================
+      // PRIORITY 4.5: Universal content-based category override
+      // If the AI classified as generic ("task"/"personal") but content
+      // strongly matches a domain, override for better routing.
       // ================================================================
       // PRIORITY 4.5: Universal content-based category override
       // Checks ALL keyword categories, not just hardcoded ones.
