@@ -76,7 +76,7 @@ const singleNoteSchema = {
     },
     category: { 
       type: Type.STRING, 
-      description: "Category using lowercase with underscores. IMPORTANT - choose the MOST SPECIFIC match: health (supplements, vitamins, medication, dosage schedules, wellness routines, fitness plans, workout logs, medical notes, doctor appointments, therapy, nutrition plans, diet tracking), entertainment (concerts, karaoke, shows, events, festivals, nightlife, comedy, sports events, DJ nights, happy hours, live music, themed nights), date_ideas (restaurants to try, romantic activities, couple activities), home_improvement (repairs, renovations, maintenance), travel (trips, flights, hotels, vacation plans), groceries (food items to buy), shopping (products, clothes, electronics, promo codes), personal (bills, admin, appointments, errands), task (generic to-do items ONLY when no better category exists), books (books to read), movies_tv (movies, TV shows, series), finance (investments, stocks, budgets, bills)" 
+      description: "Category using lowercase with underscores. Choose the MOST SPECIFIC domain category. COMMON categories: health, entertainment, date_ideas, home_improvement, travel, groceries, shopping, personal, books, movies_tv, finance, work, recipes, gift_ideas. BUT you are NOT limited to these — if the content fits a domain not listed (e.g., real_estate, networking, childcare, pets, automotive, education, legal, photography, gardening, spirituality, volunteering, sports, music, art, technology, gaming, parenting), CREATE a new category using lowercase_underscore format. 'task' is ONLY for truly generic to-do items with no domain. NEVER default to 'task' when a specific domain exists." 
     },
     target_list: {
       type: Type.STRING,
