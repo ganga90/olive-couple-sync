@@ -76,7 +76,7 @@ const singleNoteSchema = {
     },
     category: { 
       type: Type.STRING, 
-      description: "Category using lowercase with underscores. IMPORTANT - choose the MOST SPECIFIC match: entertainment (concerts, karaoke, shows, events, festivals, nightlife, comedy, sports events, DJ nights, happy hours, live music, themed nights), date_ideas (restaurants to try, romantic activities, couple activities), home_improvement (repairs, renovations, maintenance), travel (trips, flights, hotels, vacation plans), groceries (food items to buy), shopping (products, clothes, electronics, promo codes), personal (bills, admin, appointments, errands), task (generic to-do items, action items without a better category), books (books to read), movies_tv (movies, TV shows, series), health (medical, wellness, fitness)" 
+      description: "Category using lowercase with underscores. IMPORTANT - choose the MOST SPECIFIC match: health (supplements, vitamins, medication, dosage schedules, wellness routines, fitness plans, workout logs, medical notes, doctor appointments, therapy, nutrition plans, diet tracking), entertainment (concerts, karaoke, shows, events, festivals, nightlife, comedy, sports events, DJ nights, happy hours, live music, themed nights), date_ideas (restaurants to try, romantic activities, couple activities), home_improvement (repairs, renovations, maintenance), travel (trips, flights, hotels, vacation plans), groceries (food items to buy), shopping (products, clothes, electronics, promo codes), personal (bills, admin, appointments, errands), task (generic to-do items ONLY when no better category exists), books (books to read), movies_tv (movies, TV shows, series), finance (investments, stocks, budgets, bills)" 
     },
     target_list: {
       type: Type.STRING,
@@ -470,7 +470,8 @@ CORE FIELD RULES:
     - appointments/bills/rent → "personal"
     - books/reading → "books"
     - movies/tv shows/series → "movies_tv"
-    - medical/doctor/dentist (saving info, not calling to cancel) → "health"
+    - medical/doctor/dentist (saving info, not calling to cancel), supplements, vitamins, medication schedules, dosage plans, wellness routines, fitness logs, nutrition → "health"
+    - **SUPPLEMENT/VITAMIN SCHEDULES**: Notes listing which supplements to take on which days (e.g., "Sunday = lion's mane, Monday = vit C") are ALWAYS "health", NEVER "task"
     
     **DISAMBIGUATION RULE**: When an image/media shows an event poster, flyer, bar sign, or venue promotion → ALWAYS "entertainment", NEVER "task". Event flyers with drink specials, DJ names, or event schedules are entertainment content.
 
@@ -1611,15 +1612,39 @@ Process this note:
     };
 
     // Content-based keywords for smart matching
+    // Each category maps to keywords AND a minimum match threshold for override
     const contentKeywords: Record<string, string[]> = {
       'books': ['book', 'author', 'novel', 'reading', 'chapter', 'isbn', 'publisher', 'paperback', 'hardcover', 'ebook', 'kindle'],
-      'movies': ['movie', 'film', 'tv show', 'series', 'watch', 'streaming', 'netflix', 'hulu', 'disney', 'hbo', 'prime video', 'actor', 'director'],
+      'movies_tv': ['movie', 'film', 'tv show', 'series', 'watch', 'streaming', 'netflix', 'hulu', 'disney', 'hbo', 'prime video', 'actor', 'director'],
       'recipes': ['recipe', 'cook', 'bake', 'ingredients', 'cuisine', 'dish', 'meal'],
       'music': ['song', 'album', 'artist', 'band', 'playlist', 'spotify', 'music'],
       'travel': ['flight', 'airline', 'boarding pass', 'itinerary', 'departure', 'arrival', 'airport', 'terminal', 'passenger', 'booking', 'hotel', 'check-in', 'check-out', 'reservation', 'train ticket', 'car rental', 'airbnb', 'hostel', 'vacation', 'trip', 'travel', 'pnr', 'cabin', 'economy', 'business class', 'first class', 'layover', 'connection'],
       'stocks': ['stock', 'ticker', '$', 'share', 'shares', 'invest', 'portfolio', 'market', 'trading', 'dividend', 'earnings', 'nasdaq', 'nyse', 'price target', 'buy rating', 'sell rating', 'analyst', 'ferrari', 'apple', 'amazon', 'tesla', 'nvidia', 'microsoft', 'google', 'meta'],
-      'finance': ['finance', 'investment', 'crypto', 'bitcoin', 'ethereum', 'currency', 'forex', 'bond', 'etf', 'mutual fund'],
-      'groceries': ['milk', 'eggs', 'bread', 'butter', 'cheese', 'chicken', 'beef', 'pork', 'fish', 'rice', 'pasta', 'flour', 'sugar', 'salt', 'pepper', 'oil', 'vinegar', 'tomato', 'potato', 'onion', 'garlic', 'lemon', 'lime', 'orange', 'apple', 'banana', 'avocado', 'lettuce', 'spinach', 'carrot', 'broccoli', 'cucumber', 'yogurt', 'cream', 'cereal', 'coffee', 'tea', 'juice', 'water', 'soda', 'beer', 'wine', 'snack', 'chips', 'crackers', 'cookies', 'fruit', 'vegetable', 'meat', 'produce', 'dairy', 'frozen', 'canned', 'sauce', 'condiment', 'spice', 'herb', 'nut', 'seed', 'grain', 'bean', 'tofu', 'soy', 'almond', 'oat']
+      'finance': ['finance', 'investment', 'crypto', 'bitcoin', 'ethereum', 'currency', 'forex', 'bond', 'etf', 'mutual fund', 'bill', 'payment', 'budget', 'invoice', '401k', 'ira', 'savings', 'bank', 'credit card', 'loan', 'mortgage', 'insurance', 'tax'],
+      'health': ['supplement', 'supplements', 'vitamin', 'vitamins', 'medication', 'medicine', 'prescription', 'dosage', 'dose', 'mg', 'mcg', 'capsule', 'tablet', 'pill', 'pills', 'health', 'wellness', 'fitness', 'workout', 'exercise', 'gym', 'yoga', 'meditation', 'sleep', 'nutrition', 'diet', 'calories', 'protein', 'creatine', 'omega', 'magnesium', 'zinc', 'iron', 'calcium', 'probiotic', 'collagen', 'ashwagandha', 'melatonin', 'turmeric', 'lion\'s mane', 'lions mane', 'tart cherry', 'fish oil', 'cbd', 'multivitamin', 'b12', 'vitamin c', 'vitamin d', 'vit c', 'vit d', 'vit b', 'doctor', 'dentist', 'appointment', 'medical', 'therapy', 'therapist', 'blood test', 'checkup', 'vaccination', 'allergy'],
+      'groceries': ['milk', 'eggs', 'bread', 'butter', 'cheese', 'chicken', 'beef', 'pork', 'fish', 'rice', 'pasta', 'flour', 'sugar', 'salt', 'pepper', 'oil', 'vinegar', 'tomato', 'potato', 'onion', 'garlic', 'lemon', 'lime', 'orange', 'banana', 'avocado', 'lettuce', 'spinach', 'carrot', 'broccoli', 'cucumber', 'yogurt', 'cream', 'cereal', 'coffee', 'tea', 'juice', 'water', 'soda', 'beer', 'wine', 'snack', 'chips', 'crackers', 'cookies', 'fruit', 'vegetable', 'meat', 'produce', 'dairy', 'frozen', 'canned', 'sauce', 'condiment', 'spice', 'herb', 'nut', 'seed', 'grain', 'bean', 'tofu', 'soy', 'almond', 'oat'],
+      'entertainment': ['karaoke', 'dj ', 'dj night', 'happy hour', 'concert', 'festival', 'live music', 'comedy show', 'trivia', 'nightlife', 'club event', 'themed night', 'show', 'theater', 'theatre', 'standup', 'stand-up', 'open mic'],
+      'shopping': ['promo code', 'coupon', 'discount', 'sale', 'deal', 'price', 'store', 'amazon', 'ebay', 'walmart', 'target', 'zara', 'nike', 'adidas', 'electronics', 'gadget', 'clothes', 'shoes', 'accessory', 'order', 'delivery'],
+      'home_improvement': ['repair', 'fix', 'plumber', 'electrician', 'paint', 'renovation', 'contractor', 'leak', 'faucet', 'pipe', 'drywall', 'tile', 'flooring', 'cabinet', 'shelf', 'furniture', 'ikea', 'hardware', 'drill', 'hammer', 'maintenance'],
+      'personal': ['errand', 'admin', 'register', 'renew', 'passport', 'license', 'dmv', 'post office', 'notary', 'laundry', 'dry clean', 'car wash', 'oil change', 'inspection']
+    };
+    
+    // Minimum keyword matches required per category to trigger an override
+    // Higher = more conservative (avoids false positives for broad categories)
+    const overrideThresholds: Record<string, number> = {
+      'groceries': 1,
+      'health': 2,
+      'travel': 2,
+      'entertainment': 1,
+      'finance': 2,
+      'shopping': 2,
+      'home_improvement': 2,
+      'books': 1,
+      'movies_tv': 1,
+      'personal': 2,
+      'stocks': 2,
+      'recipes': 2,
+      'music': 2,
     };
 
     const findOrCreateList = async (category: string, tags: string[] = [], targetList?: string, summary?: string) => {
@@ -1804,38 +1829,41 @@ Process this note:
       // If the summary/text contains common grocery items but AI said "personal",
       // override to "groceries" so the right list gets created
       // ================================================================
-      const textForOverride = [safeText, summary].filter(Boolean).join(' ').toLowerCase();
-      const groceryKeywords = contentKeywords['groceries'] || [];
-      const groceryMatchCount = groceryKeywords.filter(kw => {
-        const regex = new RegExp(`\\b${kw}\\b`, 'i');
-        return regex.test(textForOverride);
-      }).length;
-      
-      let effectiveCategory = category;
-      if (groceryMatchCount >= 1 && normalizeName(category) !== 'groceries') {
-        console.log('[findOrCreateList] Content override: detected', groceryMatchCount, 'grocery keywords, overriding category from', category, 'to groceries');
-        effectiveCategory = 'groceries';
-      }
-
-      // Travel content override: if media/summary contains strong travel signals, force travel
-      const travelKeywords = contentKeywords['travel'] || [];
+      // ================================================================
+      // PRIORITY 4.5: Universal content-based category override
+      // Checks ALL keyword categories, not just hardcoded ones.
+      // If the note content strongly matches a category's keywords,
+      // override the AI's category (which often defaults to "task").
+      // ================================================================
       const allContentForOverride = [safeText, summary, ...mediaDescriptions].filter(Boolean).join(' ').toLowerCase();
-      const travelMatchCount = travelKeywords.filter(kw => {
-        const regex = new RegExp(`\\b${kw.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i');
-        return regex.test(allContentForOverride);
-      }).length;
+      let effectiveCategory = category;
       
-      if (travelMatchCount >= 2 && !['travel'].includes(normalizeName(effectiveCategory))) {
-        console.log('[findOrCreateList] Content override: detected', travelMatchCount, 'travel keywords, overriding category from', effectiveCategory, 'to travel');
-        effectiveCategory = 'travel';
-      }
-
-      // Entertainment content override: if media contains entertainment signals, force entertainment
-      const entertainmentSignals = ['karaoke', 'dj ', 'dj night', 'happy hour', 'concert', 'festival', 'live music', 'comedy show', 'trivia', 'nightlife', 'club event', 'themed night'];
-      const entertainmentMatchCount = entertainmentSignals.filter(kw => allContentForOverride.includes(kw)).length;
-      if (entertainmentMatchCount >= 1 && !['entertainment'].includes(normalizeName(effectiveCategory))) {
-        console.log('[findOrCreateList] Content override: detected entertainment keywords, overriding from', effectiveCategory, 'to entertainment');
-        effectiveCategory = 'entertainment';
+      // Only override if current category is generic ("task" or "personal")
+      const genericCategories = ['task', 'personal', 'general'];
+      if (genericCategories.includes(normalizeName(effectiveCategory))) {
+        let bestOverrideCategory: string | null = null;
+        let bestOverrideScore = 0;
+        
+        for (const [kwCategory, keywords] of Object.entries(contentKeywords)) {
+          const threshold = overrideThresholds[kwCategory] || 2;
+          
+          const matchCount = keywords.filter(kw => {
+            // Escape special regex chars in keyword
+            const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+            return regex.test(allContentForOverride);
+          }).length;
+          
+          if (matchCount >= threshold && matchCount > bestOverrideScore) {
+            bestOverrideScore = matchCount;
+            bestOverrideCategory = kwCategory;
+          }
+        }
+        
+        if (bestOverrideCategory) {
+          console.log('[findOrCreateList] Universal override: detected', bestOverrideScore, bestOverrideCategory, 'keywords, overriding from', effectiveCategory);
+          effectiveCategory = bestOverrideCategory;
+        }
       }
 
       // ================================================================
