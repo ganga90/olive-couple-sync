@@ -1828,38 +1828,41 @@ Process this note:
       // If the summary/text contains common grocery items but AI said "personal",
       // override to "groceries" so the right list gets created
       // ================================================================
-      const textForOverride = [safeText, summary].filter(Boolean).join(' ').toLowerCase();
-      const groceryKeywords = contentKeywords['groceries'] || [];
-      const groceryMatchCount = groceryKeywords.filter(kw => {
-        const regex = new RegExp(`\\b${kw}\\b`, 'i');
-        return regex.test(textForOverride);
-      }).length;
-      
-      let effectiveCategory = category;
-      if (groceryMatchCount >= 1 && normalizeName(category) !== 'groceries') {
-        console.log('[findOrCreateList] Content override: detected', groceryMatchCount, 'grocery keywords, overriding category from', category, 'to groceries');
-        effectiveCategory = 'groceries';
-      }
-
-      // Travel content override: if media/summary contains strong travel signals, force travel
-      const travelKeywords = contentKeywords['travel'] || [];
+      // ================================================================
+      // PRIORITY 4.5: Universal content-based category override
+      // Checks ALL keyword categories, not just hardcoded ones.
+      // If the note content strongly matches a category's keywords,
+      // override the AI's category (which often defaults to "task").
+      // ================================================================
       const allContentForOverride = [safeText, summary, ...mediaDescriptions].filter(Boolean).join(' ').toLowerCase();
-      const travelMatchCount = travelKeywords.filter(kw => {
-        const regex = new RegExp(`\\b${kw.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i');
-        return regex.test(allContentForOverride);
-      }).length;
+      let effectiveCategory = category;
       
-      if (travelMatchCount >= 2 && !['travel'].includes(normalizeName(effectiveCategory))) {
-        console.log('[findOrCreateList] Content override: detected', travelMatchCount, 'travel keywords, overriding category from', effectiveCategory, 'to travel');
-        effectiveCategory = 'travel';
-      }
-
-      // Entertainment content override: if media contains entertainment signals, force entertainment
-      const entertainmentSignals = ['karaoke', 'dj ', 'dj night', 'happy hour', 'concert', 'festival', 'live music', 'comedy show', 'trivia', 'nightlife', 'club event', 'themed night'];
-      const entertainmentMatchCount = entertainmentSignals.filter(kw => allContentForOverride.includes(kw)).length;
-      if (entertainmentMatchCount >= 1 && !['entertainment'].includes(normalizeName(effectiveCategory))) {
-        console.log('[findOrCreateList] Content override: detected entertainment keywords, overriding from', effectiveCategory, 'to entertainment');
-        effectiveCategory = 'entertainment';
+      // Only override if current category is generic ("task" or "personal")
+      const genericCategories = ['task', 'personal', 'general'];
+      if (genericCategories.includes(normalizeName(effectiveCategory))) {
+        let bestOverrideCategory: string | null = null;
+        let bestOverrideScore = 0;
+        
+        for (const [kwCategory, keywords] of Object.entries(contentKeywords)) {
+          const threshold = overrideThresholds[kwCategory] || 2;
+          
+          const matchCount = keywords.filter(kw => {
+            // Escape special regex chars in keyword
+            const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+            return regex.test(allContentForOverride);
+          }).length;
+          
+          if (matchCount >= threshold && matchCount > bestOverrideScore) {
+            bestOverrideScore = matchCount;
+            bestOverrideCategory = kwCategory;
+          }
+        }
+        
+        if (bestOverrideCategory) {
+          console.log('[findOrCreateList] Universal override: detected', bestOverrideScore, bestOverrideCategory, 'keywords, overriding from', effectiveCategory);
+          effectiveCategory = bestOverrideCategory;
+        }
       }
 
       // ================================================================
