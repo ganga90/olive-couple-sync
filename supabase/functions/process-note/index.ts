@@ -1695,12 +1695,58 @@ Process this note:
       'music': 2,
     };
 
+    // ================================================================
+    // CANONICAL NAME MAP: Maps category keys to user-friendly list names
+    // and defines known equivalences to prevent duplicates.
+    // ================================================================
+    const canonicalListNames: Record<string, { displayName: string; aliases: string[] }> = {
+      'groceries': { displayName: 'Groceries', aliases: ['grocery', 'groceries', 'food shopping', 'supermarket'] },
+      'health': { displayName: 'Health', aliases: ['health', 'wellness', 'medical', 'supplements', 'vitamins', 'fitness'] },
+      'travel': { displayName: 'Travel', aliases: ['travel', 'trips', 'trip', 'vacation', 'vacations', 'flights'] },
+      'entertainment': { displayName: 'Entertainment', aliases: ['entertainment', 'events', 'fun', 'nightlife', 'concerts'] },
+      'shopping': { displayName: 'Shopping', aliases: ['shopping', 'wishlist', 'wish list', 'purchases'] },
+      'home_improvement': { displayName: 'Home Improvement', aliases: ['home improvement', 'home', 'repairs', 'maintenance', 'renovation'] },
+      'finance': { displayName: 'Finance', aliases: ['finance', 'finances', 'bills', 'budget', 'investments', 'money'] },
+      'books': { displayName: 'Books', aliases: ['books', 'book', 'reading', 'to read'] },
+      'movies_tv': { displayName: 'Movies & TV', aliases: ['movies tv', 'movies & tv', 'movies and tv', 'movie', 'movies', 'tv shows', 'tv show', 'series', 'to watch'] },
+      'recipes': { displayName: 'Recipes', aliases: ['recipes', 'recipe', 'cooking', 'meals'] },
+      'date_ideas': { displayName: 'Date Ideas', aliases: ['date ideas', 'date idea', 'restaurants', 'restaurant', 'romantic'] },
+      'personal': { displayName: 'Personal', aliases: ['personal', 'errands', 'errand', 'admin'] },
+      'work': { displayName: 'Work', aliases: ['work', 'office', 'career', 'professional'] },
+      'gift_ideas': { displayName: 'Gift Ideas', aliases: ['gift ideas', 'gift idea', 'gifts', 'gift', 'presents'] },
+      'task': { displayName: 'Tasks', aliases: ['task', 'tasks', 'to do', 'todo'] },
+      'stocks': { displayName: 'Investments', aliases: ['stocks', 'stock', 'investing', 'portfolio', 'trading'] },
+    };
+
     const findOrCreateList = async (category: string, tags: string[] = [], targetList?: string, summary?: string) => {
       console.log('[findOrCreateList] Input - category:', category, 'targetList:', targetList, 'summary:', summary?.substring(0, 50));
       
       // Helper to normalize list names for comparison
       const normalizeName = (name: string): string => {
-        return name.toLowerCase().trim().replace(/[_\-\s]+/g, ' ');
+        return name.toLowerCase().trim().replace(/[_\-\s]+/g, ' ').replace(/&/g, 'and');
+      };
+      
+      // Helper: check if two names are equivalent (singular/plural/alias match)
+      const areNamesEquivalent = (nameA: string, nameB: string): boolean => {
+        const a = normalizeName(nameA);
+        const b = normalizeName(nameB);
+        if (a === b) return true;
+        // Singular/plural
+        if (a + 's' === b || b + 's' === a) return true;
+        if (a.replace(/ies$/, 'y') === b || b.replace(/ies$/, 'y') === a) return true;
+        if (a.replace(/es$/, '') === b || b.replace(/es$/, '') === a) return true;
+        // Check canonical aliases
+        for (const entry of Object.values(canonicalListNames)) {
+          const normAliases = entry.aliases.map(al => normalizeName(al));
+          if (normAliases.includes(a) && normAliases.includes(b)) return true;
+        }
+        return false;
+      };
+      
+      // Helper: find an existing list matching a name using equivalence
+      const findEquivalentList = (name: string) => {
+        if (!existingLists || existingLists.length === 0) return null;
+        return existingLists.find((l: any) => areNamesEquivalent(l.name, name));
       };
       
       // ================================================================
@@ -1733,51 +1779,31 @@ Process this note:
       }
       
       // ================================================================
-      // PRIORITY 1: Exact or near-exact match by category name
-      // This handles "books" -> "Books" case
+      // PRIORITY 1: Exact, singular/plural, or alias match by category name
+      // Uses areNamesEquivalent to catch "grocery" → "Groceries", etc.
       // ================================================================
       if (existingLists && existingLists.length > 0) {
-        const categoryNorm = normalizeName(category);
-        
-        // First check: exact match (case-insensitive)
-        const exactMatch = existingLists.find((l: any) => normalizeName(l.name) === categoryNorm);
-        if (exactMatch) {
-          console.log('[findOrCreateList] Exact category match found:', exactMatch.name);
-          return exactMatch.id;
-        }
-        
-        // Second check: singular/plural variations (books/book, movies/movie)
-        const singularCategory = categoryNorm.replace(/s$/, '');
-        const pluralCategory = categoryNorm + 's';
-        
-        const singularPluralMatch = existingLists.find((l: any) => {
-          const listNorm = normalizeName(l.name);
-          const listSingular = listNorm.replace(/s$/, '');
-          return listNorm === singularCategory || 
-                 listNorm === pluralCategory || 
-                 listSingular === singularCategory;
-        });
-        
-        if (singularPluralMatch) {
-          console.log('[findOrCreateList] Singular/plural match found:', singularPluralMatch.name);
-          return singularPluralMatch.id;
+        const equivMatch = findEquivalentList(category);
+        if (equivMatch) {
+          console.log('[findOrCreateList] Category equivalence match found:', equivMatch.name, '(from category:', category, ')');
+          return equivMatch.id;
         }
       }
+      
       
       // ================================================================
       // PRIORITY 2: Use AI-suggested target_list if it matches an existing list
       // ================================================================
       if (targetList && existingLists && existingLists.length > 0) {
-        const targetNorm = normalizeName(targetList);
-        
-        // Exact match first
-        const exactMatch = existingLists.find((l: any) => normalizeName(l.name) === targetNorm);
-        if (exactMatch) {
-          console.log('[findOrCreateList] AI target_list exact match:', exactMatch.name);
-          return exactMatch.id;
+        // Use equivalence matching (catches "Health" → "Health", "Grocery" → "Groceries", etc.)
+        const equivMatch = findEquivalentList(targetList);
+        if (equivMatch) {
+          console.log('[findOrCreateList] AI target_list equivalence match:', equivMatch.name);
+          return equivMatch.id;
         }
         
-        // Partial match
+        // Partial/contains match as fallback
+        const targetNorm = normalizeName(targetList);
         const partialMatch = existingLists.find((l: any) => {
           const listNorm = normalizeName(l.name);
           return listNorm.includes(targetNorm) || targetNorm.includes(listNorm);
@@ -1926,25 +1952,33 @@ Process this note:
         if (bestOverrideCategory) {
           console.log('[findOrCreateList] Universal override: detected', bestOverrideScore, bestOverrideCategory, 'keywords, overriding from', effectiveCategory);
           effectiveCategory = bestOverrideCategory;
+          
+          // After override, re-check if an existing list matches the NEW category
+          const overrideListMatch = findEquivalentList(effectiveCategory);
+          if (overrideListMatch) {
+            console.log('[findOrCreateList] Post-override match found:', overrideListMatch.name);
+            return overrideListMatch.id;
+          }
         }
       }
 
       // ================================================================
       // PRIORITY 5: Create new list only if no match found
+      // Use canonical name map for clean, user-friendly names
       // ================================================================
-      const listName = effectiveCategory
+      const catKey = normalizeName(effectiveCategory).replace(/\s+/g, '_');
+      const canonical = canonicalListNames[catKey] || canonicalListNames[effectiveCategory];
+      const listName = canonical?.displayName || effectiveCategory
         .replace(/_/g, ' ')
         .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
       
-      // FINAL SAFETY CHECK: Double-check we're not creating a duplicate
+      // FINAL SAFETY CHECK: Use equivalence matching to prevent "Grocery" vs "Groceries"
       if (existingLists && existingLists.length > 0) {
-        const finalCheck = existingLists.find((l: any) => 
-          normalizeName(l.name) === normalizeName(listName)
-        );
+        const finalCheck = findEquivalentList(listName);
         if (finalCheck) {
-          console.log('[findOrCreateList] Final safety check caught duplicate, using:', finalCheck.name);
+          console.log('[findOrCreateList] Final equivalence check caught duplicate, using:', finalCheck.name);
           return finalCheck.id;
         }
       }
