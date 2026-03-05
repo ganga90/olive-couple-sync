@@ -1695,12 +1695,58 @@ Process this note:
       'music': 2,
     };
 
+    // ================================================================
+    // CANONICAL NAME MAP: Maps category keys to user-friendly list names
+    // and defines known equivalences to prevent duplicates.
+    // ================================================================
+    const canonicalListNames: Record<string, { displayName: string; aliases: string[] }> = {
+      'groceries': { displayName: 'Groceries', aliases: ['grocery', 'groceries', 'food shopping', 'supermarket'] },
+      'health': { displayName: 'Health', aliases: ['health', 'wellness', 'medical', 'supplements', 'vitamins', 'fitness'] },
+      'travel': { displayName: 'Travel', aliases: ['travel', 'trips', 'trip', 'vacation', 'vacations', 'flights'] },
+      'entertainment': { displayName: 'Entertainment', aliases: ['entertainment', 'events', 'fun', 'nightlife', 'concerts'] },
+      'shopping': { displayName: 'Shopping', aliases: ['shopping', 'wishlist', 'wish list', 'purchases'] },
+      'home_improvement': { displayName: 'Home Improvement', aliases: ['home improvement', 'home', 'repairs', 'maintenance', 'renovation'] },
+      'finance': { displayName: 'Finance', aliases: ['finance', 'finances', 'bills', 'budget', 'investments', 'money'] },
+      'books': { displayName: 'Books', aliases: ['books', 'book', 'reading', 'to read'] },
+      'movies_tv': { displayName: 'Movies & TV', aliases: ['movies tv', 'movies & tv', 'movies and tv', 'movie', 'movies', 'tv shows', 'tv show', 'series', 'to watch'] },
+      'recipes': { displayName: 'Recipes', aliases: ['recipes', 'recipe', 'cooking', 'meals'] },
+      'date_ideas': { displayName: 'Date Ideas', aliases: ['date ideas', 'date idea', 'restaurants', 'restaurant', 'romantic'] },
+      'personal': { displayName: 'Personal', aliases: ['personal', 'errands', 'errand', 'admin'] },
+      'work': { displayName: 'Work', aliases: ['work', 'office', 'career', 'professional'] },
+      'gift_ideas': { displayName: 'Gift Ideas', aliases: ['gift ideas', 'gift idea', 'gifts', 'gift', 'presents'] },
+      'task': { displayName: 'Tasks', aliases: ['task', 'tasks', 'to do', 'todo'] },
+      'stocks': { displayName: 'Investments', aliases: ['stocks', 'stock', 'investing', 'portfolio', 'trading'] },
+    };
+
     const findOrCreateList = async (category: string, tags: string[] = [], targetList?: string, summary?: string) => {
       console.log('[findOrCreateList] Input - category:', category, 'targetList:', targetList, 'summary:', summary?.substring(0, 50));
       
       // Helper to normalize list names for comparison
       const normalizeName = (name: string): string => {
-        return name.toLowerCase().trim().replace(/[_\-\s]+/g, ' ');
+        return name.toLowerCase().trim().replace(/[_\-\s]+/g, ' ').replace(/&/g, 'and');
+      };
+      
+      // Helper: check if two names are equivalent (singular/plural/alias match)
+      const areNamesEquivalent = (nameA: string, nameB: string): boolean => {
+        const a = normalizeName(nameA);
+        const b = normalizeName(nameB);
+        if (a === b) return true;
+        // Singular/plural
+        if (a + 's' === b || b + 's' === a) return true;
+        if (a.replace(/ies$/, 'y') === b || b.replace(/ies$/, 'y') === a) return true;
+        if (a.replace(/es$/, '') === b || b.replace(/es$/, '') === a) return true;
+        // Check canonical aliases
+        for (const entry of Object.values(canonicalListNames)) {
+          const normAliases = entry.aliases.map(al => normalizeName(al));
+          if (normAliases.includes(a) && normAliases.includes(b)) return true;
+        }
+        return false;
+      };
+      
+      // Helper: find an existing list matching a name using equivalence
+      const findEquivalentList = (name: string) => {
+        if (!existingLists || existingLists.length === 0) return null;
+        return existingLists.find((l: any) => areNamesEquivalent(l.name, name));
       };
       
       // ================================================================
