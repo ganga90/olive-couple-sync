@@ -1796,8 +1796,8 @@ Process this note:
           // Exact match gets highest score (should already be caught above, but safety check)
           if (listNameNorm === categoryNorm) score += 15;
           
-          // Check categoryMap synonyms
-          Object.entries(categoryMap).forEach(([canonical, synonyms]) => {
+           // Check categorySynonyms for semantic matching
+          Object.entries(categorySynonyms).forEach(([canonical, synonyms]) => {
             const normalizedSynonyms = synonyms.map(s => normalizeName(s));
             const categoryMatchesSynonyms = normalizedSynonyms.includes(categoryNorm) || 
                                             normalizedSynonyms.some(s => categoryNorm.includes(s));
