@@ -337,9 +337,15 @@ const Home = () => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">{t('common:common.allCategories')}</SelectItem>
-                        {categories.map(cat => (
-                          <SelectItem key={cat} value={cat.toLowerCase()}>{t(`common:categories.${cat.toLowerCase().replace(/\s+/g, '_')}`, cat)}</SelectItem>
-                        ))}
+                        {/* Dynamic categories from user's actual notes */}
+                        {(() => {
+                          const uniqueCategories = [...new Set(notes.map(n => n.category))].sort();
+                          return uniqueCategories.map(cat => (
+                            <SelectItem key={cat} value={cat.toLowerCase()}>
+                              {t(`common:categories.${cat.toLowerCase().replace(/\s+/g, '_')}`, cat)}
+                            </SelectItem>
+                          ));
+                        })()}
                       </SelectContent>
                     </Select>
                     
