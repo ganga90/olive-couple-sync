@@ -1832,6 +1832,9 @@ serve(async (req) => {
 
     // Mutable ref for userId so reply() can access it after auth
     let _authenticatedUserId: string | null = null;
+    // Track the most recently referenced task for outbound context enrichment
+    let _lastReferencedTaskId: string | null = null;
+    let _lastReferencedTaskSummary: string | null = null;
 
     // Helper to send reply via Meta Cloud API
     // NOTE: In async-ack mode, reply() just sends the WhatsApp message —
