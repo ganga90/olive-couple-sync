@@ -2808,6 +2808,66 @@ serve(async (req) => {
       intentResult = determineIntent(messageBody || '', mediaUrls.length > 0);
     }
 
+    // ========================================================================
+    // POST-CLASSIFICATION SAFETY NET: Catch misclassified follow-up actions
+    // If the AI classified as CREATE but the message is clearly a follow-up
+    // action (change/update/move/delete/remind + pronoun), override to TASK_ACTION
+    // ========================================================================
+    const sessionCtxForOverride = (session.context_data || {}) as ConversationContext;
+    const hasRecentEntity = sessionCtxForOverride.last_referenced_entity &&
+      sessionCtxForOverride.entity_referenced_at &&
+      (Date.now() - new Date(sessionCtxForOverride.entity_referenced_at).getTime()) < 10 * 60 * 1000;
+
+    if (intentResult.intent === 'CREATE' && hasRecentEntity && messageBody) {
+      const msgLower = messageBody.toLowerCase();
+      // Detect action verbs + pronouns in EN/ES/IT
+      const actionPronounPatterns = [
+        // English
+        /\b(change|update|modify|move|set|reschedule|postpone|delete|remove|cancel|remind)\b.*\b(that|it|this|the reminder|for that|for it|for this)\b/i,
+        /\b(that|it|this|for that|for it)\b.*\b(change|update|modify|move|set|reschedule|postpone|delete|remove|cancel|remind)\b/i,
+        // "change the reminder for that"
+        /\bchange\s+the\s+reminder\b/i,
+        /\bset\s+(?:a\s+)?reminder\s+for\s+(?:that|it|this)\b/i,
+        /\bremind\s+me\s+(?:about\s+)?(?:that|it|this)\b/i,
+        // Spanish
+        /\b(cambi[aeo]|modific[aeo]|mueve?|establec[eé]|pospon|elimin[aeo]|borr[aeo]|cancel[aeo]|recuérd[aeo]me)\b.*\b(eso|esa|esto|esta|lo|la)\b/i,
+        // Italian  
+        /\b(cambi[ao]|modific[ao]|spost[ao]|impost[ao]|cancel+[ao]|elimin[ao]|ricordami)\b.*\b(quello|quella|questo|questa|lo|la)\b/i,
+      ];
+      
+      const isFollowUpAction = actionPronounPatterns.some(p => p.test(msgLower));
+      
+      if (isFollowUpAction) {
+        console.log('[SafetyNet] ⚡ Overriding CREATE → TASK_ACTION (follow-up action with pronoun detected)');
+        
+        // Determine the specific action type from the message
+        let overrideActionType: string = 'remind';
+        if (/\b(change|set|update)\s+(?:the\s+)?reminder\b/i.test(msgLower) || /\bremind\b/i.test(msgLower)) {
+          overrideActionType = 'remind';
+        } else if (/\b(change|update|modify|reschedule|postpone|move.*to)\s+(it|that|this)?\s*(to|for)?\s/i.test(msgLower)) {
+          // Check if it has a time expression → set_due; otherwise → move
+          const hasTimeExpr = /\b(tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+week|at\s+\d|am\b|pm\b|\d{1,2}:\d{2}|mañana|domani)\b/i.test(msgLower);
+          overrideActionType = hasTimeExpr ? 'set_due' : 'move';
+        } else if (/\b(delete|remove|cancel|elimin|borr|cancel)\b/i.test(msgLower)) {
+          overrideActionType = 'delete';
+        } else if (/\b(set_priority|urgent|priority|importante|urgente)\b/i.test(msgLower)) {
+          overrideActionType = 'set_priority';
+        }
+        
+        // Extract the time expression for remind/set_due
+        const timeExprMatch = msgLower.match(/(?:to|at|for)\s+(tomorrow\s+at\s+\d+\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm)|tomorrow|today|next\s+\w+|monday|tuesday|wednesday|thursday|friday|saturday|sunday|in\s+\d+\s+\w+|mañana|domani)/i);
+        const timeExpr = timeExprMatch ? timeExprMatch[1] : undefined;
+        
+        intentResult = {
+          intent: 'TASK_ACTION',
+          actionType: overrideActionType,
+          actionTarget: 'that', // Let pronoun resolution handle it
+          cleanMessage: timeExpr || messageBody,
+          _aiTaskId: undefined,
+        } as any;
+      }
+    }
+
     const { intent, isUrgent, cleanMessage } = intentResult;
     const effectiveMessage = cleanMessage ?? messageBody;
     console.log('Final intent:', intent, 'isUrgent:', isUrgent, 'for message:', effectiveMessage?.substring(0, 50));
