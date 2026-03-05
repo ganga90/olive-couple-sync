@@ -81,7 +81,7 @@ const singleNoteSchema = {
     target_list: {
       type: Type.STRING,
       nullable: true,
-      description: "CRITICAL: The exact name of an existing user list where this note should be saved. Use when user has preferences or when content clearly matches a list name."
+      description: "CRITICAL: Match to an existing user list name. ALWAYS check the provided list names and set this to the EXACT name of the best-matching list. For example: health content → 'Health' list, travel content → 'Travel' list, book → 'Books' list. Only leave null if absolutely no list matches."
     },
     due_date: { 
       type: Type.STRING, 
