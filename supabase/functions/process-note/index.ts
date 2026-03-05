@@ -1952,6 +1952,13 @@ Process this note:
         if (bestOverrideCategory) {
           console.log('[findOrCreateList] Universal override: detected', bestOverrideScore, bestOverrideCategory, 'keywords, overriding from', effectiveCategory);
           effectiveCategory = bestOverrideCategory;
+          
+          // After override, re-check if an existing list matches the NEW category
+          const overrideListMatch = findEquivalentList(effectiveCategory);
+          if (overrideListMatch) {
+            console.log('[findOrCreateList] Post-override match found:', overrideListMatch.name);
+            return overrideListMatch.id;
+          }
         }
       }
 
