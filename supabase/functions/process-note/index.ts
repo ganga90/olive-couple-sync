@@ -1696,8 +1696,9 @@ Process this note:
     };
 
     // ================================================================
-    // CANONICAL NAME MAP: Maps category keys to user-friendly list names
-    // and defines known equivalences to prevent duplicates.
+    // CANONICAL NAME MAP: Known category → display name mappings.
+    // NOT exhaustive — the AI can create ANY category. Unknown categories
+    // are auto-formatted to Title Case (e.g., "real_estate" → "Real Estate").
     // ================================================================
     const canonicalListNames: Record<string, { displayName: string; aliases: string[] }> = {
       'groceries': { displayName: 'Groceries', aliases: ['grocery', 'groceries', 'food shopping', 'supermarket'] },
@@ -1716,6 +1717,7 @@ Process this note:
       'gift_ideas': { displayName: 'Gift Ideas', aliases: ['gift ideas', 'gift idea', 'gifts', 'gift', 'presents'] },
       'task': { displayName: 'Tasks', aliases: ['task', 'tasks', 'to do', 'todo'] },
       'stocks': { displayName: 'Investments', aliases: ['stocks', 'stock', 'investing', 'portfolio', 'trading'] },
+      // Novel categories from AI are auto-formatted: "real_estate" → "Real Estate"
     };
 
     const findOrCreateList = async (category: string, tags: string[] = [], targetList?: string, summary?: string) => {
