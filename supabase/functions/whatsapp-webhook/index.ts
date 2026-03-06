@@ -3001,36 +3001,41 @@ serve(async (req) => {
     // follow-up question/clarification, override to the appropriate intent.
     // ========================================================================
     if (intentResult.intent === 'CREATE' && messageBody) {
-      const recentHistory = conversationHistory.slice(-4); // last 2 exchanges
-      const lastOliveMsg = recentHistory.filter(m => m.role === 'assistant').pop()?.content || '';
-      const lastUserMsg = recentHistory.filter(m => m.role === 'user').pop()?.content || '';
+      const recentHistory = conversationHistory.slice(-10); // last 5 exchanges
+      const lastOliveMsgs = recentHistory.filter(m => m.role === 'assistant');
+      const lastOliveMsg = lastOliveMsgs.length > 0 ? lastOliveMsgs[lastOliveMsgs.length - 1].content : '';
       
-      // Detect if Olive's last response was a contextual_ask or web_search answer
-      const oliveJustSearched = lastOliveMsg.includes('🔍') || // web search indicator
-        lastOliveMsg.includes('Here\'s what I found') ||
-        lastOliveMsg.includes('in your list') ||
-        lastOliveMsg.includes('following') ||
-        lastOliveMsg.includes('Found these') ||
-        lastOliveMsg.includes('Cuisine') ||
-        lastOliveMsg.includes('Rating') ||
-        lastOliveMsg.includes('📋 Found') ||
-        /\bhttps?:\/\/\S+/.test(lastOliveMsg); // Contains a URL (search result)
+      // Detect if Olive recently answered a contextual/search query (check last 2 assistant messages)
+      const checkMessages = lastOliveMsgs.slice(-2).map(m => m.content).join(' ');
+      const oliveJustSearched = 
+        // Explicit search/query response patterns
+        /🔍|📋\s*Found|Here'?s what I found|in your list|following\b|Found these|Cuisine|Rating/i.test(checkMessages) ||
+        // Contains a URL (web search results)
+        /\bhttps?:\/\/\S+/.test(checkMessages) ||
+        // Listed items (numbered or bulleted)
+        /^\s*[\d•\-]\s*.+$/m.test(checkMessages) ||
+        // Answer to a question (starts with "You have", "There are", "Based on", etc.)
+        /^(you have|there are|based on|i found|here are|according to|looking at)/im.test(checkMessages) ||
+        // Olive provided details about a saved item (restaurant, booking, event)
+        /\b(address|location|phone|website|rating|hours|reservation|booking|check-in|check.out|arrival|departure)\b/i.test(checkMessages);
       
       // Detect if current message is a follow-up (question, clarification, continuation)
       const msgLower = messageBody.toLowerCase();
-      const isFollowUp = /\b(do they|does it|is it|are they|can i|can you|how do i|where is|what about|i meant|not that|the restaurant|search for|find me|book|reserve|look up|more info|more details|tell me more|what else)\b/i.test(msgLower) ||
+      const isFollowUp = /\b(do they|does it|is it|are they|can i|can you|how do i|where is|what about|i meant|not that|the restaurant|search for|find me|book|reserve|look up|more info|more details|tell me more|what else|which one|how much|when do|where do|how long|do you know|give me|show me|any other)\b/i.test(msgLower) ||
         msgLower.endsWith('?') ||
-        /^(no[, ]|i meant|not that|the \w+ one)/i.test(msgLower);
+        /^(no[, ]|i meant|not that|the \w+ one|what about|and |also )/i.test(msgLower) ||
+        // Spanish/Italian follow-ups
+        /\b(me puedes|puedes|sabes|dime|y |también|cuánto|cómo|dónde|mi puoi|puoi|sai|dimmi|anche|quanto|dove)\b/i.test(msgLower);
       
-      // Check if message was sent within 2 minutes of last exchange
+      // Check if message was sent within 5 minutes of last exchange
       const lastTimestamp = recentHistory.length > 0 ? recentHistory[recentHistory.length - 1].timestamp : null;
-      const isRecent = lastTimestamp && (Date.now() - new Date(lastTimestamp).getTime()) < 2 * 60 * 1000;
+      const isRecent = lastTimestamp && (Date.now() - new Date(lastTimestamp).getTime()) < 5 * 60 * 1000;
       
       if (oliveJustSearched && isFollowUp && isRecent) {
         // Determine whether to route to web_search or contextual_ask
-        const wantsExternalInfo = /\b(book|reserve|reservation|table|link|website|directions|address|phone|hours|open|menu|price|review|search|find|look up)\b/i.test(msgLower);
+        const wantsExternalInfo = /\b(book|reserve|reservation|table|link|website|directions|address|phone|hours|open|menu|price|review|search|find|look up|prenotare|reservar|buscar|cercare|trovare|prenota|reserva)\b/i.test(msgLower);
         const newIntent = wantsExternalInfo ? 'WEB_SEARCH' : 'CONTEXTUAL_ASK';
-        console.log(`[SafetyNet#2] ⚡ Overriding CREATE → ${newIntent} (follow-up after search/contextual answer)`);
+        console.log(`[SafetyNet#2] ⚡ Overriding CREATE → ${newIntent} (follow-up after search/contextual answer, window=5min)`);
         intentResult = {
           ...intentResult,
           intent: newIntent as any,
