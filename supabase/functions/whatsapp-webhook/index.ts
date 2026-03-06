@@ -4853,9 +4853,9 @@ Respond with exactly two lines starting with SEARCH_QUERY: and USER_QUESTION:`,
         let formattedResponse: string;
         try {
           formattedResponse = await callAI(
-            `You are Olive, a friendly AI assistant. Format this web search result for WhatsApp (max 1200 chars). Be warm but concise. Include the most important details: name, link/URL, rating, price, address, phone. Use emojis sparingly. If there are booking or website links, ALWAYS include them prominently.${ctxLangName !== 'English' ? `\n\nIMPORTANT: Respond entirely in ${ctxLangName}.` : ''}
+            `You are Olive, a friendly AI assistant. The user asked a SPECIFIC question. Answer THAT question directly using the search results below. Format for WhatsApp (max 1200 chars). Be warm but concise. Only include details that answer the question. If links are relevant to the answer, include them.${ctxLangName !== 'English' ? `\n\nIMPORTANT: Respond entirely in ${ctxLangName}.` : ''}
 
-USER'S ORIGINAL QUESTION: ${effectiveMessage}
+USER'S SPECIFIC QUESTION: ${userQuestion}
 
 WEB SEARCH RESULTS:
 ${searchResult}
