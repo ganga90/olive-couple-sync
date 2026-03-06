@@ -4710,48 +4710,74 @@ Respond with helpful, specific information extracted from their saved data. Answ
           return reply('🔍 Web search is not available right now. Please try again later.');
         }
 
-        // Build search context from conversation history and saved data
+        // ── Context-Aware Query Rewriter ────────────────────────────
+        // Produces TWO outputs:
+        //   1. searchQuery  — optimized for Perplexity (entity + location + topic)
+        //   2. userQuestion — the SPECIFIC question the user wants answered
+        // This ensures follow-ups like "Are they open on Sundays?" become
+        // searchQuery: "KeBo Restaurant Key Biscayne Sunday hours"
+        // userQuestion: "Is KeBo Restaurant open on Sundays?"
+        // ──────────────────────────────────────────────────────────────
         let searchQuery = effectiveMessage || '';
+        let userQuestion = effectiveMessage || ''; // the specific question to answer
         let savedItemContext = '';
 
-        // ALWAYS resolve the query using conversation context — not just for vague patterns.
-        // This ensures "Search for a table at Kebo" after discussing "Kebo Restaurant" 
-        // gets enriched to "Kebo Restaurant reservations" instead of just "Kebo".
         if (sessionContext.conversation_history && sessionContext.conversation_history.length > 0) {
           const recentMessages = sessionContext.conversation_history.slice(-12);
-          const conversationContext = recentMessages.map(m => `${m.role === 'user' ? 'User' : 'Olive'}: ${m.content}`).join('\n');
+          const conversationContext = recentMessages.map(m => `${m.role === 'user' ? 'User' : 'Olive'}: ${m.content.substring(0, 400)}`).join('\n');
 
           try {
-            const resolvedQuery = await callAI(
-              `You are a query resolver for a web search. Given the conversation history and the user's latest message, produce the BEST possible web search query. Rules:
-1. If the user mentions a name that also appeared in conversation history (e.g., "Kebo" and Olive previously listed "Kebo Restaurant"), use the FULL name from context.
-2. Always add location/city if known from context.
-3. Include the specific intent: "reservations", "booking", "menu", "reviews", "directions", "phone number", etc.
-4. If the user is correcting/clarifying a previous search ("I meant the restaurant"), incorporate that correction.
-5. Return ONLY the optimized search query text, nothing else.
+            const rewriterResult = await callAI(
+              `You are a context-aware query rewriter for web search. Given a conversation and the user's latest message, produce TWO things on separate lines:
+
+LINE 1 (SEARCH_QUERY): A concise web search query optimized for a search engine. Include the full entity name (resolved from conversation), location if known, and the specific topic. Max 15 words.
+LINE 2 (USER_QUESTION): The user's actual question rewritten as a complete, self-contained sentence with all pronouns resolved. This should be answerable by reading search results.
+
+RULES:
+- Resolve ALL pronouns ("they", "it", "their", "that place") using conversation history.
+- If the user asks a specific factual question (hours, menu, price, etc.), the SEARCH_QUERY must target that specific fact.
+- Do NOT produce a broad query when the user asks something specific.
+
+EXAMPLES:
+- Conversation mentions "KeBo Restaurant, Key Biscayne" → User says "Are they open on Sundays?"
+  SEARCH_QUERY: KeBo Restaurant Key Biscayne Sunday opening hours
+  USER_QUESTION: Is KeBo Restaurant in Key Biscayne open on Sundays?
+
+- Conversation mentions booking at "Nobu Miami" → User says "Do they have valet?"
+  SEARCH_QUERY: Nobu Miami valet parking
+  USER_QUESTION: Does Nobu Miami offer valet parking?
+
+- User says "Search for Italian restaurants near me" (no prior context)
+  SEARCH_QUERY: best Italian restaurants nearby
+  USER_QUESTION: What are the best Italian restaurants nearby?
 
 CONVERSATION:
 ${conversationContext}
 
-The user's latest message: "${searchQuery}"
+USER'S LATEST MESSAGE: "${searchQuery}"
 
-Return the resolved, specific search query:`,
+Respond with exactly two lines starting with SEARCH_QUERY: and USER_QUESTION:`,
               searchQuery,
               0.1,
               'lite'
             );
-            if (resolvedQuery && resolvedQuery.length > 3) {
-              console.log('[WebSearch] Resolved query: "' + searchQuery + '" → "' + resolvedQuery.trim() + '"');
-              searchQuery = resolvedQuery.trim();
+            if (rewriterResult) {
+              const sqMatch = rewriterResult.match(/SEARCH_QUERY:\s*(.+)/i);
+              const uqMatch = rewriterResult.match(/USER_QUESTION:\s*(.+)/i);
+              if (sqMatch?.[1]?.trim()) {
+                searchQuery = sqMatch[1].trim();
+              }
+              if (uqMatch?.[1]?.trim()) {
+                userQuestion = uqMatch[1].trim();
+              }
+              console.log('[WebSearch] Rewriter: query="' + searchQuery + '" | question="' + userQuestion + '"');
             }
           } catch (resolveErr) {
-            console.warn('[WebSearch] Query resolution failed, using original:', resolveErr);
+            console.warn('[WebSearch] Query rewriter failed, using original:', resolveErr);
           }
         }
 
-        // Also check if we have matching saved items to enrich context
-        // This is CRITICAL for disambiguation: "Search for Kebo" should find
-        // "Kebo Restaurant" not "KEBO Injection Mould Technology"
+        // Check saved items for disambiguation context
         const { data: matchingItems } = await supabase
           .from('clerk_notes')
           .select('summary, items, category, original_text')
@@ -4762,7 +4788,6 @@ Return the resolved, specific search query:`,
 
         if (matchingItems) {
           const searchLower = searchQuery.toLowerCase();
-          // Also check against the original user message for better matching
           const originalLower = (effectiveMessage || '').toLowerCase();
           const relevant = matchingItems.filter(item => {
             const summaryLower = item.summary.toLowerCase();
@@ -4773,24 +4798,19 @@ Return the resolved, specific search query:`,
           }).slice(0, 5);
 
           if (relevant.length > 0) {
-            savedItemContext = '\n\nIMPORTANT — User has these related saved items (use to disambiguate which entity they mean):\n';
+            savedItemContext = '\n\nUser has these related saved items (use to disambiguate):\n';
             relevant.forEach(item => {
               savedItemContext += `- ${item.summary}`;
-              if (item.original_text && item.original_text !== item.summary) {
-                savedItemContext += ` (original: "${item.original_text.substring(0, 100)}")`;
-              }
               if (item.items && item.items.length > 0) {
-                const details = item.items.slice(0, 5).join(', ');
-                savedItemContext += ` [details: ${details}]`;
+                savedItemContext += ` [${item.items.slice(0, 3).join(', ')}]`;
               }
               savedItemContext += '\n';
             });
-            savedItemContext += '\nWhen the user mentions a name that matches one of these saved items, search for THAT specific entity (e.g., "Kebo" = "Kebo Restaurant", not a random company named Kebo).';
           }
         }
 
-        // Call Perplexity API for web search
-        console.log('[WebSearch] Searching Perplexity for:', searchQuery, '| savedItemContext:', savedItemContext ? 'YES' : 'NO');
+        // Call Perplexity with the focused search query
+        console.log('[WebSearch] Perplexity query:', searchQuery, '| question:', userQuestion);
         const perplexityResponse = await fetch('https://api.perplexity.ai/chat/completions', {
           method: 'POST',
           headers: {
@@ -4802,13 +4822,11 @@ Return the resolved, specific search query:`,
             messages: [
               {
                 role: 'system',
-                content: `You are a helpful search assistant for Olive, a personal organization app. The user wants external information from the web. Provide concise, actionable results with links when available. Focus on: booking links, official websites, addresses, phone numbers, ratings, hours, and practical details. Keep responses under 500 characters for WhatsApp readability. Always include the most relevant URL/link if one exists.
-
-CRITICAL: The user may reference items they've saved in their personal lists. When the search term matches a saved item name, search for THAT specific entity. For example, if the user has "Kebo Restaurant" saved and asks about "Kebo", search for "Kebo Restaurant" (the dining establishment), NOT any other business with a similar name.${savedItemContext}`
+                content: `You are a precise search assistant. The user has a SPECIFIC question. Answer ONLY that question with factual details. Do not dump unrelated information. Include relevant links, hours, phone numbers, or addresses ONLY if they are part of the answer.${savedItemContext}`
               },
               {
                 role: 'user',
-                content: searchQuery
+                content: `Question: ${userQuestion}\n\nSearch for: ${searchQuery}`
               }
             ],
             temperature: 0.1,
