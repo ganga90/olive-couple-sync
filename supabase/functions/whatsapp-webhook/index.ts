@@ -4745,9 +4745,11 @@ Return the resolved, specific search query:`,
         }
 
         // Also check if we have matching saved items to enrich context
+        // This is CRITICAL for disambiguation: "Search for Kebo" should find
+        // "Kebo Restaurant" not "KEBO Injection Mould Technology"
         const { data: matchingItems } = await supabase
           .from('clerk_notes')
-          .select('summary, items, category')
+          .select('summary, items, category, original_text')
           .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
           .eq('completed', false)
           .order('created_at', { ascending: false })
@@ -4755,27 +4757,35 @@ Return the resolved, specific search query:`,
 
         if (matchingItems) {
           const searchLower = searchQuery.toLowerCase();
+          // Also check against the original user message for better matching
+          const originalLower = (effectiveMessage || '').toLowerCase();
           const relevant = matchingItems.filter(item => {
             const summaryLower = item.summary.toLowerCase();
             const queryWords = searchLower.split(/\s+/).filter(w => w.length > 2);
-            return queryWords.some(w => summaryLower.includes(w));
-          }).slice(0, 3);
+            const originalWords = originalLower.split(/\s+/).filter(w => w.length > 2);
+            const allWords = [...new Set([...queryWords, ...originalWords])];
+            return allWords.some(w => summaryLower.includes(w));
+          }).slice(0, 5);
 
           if (relevant.length > 0) {
-            savedItemContext = '\n\nUser has these related saved items:\n';
+            savedItemContext = '\n\nIMPORTANT — User has these related saved items (use to disambiguate which entity they mean):\n';
             relevant.forEach(item => {
               savedItemContext += `- ${item.summary}`;
+              if (item.original_text && item.original_text !== item.summary) {
+                savedItemContext += ` (original: "${item.original_text.substring(0, 100)}")`;
+              }
               if (item.items && item.items.length > 0) {
                 const details = item.items.slice(0, 5).join(', ');
-                savedItemContext += ` (${details})`;
+                savedItemContext += ` [details: ${details}]`;
               }
               savedItemContext += '\n';
             });
+            savedItemContext += '\nWhen the user mentions a name that matches one of these saved items, search for THAT specific entity (e.g., "Kebo" = "Kebo Restaurant", not a random company named Kebo).';
           }
         }
 
         // Call Perplexity API for web search
-        console.log('[WebSearch] Searching Perplexity for:', searchQuery);
+        console.log('[WebSearch] Searching Perplexity for:', searchQuery, '| savedItemContext:', savedItemContext ? 'YES' : 'NO');
         const perplexityResponse = await fetch('https://api.perplexity.ai/chat/completions', {
           method: 'POST',
           headers: {
@@ -4787,7 +4797,9 @@ Return the resolved, specific search query:`,
             messages: [
               {
                 role: 'system',
-                content: `You are a helpful search assistant for Olive, a personal organization app. The user wants external information from the web. Provide concise, actionable results with links when available. Focus on: booking links, official websites, addresses, phone numbers, ratings, hours, and practical details. Keep responses under 500 characters for WhatsApp readability. Always include the most relevant URL/link if one exists.${savedItemContext}`
+                content: `You are a helpful search assistant for Olive, a personal organization app. The user wants external information from the web. Provide concise, actionable results with links when available. Focus on: booking links, official websites, addresses, phone numbers, ratings, hours, and practical details. Keep responses under 500 characters for WhatsApp readability. Always include the most relevant URL/link if one exists.
+
+CRITICAL: The user may reference items they've saved in their personal lists. When the search term matches a saved item name, search for THAT specific entity. For example, if the user has "Kebo Restaurant" saved and asks about "Kebo", search for "Kebo Restaurant" (the dining establishment), NOT any other business with a similar name.${savedItemContext}`
               },
               {
                 role: 'user',
