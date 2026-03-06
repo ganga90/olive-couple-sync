@@ -3497,28 +3497,43 @@ serve(async (req) => {
         return reply(overdueResponse);
       }
 
-      // Default: General task summary
-      let summary = `📊 Your Tasks:\n`;
-      summary += `• Active: ${activeTasks.length}\n`;
-      if (urgentTasks.length > 0) summary += `• Urgent: ${urgentTasks.length} 🔥\n`;
-      if (dueTodayTasks.length > 0) summary += `• Due today: ${dueTodayTasks.length}\n`;
-      if (overdueTasks.length > 0) summary += `• Overdue: ${overdueTasks.length} ⚠️\n`;
+      // ================================================================
+      // SMART ESCALATION: If the user asked a content QUESTION (not a
+      // dashboard command) and we couldn't match a specific list, escalate
+      // to CONTEXTUAL_ASK which uses AI to search all saved data.
+      // ================================================================
+      const questionPatterns = /^(which|what|where|who|how|do i|did i|any |are there|have i|cuál|qué|dónde|quién|cómo|tengo|hay|quali|cosa|dove|chi|come|ho )\b/i;
+      const isQuestionMark = (effectiveMessage || '').trim().endsWith('?');
+      const isContentQuestion = questionPatterns.test((effectiveMessage || '').trim()) || isQuestionMark;
+      
+      if (isContentQuestion && queryType === 'general') {
+        console.log('[WhatsApp] SEARCH escalating to CONTEXTUAL_ASK — question detected:', effectiveMessage?.substring(0, 60));
+        // Re-route: jump to CONTEXTUAL_ASK handler by overriding intent
+        intent = 'CONTEXTUAL_ASK' as any;
+        // Fall through — the CONTEXTUAL_ASK handler below will pick it up
+      } else {
+        // Default: General task summary (dashboard)
+        let summary = `📊 Your Tasks:\n`;
+        summary += `• Active: ${activeTasks.length}\n`;
+        if (urgentTasks.length > 0) summary += `• Urgent: ${urgentTasks.length} 🔥\n`;
+        if (dueTodayTasks.length > 0) summary += `• Due today: ${dueTodayTasks.length}\n`;
+        if (overdueTasks.length > 0) summary += `• Overdue: ${overdueTasks.length} ⚠️\n`;
 
-      if (urgentTasks.length > 0) {
-        summary += `\n⚡ Urgent:\n`;
-        summary += urgentTasks.slice(0, 3).map((t, i) => `${i + 1}. ${t.summary}`).join('\n');
-      } else if (activeTasks.length > 0) {
-        summary += `\n📝 Recent:\n`;
-        summary += activeTasks.slice(0, 5).map((t, i) => `${i + 1}. ${t.summary}`).join('\n');
+        if (urgentTasks.length > 0) {
+          summary += `\n⚡ Urgent:\n`;
+          summary += urgentTasks.slice(0, 3).map((t, i) => `${i + 1}. ${t.summary}`).join('\n');
+        } else if (activeTasks.length > 0) {
+          summary += `\n📝 Recent:\n`;
+          summary += activeTasks.slice(0, 5).map((t, i) => `${i + 1}. ${t.summary}`).join('\n');
+        }
+
+        summary += '\n\n💡 Try: "what\'s urgent", "what\'s due today", or "show my groceries list"';
+
+        const prominentTask = urgentTasks[0] || dueTodayTasks[0] || activeTasks[0] || null;
+        const displayedTasks = urgentTasks.length > 0 ? urgentTasks.slice(0, 3) : activeTasks.slice(0, 5);
+        await saveReferencedEntity(prominentTask, summary, displayedTasks.map(t => ({ id: t.id, summary: t.summary })));
+        return reply(summary);
       }
-
-      summary += '\n\n💡 Try: "what\'s urgent", "what\'s due today", or "show my groceries list"';
-
-      // Save the most prominent task as entity AND the displayed numbered list for ordinal resolution
-      const prominentTask = urgentTasks[0] || dueTodayTasks[0] || activeTasks[0] || null;
-      const displayedTasks = urgentTasks.length > 0 ? urgentTasks.slice(0, 3) : activeTasks.slice(0, 5);
-      await saveReferencedEntity(prominentTask, summary, displayedTasks.map(t => ({ id: t.id, summary: t.summary })));
-      return reply(summary);
     }
 
     // ========================================================================

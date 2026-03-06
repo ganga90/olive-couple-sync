@@ -187,7 +187,8 @@ Messages starting with these characters are ALWAYS the indicated intent — no a
 If a shortcut prefix is present, strip it from the content for processing. Set confidence to 0.95.
 
 ## INTENTS:
-- "search": User wants to see/find/list their tasks, items, or lists (e.g., "what's urgent?", "show my tasks", "what's due today?", "groceries list", "my tasks")
+- "search": User wants a DASHBOARD VIEW of their tasks — a summary or filtered list. Use ONLY for: "show my tasks", "what's urgent?", "what's due today?", "my tasks", "show groceries list", "what's overdue?". The key signal is that the user wants to SEE a list/dashboard, not ask a QUESTION about content. Single-word list names like "groceries" or "shopping" are search. "show my X list" is search.
+- "contextual_ask": User is asking a QUESTION about their EXISTING saved data, agent results, or wants AI-powered advice. This is the intent for ANY question-form message about saved content. Examples: "which restaurants I have in my list?", "when is the dentist?", "what restaurants did I save?", "any date ideas?", "what books are on my list?", "do I have any travel plans?", "what did my agents find?", "how many tasks do I have in shopping?". CRITICAL DISTINCTION from "search": if the user asks a QUESTION (starts with which/what/where/when/who/how/do/did/any/have, or ends with "?") about specific CONTENT in their data → contextual_ask. If they want to VIEW a list/dashboard → search.
 - "create": User wants to save something new — a task, note, idea, or brain-dump. CRITICAL: Any message that describes a NEW event, appointment, or task with specific details (date, time, location, person) is ALWAYS "create", NOT "contextual_ask". Examples: "Oliva vet visit at Banfield on 20-Mar at 5pm" = CREATE (new appointment), "buy milk", "call mom tomorrow", "dinner reservation at 8pm Friday", "dentist appointment March 15". If the message has a date/time AND describes something that doesn't already exist in the user's tasks, it's a CREATE.
 - "complete": User wants to mark a task as done (e.g., "done with groceries", "finished!", "the dentist one is done", "cancel the last task" when they mean it's done)
 - "set_priority": User wants to change importance (e.g., "make it urgent", "this is important", "low priority")
@@ -198,7 +199,7 @@ If a shortcut prefix is present, strip it from the content for processing. Set c
 - "remind": User wants a reminder — EITHER on an existing task OR creating a new one with a reminder. Examples: "remind me at 5 PM" (existing context), "remind me about this tomorrow" (existing task), "Moonswatch - remind me to check it out on March 6th" (NEW item + reminder), "remind me to call the dentist next Monday" (NEW task + reminder). Use target_task_name for the subject/task name and due_date_expression for the time. The system will auto-create a new task if no existing one matches.
 - "expense": User wants to log spending (e.g., "spent $45 on dinner", "$20 gas")
 - "chat": User wants conversational interaction — briefings, motivation, planning, greetings (e.g., "good morning", "how am I doing?", "summarize my week", "what should I focus on?", "help me plan my day")
-- "contextual_ask": User is asking a QUESTION about their EXISTING saved data, agent results, or wants AI-powered advice (e.g., "when is the dentist?", "what restaurants did I save?", "any date ideas?", "what books are on my list?", "what did my agents find?", "any agent insights?", "what did olive analyze?"). IMPORTANT: If the message describes a NEW item/event/appointment (especially with a date, time, or location), it is NOT contextual_ask — it is "create". Only use contextual_ask when the user is clearly querying/asking about data they already saved.
+- "contextual_ask": (ALREADY DEFINED ABOVE — see intents list). IMPORTANT: If the message describes a NEW item/event/appointment (especially with a date, time, or location), it is NOT contextual_ask — it is "create". Only use contextual_ask when the user is clearly querying/asking about data they already saved.
 - "web_search": User wants EXTERNAL information from the web — booking links, reviews, directions, prices, availability, or any information NOT already in their saved data. Examples: "can you give me the link to book it?", "search for more information on X", "find me reviews for Y", "what's the address of Z?", "how do I get there?", "is it open now?", "find me a link", "look it up online", "search the web for X". IMPORTANT: If the user asks about something they already saved BUT wants ADDITIONAL external info (booking link, website, directions), classify as "web_search" NOT "contextual_ask". The key signal is that they want info from the INTERNET, not from their saved items.
 - "merge": User wants to merge duplicate tasks (exactly "merge")
 - "partner_message": User wants to send a message TO their partner via Olive (e.g., "remind Marco to buy lemons", "tell Almu to pick up the kids", "ask partner to call the dentist", "let Marcus know dinner is ready", "dile a Marco que compre limones", "ricorda a Marco di comprare i limoni"). The user is asking YOU to relay a message or task to their partner. Set partner_message_content to the message/task for the partner, and partner_action to the type (remind/tell/ask/notify).
@@ -221,9 +222,9 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 5. **"Cancel" is context-dependent.** "Cancel the dentist" = delete. "Cancel that" after a reminder = delete. But "cancel my subscription" = probably create (a task to cancel).
 6. **Time expressions = set_due, not create — ONLY for modifications.** "Change it to 7am", "move it to Friday", "postpone", "reschedule" → always set_due because these words imply modifying an EXISTING task. But "Call doctor at 7am" or "Review taxes in 2 hours" → CREATE with due_date_expression, because there's no modification verb.
 7. **Relative references.** "Last task", "the latest one", "previous task", "l'ultima attività", "última tarea" → preserve the EXACT phrase in target_task_name. The system resolves it. These are action intents, never "create".
-8. **Questions about data = contextual_ask.** "When is X?", "What did I save about Y?", "Do I have any Z?" → contextual_ask. But ONLY if the user is clearly asking a QUESTION (interrogative form). A statement or imperative with a date/time/location is a CREATE, NOT contextual_ask.
+8. **Questions about data = contextual_ask, NOT search.** "When is X?", "What did I save about Y?", "Do I have any Z?", "Which restaurants I have?", "What's in my travel list?" → contextual_ask. The word "search" is reserved for DASHBOARD commands like "show my tasks" or "what's urgent". If the user is asking a QUESTION (interrogative) about specific content → contextual_ask. If they want a dashboard/summary view → search.
 9. **New items with details = create.** If the message contains a date, time, location, or appointment-like details AND does NOT use modification verbs (change, update, postpone, reschedule, move), it is always "create". Example: "Oliva vet visit at Banfield on 20-Mar at 5pm" → CREATE.
-10. **Ambiguity → lean towards CREATE for imperative/statement forms, SEARCH for question forms.** If someone says "groceries" with no verb → probably search. If someone says "Review taxes in 2 hours" → definitely CREATE (imperative + time). If someone says "taxes?" → search. The form of the sentence matters: imperatives and statements = create; questions = search/contextual_ask.
+10. **Ambiguity → lean towards CREATE for imperative/statement forms, contextual_ask for question forms.** If someone says "groceries" with no verb → probably search (dashboard). If someone says "Review taxes in 2 hours" → definitely CREATE (imperative + time). If someone says "which restaurants?" or "what books do I have?" → contextual_ask (question about content). Only use "search" for explicit dashboard requests.
 11. **Language:** The user speaks ${userLanguage}. Understand their message natively in that language.
 12. **Confidence:** 0.9+ clear, 0.7-0.9 moderate, 0.5-0.7 uncertain, <0.5 very ambiguous.
 13. For chat_type, use: briefing, weekly_summary, daily_focus, productivity_tips, progress_check, motivation, planning, greeting, general.
@@ -235,9 +236,18 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 - "Call mom at 3pm" → CREATE (new task with time)
 - "Prepare presentation by Friday" → CREATE (new task with deadline)
 - "When is the dentist?" → contextual_ask (question about existing data)
-- "Show my tasks" → search
+- "Which restaurants I have in my list?" → contextual_ask (question about saved content)
+- "What books are on my reading list?" → contextual_ask (question about saved content)
+- "Do I have any travel plans?" → contextual_ask (question about saved data)
+- "Any date ideas?" → contextual_ask (asking for suggestions from saved data)
+- "¿Qué restaurantes tengo guardados?" → contextual_ask (Spanish question about saved data)
+- "Quali ristoranti ho nella mia lista?" → contextual_ask (Italian question about saved data)
+- "Show my tasks" → search (dashboard request)
+- "What's urgent?" → search (dashboard filter)
+- "What's due today?" → search (dashboard filter)
+- "Groceries" → search (single-word list name, show dashboard)
+- "Show my groceries list" → search (explicit list view request)
 - "Done with taxes" → complete (action on existing task)
-- "What's urgent?" → search
 - "Fix the leaky faucet this weekend" → CREATE
 - "Schedule haircut for Saturday" → CREATE
 - "Revisar impuestos en 2 horas" → CREATE (Spanish brain dump)
