@@ -2337,7 +2337,7 @@ serve(async (req) => {
           ...existingHistory,
           { role: 'user' as const, content: (messageBody || '').substring(0, 500), timestamp: new Date().toISOString() },
           { role: 'assistant' as const, content: oliveResponse.substring(0, 500), timestamp: new Date().toISOString() },
-        ].slice(-6); // Keep last 3 exchanges
+        ].slice(-20); // Keep last 10 exchanges (20 messages)
 
         const updatedContext: ConversationContext = {
           ...currentContext,
