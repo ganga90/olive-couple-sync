@@ -140,9 +140,9 @@ const INTENT_SCHEMA = {
 function buildClassificationPrompt(input: ClassificationInput): string {
   const userLanguage = input.userLanguage || "en";
 
-  // Build conversation context (last 3 exchanges = 6 messages)
+  // Build conversation context (last 10 exchanges = 20 messages)
   const recentConvo = input.conversationHistory
-    .slice(-6)
+    .slice(-20)
     .map((msg) => `${msg.role === "user" ? "User" : "Olive"}: ${msg.content}`)
     .join("\n");
 
