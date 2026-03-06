@@ -3038,7 +3038,7 @@ serve(async (req) => {
       }
     }
 
-    const { intent, isUrgent, cleanMessage } = intentResult;
+    let { intent, isUrgent, cleanMessage } = intentResult;
     const effectiveMessage = cleanMessage ?? messageBody;
     console.log('Final intent:', intent, 'isUrgent:', isUrgent, 'for message:', effectiveMessage?.substring(0, 50));
 
