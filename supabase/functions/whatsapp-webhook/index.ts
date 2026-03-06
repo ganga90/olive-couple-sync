@@ -4665,36 +4665,38 @@ Respond with helpful, specific information extracted from their saved data. Answ
         let searchQuery = effectiveMessage || '';
         let savedItemContext = '';
 
-        // Check conversation history to resolve pronouns ("it", "that restaurant")
+        // ALWAYS resolve the query using conversation context — not just for vague patterns.
+        // This ensures "Search for a table at Kebo" after discussing "Kebo Restaurant" 
+        // gets enriched to "Kebo Restaurant reservations" instead of just "Kebo".
         if (sessionContext.conversation_history && sessionContext.conversation_history.length > 0) {
-          const recentMessages = sessionContext.conversation_history.slice(-6);
+          const recentMessages = sessionContext.conversation_history.slice(-12);
           const conversationContext = recentMessages.map(m => `${m.role === 'user' ? 'User' : 'Olive'}: ${m.content}`).join('\n');
 
-          // If the query is vague (e.g., "can you find more info?", "link to book it?"), 
-          // use AI to extract the actual search subject from conversation
-          const vaguePatterns = /\b(it|that|this|the link|book it|more info|search for it|look it up)\b/i;
-          if (vaguePatterns.test(searchQuery)) {
-            try {
-              const resolvedQuery = await callAI(
-                `You are a query resolver. Given a conversation history and a vague user request, extract the SPECIFIC entity or topic they want to search for on the web. Return ONLY the search query text, nothing else. Be specific - include the entity name, location if relevant.
+          try {
+            const resolvedQuery = await callAI(
+              `You are a query resolver for a web search. Given the conversation history and the user's latest message, produce the BEST possible web search query. Rules:
+1. If the user mentions a name that also appeared in conversation history (e.g., "Kebo" and Olive previously listed "Kebo Restaurant"), use the FULL name from context.
+2. Always add location/city if known from context.
+3. Include the specific intent: "reservations", "booking", "menu", "reviews", "directions", "phone number", etc.
+4. If the user is correcting/clarifying a previous search ("I meant the restaurant"), incorporate that correction.
+5. Return ONLY the optimized search query text, nothing else.
 
 CONVERSATION:
 ${conversationContext}
 
 The user's latest message: "${searchQuery}"
 
-Return the resolved search query:`,
-                searchQuery,
-                0.1,
-                'lite'
-              );
-              if (resolvedQuery && resolvedQuery.length > 3) {
-                searchQuery = resolvedQuery.trim();
-                console.log('[WebSearch] Resolved vague query to:', searchQuery);
-              }
-            } catch (resolveErr) {
-              console.warn('[WebSearch] Query resolution failed, using original:', resolveErr);
+Return the resolved, specific search query:`,
+              searchQuery,
+              0.1,
+              'lite'
+            );
+            if (resolvedQuery && resolvedQuery.length > 3) {
+              console.log('[WebSearch] Resolved query: "' + searchQuery + '" → "' + resolvedQuery.trim() + '"');
+              searchQuery = resolvedQuery.trim();
             }
+          } catch (resolveErr) {
+            console.warn('[WebSearch] Query resolution failed, using original:', resolveErr);
           }
         }
 
