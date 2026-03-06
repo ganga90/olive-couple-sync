@@ -140,9 +140,9 @@ const INTENT_SCHEMA = {
 function buildClassificationPrompt(input: ClassificationInput): string {
   const userLanguage = input.userLanguage || "en";
 
-  // Build conversation context (last 3 exchanges = 6 messages)
+  // Build conversation context (last 10 exchanges = 20 messages)
   const recentConvo = input.conversationHistory
-    .slice(-6)
+    .slice(-20)
     .map((msg) => `${msg.role === "user" ? "User" : "Olive"}: ${msg.content}`)
     .join("\n");
 
@@ -228,6 +228,12 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 11. **Language:** The user speaks ${userLanguage}. Understand their message natively in that language.
 12. **Confidence:** 0.9+ clear, 0.7-0.9 moderate, 0.5-0.7 uncertain, <0.5 very ambiguous.
 13. For chat_type, use: briefing, weekly_summary, daily_focus, productivity_tips, progress_check, motivation, planning, greeting, general.
+14. **CONVERSATION CONTINUITY — NEVER break the thread.** If the conversation history shows Olive just answered a contextual_ask or web_search (e.g., listed restaurants, gave booking info, showed search results), and the user sends a follow-up message about the SAME topic (e.g., "do they offer reservations?", "what about the second one?", "can you find me a link?", "I meant the restaurant one"), this MUST be classified as:
+   - "web_search" if they want EXTERNAL info (reservations, booking, directions, link, website, reviews, hours, phone)
+   - "contextual_ask" if they want info from their SAVED data about the same topic
+   - NEVER "create" for follow-up questions/clarifications. A follow-up question is NOT a brain dump.
+   The KEY TEST: Does the conversation history show Olive recently answered a question or showed search results? If yes, and the user's message continues that thread → web_search or contextual_ask, NOT create.
+15. **Clarifications and corrections are ALWAYS continuations.** Messages like "I meant X", "no, the Y one", "not that one", "the restaurant", "I was asking about Z" are ALWAYS follow-ups to the previous turn. Route them the same way as the previous Olive response (web_search → web_search, contextual_ask → contextual_ask). NEVER classify these as "create".
 
 ## DISAMBIGUATION EXAMPLES (to prevent common mistakes):
 - "Review taxes in 2 hours" → CREATE (brain dump with deadline, NOT a search)
@@ -252,6 +258,16 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 - "Schedule haircut for Saturday" → CREATE
 - "Revisar impuestos en 2 horas" → CREATE (Spanish brain dump)
 - "Controllare le tasse tra 2 ore" → CREATE (Italian brain dump)
+
+## FOLLOW-UP EXAMPLES (conversation continuity — CRITICAL):
+- [After Olive listed restaurants] "Do they offer reservations?" → web_search (follow-up wanting external info)
+- [After Olive listed restaurants] "Search for a table at Kebo" → web_search (wanting to book/find external info)
+- [After Olive showed search results] "I meant the restaurant Kebo" → web_search (clarification, continue same thread)
+- [After Olive answered a question] "Can you give me more details?" → contextual_ask or web_search (continuation)
+- [After Olive showed booking info] "Book it" → web_search (wants booking link)
+- [After Olive discussed a task] "What about the other one?" → contextual_ask (follow-up about saved data)
+- [After ANY Olive response] "No, I meant X" → same intent as previous (clarification, NEVER create)
+- [After ANY Olive response] "Not that, the Y one" → same intent as previous (correction, NEVER create)
 
 ## CONVERSATION HISTORY:
 ${recentConvo || "No previous conversation."}

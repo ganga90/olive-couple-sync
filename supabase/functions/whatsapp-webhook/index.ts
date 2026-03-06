@@ -2337,7 +2337,7 @@ serve(async (req) => {
           ...existingHistory,
           { role: 'user' as const, content: (messageBody || '').substring(0, 500), timestamp: new Date().toISOString() },
           { role: 'assistant' as const, content: oliveResponse.substring(0, 500), timestamp: new Date().toISOString() },
-        ].slice(-6); // Keep last 3 exchanges
+        ].slice(-20); // Keep last 10 exchanges (20 messages)
 
         const updatedContext: ConversationContext = {
           ...currentContext,
@@ -2991,6 +2991,50 @@ serve(async (req) => {
           cleanMessage: timeExpr || messageBody,
           _aiTaskId: undefined,
         } as any;
+      }
+    }
+
+    // ========================================================================
+    // POST-CLASSIFICATION SAFETY NET #2: Follow-up detection
+    // If AI classified as CREATE but conversation history shows Olive just
+    // answered a contextual_ask or web_search, and the message looks like a
+    // follow-up question/clarification, override to the appropriate intent.
+    // ========================================================================
+    if (intentResult.intent === 'CREATE' && messageBody) {
+      const recentHistory = conversationHistory.slice(-4); // last 2 exchanges
+      const lastOliveMsg = recentHistory.filter(m => m.role === 'assistant').pop()?.content || '';
+      const lastUserMsg = recentHistory.filter(m => m.role === 'user').pop()?.content || '';
+      
+      // Detect if Olive's last response was a contextual_ask or web_search answer
+      const oliveJustSearched = lastOliveMsg.includes('🔍') || // web search indicator
+        lastOliveMsg.includes('Here\'s what I found') ||
+        lastOliveMsg.includes('in your list') ||
+        lastOliveMsg.includes('following') ||
+        lastOliveMsg.includes('Found these') ||
+        lastOliveMsg.includes('Cuisine') ||
+        lastOliveMsg.includes('Rating') ||
+        lastOliveMsg.includes('📋 Found') ||
+        /\bhttps?:\/\/\S+/.test(lastOliveMsg); // Contains a URL (search result)
+      
+      // Detect if current message is a follow-up (question, clarification, continuation)
+      const msgLower = messageBody.toLowerCase();
+      const isFollowUp = /\b(do they|does it|is it|are they|can i|can you|how do i|where is|what about|i meant|not that|the restaurant|search for|find me|book|reserve|look up|more info|more details|tell me more|what else)\b/i.test(msgLower) ||
+        msgLower.endsWith('?') ||
+        /^(no[, ]|i meant|not that|the \w+ one)/i.test(msgLower);
+      
+      // Check if message was sent within 2 minutes of last exchange
+      const lastTimestamp = recentHistory.length > 0 ? recentHistory[recentHistory.length - 1].timestamp : null;
+      const isRecent = lastTimestamp && (Date.now() - new Date(lastTimestamp).getTime()) < 2 * 60 * 1000;
+      
+      if (oliveJustSearched && isFollowUp && isRecent) {
+        // Determine whether to route to web_search or contextual_ask
+        const wantsExternalInfo = /\b(book|reserve|reservation|table|link|website|directions|address|phone|hours|open|menu|price|review|search|find|look up)\b/i.test(msgLower);
+        const newIntent = wantsExternalInfo ? 'WEB_SEARCH' : 'CONTEXTUAL_ASK';
+        console.log(`[SafetyNet#2] ⚡ Overriding CREATE → ${newIntent} (follow-up after search/contextual answer)`);
+        intentResult = {
+          ...intentResult,
+          intent: newIntent as any,
+        };
       }
     }
 
@@ -4665,43 +4709,47 @@ Respond with helpful, specific information extracted from their saved data. Answ
         let searchQuery = effectiveMessage || '';
         let savedItemContext = '';
 
-        // Check conversation history to resolve pronouns ("it", "that restaurant")
+        // ALWAYS resolve the query using conversation context — not just for vague patterns.
+        // This ensures "Search for a table at Kebo" after discussing "Kebo Restaurant" 
+        // gets enriched to "Kebo Restaurant reservations" instead of just "Kebo".
         if (sessionContext.conversation_history && sessionContext.conversation_history.length > 0) {
-          const recentMessages = sessionContext.conversation_history.slice(-6);
+          const recentMessages = sessionContext.conversation_history.slice(-12);
           const conversationContext = recentMessages.map(m => `${m.role === 'user' ? 'User' : 'Olive'}: ${m.content}`).join('\n');
 
-          // If the query is vague (e.g., "can you find more info?", "link to book it?"), 
-          // use AI to extract the actual search subject from conversation
-          const vaguePatterns = /\b(it|that|this|the link|book it|more info|search for it|look it up)\b/i;
-          if (vaguePatterns.test(searchQuery)) {
-            try {
-              const resolvedQuery = await callAI(
-                `You are a query resolver. Given a conversation history and a vague user request, extract the SPECIFIC entity or topic they want to search for on the web. Return ONLY the search query text, nothing else. Be specific - include the entity name, location if relevant.
+          try {
+            const resolvedQuery = await callAI(
+              `You are a query resolver for a web search. Given the conversation history and the user's latest message, produce the BEST possible web search query. Rules:
+1. If the user mentions a name that also appeared in conversation history (e.g., "Kebo" and Olive previously listed "Kebo Restaurant"), use the FULL name from context.
+2. Always add location/city if known from context.
+3. Include the specific intent: "reservations", "booking", "menu", "reviews", "directions", "phone number", etc.
+4. If the user is correcting/clarifying a previous search ("I meant the restaurant"), incorporate that correction.
+5. Return ONLY the optimized search query text, nothing else.
 
 CONVERSATION:
 ${conversationContext}
 
 The user's latest message: "${searchQuery}"
 
-Return the resolved search query:`,
-                searchQuery,
-                0.1,
-                'lite'
-              );
-              if (resolvedQuery && resolvedQuery.length > 3) {
-                searchQuery = resolvedQuery.trim();
-                console.log('[WebSearch] Resolved vague query to:', searchQuery);
-              }
-            } catch (resolveErr) {
-              console.warn('[WebSearch] Query resolution failed, using original:', resolveErr);
+Return the resolved, specific search query:`,
+              searchQuery,
+              0.1,
+              'lite'
+            );
+            if (resolvedQuery && resolvedQuery.length > 3) {
+              console.log('[WebSearch] Resolved query: "' + searchQuery + '" → "' + resolvedQuery.trim() + '"');
+              searchQuery = resolvedQuery.trim();
             }
+          } catch (resolveErr) {
+            console.warn('[WebSearch] Query resolution failed, using original:', resolveErr);
           }
         }
 
         // Also check if we have matching saved items to enrich context
+        // This is CRITICAL for disambiguation: "Search for Kebo" should find
+        // "Kebo Restaurant" not "KEBO Injection Mould Technology"
         const { data: matchingItems } = await supabase
           .from('clerk_notes')
-          .select('summary, items, category')
+          .select('summary, items, category, original_text')
           .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
           .eq('completed', false)
           .order('created_at', { ascending: false })
@@ -4709,27 +4757,35 @@ Return the resolved search query:`,
 
         if (matchingItems) {
           const searchLower = searchQuery.toLowerCase();
+          // Also check against the original user message for better matching
+          const originalLower = (effectiveMessage || '').toLowerCase();
           const relevant = matchingItems.filter(item => {
             const summaryLower = item.summary.toLowerCase();
             const queryWords = searchLower.split(/\s+/).filter(w => w.length > 2);
-            return queryWords.some(w => summaryLower.includes(w));
-          }).slice(0, 3);
+            const originalWords = originalLower.split(/\s+/).filter(w => w.length > 2);
+            const allWords = [...new Set([...queryWords, ...originalWords])];
+            return allWords.some(w => summaryLower.includes(w));
+          }).slice(0, 5);
 
           if (relevant.length > 0) {
-            savedItemContext = '\n\nUser has these related saved items:\n';
+            savedItemContext = '\n\nIMPORTANT — User has these related saved items (use to disambiguate which entity they mean):\n';
             relevant.forEach(item => {
               savedItemContext += `- ${item.summary}`;
+              if (item.original_text && item.original_text !== item.summary) {
+                savedItemContext += ` (original: "${item.original_text.substring(0, 100)}")`;
+              }
               if (item.items && item.items.length > 0) {
                 const details = item.items.slice(0, 5).join(', ');
-                savedItemContext += ` (${details})`;
+                savedItemContext += ` [details: ${details}]`;
               }
               savedItemContext += '\n';
             });
+            savedItemContext += '\nWhen the user mentions a name that matches one of these saved items, search for THAT specific entity (e.g., "Kebo" = "Kebo Restaurant", not a random company named Kebo).';
           }
         }
 
         // Call Perplexity API for web search
-        console.log('[WebSearch] Searching Perplexity for:', searchQuery);
+        console.log('[WebSearch] Searching Perplexity for:', searchQuery, '| savedItemContext:', savedItemContext ? 'YES' : 'NO');
         const perplexityResponse = await fetch('https://api.perplexity.ai/chat/completions', {
           method: 'POST',
           headers: {
@@ -4741,7 +4797,9 @@ Return the resolved search query:`,
             messages: [
               {
                 role: 'system',
-                content: `You are a helpful search assistant for Olive, a personal organization app. The user wants external information from the web. Provide concise, actionable results with links when available. Focus on: booking links, official websites, addresses, phone numbers, ratings, hours, and practical details. Keep responses under 500 characters for WhatsApp readability. Always include the most relevant URL/link if one exists.${savedItemContext}`
+                content: `You are a helpful search assistant for Olive, a personal organization app. The user wants external information from the web. Provide concise, actionable results with links when available. Focus on: booking links, official websites, addresses, phone numbers, ratings, hours, and practical details. Keep responses under 500 characters for WhatsApp readability. Always include the most relevant URL/link if one exists.
+
+CRITICAL: The user may reference items they've saved in their personal lists. When the search term matches a saved item name, search for THAT specific entity. For example, if the user has "Kebo Restaurant" saved and asks about "Kebo", search for "Kebo Restaurant" (the dining establishment), NOT any other business with a similar name.${savedItemContext}`
               },
               {
                 role: 'user',
