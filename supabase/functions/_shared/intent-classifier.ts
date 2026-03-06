@@ -176,6 +176,16 @@ function buildClassificationPrompt(input: ClassificationInput): string {
 
 You are NOT a rigid command parser. You understand natural, conversational language — the user talks to you like a friend or personal assistant. Interpret the MEANING behind their words, not just keywords.
 
+## SHORTCUT PREFIXES (highest priority):
+Messages starting with these characters are ALWAYS the indicated intent — no ambiguity:
+- "+" → ALWAYS "create" (e.g., "+Buy milk tomorrow" = create task "Buy milk tomorrow")
+- "!" → ALWAYS "create" with is_urgent=true (e.g., "!Call doctor now" = urgent task)
+- "$" → ALWAYS "expense" (e.g., "$45 lunch at Chipotle")
+- "?" → ALWAYS "search" (e.g., "?groceries")
+- "/" → ALWAYS "chat" (e.g., "/what should I focus on?")
+- "@" → ALWAYS task action assign (e.g., "@partner pick up kids")
+If a shortcut prefix is present, strip it from the content for processing. Set confidence to 0.95.
+
 ## INTENTS:
 - "search": User wants to see/find/list their tasks, items, or lists (e.g., "what's urgent?", "show my tasks", "what's due today?", "groceries list", "my tasks")
 - "create": User wants to save something new — a task, note, idea, or brain-dump. CRITICAL: Any message that describes a NEW event, appointment, or task with specific details (date, time, location, person) is ALWAYS "create", NOT "contextual_ask". Examples: "Oliva vet visit at Banfield on 20-Mar at 5pm" = CREATE (new appointment), "buy milk", "call mom tomorrow", "dinner reservation at 8pm Friday", "dentist appointment March 15". If the message has a date/time AND describes something that doesn't already exist in the user's tasks, it's a CREATE.
@@ -194,19 +204,44 @@ You are NOT a rigid command parser. You understand natural, conversational langu
 - "partner_message": User wants to send a message TO their partner via Olive (e.g., "remind Marco to buy lemons", "tell Almu to pick up the kids", "ask partner to call the dentist", "let Marcus know dinner is ready", "dile a Marco que compre limones", "ricorda a Marco di comprare i limoni"). The user is asking YOU to relay a message or task to their partner. Set partner_message_content to the message/task for the partner, and partner_action to the type (remind/tell/ask/notify).
 
 ## CRITICAL RULES:
+
+### RULE 0: BRAIN DUMP DEFAULT — CREATE UNLESS PROVEN OTHERWISE
+The PRIMARY use case of this app is brain-dumping: users send quick thoughts, tasks, ideas, and the system saves them. When in doubt, classify as "create". A message like "Review taxes in 2 hours" or "Check flights to Rome" or "Pack lunch for tomorrow" is ALWAYS a new task creation — the user is telling Olive what they need to do, NOT asking about existing tasks.
+
+**THE VERB TRAP:** Verbs like "review", "check", "pack", "prepare", "plan", "organize", "call", "schedule", "book", "research", "look into", "figure out", "set up" at the START of a message are INSTRUCTIONS to create a new task. They are NOT search queries. "Review taxes" = CREATE a task to review taxes. "Check the dentist appointment" = could be contextual_ask ONLY if it's phrased as a question ("when is the dentist?"). But "Check dentist appointment on Thursday" with a time = definitely CREATE.
+
+**TIME EXPRESSIONS = STRONG CREATE SIGNAL:** Messages containing relative time expressions like "in 2 hours", "in 30 minutes", "tomorrow", "tonight", "this weekend", "next week", "at 3pm", "by Friday" are almost ALWAYS new tasks being brain-dumped. The user is saying WHEN they need to do something, which means they're creating a task with a deadline. Do NOT search for existing tasks — create a new one. Set due_date_expression to the time component.
+
+**KEY TEST:** Ask yourself: "Is the user TELLING Olive about something new to track, or ASKING about something already saved?" If telling → create. If asking → contextual_ask or search.
+
 1. **Conversational context is king.** Use CONVERSATION HISTORY to resolve "it", "that", "this", "the last one", pronouns in any language. If someone says "cancel it" after discussing a task, the target is that task. If someone says "then schedule it" or "then create it" or "schedule that", they want to CREATE a task based on what they just said in the previous message — classify as "create" with confidence 0.9.
 2. **CRITICAL: Follow-up ACTIONS on recently discussed items are NEVER "create".** If the conversation history shows Olive just confirmed saving/creating a task (e.g., "✅ Saved: X"), and the user's next message asks to MODIFY that item (change reminder, change due date, move, delete, set priority, reschedule, postpone), this is ALWAYS the corresponding action intent ("remind", "set_due", "move", "delete", "set_priority") — NEVER "create". The words "change", "update", "modify", "reschedule", "postpone", "move", "set" combined with "that", "it", "this", "for that", "for it" are STRONG signals of a MODIFICATION intent. Set target_task_name to "that" or the pronoun used — the system resolves it via session context.
-3. **Match tasks PRECISELY.** Use ACTIVE TASKS to find which task the user refers to. The user's query words must closely match the task summary. If the user says "Dental Milka complete", match ONLY tasks whose summary contains BOTH "Dental" AND "Milka" — do NOT match tasks that only contain "Milka" (e.g., "Research The Happy Howl for Milka" is NOT a match for "Dental Milka"). Return the UUID in target_task_id. If multiple tasks match equally well (e.g., "Milka Dental" and "Dental Milka"), return target_task_id as null and set target_task_name to the user's query — the system will handle disambiguation.
+3. **Match tasks PRECISELY — but DON'T over-match for CREATE messages.** Use ACTIVE TASKS to find which task the user refers to ONLY when the intent is clearly an ACTION (complete, delete, set_priority, set_due, move, assign, remind) or a SEARCH. For brain-dump style messages (verb + content + optional time), do NOT try to match against existing tasks — it's a new item. Only match if the user uses explicit action language like "done with X", "delete X", "mark X complete", "show me X". The user says "Review taxes in 2 hours" → this is a NEW task, NOT a search for existing tasks containing "review". The user says "done with review taxes" → this IS an action on an existing task.
 4. **Use memories for personalization.** MEMORIES tell you who Marcus is, what Milka is (a dog?), dietary preferences, etc. Use this to disambiguate.
 5. **"Cancel" is context-dependent.** "Cancel the dentist" = delete. "Cancel that" after a reminder = delete. But "cancel my subscription" = probably create (a task to cancel).
-6. **Time expressions = set_due, not create.** "Change it to 7am", "move it to Friday", "postpone", "reschedule" → always set_due. The word "change/move/postpone" implies modifying existing, never creating. "Change the reminder for that to tomorrow at 1pm" → "remind" (modifying existing reminder, target is "that").
+6. **Time expressions = set_due, not create — ONLY for modifications.** "Change it to 7am", "move it to Friday", "postpone", "reschedule" → always set_due because these words imply modifying an EXISTING task. But "Call doctor at 7am" or "Review taxes in 2 hours" → CREATE with due_date_expression, because there's no modification verb.
 7. **Relative references.** "Last task", "the latest one", "previous task", "l'ultima attività", "última tarea" → preserve the EXACT phrase in target_task_name. The system resolves it. These are action intents, never "create".
-8. **Questions about data = contextual_ask.** "When is X?", "What did I save about Y?", "Do I have any Z?" → contextual_ask. But ONLY if the user is clearly asking a QUESTION about existing data. A statement with a date/time/location is a CREATE, NOT contextual_ask.
-9. **New items with details = create.** If the message contains a date, time, location, or appointment-like details AND does NOT match any existing task in ACTIVE TASKS, it is always "create". Example: "Oliva vet visit at Banfield on 20-Mar at 5pm" → CREATE. The user is telling Olive to SAVE this, not asking if it exists.
-10. **Ambiguity → lean towards the most helpful intent.** If someone says "groceries" with no verb, check context: after "show me" → search. After nothing → probably search (they want to see their grocery list). Only classify as "create" if it clearly reads as a new item to save.
+8. **Questions about data = contextual_ask.** "When is X?", "What did I save about Y?", "Do I have any Z?" → contextual_ask. But ONLY if the user is clearly asking a QUESTION (interrogative form). A statement or imperative with a date/time/location is a CREATE, NOT contextual_ask.
+9. **New items with details = create.** If the message contains a date, time, location, or appointment-like details AND does NOT use modification verbs (change, update, postpone, reschedule, move), it is always "create". Example: "Oliva vet visit at Banfield on 20-Mar at 5pm" → CREATE.
+10. **Ambiguity → lean towards CREATE for imperative/statement forms, SEARCH for question forms.** If someone says "groceries" with no verb → probably search. If someone says "Review taxes in 2 hours" → definitely CREATE (imperative + time). If someone says "taxes?" → search. The form of the sentence matters: imperatives and statements = create; questions = search/contextual_ask.
 11. **Language:** The user speaks ${userLanguage}. Understand their message natively in that language.
 12. **Confidence:** 0.9+ clear, 0.7-0.9 moderate, 0.5-0.7 uncertain, <0.5 very ambiguous.
 13. For chat_type, use: briefing, weekly_summary, daily_focus, productivity_tips, progress_check, motivation, planning, greeting, general.
+
+## DISAMBIGUATION EXAMPLES (to prevent common mistakes):
+- "Review taxes in 2 hours" → CREATE (brain dump with deadline, NOT a search)
+- "Check flights to Rome" → CREATE (new task to check flights)
+- "Pack lunch for tomorrow" → CREATE (new task with time)
+- "Call mom at 3pm" → CREATE (new task with time)
+- "Prepare presentation by Friday" → CREATE (new task with deadline)
+- "When is the dentist?" → contextual_ask (question about existing data)
+- "Show my tasks" → search
+- "Done with taxes" → complete (action on existing task)
+- "What's urgent?" → search
+- "Fix the leaky faucet this weekend" → CREATE
+- "Schedule haircut for Saturday" → CREATE
+- "Revisar impuestos en 2 horas" → CREATE (Spanish brain dump)
+- "Controllare le tasse tra 2 ore" → CREATE (Italian brain dump)
 
 ## CONVERSATION HISTORY:
 ${recentConvo || "No previous conversation."}

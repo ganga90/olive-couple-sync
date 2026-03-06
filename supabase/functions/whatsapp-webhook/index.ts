@@ -2721,6 +2721,132 @@ serve(async (req) => {
     }
 
     // ========================================================================
+    // PRE-CLASSIFICATION: Shortcut prefix interception
+    // Shortcuts (+, !, $, ?, /, @) are deterministic — skip AI entirely.
+    // ========================================================================
+    const trimmedMsg = (messageBody || '').trim();
+    const firstChar = trimmedMsg.charAt(0);
+    const shortcutDef = SHORTCUTS[firstChar];
+    
+    if (shortcutDef && trimmedMsg.length > 1) {
+      const shortcutClean = trimmedMsg.slice(1).trim();
+      console.log(`[Shortcut] Pre-classification intercept: "${firstChar}" → ${shortcutDef.label}, clean="${shortcutClean.substring(0, 50)}"`);
+      
+      const shortcutIntent: any = {
+        intent: shortcutDef.intent,
+        cleanMessage: shortcutClean,
+        ...(shortcutDef.options || {}),
+      };
+      
+      // For shortcuts, skip AI classification entirely — jump to intent handling
+      const { routeIntent } = await import("../_shared/model-router.ts");
+      const hasMedia = mediaUrls.length > 0;
+      const route = routeIntent(shortcutDef.intent.toLowerCase(), undefined, hasMedia);
+      
+      // Set up session context for conversation history
+      const sessionContext = (session.context_data || {}) as ConversationContext;
+      const conversationHistory = sessionContext.conversation_history || [];
+      
+      // Update conversation history
+      conversationHistory.push({ role: 'user', content: messageBody || '', timestamp: new Date().toISOString() });
+      if (conversationHistory.length > 20) conversationHistory.splice(0, conversationHistory.length - 20);
+      
+      const { intent, isUrgent, cleanMessage } = shortcutIntent;
+      const effectiveMessage = cleanMessage ?? messageBody;
+      console.log('Final intent (shortcut):', intent, 'isUrgent:', isUrgent, 'for message:', effectiveMessage?.substring(0, 50));
+      
+      // Router telemetry — non-blocking
+      try {
+        const { logRouterDecision } = await import("../_shared/router-logger.ts");
+        const { getModel } = await import("../_shared/gemini.ts");
+        logRouterDecision(supabase, {
+          userId,
+          source: "whatsapp",
+          rawText: messageBody || '',
+          classifiedIntent: intent.toLowerCase(),
+          confidence: 1.0,
+          chatType: undefined,
+          classificationModel: 'shortcut',
+          responseModel: getModel(route.responseTier as any),
+          routeReason: `Shortcut prefix: ${firstChar}`,
+          classificationLatencyMs: 0,
+          totalLatencyMs: 0,
+          mediaPresent: hasMedia,
+        });
+      } catch (logErr) {
+        console.warn('[RouterLogger] Non-blocking error:', logErr);
+      }
+      
+      // Jump to the appropriate handler based on shortcut intent
+      // We need to handle this inline since we're skipping the normal flow
+      if (intent === 'SEARCH') {
+        // Fall through to normal flow with the shortcut result
+      } else if (intent === 'CREATE') {
+        // Process note creation with the clean message
+        console.log(`[Shortcut→CREATE] Processing: "${effectiveMessage?.substring(0, 80)}"`);
+        try {
+          const processResponse = await supabase.functions.invoke('process-note', {
+            body: {
+              rawText: effectiveMessage,
+              userId,
+              coupleId: coupleId || undefined,
+              source: 'whatsapp',
+              isUrgent: isUrgent || false,
+            },
+          });
+          
+          if (processResponse.error) {
+            console.error('[Shortcut→CREATE] process-note error:', processResponse.error);
+            return reply(t('error_generic', userLang));
+          }
+          
+          const noteData = processResponse.data?.note || processResponse.data;
+          const summary = noteData?.summary || effectiveMessage;
+          const category = noteData?.category || 'Task';
+          const dueDate = noteData?.due_date;
+          const listName = noteData?.list_name;
+          
+          let confirmMsg = `✅ *Saved!*\n\n📋 ${summary}`;
+          if (category && category !== 'Task') confirmMsg += `\n📂 ${category}`;
+          if (listName) confirmMsg += `\n📁 ${listName}`;
+          if (dueDate) confirmMsg += `\n📅 ${formatFriendlyDate(dueDate)}`;
+          if (isUrgent) confirmMsg += `\n🔥 High priority`;
+          
+          // Update session with entity reference
+          const newNoteId = noteData?.id;
+          if (newNoteId) {
+            const updatedContext: any = { ...sessionContext, conversation_history: conversationHistory };
+            updatedContext.last_referenced_entity = newNoteId;
+            updatedContext.entity_referenced_at = new Date().toISOString();
+            updatedContext.last_user_message = messageBody;
+            await supabase
+              .from('olive_gateway_sessions')
+              .update({ conversation_context: updatedContext, last_activity: new Date().toISOString() })
+              .eq('id', session.id);
+            
+            // Store outbound context
+            await supabase
+              .from('clerk_profiles')
+              .update({ last_outbound_context: { type: 'task_created', task_id: newNoteId, task_summary: summary, timestamp: new Date().toISOString() } })
+              .eq('id', userId);
+          }
+          
+          return reply(confirmMsg);
+        } catch (err) {
+          console.error('[Shortcut→CREATE] Error:', err);
+          return reply(t('error_generic', userLang));
+        }
+      } else if (intent === 'EXPENSE') {
+        // Fall through to normal flow
+      } else if (intent === 'CHAT') {
+        // Fall through to normal flow
+      }
+      // For intents that need the full flow (SEARCH, EXPENSE, CHAT, TASK_ACTION),
+      // we set intentResult and let it fall through below
+      // But for CREATE we already handled it above and returned
+    }
+
+    // ========================================================================
     // AI-POWERED INTENT CLASSIFICATION (with regex fallback)
     // ========================================================================
     const sessionContext = (session.context_data || {}) as ConversationContext;
