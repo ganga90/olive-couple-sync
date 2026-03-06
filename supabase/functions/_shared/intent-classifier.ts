@@ -259,6 +259,16 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 - "Revisar impuestos en 2 horas" → CREATE (Spanish brain dump)
 - "Controllare le tasse tra 2 ore" → CREATE (Italian brain dump)
 
+## FOLLOW-UP EXAMPLES (conversation continuity — CRITICAL):
+- [After Olive listed restaurants] "Do they offer reservations?" → web_search (follow-up wanting external info)
+- [After Olive listed restaurants] "Search for a table at Kebo" → web_search (wanting to book/find external info)
+- [After Olive showed search results] "I meant the restaurant Kebo" → web_search (clarification, continue same thread)
+- [After Olive answered a question] "Can you give me more details?" → contextual_ask or web_search (continuation)
+- [After Olive showed booking info] "Book it" → web_search (wants booking link)
+- [After Olive discussed a task] "What about the other one?" → contextual_ask (follow-up about saved data)
+- [After ANY Olive response] "No, I meant X" → same intent as previous (clarification, NEVER create)
+- [After ANY Olive response] "Not that, the Y one" → same intent as previous (correction, NEVER create)
+
 ## CONVERSATION HISTORY:
 ${recentConvo || "No previous conversation."}
 
