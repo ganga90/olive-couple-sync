@@ -2994,6 +2994,50 @@ serve(async (req) => {
       }
     }
 
+    // ========================================================================
+    // POST-CLASSIFICATION SAFETY NET #2: Follow-up detection
+    // If AI classified as CREATE but conversation history shows Olive just
+    // answered a contextual_ask or web_search, and the message looks like a
+    // follow-up question/clarification, override to the appropriate intent.
+    // ========================================================================
+    if (intentResult.intent === 'CREATE' && messageBody) {
+      const recentHistory = conversationHistory.slice(-4); // last 2 exchanges
+      const lastOliveMsg = recentHistory.filter(m => m.role === 'assistant').pop()?.content || '';
+      const lastUserMsg = recentHistory.filter(m => m.role === 'user').pop()?.content || '';
+      
+      // Detect if Olive's last response was a contextual_ask or web_search answer
+      const oliveJustSearched = lastOliveMsg.includes('🔍') || // web search indicator
+        lastOliveMsg.includes('Here\'s what I found') ||
+        lastOliveMsg.includes('in your list') ||
+        lastOliveMsg.includes('following') ||
+        lastOliveMsg.includes('Found these') ||
+        lastOliveMsg.includes('Cuisine') ||
+        lastOliveMsg.includes('Rating') ||
+        lastOliveMsg.includes('📋 Found') ||
+        /\bhttps?:\/\/\S+/.test(lastOliveMsg); // Contains a URL (search result)
+      
+      // Detect if current message is a follow-up (question, clarification, continuation)
+      const msgLower = messageBody.toLowerCase();
+      const isFollowUp = /\b(do they|does it|is it|are they|can i|can you|how do i|where is|what about|i meant|not that|the restaurant|search for|find me|book|reserve|look up|more info|more details|tell me more|what else)\b/i.test(msgLower) ||
+        msgLower.endsWith('?') ||
+        /^(no[, ]|i meant|not that|the \w+ one)/i.test(msgLower);
+      
+      // Check if message was sent within 2 minutes of last exchange
+      const lastTimestamp = recentHistory.length > 0 ? recentHistory[recentHistory.length - 1].timestamp : null;
+      const isRecent = lastTimestamp && (Date.now() - new Date(lastTimestamp).getTime()) < 2 * 60 * 1000;
+      
+      if (oliveJustSearched && isFollowUp && isRecent) {
+        // Determine whether to route to web_search or contextual_ask
+        const wantsExternalInfo = /\b(book|reserve|reservation|table|link|website|directions|address|phone|hours|open|menu|price|review|search|find|look up)\b/i.test(msgLower);
+        const newIntent = wantsExternalInfo ? 'WEB_SEARCH' : 'CONTEXTUAL_ASK';
+        console.log(`[SafetyNet#2] ⚡ Overriding CREATE → ${newIntent} (follow-up after search/contextual answer)`);
+        intentResult = {
+          ...intentResult,
+          intent: newIntent as any,
+        };
+      }
+    }
+
     const { intent, isUrgent, cleanMessage } = intentResult;
     const effectiveMessage = cleanMessage ?? messageBody;
     console.log('Final intent:', intent, 'isUrgent:', isUrgent, 'for message:', effectiveMessage?.substring(0, 50));
