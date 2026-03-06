@@ -236,9 +236,18 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 - "Call mom at 3pm" → CREATE (new task with time)
 - "Prepare presentation by Friday" → CREATE (new task with deadline)
 - "When is the dentist?" → contextual_ask (question about existing data)
-- "Show my tasks" → search
+- "Which restaurants I have in my list?" → contextual_ask (question about saved content)
+- "What books are on my reading list?" → contextual_ask (question about saved content)
+- "Do I have any travel plans?" → contextual_ask (question about saved data)
+- "Any date ideas?" → contextual_ask (asking for suggestions from saved data)
+- "¿Qué restaurantes tengo guardados?" → contextual_ask (Spanish question about saved data)
+- "Quali ristoranti ho nella mia lista?" → contextual_ask (Italian question about saved data)
+- "Show my tasks" → search (dashboard request)
+- "What's urgent?" → search (dashboard filter)
+- "What's due today?" → search (dashboard filter)
+- "Groceries" → search (single-word list name, show dashboard)
+- "Show my groceries list" → search (explicit list view request)
 - "Done with taxes" → complete (action on existing task)
-- "What's urgent?" → search
 - "Fix the leaky faucet this weekend" → CREATE
 - "Schedule haircut for Saturday" → CREATE
 - "Revisar impuestos en 2 horas" → CREATE (Spanish brain dump)
