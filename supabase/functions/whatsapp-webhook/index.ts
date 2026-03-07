@@ -6055,7 +6055,20 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
         "Reply 'Show my tasks' to see your list",
         "You can send voice notes too! 🎤",
         "Reply 'Move to Work' to switch lists",
-        "Use ! prefix for urgent tasks (e.g., !call mom)"
+        "Use ! prefix for urgent tasks (e.g., !call mom)",
+        "Use + prefix to quickly save tasks (e.g., +Buy milk)",
+        "Use $ to log expenses (e.g., $25 lunch at Chipotle)",
+        "Use ? to search your tasks (e.g., ?groceries)",
+        "Use @ to assign to partner (e.g., @partner pick up kids)",
+        "Send a photo of a receipt to log it automatically 📸",
+        "Say 'Remind me tomorrow at 9am' to set reminders",
+        "Ask 'What's overdue?' to see pending tasks",
+        "Say 'Summarize my week' for a weekly recap",
+        "Use / to chat with Olive (e.g., /what should I focus on?)",
+        "Send a comma-separated list to create multiple tasks at once",
+        "Say 'done with X' to mark a task complete",
+        "Send a photo or PDF and Olive will extract the details 📄",
+        "Say 'remind [partner] to...' to relay a message 💑"
       ];
       const getRandomTip = () => randomTips[Math.floor(Math.random() * randomTips.length)];
       
