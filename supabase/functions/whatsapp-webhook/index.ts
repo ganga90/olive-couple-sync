@@ -2787,9 +2787,10 @@ serve(async (req) => {
         try {
           const processResponse = await supabase.functions.invoke('process-note', {
             body: {
-              rawText: effectiveMessage,
-              userId,
-              coupleId: coupleId || undefined,
+              text: effectiveMessage,
+              user_id: userId,
+              couple_id: coupleId || undefined,
+              timezone: profile?.timezone || 'America/New_York',
               source: 'whatsapp',
               isUrgent: isUrgent || false,
             },
