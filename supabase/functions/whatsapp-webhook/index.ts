@@ -2803,18 +2803,65 @@ serve(async (req) => {
           
           const noteData = processResponse.data?.note || processResponse.data;
           const summary = noteData?.summary || effectiveMessage;
-          const category = noteData?.category || 'Task';
-          const dueDate = noteData?.due_date;
-          const listName = noteData?.list_name;
+          const newNoteId = noteData?.id;
+          const insertedListId = noteData?.list_id;
           
-          let confirmMsg = `✅ *Saved!*\n\n📋 ${summary}`;
-          if (category && category !== 'Task') confirmMsg += `\n📂 ${category}`;
-          if (listName) confirmMsg += `\n📁 ${listName}`;
-          if (dueDate) confirmMsg += `\n📅 ${formatFriendlyDate(dueDate)}`;
-          if (isUrgent) confirmMsg += `\n🔥 High priority`;
+          // Resolve list name consistently with main CREATE path
+          let listName = 'Tasks';
+          if (insertedListId) {
+            const { data: listRow } = await supabase
+              .from('clerk_lists')
+              .select('name')
+              .eq('id', insertedListId)
+              .single();
+            if (listRow?.name) listName = listRow.name;
+          } else if (noteData?.category && noteData.category !== 'task') {
+            listName = noteData.category;
+          }
+
+          // Build rich confirmation matching main CREATE path
+          const shortcutTips = [
+            "Reply 'Make it urgent' to change priority",
+            "Reply 'Show my tasks' to see your list",
+            "You can send voice notes too! 🎤",
+            "Reply 'Move to Work' to switch lists",
+            "Use ! prefix for urgent tasks (e.g., !call mom)",
+            "Use $ to log expenses (e.g., $25 lunch)",
+            "Use ? to search your tasks (e.g., ?groceries)",
+            "Use @ to assign to partner (e.g., @partner pick up kids)",
+            "Send a photo of a receipt to log it automatically 📸",
+            "Say 'Remind me tomorrow at 9am' to set reminders",
+            "Ask 'What's overdue?' to see pending tasks",
+            "Say 'Summarize my week' for a weekly recap",
+            "Use / to chat with Olive (e.g., /what should I focus on?)",
+            "Send a comma-separated list to create multiple tasks at once",
+            "Say 'done with X' to mark a task complete"
+          ];
+          const tip = shortcutTips[Math.floor(Math.random() * shortcutTips.length)];
+
+          let confirmMsg: string;
+          if (isUrgent) {
+            confirmMsg = [
+              `✅ Saved: ${summary}`,
+              `📂 Added to: ${listName}`,
+              `🔥 Priority: High`,
+              ``,
+              `🔗 Manage: https://witholive.app`,
+              ``,
+              `💡 ${tip}`
+            ].join('\n');
+          } else {
+            confirmMsg = [
+              `✅ Saved: ${summary}`,
+              `📂 Added to: ${listName}`,
+              ``,
+              `🔗 Manage: https://witholive.app`,
+              ``,
+              `💡 ${tip}`
+            ].join('\n');
+          }
           
           // Update session with entity reference
-          const newNoteId = noteData?.id;
           if (newNoteId) {
             const updatedContext: any = { ...sessionContext, conversation_history: conversationHistory };
             updatedContext.last_referenced_entity = newNoteId;
@@ -6008,7 +6055,20 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
         "Reply 'Show my tasks' to see your list",
         "You can send voice notes too! 🎤",
         "Reply 'Move to Work' to switch lists",
-        "Use ! prefix for urgent tasks (e.g., !call mom)"
+        "Use ! prefix for urgent tasks (e.g., !call mom)",
+        "Use + prefix to quickly save tasks (e.g., +Buy milk)",
+        "Use $ to log expenses (e.g., $25 lunch at Chipotle)",
+        "Use ? to search your tasks (e.g., ?groceries)",
+        "Use @ to assign to partner (e.g., @partner pick up kids)",
+        "Send a photo of a receipt to log it automatically 📸",
+        "Say 'Remind me tomorrow at 9am' to set reminders",
+        "Ask 'What's overdue?' to see pending tasks",
+        "Say 'Summarize my week' for a weekly recap",
+        "Use / to chat with Olive (e.g., /what should I focus on?)",
+        "Send a comma-separated list to create multiple tasks at once",
+        "Say 'done with X' to mark a task complete",
+        "Send a photo or PDF and Olive will extract the details 📄",
+        "Say 'remind [partner] to...' to relay a message 💑"
       ];
       const getRandomTip = () => randomTips[Math.floor(Math.random() * randomTips.length)];
       
