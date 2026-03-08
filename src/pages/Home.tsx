@@ -457,9 +457,9 @@ const Home = () => {
                               <p className={`text-sm md:text-base font-semibold ${isToday ? 'text-primary' : 'text-foreground'}`}>
                                 {dayLabel}
                               </p>
-                              <p className="text-[11px] md:text-xs text-muted-foreground">
-                                {format(dayData.date, 'MMM d')}
-                              </p>
+                            <p className="text-[11px] md:text-xs text-muted-foreground">
+                              {format(dayData.date, 'MMM d', { locale: dateLocale })}
+                            </p>
                             </div>
                           </div>
                           {taskCount > 0 && (
