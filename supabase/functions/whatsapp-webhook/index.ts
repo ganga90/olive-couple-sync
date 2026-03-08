@@ -6030,7 +6030,7 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
     const notePayload: any = { 
       text: createMessage, 
       user_id: userId,
-      couple_id: coupleId,
+      couple_id: effectiveCoupleId,
       timezone: profile.timezone || 'America/New_York',
       force_priority: isUrgent ? 'high' : undefined
     };
