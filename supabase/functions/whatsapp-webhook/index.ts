@@ -2114,6 +2114,10 @@ serve(async (req) => {
         .limit(1)
         .single();
       const mediaCoupleId = mediaCoupleM?.couple_id || null;
+      
+      // Respect user's default privacy preference
+      const mediaDefaultPrivacy = mediaProfile.default_privacy || 'shared';
+      const mediaEffectiveCoupleId = mediaDefaultPrivacy === 'private' ? null : mediaCoupleId;
 
       // ====================================================================
       // IMAGE / DOCUMENT processing via process-note (non-audio media only)
@@ -2123,7 +2127,7 @@ serve(async (req) => {
       const mediaPayload: any = {
         text: '',
         user_id: mediaUserId,
-        couple_id: mediaCoupleId,
+        couple_id: mediaEffectiveCoupleId,
         timezone: mediaProfile.timezone || 'America/New_York',
         media: mediaUrls,
         mediaTypes: mediaTypes,
