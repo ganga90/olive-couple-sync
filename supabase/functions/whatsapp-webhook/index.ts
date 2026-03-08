@@ -1901,6 +1901,14 @@ serve(async (req) => {
     
     let messageBody = rawMessageBody?.trim() || null;
     
+    // 🔒 Sensitive note detection — strip prefix and set flag
+    let isSensitiveNote = false;
+    if (messageBody && (messageBody.startsWith('🔒') || messageBody.startsWith('🔒 '))) {
+      isSensitiveNote = true;
+      messageBody = messageBody.replace(/^🔒\s*/, '').trim() || null;
+      console.log('[WhatsApp] 🔒 Sensitive note detected, flag set');
+    }
+    
     // Validate coordinates
     if (!isValidCoordinates(latitude, longitude)) {
       console.warn('[Validation] Invalid coordinates:', { latitude, longitude });
