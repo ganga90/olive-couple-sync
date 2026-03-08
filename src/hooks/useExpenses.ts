@@ -321,7 +321,7 @@ export function useExpenses() {
       return data as Expense;
     } catch (err) {
       console.error('[useExpenses] add error:', err);
-      toast.error('Failed to add expense');
+      toast.error(t('toast.addError', 'Failed to add expense'));
       return null;
     }
   }, [userId, budgetLimits, expenses]);
