@@ -15,7 +15,10 @@ export const PartnerInviteCard = () => {
   const { t } = useTranslation("home");
   const { user } = useAuth();
   const { currentCouple, partner } = useSupabaseCouple();
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem(DISMISSED_KEY) === "true");
+  const INVITE_SENT_KEY = "olive_partner_invite_sent";
+  const [dismissed, setDismissed] = useState(() => 
+    localStorage.getItem(DISMISSED_KEY) === "true" || localStorage.getItem(INVITE_SENT_KEY) === "true"
+  );
   const [partnerName, setPartnerName] = useState("");
   const [loading, setLoading] = useState(false);
   const [inviteUrl, setInviteUrl] = useState("");
