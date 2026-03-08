@@ -1,6 +1,7 @@
 {
   "title": "Liste",
   "searchPlaceholder": "Cerca liste e attività...",
+  "searchPlaceholderShort": "Cerca...",
   "signInPrompt": "Accedi per gestire le tue liste",
   "subtitle": "Organizza la tua vita, con stile",
   "quickAccess": {

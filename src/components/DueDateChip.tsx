@@ -110,8 +110,8 @@ export const DueDateChip: React.FC<DueDateChipProps> = ({
           📅 {displayDate}
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-3" align="start">
-        <div className="space-y-3">
+      <PopoverContent className="w-auto p-0" align="start" side="bottom" sideOffset={4}>
+        <div className="max-h-[70vh] overflow-y-auto overscroll-contain p-3 space-y-3">
           <p className="text-sm font-medium">{t('dueDateChip.setDueDate', 'Set Due Date')}</p>
 
           {/* Manual Date Input */}
@@ -134,7 +134,7 @@ export const DueDateChip: React.FC<DueDateChipProps> = ({
           />
           
           {/* Action Buttons */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 sticky bottom-0 bg-popover pt-2 pb-1">
             <Button 
               size="sm" 
               onClick={handleSave}
