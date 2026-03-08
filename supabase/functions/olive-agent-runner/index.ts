@@ -457,27 +457,13 @@ Based on their energy level, suggest the optimal order to tackle these tasks. Ke
 
 // ─── Agent 4: Sleep Optimization Coach ──────────────────────────
 async function runSleepOptimizationCoach(ctx: AgentContext): Promise<AgentResult> {
-  const { data: ouraConn } = await ctx.supabase
-    .from("oura_connections")
-    .select("is_active")
-    .eq("user_id", ctx.userId)
-    .eq("is_active", true)
-    .maybeSingle();
+  const { scores, connected } = await fetchOuraFromAPI(ctx.supabase, ctx.userId, 8);
 
-  if (!ouraConn) {
+  if (!connected) {
     return { success: true, message: "Oura not connected", notifyUser: false };
   }
 
-  // Fetch 7 days of sleep data
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
-  const { data: sleepData } = await ctx.supabase
-    .from("oura_daily_data")
-    .select("day, sleep_score, readiness_score, raw_data")
-    .eq("user_id", ctx.userId)
-    .gte("day", weekAgo)
-    .order("day", { ascending: true });
-
-  if (!sleepData || sleepData.length < 3) {
+  if (scores.length < 3) {
     return { success: true, message: "Not enough sleep data (need 3+ days)", notifyUser: false };
   }
 
@@ -491,8 +477,11 @@ async function runSleepOptimizationCoach(ctx: AgentContext): Promise<AgentResult
     }
   }
 
-  const sleepSummary = sleepData
-    .map((d) => `${d.day}: sleep=${d.sleep_score || "?"}, readiness=${d.readiness_score || "?"}`)
+  const sleepSummary = scores
+    .map((d, i) => {
+      const dayLabel = new Date(Date.now() - (scores.length - 1 - i) * 86400000).toISOString().split("T")[0];
+      return `${dayLabel}: sleep=${d.sleepScore || "?"}, readiness=${d.readinessScore || "?"}`;
+    })
     .join("\n");
 
   const response = await ctx.genai.models.generateContent({
