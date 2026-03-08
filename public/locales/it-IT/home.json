@@ -106,5 +106,15 @@
     "thanksForCorrection": "Grazie per la correzione.",
     "confidence": "confidenza",
     "error": "Impossibile salvare la memoria"
+  },
+  "partnerInvite": {
+    "title": "Meglio insieme",
+    "subtitle": "Invita il tuo partner a condividere liste, attività e calendari.",
+    "placeholder": "Nome del partner",
+    "sent": "Link di invito creato!",
+    "copied": "Copiato!",
+    "copy": "Copia",
+    "dismiss": "Chiudi",
+    "error": "Impossibile creare l'invito. Riprova."
   }
 }

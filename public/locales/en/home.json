@@ -108,5 +108,15 @@
     "thanksForCorrection": "Thanks for the correction.",
     "confidence": "confidence",
     "error": "Failed to save memory"
+  },
+  "partnerInvite": {
+    "title": "Better together",
+    "subtitle": "Invite your partner to share lists, tasks & calendars.",
+    "placeholder": "Partner's name",
+    "sent": "Invite link created!",
+    "copied": "Copied!",
+    "copy": "Copy",
+    "dismiss": "Dismiss",
+    "error": "Couldn't create invite. Try again."
   }
 }
