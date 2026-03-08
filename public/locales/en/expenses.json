@@ -96,7 +96,8 @@
     "settleError": "Failed to settle expenses",
     "budgetSet": "Budget limit set for {{category}}",
     "budgetSetError": "Failed to set budget limit",
-    "budgetRemoved": "Budget limit removed"
+    "exported": "Expenses exported",
+    "updated": "Expense updated"
   },
   "archiveAll": "Archive All",
   "receipt": {
