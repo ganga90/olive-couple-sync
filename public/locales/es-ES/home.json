@@ -102,7 +102,10 @@
   "contextRail": {
     "calendar": "Calendario",
     "upcoming": "Próximos",
-    "noEvents": "Sin eventos próximos"
+    "noEvents": "Sin eventos próximos",
+    "expenseTips": "Consejos de Gastos",
+    "expenseTip1": "Usa el prefijo $ en WhatsApp para registrar gastos rápidamente",
+    "expenseTip2": "Establece límites de presupuesto por categoría para controlar tus gastos"
   },
   "insights": {
     "header": "Olive notó algo...",

@@ -13,6 +13,7 @@ import type { Note } from "@/types/note";
 import { NoteInput } from "@/components/NoteInput";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { format, addDays, startOfDay, isSameDay, formatDistanceToNow } from "date-fns";
+import { useDateLocale } from "@/hooks/useDateLocale";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 // Categories are now derived dynamically from user's actual notes
 import { useOrganizeAgent } from "@/hooks/useOrganizeAgent";
@@ -32,6 +33,7 @@ import { supabase } from "@/lib/supabaseClient";
 const Home = () => {
   const { t } = useTranslation(['home', 'common']);
   const { getLocalizedPath } = useLanguage();
+  const dateLocale = useDateLocale();
   
   useSEO({ 
     title: "Home — Olive", 
@@ -429,7 +431,7 @@ const Home = () => {
                       ? t('common:common.today')
                       : isTomorrow
                       ? t('common:common.tomorrow')
-                      : format(dayData.date, 'EEEE');
+                      : format(dayData.date, 'EEEE', { locale: dateLocale });
                     const taskCount = dayData.tasks.length;
 
                     return (
@@ -455,9 +457,9 @@ const Home = () => {
                               <p className={`text-sm md:text-base font-semibold ${isToday ? 'text-primary' : 'text-foreground'}`}>
                                 {dayLabel}
                               </p>
-                              <p className="text-[11px] md:text-xs text-muted-foreground">
-                                {format(dayData.date, 'MMM d')}
-                              </p>
+                            <p className="text-[11px] md:text-xs text-muted-foreground">
+                              {format(dayData.date, 'MMM d', { locale: dateLocale })}
+                            </p>
                             </div>
                           </div>
                           {taskCount > 0 && (
@@ -502,7 +504,7 @@ const Home = () => {
                         <div className="flex items-center gap-2 mb-2">
                           <Bell className="w-4 h-4 md:w-5 md:h-5 text-primary" />
                           <span className="text-sm md:text-base text-muted-foreground">
-                            {formatDistanceToNow(new Date(task.reminder_time!), { addSuffix: true })}
+                            {formatDistanceToNow(new Date(task.reminder_time!), { addSuffix: true, locale: dateLocale })}
                           </span>
                         </div>
                         <TaskItem
@@ -534,7 +536,7 @@ const Home = () => {
                         <div className="flex items-center gap-2 mb-2">
                           <Clock className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground" />
                           <span className="text-sm md:text-base text-muted-foreground">
-                            {formatDistanceToNow(new Date(task.createdAt), { addSuffix: true })}
+                            {formatDistanceToNow(new Date(task.createdAt), { addSuffix: true, locale: dateLocale })}
                           </span>
                         </div>
                         <TaskItem

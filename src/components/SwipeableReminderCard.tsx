@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Bell, Calendar, Clock, Trash2, Edit } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
+import { useDateLocale } from "@/hooks/useDateLocale";
 import type { Note } from "@/types/note";
 
 interface ReminderItem {
@@ -27,6 +28,7 @@ export const SwipeableReminderCard = ({
   onEdit, 
   onClick 
 }: SwipeableReminderCardProps) => {
+  const dateLocale = useDateLocale();
   const [offset, setOffset] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -133,7 +135,7 @@ export const SwipeableReminderCard = ({
                       {format(reminder.time, "MMM d 'at' h:mm a")}
                     </span>
                     <span className="text-xs">
-                      ({formatDistanceToNow(reminder.time, { addSuffix: true })})
+                      ({formatDistanceToNow(reminder.time, { addSuffix: true, locale: dateLocale })})
                     </span>
                   </div>
                   

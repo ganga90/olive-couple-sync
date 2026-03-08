@@ -6,6 +6,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useLanguage } from "@/providers/LanguageProvider";
 import { formatDistanceToNow } from "date-fns";
+import { useDateLocale } from "@/hooks/useDateLocale";
 import { cn } from "@/lib/utils";
 import type { Note } from "@/types/note";
 
@@ -19,6 +20,7 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
   const { user } = useAuth();
   const { partner, currentCouple } = useSupabaseCouple();
   const { getLocalizedPath } = useLanguage();
+  const dateLocale = useDateLocale();
 
   const partnerName = partner || t('common:common.partner');
   const userId = user?.id;
@@ -143,7 +145,7 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
                   {activity.summary}
                 </p>
                 <p className="text-[11px] text-muted-foreground/70 mt-1.5">
-                  {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
+                  {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true, locale: dateLocale })}
                 </p>
               </div>
               <ArrowRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-primary
