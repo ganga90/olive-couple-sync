@@ -1564,7 +1564,8 @@ async function semanticTaskSearchMulti(
           .eq('completed', false)
           .order('created_at', { ascending: false })
           .limit(50);
-        if (coupleId) { query = query.eq('couple_id', coupleId); }
+        // Include BOTH personal and couple tasks
+        if (coupleId) { query = query.or(`couple_id.eq.${coupleId},and(author_id.eq.${userId},couple_id.is.null)`); }
         else { query = query.eq('author_id', userId); }
         const { data: tasks } = await query;
         if (tasks) {
