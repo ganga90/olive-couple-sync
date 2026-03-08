@@ -37,6 +37,12 @@ export interface Expense {
   original_text: string | null;
   created_at: string;
   updated_at: string;
+  // Recurring fields
+  is_recurring: boolean;
+  recurrence_frequency: 'weekly' | 'monthly' | 'yearly' | null;
+  recurrence_interval: number | null;
+  next_recurrence_date: string | null;
+  parent_recurring_id: string | null;
 }
 
 export interface ExpenseSettlement {
