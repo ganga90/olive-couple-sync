@@ -6100,7 +6100,7 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
       if (processData.multiple && Array.isArray(processData.notes)) {
         const notesToInsert = processData.notes.map((note: any) => ({
           author_id: userId,
-          couple_id: coupleId,
+          couple_id: effectiveCoupleId,
           original_text: messageBody || note.summary || 'Media attachment',
           summary: note.summary,
           category: note.category || 'task',
