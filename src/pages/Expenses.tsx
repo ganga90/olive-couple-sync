@@ -438,10 +438,6 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ expense, open, on
     </Dialog>
   );
 };
-      </DialogContent>
-    </Dialog>
-  );
-};
 
 // ============================================================================
 // EXPENSE ROW
