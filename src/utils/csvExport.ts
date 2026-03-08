@@ -15,6 +15,23 @@ interface ListInfo {
   name: string;
 }
 
+interface ExpenseRow {
+  id: string;
+  name: string;
+  amount: number;
+  currency: string;
+  category: string;
+  split_type: string;
+  expense_date: string;
+  is_settled: boolean;
+  is_shared: boolean;
+  is_recurring: boolean;
+  recurrence_frequency?: string | null;
+  receipt_url?: string | null;
+  original_text?: string | null;
+  created_at: string;
+}
+
 // Escape CSV field values properly
 function escapeCSVField(value: string | null | undefined): string {
   if (value === null || value === undefined) return '';
