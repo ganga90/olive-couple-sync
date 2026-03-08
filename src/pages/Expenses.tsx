@@ -691,8 +691,8 @@ const ExpensesPage: React.FC = () => {
             <p className="text-xl font-bold">{activeExpenses.length}</p>
             {activeExpenses.length > 0 && !hasPartner && (
               <Button size="sm" variant="ghost" onClick={settleExpenses} className="rounded-full text-xs mt-1 h-7 px-2">
-                <Check className="w-3 h-3 mr-1" />
-                {t('settle', 'Settle Up')}
+                <Archive className="w-3 h-3 mr-1" />
+                {t('archiveAll', 'Archive All')}
               </Button>
             )}
           </CardContent>
