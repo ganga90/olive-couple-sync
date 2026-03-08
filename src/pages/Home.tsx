@@ -332,12 +332,9 @@ const Home = () => {
                   {t('home:tabs.sectionLabel', 'Your Tasks')}
                 </p>
                 
-                <TabsList className="w-full grid grid-cols-5 bg-stone-100/80 mb-5 md:mb-6 h-12 md:h-14 rounded-full p-1">
+                <TabsList className="w-full grid grid-cols-4 bg-stone-100/80 mb-5 md:mb-6 h-12 md:h-14 rounded-full p-1">
                   <TabsTrigger value="priority" className="text-xs md:text-sm font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
                     {t('home:tabs.priority')}
-                  </TabsTrigger>
-                  <TabsTrigger value="daily" className="text-xs md:text-sm font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
-                    {t('home:tabs.daily')}
                   </TabsTrigger>
                   <TabsTrigger value="weekly" className="text-xs md:text-sm font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
                     {t('home:tabs.weekly')}
