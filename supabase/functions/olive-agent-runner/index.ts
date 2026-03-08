@@ -435,10 +435,8 @@ async function runEnergyTaskSuggester(ctx: AgentContext): Promise<AgentResult> {
     contents: `You are an energy-aware productivity coach.
 
 User's biometrics today:
-- Readiness: ${latestOura.readiness_score}/100
-- Sleep: ${latestOura.sleep_score || "N/A"}/100
-- Stress (high minutes): ${latestOura.stress_high_minutes || "N/A"}
-- Resilience: ${latestOura.resilience_level || "N/A"}
+- Readiness: ${latestOura.readinessScore}/100
+- Sleep: ${latestOura.sleepScore || "N/A"}/100
 
 Today's tasks:
 ${taskList}
@@ -451,7 +449,7 @@ Based on their energy level, suggest the optimal order to tackle these tasks. Ke
   return {
     success: true,
     message: energyMessage,
-    data: { readiness: latestOura.readiness_score, sleepScore: latestOura.sleep_score, taskCount: tasks.length },
+    data: { readiness: latestOura.readinessScore, sleepScore: latestOura.sleepScore, taskCount: tasks.length },
     notifyUser: true,
     notificationMessage: energyMessage,
   };
