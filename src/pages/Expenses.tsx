@@ -716,7 +716,7 @@ const ExpensesPage: React.FC = () => {
                 </p>
               </CardContent>
             </Card>
-            <Card className="bg-card/80 backdrop-blur col-span-2 md:col-span-1">
+            <Card className="bg-card/80 backdrop-blur col-span-2 md:col-span-1 lg:col-span-1">
               <CardContent className="pt-4 pb-3 px-4 flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">{t('summary.unsettled', 'Unsettled')}</p>
