@@ -16,6 +16,7 @@ import enCalendar from '../../../public/locales/en/calendar.json';
 import enAuth from '../../../public/locales/en/auth.json';
 import enOrganize from '../../../public/locales/en/organize.json';
 import enLegal from '../../../public/locales/en/legal.json';
+import enExpenses from '../../../public/locales/en/expenses.json';
 
 import esCommon from '../../../public/locales/es-ES/common.json';
 import esHome from '../../../public/locales/es-ES/home.json';
