@@ -587,6 +587,7 @@ export function useExpenses() {
     loading,
     analytics,
     netBalance,
+    netBalanceByCurrency,
     preferences,
     budgetLimits,
     budgetStatus,
