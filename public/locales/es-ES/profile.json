@@ -267,6 +267,12 @@
     "tokenCopied": "Token Copiado",
     "tokenCopiedDesc": "Pega este token en WhatsApp para vincular tu cuenta.",
     "error": "Error al generar el enlace de WhatsApp. Inténtalo de nuevo.",
+    "desktop": {
+      "scanQR": "Escanea con tu teléfono",
+      "scanHint": "Abre la cámara de tu teléfono y escanea este código para abrir WhatsApp con el token pre-completado.",
+      "openWeb": "Abrir WhatsApp Web",
+      "manualTitle": "O envía este token manualmente:"
+    },
     "onboarding": {
       "title": "📱 Integración WhatsApp",
       "description": "¡Vincula tu WhatsApp para enviar tareas por mensaje! Escribe a Olive de forma natural y tus tareas aparecerán en la app."
