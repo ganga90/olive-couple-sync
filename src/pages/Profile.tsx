@@ -15,8 +15,9 @@ import { OliveProactivePreferences } from "@/components/settings/OliveProactiveP
 import { OliveSkillsManager } from "@/components/settings/OliveSkillsManager";
 import { BackgroundAgentsManager } from "@/components/settings/BackgroundAgentsManager";
 import { DefaultPrivacyCard } from "@/components/settings/DefaultPrivacyCard";
+import { ExpensePreferencesCard } from "@/components/settings/ExpensePreferencesCard";
 import { CollapsibleSection } from "@/components/settings/CollapsibleSection";
-import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot, Mail, Fingerprint } from "lucide-react";
+import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot, Mail, Fingerprint, Wallet } from "lucide-react";
 import { PasskeySettingsCard } from "@/components/settings/PasskeySettingsCard";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
@@ -150,6 +151,15 @@ const Profile = () => {
             subtitle={t('profile:defaultPrivacy.subtitle', 'For new tasks & lists')}
           >
             <DefaultPrivacyCard />
+          </SettingsCard>
+
+          <SettingsCard
+            icon={<Wallet className="h-5 w-5 text-primary" />}
+            iconBg="bg-primary/10"
+            title={t('expenses:preferences.title', 'Expense Tracking')}
+            subtitle={t('expenses:preferences.description', 'Configure how expenses are tracked and split')}
+          >
+            <ExpensePreferencesCard />
           </SettingsCard>
         </CollapsibleSection>
 

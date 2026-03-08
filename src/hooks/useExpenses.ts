@@ -56,6 +56,12 @@ export interface ExpenseAnalytics {
   topCategories: Array<{ category: string; icon: string; total: number; count: number }>;
 }
 
+export interface ExpensePreferences {
+  trackingMode: string;
+  defaultSplit: ExpenseSplitType;
+  defaultCurrency: string;
+}
+
 // Category icon mapping
 export const EXPENSE_CATEGORY_ICONS: Record<string, string> = {
   'Groceries': '🛒',
@@ -90,6 +96,16 @@ export function getCategoryIcon(category: string): string {
   return EXPENSE_CATEGORY_ICONS[category] || '📄';
 }
 
+export const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+};
+
+export function getCurrencySymbol(currency: string): string {
+  return CURRENCY_SYMBOLS[currency] || '$';
+}
+
 // ============================================================================
 // HOOK
 // ============================================================================
@@ -100,9 +116,58 @@ export function useExpenses() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [settlements, setSettlements] = useState<ExpenseSettlement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [preferences, setPreferences] = useState<ExpensePreferences>({
+    trackingMode: 'individual',
+    defaultSplit: 'you_paid_split',
+    defaultCurrency: 'USD',
+  });
 
   const userId = user?.id;
   const coupleId = currentCouple?.id;
+
+  // Fetch user expense preferences
+  const fetchPreferences = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase
+        .from('clerk_profiles')
+        .select('expense_tracking_mode, expense_default_split, expense_default_currency')
+        .eq('id', userId)
+        .single();
+      if (error) throw error;
+      if (data) {
+        setPreferences({
+          trackingMode: data.expense_tracking_mode || 'individual',
+          defaultSplit: (data.expense_default_split as ExpenseSplitType) || 'you_paid_split',
+          defaultCurrency: data.expense_default_currency || 'USD',
+        });
+      }
+    } catch (err) {
+      console.error('[useExpenses] preferences fetch error:', err);
+    }
+  }, [userId]);
+
+  // Update preferences
+  const updatePreferences = useCallback(async (updates: Partial<ExpensePreferences>) => {
+    if (!userId) return;
+    const dbUpdates: Record<string, string> = {};
+    if (updates.trackingMode) dbUpdates.expense_tracking_mode = updates.trackingMode;
+    if (updates.defaultSplit) dbUpdates.expense_default_split = updates.defaultSplit;
+    if (updates.defaultCurrency) dbUpdates.expense_default_currency = updates.defaultCurrency;
+
+    try {
+      const { error } = await supabase
+        .from('clerk_profiles')
+        .update(dbUpdates)
+        .eq('id', userId);
+      if (error) throw error;
+      setPreferences(prev => ({ ...prev, ...updates }));
+      toast.success('Preferences updated');
+    } catch (err) {
+      console.error('[useExpenses] preferences update error:', err);
+      toast.error('Failed to update preferences');
+    }
+  }, [userId]);
 
   // Fetch expenses
   const fetchExpenses = useCallback(async () => {
@@ -114,7 +179,6 @@ export function useExpenses() {
         .select('*')
         .order('expense_date', { ascending: false });
 
-      // If couple exists, fetch both individual and shared
       if (coupleId) {
         query = query.or(`couple_id.eq.${coupleId},and(user_id.eq.${userId},couple_id.is.null)`);
       } else {
@@ -157,7 +221,8 @@ export function useExpenses() {
   useEffect(() => {
     fetchExpenses();
     fetchSettlements();
-  }, [fetchExpenses, fetchSettlements]);
+    fetchPreferences();
+  }, [fetchExpenses, fetchSettlements, fetchPreferences]);
 
   // Add expense
   const addExpense = useCallback(async (expense: Omit<Expense, 'id' | 'created_at' | 'updated_at'>) => {
@@ -220,7 +285,6 @@ export function useExpenses() {
     }
 
     try {
-      // Create settlement record
       const totalAmount = unsettled.reduce((sum, e) => sum + e.amount, 0);
       const { data: settlement, error: settleErr } = await supabase
         .from('expense_settlements')
@@ -229,14 +293,13 @@ export function useExpenses() {
           user_id: userId,
           settled_by: userId,
           total_amount: totalAmount,
-          currency: unsettled[0]?.currency || 'USD',
+          currency: unsettled[0]?.currency || preferences.defaultCurrency,
           expense_count: unsettled.length,
         })
         .select()
         .single();
       if (settleErr) throw settleErr;
 
-      // Mark all unsettled expenses as settled
       const ids = unsettled.map(e => e.id);
       const { error: updateErr } = await supabase
         .from('expenses')
@@ -248,7 +311,6 @@ export function useExpenses() {
         .in('id', ids);
       if (updateErr) throw updateErr;
 
-      // Update local state
       setExpenses(prev =>
         prev.map(e =>
           ids.includes(e.id)
@@ -262,7 +324,7 @@ export function useExpenses() {
       console.error('[useExpenses] settle error:', err);
       toast.error('Failed to settle expenses');
     }
-  }, [userId, coupleId, expenses]);
+  }, [userId, coupleId, expenses, preferences.defaultCurrency]);
 
   // ============================================================================
   // COMPUTED VALUES
@@ -287,7 +349,6 @@ export function useExpenses() {
       }
     });
 
-    // Top categories
     const catMap: Record<string, { total: number; count: number; icon: string }> = {};
     activeExpenses.forEach(e => {
       if (!catMap[e.category]) {
@@ -309,7 +370,6 @@ export function useExpenses() {
     };
   }, [activeExpenses]);
 
-  // Net balance: positive = partner owes you, negative = you owe partner
   const netBalance = useMemo(() => analytics.partnerOwes - analytics.youOwe, [analytics]);
 
   return {
@@ -320,10 +380,12 @@ export function useExpenses() {
     loading,
     analytics,
     netBalance,
+    preferences,
     addExpense,
     updateExpense,
     deleteExpense,
     settleExpenses,
+    updatePreferences,
     refetch: fetchExpenses,
   };
 }
