@@ -40,8 +40,14 @@
     "sectionLabel": "Le tue attività",
     "priority": "🔥 Priorità",
     "daily": "📅 Giornaliero",
+    "weekly": "📆 Settimanale",
     "reminders": "⏰ Promemoria",
     "recent": "🕐 Recente"
+  },
+  "weekly": {
+    "task": "attività",
+    "tasks": "attività",
+    "noTasks": "Nulla in programma"
   },
   "emptyState": {
     "noTasksMatch": "Nessuna attività corrisponde ai filtri",
