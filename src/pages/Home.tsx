@@ -129,28 +129,35 @@ const Home = () => {
       .slice(0, 5);
   }, [filteredNotes]);
 
-  // Get daily view tasks (next 3 days)
-  const dailyViewTasks = useMemo(() => {
+  // Helper to get tasks for a range of days
+  const getTasksForDays = (dayOffsets: number[]) => {
     const today = startOfDay(new Date());
-    const next3Days = [0, 1, 2].map(offset => addDays(today, offset));
-    
-    return next3Days.map(day => ({
-      date: day,
-      tasks: filteredNotes
-        .filter(note => {
-          if (note.completed) return false;
-          if (!note.dueDate) return false;
-          const taskDate = startOfDay(new Date(note.dueDate));
-          return isSameDay(taskDate, day);
-        })
-        .sort((a, b) => {
-          const priorityOrder = { high: 3, medium: 2, low: 1 };
-          const aPriority = priorityOrder[a.priority || 'low'];
-          const bPriority = priorityOrder[b.priority || 'low'];
-          return bPriority - aPriority;
-        })
-    }));
-  }, [filteredNotes]);
+    return dayOffsets.map(offset => {
+      const day = addDays(today, offset);
+      return {
+        date: day,
+        tasks: filteredNotes
+          .filter(note => {
+            if (note.completed) return false;
+            if (!note.dueDate) return false;
+            const taskDate = startOfDay(new Date(note.dueDate));
+            return isSameDay(taskDate, day);
+          })
+          .sort((a, b) => {
+            const priorityOrder = { high: 3, medium: 2, low: 1 };
+            const aPriority = priorityOrder[a.priority || 'low'];
+            const bPriority = priorityOrder[b.priority || 'low'];
+            return bPriority - aPriority;
+          })
+      };
+    });
+  };
+
+  // Get daily view tasks (next 3 days)
+  const dailyViewTasks = useMemo(() => getTasksForDays([0, 1, 2]), [filteredNotes]);
+
+  // Get weekly view tasks (next 5 days)
+  const weeklyViewTasks = useMemo(() => getTasksForDays([0, 1, 2, 3, 4]), [filteredNotes]);
 
   // Get completed tasks this week
   const completedThisWeek = useMemo(() => {
