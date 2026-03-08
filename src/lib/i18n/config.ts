@@ -98,7 +98,8 @@ const resources = {
     calendar: esCalendar,
     auth: esAuth,
     organize: esOrganize,
-    legal: esLegal
+    legal: esLegal,
+    expenses: esExpenses
   },
   'it-IT': {
     common: itCommon,
