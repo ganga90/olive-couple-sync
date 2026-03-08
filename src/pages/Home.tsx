@@ -418,40 +418,7 @@ const Home = () => {
                 </div>
               </TabsContent>
 
-              {/* Daily Tab - DESKTOP PADDING */}
-              <TabsContent value="daily" className="mt-0">
-                <div className="p-4 md:p-8 space-y-6 md:space-y-8">
-                  {dailyViewTasks.map((dayData, dayIndex) => (
-                    <div key={dayData.date.toISOString()} className={`animate-fade-up stagger-${Math.min(dayIndex + 1, 3)}`}>
-                      <h3 className="text-base md:text-lg font-semibold text-foreground mb-3 md:mb-4 flex items-center gap-2">
-                        <span className={dayIndex === 0 ? "text-primary" : ""}>
-                          {dayIndex === 0 ? t('common:common.today') : dayIndex === 1 ? t('common:common.tomorrow') : format(dayData.date, 'EEEE')}
-                        </span>
-                        <span className="text-muted-foreground font-normal">
-                          {format(dayData.date, 'MMM d')}
-                        </span>
-                      </h3>
-                      {dayData.tasks.length > 0 ? (
-                        <div className="space-y-4 md:space-y-5">
-                          {dayData.tasks.map((task) => (
-                            <TaskItem
-                              key={task.id}
-                              task={task}
-                              onToggleComplete={handleToggleComplete}
-                              onTaskClick={handleTaskClick}
-                              authorName={getAuthorName(task)}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-6 md:py-8 text-muted-foreground text-sm md:text-base bg-muted/30 rounded-xl">
-                          {t('home:emptyState.noTasksScheduled')}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </TabsContent>
+
 
               {/* Weekly Tab - 5-day view */}
               <TabsContent value="weekly" className="mt-0">
