@@ -700,7 +700,7 @@ const ExpensesPage: React.FC = () => {
 
         {hasPartner && (
           <>
-            <Card className={cn("bg-card/80 backdrop-blur", netBalance > 0 ? "border-[hsl(var(--success))]/30" : netBalance < 0 ? "border-[hsl(var(--warning,40_100%_50%))]/30" : "")}>
+            <Card className={cn("bg-card/80 backdrop-blur", netBalance > 0 ? "border-[hsl(var(--success))]/30" : netBalance < 0 ? "border-[hsl(var(--warning))]/30" : "")}>
               <CardContent className="pt-4 pb-3 px-4">
                 <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                   <ArrowLeftRight className="w-3.5 h-3.5" />
