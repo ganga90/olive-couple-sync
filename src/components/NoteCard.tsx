@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, User, Users, MessageCircle, CheckCircle2, Circle, Sparkles, Bell } from "lucide-react";
+import { CalendarDays, User, Users, MessageCircle, CheckCircle2, Circle, Sparkles, Bell, Lock } from "lucide-react";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { NotePrivacyToggle } from "@/components/NotePrivacyToggle";
