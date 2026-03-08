@@ -521,7 +521,7 @@ export function useExpenses() {
     });
     return Object.entries(months).map(([month, total]) => ({
       month,
-      label: new Date(month + '-01').toLocaleDateString('en', { month: 'short' }),
+      label: new Date(month + '-01').toLocaleDateString(undefined, { month: 'short' }),
       total: Math.round(total * 100) / 100,
     }));
   }, [expenses]);
