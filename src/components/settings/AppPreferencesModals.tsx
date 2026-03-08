@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bell, Shield, Cookie, HelpCircle, ChevronRight } from 'lucide-react';
+import { Bell, Shield, Cookie, HelpCircle, ChevronRight, LayoutDashboard } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CookieSettings } from '@/components/CookieSettings';
 import { cn } from '@/lib/utils';
 
@@ -145,7 +146,59 @@ const HelpContent: React.FC = () => {
   );
 };
 
-type ModalType = 'notifications' | 'privacy' | 'cookies' | 'help' | null;
+// Default Home View Content
+const DefaultHomeViewContent: React.FC = () => {
+  const { t } = useTranslation('profile');
+  const [defaultTab, setDefaultTab] = useState(
+    () => localStorage.getItem('olive_default_home_tab') || 'weekly'
+  );
+
+  const handleChange = (value: string) => {
+    setDefaultTab(value);
+    localStorage.setItem('olive_default_home_tab', value);
+  };
+
+  const tabs = [
+    { value: 'priority', label: t('defaultHomeView.priority', '🔥 Priority') },
+    { value: 'weekly', label: t('defaultHomeView.weekly', '📆 Weekly') },
+    { value: 'reminders', label: t('defaultHomeView.reminders', '⏰ Reminders') },
+    { value: 'recent', label: t('defaultHomeView.recent', '🕐 Recent') },
+  ];
+
+  return (
+    <div className="space-y-4 pt-4">
+      <p className="text-sm text-muted-foreground">
+        {t('defaultHomeView.description', 'Choose which tab opens by default when you visit your Home.')}
+      </p>
+      <div className="space-y-2">
+        {tabs.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => handleChange(tab.value)}
+            className={cn(
+              "w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all",
+              defaultTab === tab.value
+                ? "bg-primary/10 border border-primary/30"
+                : "bg-stone-50 hover:bg-stone-100 border border-transparent"
+            )}
+          >
+            <div className={cn(
+              "w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0",
+              defaultTab === tab.value ? "border-primary" : "border-stone-300"
+            )}>
+              {defaultTab === tab.value && (
+                <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+              )}
+            </div>
+            <span className="text-sm font-medium">{tab.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+type ModalType = 'notifications' | 'privacy' | 'cookies' | 'help' | 'defaultView' | null;
 
 export const AppPreferencesModals: React.FC = () => {
   const { t } = useTranslation('profile');
@@ -177,6 +230,12 @@ export const AppPreferencesModals: React.FC = () => {
           description: t('settings.help.subtitle'),
           content: <HelpContent />,
         };
+      case 'defaultView':
+        return {
+          title: t('defaultHomeView.title', 'Default Home View'),
+          description: t('defaultHomeView.subtitle', 'Choose your default tab'),
+          content: <DefaultHomeViewContent />,
+        };
       default:
         return null;
     }
@@ -187,6 +246,13 @@ export const AppPreferencesModals: React.FC = () => {
   return (
     <>
       <div className="-mx-5 -mb-5">
+        <PreferenceRow
+          icon={<LayoutDashboard className="h-5 w-5 text-primary" />}
+          iconBg="bg-primary/10"
+          title={t('defaultHomeView.title', 'Default Home View')}
+          subtitle={t('defaultHomeView.subtitle', 'Choose your default tab')}
+          onClick={() => setActiveModal('defaultView')}
+        />
         <PreferenceRow
           icon={<Bell className="h-5 w-5 text-stone-500" />}
           iconBg="bg-stone-100"
