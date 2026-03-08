@@ -86,6 +86,7 @@ export const SuperpowersGrid = () => {
                     {power.visual === 'capture' && <CaptureVisual />}
                     {power.visual === 'organize' && <OrganizeVisual />}
                     {power.visual === 'act' && <ActVisual />}
+                    {power.visual === 'security' && <SecurityVisual />}
                   </div>
 
                   {/* Step Number */}

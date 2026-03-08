@@ -86,6 +86,14 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Sensitive note badge */}
+            {note.is_sensitive && (
+              <Badge variant="outline" className="text-xs flex items-center gap-1 border-amber-500/50 text-amber-700 bg-amber-50">
+                <Lock className="h-3 w-3" />
+                {t('card.encrypted')}
+              </Badge>
+            )}
+            
             {/* AI Auto tag - shown for all AI-processed notes */}
             <Badge variant="ai" className="text-xs flex items-center gap-1">
               <Sparkles className="h-3 w-3" />
