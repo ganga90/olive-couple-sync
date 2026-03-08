@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bell, Shield, Cookie, HelpCircle, ChevronRight } from 'lucide-react';
+import { Bell, Shield, Cookie, HelpCircle, ChevronRight, LayoutDashboard } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CookieSettings } from '@/components/CookieSettings';
 import { cn } from '@/lib/utils';
 
