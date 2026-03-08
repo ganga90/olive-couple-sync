@@ -252,6 +252,23 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
       }
       
       toast.success("Note added successfully");
+
+      // Link any auto-detected expenses that were created by process-note
+      // (they have null note_id since the note didn't exist yet)
+      if (data?.id && data?.original_text) {
+        supabase
+          .from('expenses')
+          .update({ note_id: data.id })
+          .eq('user_id', user.id)
+          .is('note_id', null)
+          .eq('original_text', data.original_text.substring(0, 500))
+          .gte('created_at', new Date(Date.now() - 60000).toISOString())
+          .then(({ error: linkErr }) => {
+            if (linkErr) console.warn('[useSupabaseNotes] expense linking error:', linkErr);
+            else console.log('[useSupabaseNotes] linked expense to note:', data.id);
+          });
+      }
+
       return data;
     } catch (error: any) {
       console.error("[useSupabaseNotes] Error adding note:", error);
