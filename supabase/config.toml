@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.olive-agent-runner]
 verify_jwt = false
+
+[functions.recurring-expenses]
+verify_jwt = false
