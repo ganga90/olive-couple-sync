@@ -4224,7 +4224,7 @@ serve(async (req) => {
             .insert({ 
               name: targetListName, 
               author_id: userId, 
-              couple_id: coupleId,
+              couple_id: effectiveCoupleId,
               is_manual: true
             })
             .select('id, name')
