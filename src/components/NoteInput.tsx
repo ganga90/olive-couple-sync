@@ -618,7 +618,35 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                   setInterim={setInterim}
                   disabled={isProcessing || isUploadingMedia}
                 />
-              </div>
+
+                {/* Lock toggle for sensitive notes */}
+                {hasContent && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setIsSensitive(!isSensitive)}
+                          className={cn(
+                            "h-10 w-10 rounded-full transition-all duration-300",
+                            isSensitive
+                              ? "text-amber-600 bg-amber-50 hover:bg-amber-100"
+                              : "text-stone-400 hover:text-stone-600 hover:bg-stone-100"
+                          )}
+                        >
+                          {isSensitive ? <Lock className="h-4.5 w-4.5" /> : <LockOpen className="h-4.5 w-4.5" />}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p className="text-xs max-w-[200px]">
+                          {isSensitive ? 'Encryption enabled — content encrypted at rest' : 'Mark as sensitive — encrypt at rest'}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
             </div>
 
             {/* Media previews */}
