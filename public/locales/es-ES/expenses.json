@@ -96,7 +96,8 @@
     "settleError": "Error al liquidar gastos",
     "budgetSet": "Límite de presupuesto establecido para {{category}}",
     "budgetSetError": "Error al establecer límite",
-    "budgetRemoved": "Límite de presupuesto eliminado"
+    "exported": "Gastos exportados",
+    "updated": "Gasto actualizado"
   },
   "archiveAll": "Archivar Todo",
   "receipt": {
@@ -127,5 +128,22 @@
     "modeShared": "Compartido con pareja",
     "defaultSplit": "División por defecto",
     "defaultCurrency": "Moneda por defecto"
+  },
+  "recurring": {
+    "label": "Gasto recurrente",
+    "description": "Se crea automáticamente según el horario",
+    "frequency": "Frecuencia",
+    "weekly": "Semanal",
+    "monthly": "Mensual",
+    "yearly": "Anual"
+  },
+  "edit": {
+    "title": "Editar Gasto",
+    "description": "Actualizar detalles del gasto",
+    "button": "Editar",
+    "save": "Guardar Cambios"
+  },
+  "export": {
+    "button": "Exportar CSV"
   }
 }

@@ -96,7 +96,8 @@
     "settleError": "Failed to settle expenses",
     "budgetSet": "Budget limit set for {{category}}",
     "budgetSetError": "Failed to set budget limit",
-    "budgetRemoved": "Budget limit removed"
+    "exported": "Expenses exported",
+    "updated": "Expense updated"
   },
   "archiveAll": "Archive All",
   "receipt": {
@@ -127,5 +128,22 @@
     "modeShared": "Shared with partner",
     "defaultSplit": "Default split",
     "defaultCurrency": "Default currency"
+  },
+  "recurring": {
+    "label": "Recurring expense",
+    "description": "Auto-creates on schedule",
+    "frequency": "Frequency",
+    "weekly": "Weekly",
+    "monthly": "Monthly",
+    "yearly": "Yearly"
+  },
+  "edit": {
+    "title": "Edit Expense",
+    "description": "Update expense details",
+    "button": "Edit",
+    "save": "Save Changes"
+  },
+  "export": {
+    "button": "Export CSV"
   }
 }

@@ -37,6 +37,12 @@ export interface Expense {
   original_text: string | null;
   created_at: string;
   updated_at: string;
+  // Recurring fields
+  is_recurring: boolean;
+  recurrence_frequency: 'weekly' | 'monthly' | 'yearly' | null;
+  recurrence_interval: number | null;
+  next_recurrence_date: string | null;
+  parent_recurring_id: string | null;
 }
 
 export interface ExpenseSettlement {
@@ -51,10 +57,13 @@ export interface ExpenseSettlement {
 }
 
 export interface ExpenseAnalytics {
-  totalExpenses: number;
+  totalsByCurrency: Record<string, number>;
+  youOweByCurrency: Record<string, number>;
+  partnerOwesByCurrency: Record<string, number>;
+  totalExpenses: number; // kept for backwards compat (default currency)
   youOwe: number;
   partnerOwes: number;
-  topCategories: Array<{ category: string; icon: string; total: number; count: number }>;
+  topCategories: Array<{ category: string; icon: string; total: number; count: number; currency: string }>;
 }
 
 export interface ExpensePreferences {
@@ -464,65 +473,91 @@ export function useExpenses() {
   const archivedExpenses = useMemo(() => expenses.filter(e => e.is_settled), [expenses]);
 
   const analytics = useMemo((): ExpenseAnalytics => {
-    let youOwe = 0;
-    let partnerOwes = 0;
+    const youOweByCurrency: Record<string, number> = {};
+    const partnerOwesByCurrency: Record<string, number> = {};
+    const totalsByCurrency: Record<string, number> = {};
 
     activeExpenses.forEach(e => {
+      const c = e.currency || 'USD';
+      totalsByCurrency[c] = (totalsByCurrency[c] || 0) + e.amount;
+
       if (e.split_type === 'you_paid_split') {
-        partnerOwes += e.amount / 2;
+        partnerOwesByCurrency[c] = (partnerOwesByCurrency[c] || 0) + e.amount / 2;
       } else if (e.split_type === 'you_owed_full') {
-        partnerOwes += e.amount;
+        partnerOwesByCurrency[c] = (partnerOwesByCurrency[c] || 0) + e.amount;
       } else if (e.split_type === 'partner_paid_split') {
-        youOwe += e.amount / 2;
+        youOweByCurrency[c] = (youOweByCurrency[c] || 0) + e.amount / 2;
       } else if (e.split_type === 'partner_owed_full') {
-        youOwe += e.amount;
+        youOweByCurrency[c] = (youOweByCurrency[c] || 0) + e.amount;
       }
     });
 
-    const catMap: Record<string, { total: number; count: number; icon: string }> = {};
+    // Top categories grouped by currency
+    const catMap: Record<string, { total: number; count: number; icon: string; currency: string }> = {};
     activeExpenses.forEach(e => {
-      if (!catMap[e.category]) {
-        catMap[e.category] = { total: 0, count: 0, icon: e.category_icon || getCategoryIcon(e.category) };
+      const key = `${e.category}__${e.currency || 'USD'}`;
+      if (!catMap[key]) {
+        catMap[key] = { total: 0, count: 0, icon: e.category_icon || getCategoryIcon(e.category), currency: e.currency || 'USD' };
       }
-      catMap[e.category].total += e.amount;
-      catMap[e.category].count++;
+      catMap[key].total += e.amount;
+      catMap[key].count++;
     });
 
     const topCategories = Object.entries(catMap)
-      .map(([category, data]) => ({ category, ...data }))
+      .map(([key, data]) => ({ category: key.split('__')[0], ...data }))
       .sort((a, b) => b.total - a.total);
 
+    // Default currency totals for backwards compat
+    const defaultCurrency = preferences.defaultCurrency || 'USD';
     return {
-      totalExpenses: activeExpenses.reduce((sum, e) => sum + e.amount, 0),
-      youOwe,
-      partnerOwes,
+      totalsByCurrency,
+      youOweByCurrency,
+      partnerOwesByCurrency,
+      totalExpenses: totalsByCurrency[defaultCurrency] || Object.values(totalsByCurrency).reduce((s, v) => s + v, 0),
+      youOwe: youOweByCurrency[defaultCurrency] || Object.values(youOweByCurrency).reduce((s, v) => s + v, 0),
+      partnerOwes: partnerOwesByCurrency[defaultCurrency] || Object.values(partnerOwesByCurrency).reduce((s, v) => s + v, 0),
       topCategories,
     };
-  }, [activeExpenses]);
+  }, [activeExpenses, preferences.defaultCurrency]);
 
   const netBalance = useMemo(() => analytics.partnerOwes - analytics.youOwe, [analytics]);
 
-  // Monthly trend data for charts
+  // Net balance by currency
+  const netBalanceByCurrency = useMemo(() => {
+    const result: Record<string, number> = {};
+    const allCurrencies = new Set([
+      ...Object.keys(analytics.partnerOwesByCurrency),
+      ...Object.keys(analytics.youOweByCurrency),
+    ]);
+    allCurrencies.forEach(c => {
+      result[c] = (analytics.partnerOwesByCurrency[c] || 0) - (analytics.youOweByCurrency[c] || 0);
+    });
+    return result;
+  }, [analytics]);
+
+  // Monthly trend data for charts (grouped by currency)
   const monthlyTrends = useMemo(() => {
-    const months: Record<string, number> = {};
-    // Get last 6 months
+    const months: Record<string, Record<string, number>> = {};
     const now = new Date();
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      months[key] = 0;
+      months[key] = {};
     }
     expenses.forEach(e => {
       const d = new Date(e.expense_date);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const c = e.currency || 'USD';
       if (key in months) {
-        months[key] += e.amount;
+        months[key][c] = (months[key][c] || 0) + e.amount;
       }
     });
-    return Object.entries(months).map(([month, total]) => ({
+    // Flatten: one entry per month with total per currency
+    return Object.entries(months).map(([month, currencyTotals]) => ({
       month,
       label: new Date(month + '-01').toLocaleDateString(undefined, { month: 'short' }),
-      total: Math.round(total * 100) / 100,
+      total: Math.round(Object.values(currencyTotals).reduce((s, v) => s + v, 0) * 100) / 100,
+      ...currencyTotals,
     }));
   }, [expenses]);
 
@@ -552,6 +587,7 @@ export function useExpenses() {
     loading,
     analytics,
     netBalance,
+    netBalanceByCurrency,
     preferences,
     budgetLimits,
     budgetStatus,

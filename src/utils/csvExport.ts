@@ -15,6 +15,23 @@ interface ListInfo {
   name: string;
 }
 
+interface ExpenseRow {
+  id: string;
+  name: string;
+  amount: number;
+  currency: string;
+  category: string;
+  split_type: string;
+  expense_date: string;
+  is_settled: boolean;
+  is_shared: boolean;
+  is_recurring: boolean;
+  recurrence_frequency?: string | null;
+  receipt_url?: string | null;
+  original_text?: string | null;
+  created_at: string;
+}
+
 // Escape CSV field values properly
 function escapeCSVField(value: string | null | undefined): string {
   if (value === null || value === undefined) return '';
@@ -121,8 +138,36 @@ export function downloadCSV(csvContent: string, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+// Convert expenses array to CSV string
+export function expensesToCSV(expenses: ExpenseRow[]): string {
+  const headers = [
+    'ID', 'Name', 'Amount', 'Currency', 'Category', 'Split Type',
+    'Date', 'Settled', 'Shared', 'Recurring', 'Recurrence',
+    'Receipt', 'Original Note', 'Created At'
+  ];
+
+  const rows = expenses.map(e => [
+    escapeCSVField(e.id),
+    escapeCSVField(e.name),
+    e.amount.toFixed(2),
+    escapeCSVField(e.currency),
+    escapeCSVField(e.category),
+    escapeCSVField(e.split_type),
+    escapeCSVField(e.expense_date),
+    e.is_settled ? 'Yes' : 'No',
+    e.is_shared ? 'Yes' : 'No',
+    e.is_recurring ? 'Yes' : 'No',
+    escapeCSVField(e.recurrence_frequency || ''),
+    escapeCSVField(e.receipt_url || ''),
+    escapeCSVField(e.original_text || ''),
+    escapeCSVField(e.created_at),
+  ].join(','));
+
+  return [headers.join(','), ...rows].join('\n');
+}
+
 // Generate filename with timestamp
-export function generateExportFilename(type: 'notes' | 'memories'): string {
+export function generateExportFilename(type: 'notes' | 'memories' | 'expenses'): string {
   const date = new Date().toISOString().split('T')[0];
   return `olive-${type}-export-${date}.csv`;
 }
