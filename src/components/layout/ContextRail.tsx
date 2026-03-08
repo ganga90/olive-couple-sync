@@ -382,11 +382,31 @@ export const ContextRail: React.FC = () => {
   const isCalendarPage = cleanPath === '/calendar';
   const isProfilePage = cleanPath === '/profile';
   const isRemindersPage = cleanPath === '/reminders';
+  const isExpensesPage = cleanPath === '/expenses';
+
+  // Render Expense Quick Stats (for Expenses page)
+  const renderExpenseStats = () => (
+    <div className="space-y-3">
+      <p className="text-xs font-bold uppercase tracking-widest text-stone-500">
+        {t('home:contextRail.expenseTips', 'Expense Tips')}
+      </p>
+      <div className="space-y-2 text-xs text-muted-foreground">
+        <div className="flex items-start gap-2 py-2">
+          <Wallet className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
+          <p>{t('home:contextRail.expenseTip1', 'Use $ prefix in WhatsApp to quickly log expenses')}</p>
+        </div>
+        <div className="flex items-start gap-2 py-2">
+          <PieChart className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
+          <p>{t('home:contextRail.expenseTip2', 'Set budget limits per category to track spending')}</p>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="sticky top-8 space-y-8">
-      {/* Partner Status - Show on Home, Lists, Reminders */}
-      {(isHomePage || isListsPage || isRemindersPage) && renderPartnerStatus()}
+      {/* Partner Status - Show on Home, Lists, Reminders, Expenses */}
+      {(isHomePage || isListsPage || isRemindersPage || isExpensesPage) && renderPartnerStatus()}
 
       {/* Mini Calendar - Show on Home, Lists, Profile (not on Calendar page - redundant) */}
       {(isHomePage || isListsPage || isProfilePage) && renderMiniCalendar()}
@@ -406,6 +426,12 @@ export const ContextRail: React.FC = () => {
         <>
           {renderMiniCalendar()}
           {renderUpcomingEvents()}
+        </>
+      )}
+      {isExpensesPage && (
+        <>
+          {renderMiniCalendar()}
+          {renderExpenseStats()}
         </>
       )}
     </div>
