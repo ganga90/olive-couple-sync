@@ -59,7 +59,8 @@
     "viewNote": "View linked note",
     "receipt": "Receipt",
     "delete": "Delete",
-    "close": "Close"
+    "close": "Close",
+    "description": "Expense details and options"
   },
   "empty": {
     "title": "No expenses yet",
