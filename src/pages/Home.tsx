@@ -26,6 +26,7 @@ import { PrivacyFilterPills } from "@/components/PrivacyFilterPills";
 import { useDefaultPrivacyFilter } from "@/hooks/useDefaultPrivacyFilter";
 import { EmailTriageReviewDialog } from "@/components/EmailTriageReviewDialog";
 import { PartnerInviteCard } from "@/components/PartnerInviteCard";
+import { PersonalizeCard } from "@/components/PersonalizeCard";
 import { supabase } from "@/lib/supabaseClient";
 
 const Home = () => {
