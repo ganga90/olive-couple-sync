@@ -500,6 +500,26 @@ const NoteDetails = () => {
                   <NotePrivacyToggle note={note} size="sm" variant="ghost" />
                 </div>
 
+                {/* Sensitive / Encryption Chip */}
+                <button
+                  className={cn(
+                    "meta-chip whitespace-nowrap transition-colors",
+                    note.is_sensitive
+                      ? "bg-primary/10 text-primary"
+                      : "hover:bg-stone-100"
+                  )}
+                  onClick={async () => {
+                    await updateNote(note.id, { is_sensitive: !note.is_sensitive });
+                    toast.success(
+                      !note.is_sensitive
+                        ? t('sensitive.enabled', 'Encryption enabled')
+                        : t('sensitive.disabled', 'Encryption disabled')
+                    );
+                  }}
+                >
+                  {note.is_sensitive ? '🔒' : '🔓'} {note.is_sensitive ? t('sensitive.label', 'Encrypted') : t('sensitive.labelOff', 'Not encrypted')}
+                </button>
+
                 {/* Status Badges */}
                 {isOverdue && (
                   <span className="meta-chip bg-[hsl(var(--priority-high))]/10 text-[hsl(var(--priority-high))] whitespace-nowrap">

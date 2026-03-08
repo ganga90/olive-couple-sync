@@ -106,5 +106,13 @@
     "placeholder": "GG/MM/AAAA",
     "save": "Salva",
     "clear": "Cancella"
+  },
+  "sensitive": {
+    "label": "Crittografato",
+    "labelOff": "Non crittografato",
+    "tooltip": "Segna come sensibile — il contenuto sarà crittografato a riposo",
+    "enabled": "Crittografia attivata",
+    "disabled": "Crittografia disattivata",
+    "badge": "Crittografato"
   }
 }

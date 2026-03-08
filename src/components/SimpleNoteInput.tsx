@@ -1,8 +1,10 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Send, Sparkles, CheckCircle } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Send, Sparkles, CheckCircle, Lock, LockOpen } from "lucide-react";
 import { toast } from "sonner";
 
 interface SimpleNoteInputProps {
@@ -19,10 +21,12 @@ interface ProcessedNote {
 }
 
 export const SimpleNoteInput: React.FC<SimpleNoteInputProps> = ({ onNoteAdded }) => {
+  const { t } = useTranslation('notes');
   const [text, setText] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedNote, setProcessedNote] = useState<ProcessedNote | null>(null);
   const [showResult, setShowResult] = useState(false);
+  const [isSensitive, setIsSensitive] = useState(false);
 
   const simulateAIProcessing = async (noteText: string): Promise<ProcessedNote> => {
     // Simulate AI processing with realistic delay
@@ -229,7 +233,28 @@ export const SimpleNoteInput: React.FC<SimpleNoteInputProps> = ({ onNoteAdded })
           />
           
           {text.trim() && (
-            <div className="absolute bottom-3 right-3">
+            <div className="absolute bottom-3 right-3 flex items-center gap-1.5">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={isSensitive ? "default" : "ghost"}
+                      onClick={() => setIsSensitive(!isSensitive)}
+                      className={isSensitive 
+                        ? "bg-primary/10 text-primary hover:bg-primary/20 h-8 w-8 p-0" 
+                        : "text-muted-foreground hover:text-foreground h-8 w-8 p-0"
+                      }
+                    >
+                      {isSensitive ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <p className="text-xs max-w-[200px]">{t('sensitive.tooltip', 'Mark as sensitive — content will be encrypted at rest')}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <Button
                 type="submit"
                 size="sm"
