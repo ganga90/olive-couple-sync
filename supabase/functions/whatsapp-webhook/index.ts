@@ -6108,7 +6108,8 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
       }
 
       if (savedTask) {
-        const confirmResponse = t('partner_message_and_task', userLang, {
+        const templateKey = existingTaskFound ? 'partner_message_existing_task' : 'partner_message_and_task';
+        const confirmResponse = t(templateKey, userLang, {
           partner: partnerName,
           task: savedTask.summary,
         });
