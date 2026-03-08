@@ -32,6 +32,45 @@ export type SupabaseNote = {
   encrypted_summary?: string | null;
 };
 
+// Decrypt sensitive notes by calling the decrypt-note edge function
+async function decryptSensitiveNotes(notes: SupabaseNote[], userId: string): Promise<SupabaseNote[]> {
+  const sensitiveNotes = notes.filter(n => n.is_sensitive && n.encrypted_original_text);
+  
+  if (sensitiveNotes.length === 0) return notes;
+  
+  // Decrypt in parallel (batched to avoid overwhelming the function)
+  const decryptResults = await Promise.allSettled(
+    sensitiveNotes.map(async (note) => {
+      try {
+        const { data, error } = await supabase.functions.invoke('decrypt-note', {
+          body: { note_id: note.id, user_id: userId }
+        });
+        if (error || !data) return null;
+        return { noteId: note.id, original_text: data.original_text, summary: data.summary };
+      } catch {
+        return null;
+      }
+    })
+  );
+  
+  // Build a map of decrypted content
+  const decryptedMap = new Map<string, { original_text: string; summary: string }>();
+  for (const result of decryptResults) {
+    if (result.status === 'fulfilled' && result.value) {
+      decryptedMap.set(result.value.noteId, result.value);
+    }
+  }
+  
+  // Replace encrypted placeholders with decrypted content
+  return notes.map(note => {
+    const decrypted = decryptedMap.get(note.id);
+    if (decrypted) {
+      return { ...note, original_text: decrypted.original_text, summary: decrypted.summary };
+    }
+    return note;
+  });
+}
+
 export const useSupabaseNotes = (coupleId?: string | null) => {
   const { user } = useUser();
   const [notes, setNotes] = useState<SupabaseNote[]>([]);
