@@ -2064,8 +2064,8 @@ Process this note:
 
     // Build the base result
     let result: any = isMultiple
-      ? { multiple: true, notes: processedNotes, original_text: safeText, media_urls: mediaUrls.length > 0 ? mediaUrls : null }
-      : { ...processedNotes[0], original_text: safeText };
+      ? { multiple: true, notes: processedNotes, original_text: safeText, media_urls: mediaUrls.length > 0 ? mediaUrls : null, is_sensitive: !!is_sensitive }
+      : { ...processedNotes[0], original_text: safeText, is_sensitive: !!is_sensitive };
 
     // Include receipt processing results if a receipt was detected and processed
     if (receiptProcessingResult && receiptProcessingResult.success) {
