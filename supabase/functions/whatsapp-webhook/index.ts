@@ -1414,8 +1414,9 @@ async function searchTaskByKeywords(
     .order('created_at', { ascending: false })
     .limit(50);
   
+  // Include BOTH personal tasks (couple_id IS NULL) AND couple tasks
   if (coupleId) {
-    query = query.eq('couple_id', coupleId);
+    query = query.or(`couple_id.eq.${coupleId},and(author_id.eq.${userId},couple_id.is.null)`);
   } else {
     query = query.eq('author_id', userId);
   }
