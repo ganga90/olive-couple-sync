@@ -431,7 +431,7 @@ const Home = () => {
                       ? t('common:common.today')
                       : isTomorrow
                       ? t('common:common.tomorrow')
-                      : format(dayData.date, 'EEEE');
+                      : format(dayData.date, 'EEEE', { locale: dateLocale });
                     const taskCount = dayData.tasks.length;
 
                     return (
