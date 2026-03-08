@@ -67,7 +67,7 @@ export const SuperpowersGrid = () => {
         </motion.div>
 
         {/* Superpowers Grid */}
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
           {superpowers.map((power, index) => {
             const Icon = power.icon;
 
