@@ -504,7 +504,7 @@ const Home = () => {
                         <div className="flex items-center gap-2 mb-2">
                           <Bell className="w-4 h-4 md:w-5 md:h-5 text-primary" />
                           <span className="text-sm md:text-base text-muted-foreground">
-                            {formatDistanceToNow(new Date(task.reminder_time!), { addSuffix: true })}
+                            {formatDistanceToNow(new Date(task.reminder_time!), { addSuffix: true, locale: dateLocale })}
                           </span>
                         </div>
                         <TaskItem
