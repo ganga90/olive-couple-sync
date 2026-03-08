@@ -909,7 +909,7 @@ const ExpensesPage: React.FC = () => {
                       </span>
                       <span className={cn(
                         "text-xs",
-                        bl.status === 'over' ? 'text-destructive font-semibold' : bl.status === 'warning' ? 'text-[hsl(var(--warning,40_100%_50%))]' : 'text-muted-foreground'
+                        bl.status === 'over' ? 'text-destructive font-semibold' : bl.status === 'warning' ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground'
                       )}>
                         {currencySymbol}{bl.spent.toFixed(0)} / {currencySymbol}{bl.monthly_limit.toFixed(0)} ({bl.percentage}%)
                       </span>
