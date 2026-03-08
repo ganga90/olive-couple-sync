@@ -205,7 +205,7 @@ const Reminders = () => {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-background">
+    <div className="h-full overflow-y-auto bg-background atmosphere-bg">
       <FloatingActionButton />
       
       <div className="px-4 pt-6 pb-24 md:pb-6 space-y-6 max-w-2xl mx-auto">
