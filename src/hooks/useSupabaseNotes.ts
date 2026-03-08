@@ -312,6 +312,9 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
             case 'isShared':
               // Ignore isShared - privacy is controlled by couple_id
               break;
+            case 'is_sensitive':
+              supabaseUpdates.is_sensitive = value;
+              break;
             default:
               console.warn("[useSupabaseNotes] Ignoring unknown field:", key);
               break;
