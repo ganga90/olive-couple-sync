@@ -2325,6 +2325,12 @@ serve(async (req) => {
 
     const coupleId = coupleMember?.couple_id || null;
 
+    // Respect user's default privacy preference for note creation
+    // 'private' → couple_id = null; 'shared' (default) → couple_id = coupleId
+    const defaultPrivacy = profile.default_privacy || 'shared';
+    const effectiveCoupleId = defaultPrivacy === 'private' ? null : coupleId;
+    console.log(`[Privacy] default_privacy=${defaultPrivacy}, coupleId=${coupleId}, effectiveCoupleId=${effectiveCoupleId}`);
+
     // ========================================================================
     // HELPER: Save referenced entity to session for pronoun resolution
     // ========================================================================
