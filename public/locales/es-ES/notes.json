@@ -106,5 +106,13 @@
     "placeholder": "DD/MM/AAAA",
     "save": "Guardar",
     "clear": "Limpiar"
+  },
+  "sensitive": {
+    "label": "Cifrado",
+    "labelOff": "No cifrado",
+    "tooltip": "Marcar como sensible — el contenido se cifrará en reposo",
+    "enabled": "Cifrado activado",
+    "disabled": "Cifrado desactivado",
+    "badge": "Cifrado"
   }
 }
