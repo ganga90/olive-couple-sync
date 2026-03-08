@@ -2,13 +2,13 @@ import React, { useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Calendar } from '@/components/ui/calendar';
-import { Users, CalendarDays, ArrowRight, List, CheckSquare, TrendingUp, Clock, UserPlus } from 'lucide-react';
+import { Users, CalendarDays, ArrowRight, List, CheckSquare, TrendingUp, Clock, UserPlus, Wallet, PieChart } from 'lucide-react';
 import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
 import { useSupabaseNotesContext } from '@/providers/SupabaseNotesProvider';
 import { useSupabaseLists } from '@/hooks/useSupabaseLists';
 import { useLanguage } from '@/providers/LanguageProvider';
 import { useAuth } from '@/providers/AuthProvider';
-import { format, isSameDay, addDays, isToday, startOfDay, formatDistanceToNow } from 'date-fns';
+import { format, isSameDay, addDays, isToday, startOfDay, formatDistanceToNow, startOfMonth, endOfMonth } from 'date-fns';
 import type { Note } from '@/types/note';
 import { cn } from '@/lib/utils';
 
