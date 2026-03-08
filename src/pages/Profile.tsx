@@ -179,15 +179,6 @@ const Profile = () => {
           </SettingsCard>
 
           <SettingsCard
-            icon={<span className="text-lg">🌍</span>}
-            iconBg="bg-blue-500/10"
-            title={t('profile:regional.title', 'Regional Format')}
-            subtitle={t('profile:regional.subtitle', 'Language & timezone settings')}
-          >
-            <RegionalFormatCard />
-          </SettingsCard>
-
-          <SettingsCard
             icon={<BellRing className="h-5 w-5 text-[hsl(var(--magic-accent))]" />}
             iconBg="bg-[hsl(var(--magic-accent))]/10"
             title={t('profile:olivePreferences.title', 'Olive Proactive Settings')}
