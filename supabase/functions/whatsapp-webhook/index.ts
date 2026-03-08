@@ -2082,7 +2082,7 @@ serve(async (req) => {
       // Authenticate user first (need userId, coupleId for note creation)
       const { data: mediaProfiles, error: mediaProfileError } = await supabase
         .from('clerk_profiles')
-        .select('id, display_name, timezone, language_preference')
+        .select('id, display_name, timezone, language_preference, default_privacy')
         .eq('phone_number', fromNumber)
         .limit(1);
 
