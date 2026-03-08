@@ -230,6 +230,12 @@ export const AppPreferencesModals: React.FC = () => {
           description: t('settings.help.subtitle'),
           content: <HelpContent />,
         };
+      case 'defaultView':
+        return {
+          title: t('defaultHomeView.title', 'Default Home View'),
+          description: t('defaultHomeView.subtitle', 'Choose your default tab'),
+          content: <DefaultHomeViewContent />,
+        };
       default:
         return null;
     }
