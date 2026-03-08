@@ -106,5 +106,15 @@
     "thanksForCorrection": "Gracias por la corrección.",
     "confidence": "confianza",
     "error": "Error al guardar memoria"
+  },
+  "partnerInvite": {
+    "title": "Mejor juntos",
+    "subtitle": "Invita a tu pareja a compartir listas, tareas y calendarios.",
+    "placeholder": "Nombre de tu pareja",
+    "sent": "¡Enlace de invitación creado!",
+    "copied": "¡Copiado!",
+    "copy": "Copiar",
+    "dismiss": "Cerrar",
+    "error": "No se pudo crear la invitación. Inténtalo de nuevo."
   }
 }

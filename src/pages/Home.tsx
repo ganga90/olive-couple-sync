@@ -25,6 +25,7 @@ import { useCalendarEvents } from "@/hooks/useCalendarEvents";
 import { PrivacyFilterPills } from "@/components/PrivacyFilterPills";
 import { useDefaultPrivacyFilter } from "@/hooks/useDefaultPrivacyFilter";
 import { EmailTriageReviewDialog } from "@/components/EmailTriageReviewDialog";
+import { PartnerInviteCard } from "@/components/PartnerInviteCard";
 import { supabase } from "@/lib/supabaseClient";
 
 const Home = () => {
@@ -223,6 +224,11 @@ const Home = () => {
               description={t('home:brainDump.onboarding.description')}
               position="bottom"
             />
+          </div>
+
+          {/* Partner Invite Card (post-onboarding) */}
+          <div className="animate-fade-up stagger-2">
+            <PartnerInviteCard />
           </div>
 
           {/* Quick Action Cards - Glass Style (only show if no notes) */}
