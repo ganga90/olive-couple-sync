@@ -99,7 +99,7 @@ export const PersonalizeCard = () => {
     setSaving(true);
 
     try {
-      const promises: Promise<any>[] = [];
+      const promises: PromiseLike<any>[] = [];
 
       // Save note style to profile
       if (style) {
