@@ -2250,7 +2250,7 @@ serve(async (req) => {
     // Authenticate user by WhatsApp number
     const { data: profiles, error: profileError } = await supabase
       .from('clerk_profiles')
-      .select('id, display_name, timezone, language_preference')
+      .select('id, display_name, timezone, language_preference, default_privacy')
       .eq('phone_number', fromNumber)
       .limit(1);
 
