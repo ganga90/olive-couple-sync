@@ -6225,24 +6225,42 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
       }
       
       if (processData.multiple && Array.isArray(processData.notes)) {
-        const notesToInsert = processData.notes.map((note: any) => ({
-          author_id: userId,
-          couple_id: effectiveCoupleId,
-          original_text: messageBody || note.summary || 'Media attachment',
-          summary: note.summary,
-          category: note.category || 'task',
-          due_date: note.due_date,
-          reminder_time: note.reminder_time,
-          recurrence_frequency: note.recurrence_frequency,
-          recurrence_interval: note.recurrence_interval,
-          priority: isUrgent ? 'high' : (note.priority || 'medium'),
-          tags: note.tags || [],
-          items: note.items || [],
-          task_owner: note.task_owner,
-          list_id: note.list_id,
-          location: latitude && longitude ? { latitude, longitude } : null,
-          media_urls: mediaUrls.length > 0 ? mediaUrls : null,
-          completed: false
+        // For multi-note: encrypt each note if sensitive
+        const notesToInsert = await Promise.all(processData.notes.map(async (note: any) => {
+          const rawText = messageBody || note.summary || 'Media attachment';
+          const rawSum = note.summary;
+          let encFields = {
+            original_text: rawText,
+            summary: rawSum,
+            encrypted_original_text: null as string | null,
+            encrypted_summary: null as string | null,
+            is_sensitive: isSensitiveNote || !!processData.is_sensitive,
+          };
+          
+          if (encFields.is_sensitive && isEncryptionAvailable()) {
+            try {
+              encFields = await encryptNoteFields(rawText, rawSum, userId, true);
+            } catch (e) { /* fallback to plaintext */ }
+          }
+          
+          return {
+            author_id: userId,
+            couple_id: effectiveCoupleId,
+            ...encFields,
+            category: note.category || 'task',
+            due_date: note.due_date,
+            reminder_time: note.reminder_time,
+            recurrence_frequency: note.recurrence_frequency,
+            recurrence_interval: note.recurrence_interval,
+            priority: isUrgent ? 'high' : (note.priority || 'medium'),
+            tags: note.tags || [],
+            items: note.items || [],
+            task_owner: note.task_owner,
+            list_id: note.list_id,
+            location: latitude && longitude ? { latitude, longitude } : null,
+            media_urls: mediaUrls.length > 0 ? mediaUrls : null,
+            completed: false
+          };
         }));
 
         const { data: insertedNotes, error: insertError } = await supabase
