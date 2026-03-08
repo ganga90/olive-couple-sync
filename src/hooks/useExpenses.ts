@@ -174,10 +174,10 @@ export function useExpenses() {
         .eq('id', userId);
       if (error) throw error;
       setPreferences(prev => ({ ...prev, ...updates }));
-      toast.success('Preferences updated');
+      toast.success(t('toast.preferencesUpdated', 'Preferences updated'));
     } catch (err) {
       console.error('[useExpenses] preferences update error:', err);
-      toast.error('Failed to update preferences');
+      toast.error(t('toast.preferencesError', 'Failed to update preferences'));
     }
   }, [userId]);
 
