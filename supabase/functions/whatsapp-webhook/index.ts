@@ -5802,46 +5802,77 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
       console.log('[PARTNER_MESSAGE] Partner phone ends in:', partnerPhoneLast4);
 
       // 3. Determine if this is a task to save or just a message to relay
-      const isTaskLike = /\b(buy|get|pick up|call|book|make|schedule|clean|fix|do|send|bring|take|remind|comprar|llamar|hacer|enviar|traer|comprare|chiamare|fare|inviare|portare)\b/i.test(partnerMessageContent);
+      // "remind" and "notify" actions ALWAYS create tasks. For "tell"/"ask", use
+      // a broad action-verb regex to detect task-like content — when in doubt, create.
+      const isActionAlwaysTask = partnerAction === 'remind' || partnerAction === 'notify';
+      const isTaskLike = isActionAlwaysTask || /\b(buy|get|pick\s*up|call|book|make|schedule|clean|fix|do|send|bring|take|remind|check|prepare|pay|return|cancel|organize|plan|cook|wash|set\s*up|drop\s*off|arrange|confirm|order|submit|review|renew|update|finish|complete|collect|deliver|move|pack|comprar|llamar|hacer|enviar|traer|pagar|limpiar|cocinar|preparar|organizar|recoger|devolver|comprare|chiamare|fare|inviare|portare|pagare|pulire|cucinare|preparare|organizzare|raccogliere|restituire)\b/i.test(partnerMessageContent);
+
+      console.log('[PARTNER_MESSAGE] isTaskLike:', isTaskLike, '| isActionAlwaysTask:', isActionAlwaysTask, '| partnerAction:', partnerAction);
 
       let savedTask: { id: string; summary: string } | null = null;
 
       if (isTaskLike) {
         try {
-          const { data: processData } = await supabase.functions.invoke('process-note', {
+          // Use process-note for AI-powered categorization & list routing
+          const { data: processData, error: processErr } = await supabase.functions.invoke('process-note', {
             body: {
               text: partnerMessageContent,
               user_id: userId,
-              couple_id: coupleId,
+              couple_id: coupleId, // Partner tasks are always shared
               timezone: profile.timezone || 'America/New_York',
+              source: 'whatsapp',
             }
           });
 
+          if (processErr) {
+            console.error('[PARTNER_MESSAGE] process-note error:', processErr);
+          }
+
           const noteData = {
             author_id: userId,
-            couple_id: coupleId,
+            couple_id: coupleId, // Partner tasks are always shared
             original_text: partnerMessageContent,
             summary: processData?.summary || partnerMessageContent,
             category: processData?.category || 'task',
             due_date: processData?.due_date || null,
             reminder_time: processData?.reminder_time || null,
+            recurrence_frequency: processData?.recurrence_frequency || null,
+            recurrence_interval: processData?.recurrence_interval || null,
             priority: processData?.priority || 'medium',
             tags: processData?.tags || [],
             items: processData?.items || [],
             task_owner: partnerId,
             list_id: processData?.list_id || null,
+            source: 'whatsapp',
+            source_ref: `partner_relay:${partnerAction}`,
             completed: false,
           };
 
-          const { data: insertedNote } = await supabase
+          const { data: insertedNote, error: insertErr } = await supabase
             .from('clerk_notes')
             .insert(noteData)
-            .select('id, summary')
+            .select('id, summary, list_id')
             .single();
 
-          if (insertedNote) {
+          if (insertErr) {
+            console.error('[PARTNER_MESSAGE] Note insert error:', insertErr.message, insertErr.details);
+          } else if (insertedNote) {
             savedTask = { id: insertedNote.id, summary: insertedNote.summary };
-            console.log('[PARTNER_MESSAGE] Created task for partner:', insertedNote.summary);
+            console.log('[PARTNER_MESSAGE] ✅ Created task for partner:', insertedNote.summary, '| list_id:', insertedNote.list_id);
+
+            // Generate embedding for semantic search (non-blocking)
+            try {
+              const embedding = await generateEmbedding(insertedNote.summary);
+              if (embedding) {
+                await supabase
+                  .from('clerk_notes')
+                  .update({ embedding: JSON.stringify(embedding) })
+                  .eq('id', insertedNote.id);
+                console.log('[PARTNER_MESSAGE] Embedding saved for task:', insertedNote.id);
+              }
+            } catch (embErr) {
+              console.error('[PARTNER_MESSAGE] Embedding error (non-blocking):', embErr);
+            }
           }
         } catch (taskErr) {
           console.error('[PARTNER_MESSAGE] Error creating task (non-blocking):', taskErr);
