@@ -96,7 +96,8 @@
     "settleError": "Errore nel saldare le spese",
     "budgetSet": "Limite di budget impostato per {{category}}",
     "budgetSetError": "Errore nell'impostazione del limite",
-    "budgetRemoved": "Limite di budget rimosso"
+    "exported": "Spese esportate",
+    "updated": "Spesa aggiornata"
   },
   "archiveAll": "Archivia Tutto",
   "receipt": {
