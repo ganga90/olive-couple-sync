@@ -262,6 +262,24 @@ const Profile = () => {
           delay={200}
         >
           <SettingsCard
+            icon={<span className="text-lg">🌍</span>}
+            iconBg="bg-blue-500/10"
+            title={t('profile:regional.title', 'Regional Format')}
+            subtitle={t('profile:regional.subtitle', 'Language & timezone settings')}
+          >
+            <RegionalFormatCard />
+          </SettingsCard>
+
+          <SettingsCard
+            icon={<Fingerprint className="h-5 w-5 text-primary" />}
+            iconBg="bg-primary/10"
+            title={t('auth:passkey.settingsTitle', 'Passkey')}
+            subtitle={t('auth:passkey.settingsSubtitle', 'Sign in faster with biometrics')}
+          >
+            <PasskeySettingsCard />
+          </SettingsCard>
+
+          <SettingsCard
             icon={<Settings className="h-5 w-5 text-stone-500" />}
             iconBg="bg-stone-100"
             title={t('profile:appPreferences.title', 'App Preferences')}
