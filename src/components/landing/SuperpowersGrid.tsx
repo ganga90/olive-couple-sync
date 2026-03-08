@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
-import { Send, Sparkles, Search, ArrowRight } from "lucide-react";
-import { Bell, Check } from "lucide-react";
+import { Send, Sparkles, Search, ArrowRight, Shield } from "lucide-react";
+import { Bell, Check, Lock } from "lucide-react";
 
 export const SuperpowersGrid = () => {
   const { t } = useTranslation('landing');
