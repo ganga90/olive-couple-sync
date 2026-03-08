@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 serve(async (req) => {
@@ -22,9 +22,18 @@ serve(async (req) => {
       throw new Error('GOOGLE_CALENDAR_CLIENT_ID not configured');
     }
 
-    // Use the provided redirect origin or default
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    if (!supabaseUrl) {
+      throw new Error('SUPABASE_URL not configured');
+    }
+
+    // CRITICAL: Use the edge function URL as redirect_uri, NOT the frontend URL.
+    // This ensures the redirect_uri is always consistent regardless of browser,
+    // www vs non-www, or preview vs production environments.
+    const redirectUri = `${supabaseUrl}/functions/v1/calendar-callback`;
+
+    // Store the frontend origin in the state so the callback can redirect back
     const origin = redirect_origin || 'https://witholive.app';
-    const redirectUri = `${origin}/auth/google/callback`;
 
     const scopes = [
       "https://www.googleapis.com/auth/calendar",
@@ -34,9 +43,12 @@ serve(async (req) => {
       "https://www.googleapis.com/auth/userinfo.profile",
     ];
 
-    // Encode state with user_id and redirect origin
+    // Encode state with user_id and frontend origin using URL-safe base64
     const state = JSON.stringify({ user_id, origin });
-    const encodedState = btoa(state);
+    const encodedState = btoa(state)
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
 
     const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     authUrl.searchParams.set("client_id", clientId);
@@ -46,8 +58,10 @@ serve(async (req) => {
     authUrl.searchParams.set("access_type", "offline");
     authUrl.searchParams.set("prompt", "consent");
     authUrl.searchParams.set("state", encodedState);
+    // Enable incremental authorization per Google's recommendation
+    authUrl.searchParams.set("include_granted_scopes", "true");
 
-    console.log('[calendar-auth-url] Generated auth URL for user:', user_id);
+    console.log('[calendar-auth-url] Generated auth URL for user:', user_id, 'redirect_uri:', redirectUri);
 
     return new Response(
       JSON.stringify({ 
