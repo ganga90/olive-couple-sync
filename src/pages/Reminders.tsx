@@ -216,7 +216,7 @@ const Reminders = () => {
               <Bell className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
+              <h1 className="text-4xl font-serif font-bold text-foreground tracking-tight">{t('title')}</h1>
               <p className="text-sm text-muted-foreground">
                 {totalReminders === 0 ? t('allCaughtUp') : t('upcoming', { count: totalReminders })}
               </p>
