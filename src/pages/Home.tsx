@@ -13,6 +13,7 @@ import type { Note } from "@/types/note";
 import { NoteInput } from "@/components/NoteInput";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { format, addDays, startOfDay, isSameDay, formatDistanceToNow } from "date-fns";
+import { useDateLocale } from "@/hooks/useDateLocale";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 // Categories are now derived dynamically from user's actual notes
 import { useOrganizeAgent } from "@/hooks/useOrganizeAgent";
