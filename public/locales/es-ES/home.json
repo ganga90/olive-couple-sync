@@ -40,8 +40,14 @@
     "sectionLabel": "Tus tareas",
     "priority": "🔥 Prioridad",
     "daily": "📅 Diario",
+    "weekly": "📆 Semanal",
     "reminders": "⏰ Recordatorios",
     "recent": "🕐 Reciente"
+  },
+  "weekly": {
+    "task": "tarea",
+    "tasks": "tareas",
+    "noTasks": "Nada programado"
   },
   "emptyState": {
     "noTasksMatch": "No hay tareas que coincidan con los filtros",
