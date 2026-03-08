@@ -450,7 +450,7 @@ export function useExpenses() {
       const { error } = await supabase.from('expense_budget_limits').delete().eq('id', id);
       if (error) throw error;
       setBudgetLimits(prev => prev.filter(bl => bl.id !== id));
-      toast.success('Budget limit removed');
+      toast.success(t('toast.budgetRemoved', 'Budget limit removed'));
     } catch (err) {
       console.error('[useExpenses] remove budget limit error:', err);
     }
