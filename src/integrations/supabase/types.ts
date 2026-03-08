@@ -740,13 +740,18 @@ export type Database = {
           currency: string
           expense_date: string
           id: string
+          is_recurring: boolean
           is_settled: boolean
           is_shared: boolean
           name: string
+          next_recurrence_date: string | null
           note_id: string | null
           original_text: string | null
           paid_by: string
+          parent_recurring_id: string | null
           receipt_url: string | null
+          recurrence_frequency: string | null
+          recurrence_interval: number | null
           settled_at: string | null
           settlement_id: string | null
           split_type: Database["public"]["Enums"]["expense_split_type"]
@@ -762,13 +767,18 @@ export type Database = {
           currency?: string
           expense_date?: string
           id?: string
+          is_recurring?: boolean
           is_settled?: boolean
           is_shared?: boolean
           name: string
+          next_recurrence_date?: string | null
           note_id?: string | null
           original_text?: string | null
           paid_by: string
+          parent_recurring_id?: string | null
           receipt_url?: string | null
+          recurrence_frequency?: string | null
+          recurrence_interval?: number | null
           settled_at?: string | null
           settlement_id?: string | null
           split_type?: Database["public"]["Enums"]["expense_split_type"]
@@ -784,13 +794,18 @@ export type Database = {
           currency?: string
           expense_date?: string
           id?: string
+          is_recurring?: boolean
           is_settled?: boolean
           is_shared?: boolean
           name?: string
+          next_recurrence_date?: string | null
           note_id?: string | null
           original_text?: string | null
           paid_by?: string
+          parent_recurring_id?: string | null
           receipt_url?: string | null
+          recurrence_frequency?: string | null
+          recurrence_interval?: number | null
           settled_at?: string | null
           settlement_id?: string | null
           split_type?: Database["public"]["Enums"]["expense_split_type"]
@@ -810,6 +825,13 @@ export type Database = {
             columns: ["note_id"]
             isOneToOne: false
             referencedRelation: "clerk_notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_parent_recurring_id_fkey"
+            columns: ["parent_recurring_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
             referencedColumns: ["id"]
           },
           {
