@@ -25,6 +25,7 @@ import { useCalendarEvents } from "@/hooks/useCalendarEvents";
 import { PrivacyFilterPills } from "@/components/PrivacyFilterPills";
 import { useDefaultPrivacyFilter } from "@/hooks/useDefaultPrivacyFilter";
 import { EmailTriageReviewDialog } from "@/components/EmailTriageReviewDialog";
+import { PartnerInviteCard } from "@/components/PartnerInviteCard";
 import { supabase } from "@/lib/supabaseClient";
 
 const Home = () => {
