@@ -67,6 +67,111 @@ async function saveExtractedLinks(
   });
 }
 
+// ============================================================================
+// EXPENSE DETECTION & AUTO-CREATION
+// ============================================================================
+
+// Currency/amount regex: matches $160, €50.99, £30, 160$, etc.
+const AMOUNT_REGEX = /(?:[$€£]\s*(\d+(?:[.,]\d{1,2})?))|(?:(\d+(?:[.,]\d{1,2})?)\s*[$€£])/gi;
+
+// Category icon mapping for expenses
+const EXPENSE_CATEGORY_ICONS: Record<string, string> = {
+  'Groceries': '🛒', 'Dining': '🍽️', 'Restaurant': '🍽️', 'Travel': '✈️',
+  'Utilities': '💡', 'Entertainment': '🎬', 'Shopping': '🛍️', 'Health': '💊',
+  'Transportation': '🚗', 'Gas': '⛽', 'Subscriptions': '📱', 'Cable & Internet': '📡',
+  'Rent': '🏠', 'Insurance': '🛡️', 'Education': '📚', 'Personal Care': '💇',
+  'Clothing': '👕', 'Gifts': '🎁', 'Pets': '🐾', 'Coffee': '☕',
+  'Drinks': '🍺', 'Fitness': '💪', 'Pharmacy': '💊', 'Home': '🏡',
+  'Electronics': '📱', 'Other': '📄', 'Finance': '💰',
+};
+
+function detectCurrency(text: string): string {
+  if (text.includes('€')) return 'EUR';
+  if (text.includes('£')) return 'GBP';
+  return 'USD';
+}
+
+function extractAmount(text: string): number | null {
+  const matches = [...text.matchAll(AMOUNT_REGEX)];
+  if (matches.length === 0) return null;
+  const raw = matches[0][1] || matches[0][2];
+  if (!raw) return null;
+  return parseFloat(raw.replace(',', '.'));
+}
+
+function mapCategoryToExpenseCategory(noteCategory: string): string {
+  const lower = noteCategory.toLowerCase().replace(/[_\s]+/g, '');
+  const map: Record<string, string> = {
+    groceries: 'Groceries', shopping: 'Shopping', dining: 'Dining',
+    restaurant: 'Restaurant', restaurants: 'Restaurant', travel: 'Travel',
+    health: 'Health', entertainment: 'Entertainment', finance: 'Finance',
+    homeimprovement: 'Home', personal: 'Personal Care', work: 'Other',
+    task: 'Other', transportation: 'Transportation', gas: 'Gas',
+    utilities: 'Utilities', subscriptions: 'Subscriptions',
+    education: 'Education', fitness: 'Fitness', clothing: 'Clothing',
+    gifts: 'Gifts', pets: 'Pets', coffee: 'Coffee', drinks: 'Drinks',
+  };
+  return map[lower] || 'Other';
+}
+
+async function detectAndCreateExpense(
+  supabase: SupabaseClient,
+  result: any,
+  originalText: string,
+  userId: string,
+  coupleId?: string,
+  receiptUrl?: string | null,
+  source?: string
+): Promise<void> {
+  const amount = extractAmount(originalText);
+  if (!amount || amount <= 0) return; // No monetary amount found
+
+  console.log('[Expense Detection] Amount detected:', amount, 'in text:', originalText.substring(0, 80));
+
+  const currency = detectCurrency(originalText);
+  const noteCategory = result.category || (result.notes?.[0]?.category) || 'Other';
+  const expenseCategory = mapCategoryToExpenseCategory(noteCategory);
+  const expenseName = result.summary || (result.notes?.[0]?.summary) || originalText.substring(0, 100);
+
+  // Check user's expense preferences
+  const { data: profile } = await supabase
+    .from('clerk_profiles')
+    .select('expense_tracking_mode, expense_default_split, expense_default_currency')
+    .eq('id', userId)
+    .single();
+
+  const trackingMode = profile?.expense_tracking_mode || 'individual';
+  const defaultSplit = profile?.expense_default_split || 'you_paid_split';
+  const isShared = trackingMode === 'shared' && !!coupleId;
+
+  // Determine the note_id if available (from insert result or result.id)
+  const noteId = result.id || result.notes?.[0]?.id || null;
+
+  const expenseData = {
+    user_id: userId,
+    couple_id: isShared ? coupleId : null,
+    note_id: noteId,
+    name: expenseName,
+    amount,
+    currency: currency,
+    category: expenseCategory,
+    category_icon: EXPENSE_CATEGORY_ICONS[expenseCategory] || '📄',
+    split_type: isShared ? defaultSplit : 'individual',
+    paid_by: userId,
+    is_shared: isShared,
+    receipt_url: receiptUrl || null,
+    expense_date: new Date().toISOString(),
+    original_text: originalText.substring(0, 500),
+  };
+
+  const { error } = await supabase.from('expenses').insert(expenseData);
+  if (error) {
+    console.error('[Expense Detection] Failed to create expense:', error);
+  } else {
+    console.log('[Expense Detection] ✅ Expense created:', expenseName, amount, currency);
+  }
+}
+
 // Define the JSON schema for structured output
 const singleNoteSchema = {
   type: Type.OBJECT,
@@ -2107,6 +2212,18 @@ Process this note:
     }
 
     console.log('[GenAI SDK] Final result:', result);
+
+    // ======================================================================
+    // AUTO-DETECT EXPENSES: Check if note contains monetary amounts
+    // ======================================================================
+    const expenseDetected = detectAndCreateExpense(
+      supabase, result, safeText, user_id, couple_id,
+      mediaUrls.length > 0 ? mediaUrls[0] : null,
+      source
+    );
+    expenseDetected.catch(err => {
+      console.warn('[Expense Detection] Non-blocking error:', err);
+    });
 
     // Auto-extract memories from brain-dump (async, non-blocking) - only if there's actual text
     if (safeText.trim()) {

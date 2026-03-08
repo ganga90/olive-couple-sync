@@ -513,6 +513,9 @@ export type Database = {
           created_at: string
           default_privacy: string
           display_name: string | null
+          expense_default_currency: string | null
+          expense_default_split: string | null
+          expense_tracking_mode: string | null
           id: string
           language_preference: string | null
           last_outbound_context: Json | null
@@ -526,6 +529,9 @@ export type Database = {
           created_at?: string
           default_privacy?: string
           display_name?: string | null
+          expense_default_currency?: string | null
+          expense_default_split?: string | null
+          expense_tracking_mode?: string | null
           id: string
           language_preference?: string | null
           last_outbound_context?: Json | null
@@ -539,6 +545,9 @@ export type Database = {
           created_at?: string
           default_privacy?: string
           display_name?: string | null
+          expense_default_currency?: string | null
+          expense_default_split?: string | null
+          expense_tracking_mode?: string | null
           id?: string
           language_preference?: string | null
           last_outbound_context?: Json | null
@@ -638,6 +647,138 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      expense_settlements: {
+        Row: {
+          couple_id: string | null
+          created_at: string
+          currency: string
+          expense_count: number
+          id: string
+          settled_by: string
+          total_amount: number
+          user_id: string
+        }
+        Insert: {
+          couple_id?: string | null
+          created_at?: string
+          currency?: string
+          expense_count?: number
+          id?: string
+          settled_by: string
+          total_amount?: number
+          user_id: string
+        }
+        Update: {
+          couple_id?: string | null
+          created_at?: string
+          currency?: string
+          expense_count?: number
+          id?: string
+          settled_by?: string
+          total_amount?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_settlements_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_couples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expenses: {
+        Row: {
+          amount: number
+          category: string
+          category_icon: string | null
+          couple_id: string | null
+          created_at: string
+          currency: string
+          expense_date: string
+          id: string
+          is_settled: boolean
+          is_shared: boolean
+          name: string
+          note_id: string | null
+          original_text: string | null
+          paid_by: string
+          receipt_url: string | null
+          settled_at: string | null
+          settlement_id: string | null
+          split_type: Database["public"]["Enums"]["expense_split_type"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          category?: string
+          category_icon?: string | null
+          couple_id?: string | null
+          created_at?: string
+          currency?: string
+          expense_date?: string
+          id?: string
+          is_settled?: boolean
+          is_shared?: boolean
+          name: string
+          note_id?: string | null
+          original_text?: string | null
+          paid_by: string
+          receipt_url?: string | null
+          settled_at?: string | null
+          settlement_id?: string | null
+          split_type?: Database["public"]["Enums"]["expense_split_type"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          category_icon?: string | null
+          couple_id?: string | null
+          created_at?: string
+          currency?: string
+          expense_date?: string
+          id?: string
+          is_settled?: boolean
+          is_shared?: boolean
+          name?: string
+          note_id?: string | null
+          original_text?: string | null
+          paid_by?: string
+          receipt_url?: string | null
+          settled_at?: string | null
+          settlement_id?: string | null
+          split_type?: Database["public"]["Enums"]["expense_split_type"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_couples"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_settlement_id_fkey"
+            columns: ["settlement_id"]
+            isOneToOne: false
+            referencedRelation: "expense_settlements"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       invites: {
         Row: {
@@ -1822,6 +1963,12 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      expense_split_type:
+        | "you_paid_split"
+        | "you_owed_full"
+        | "partner_paid_split"
+        | "partner_owed_full"
+        | "individual"
       invite_status: "pending" | "accepted" | "revoked"
       member_role: "owner" | "member"
       note_priority: "low" | "medium" | "high"
@@ -1953,6 +2100,13 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      expense_split_type: [
+        "you_paid_split",
+        "you_owed_full",
+        "partner_paid_split",
+        "partner_owed_full",
+        "individual",
+      ],
       invite_status: ["pending", "accepted", "revoked"],
       member_role: ["owner", "member"],
       note_priority: ["low", "medium", "high"],

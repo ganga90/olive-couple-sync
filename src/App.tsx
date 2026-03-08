@@ -22,6 +22,7 @@ import MyDay from "./pages/MyDay";
 import TermsOfService from "./pages/legal/TermsOfService";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
 import BudgetPage from "./pages/Budget";
+import ExpensesPage from "./pages/Expenses";
 import RequestAccessPage from "./pages/RequestAccess";
 import AdminPage from "./pages/Admin";
 import AgentDetail from "./pages/AgentDetail";
@@ -55,6 +56,7 @@ const AppRoutes = () => (
     <Route path="/calendar" element={<CalendarPage />} />
     <Route path="/reminders" element={<Reminders />} />
     <Route path="/budget" element={<BudgetPage />} />
+    <Route path="/expenses" element={<ExpensesPage />} />
     <Route path="/onboarding" element={<Onboarding />} />
     <Route path="/welcome" element={<Welcome />} />
     <Route path="/profile" element={<Profile />} />
@@ -102,6 +104,7 @@ const App = () => (
                   <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/reminders" element={<Reminders />} />
                   <Route path="/budget" element={<BudgetPage />} />
+                  <Route path="/expenses" element={<ExpensesPage />} />
                   <Route path="/onboarding" element={<Onboarding />} />
                   <Route path="/welcome" element={<Welcome />} />
                   <Route path="/profile" element={<Profile />} />
