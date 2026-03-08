@@ -948,7 +948,7 @@ const ExpensesPage: React.FC = () => {
                   <p className="text-lg font-semibold">{activeExpenses.length} {t('summary.expenses', 'expenses')}</p>
                 </div>
                 {activeExpenses.length > 0 && (
-                  <Button size="sm" variant="outline" onClick={settleExpenses} className="rounded-full">
+                  <Button size="sm" variant="outline" onClick={() => setSettleConfirmOpen(true)} className="rounded-full">
                     <Check className="w-4 h-4 mr-1" />
                     {t('settle', 'Settle Up')}
                   </Button>
