@@ -89,7 +89,8 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
       // For private notes (no couple_id), default owner to the note creator
       if (!supabaseNote.couple_id && supabaseNote.author_id) {
         if (supabaseNote.author_id === currentUser?.id) {
-          return resolvedYouName || currentUser?.firstName || currentUser?.fullName || "You";
+          const youName = currentCouple?.resolvedYouName || currentCouple?.you_name;
+          return youName || currentUser?.firstName || currentUser?.fullName || "You";
         }
       }
       return undefined;
