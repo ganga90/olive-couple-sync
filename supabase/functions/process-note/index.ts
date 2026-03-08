@@ -2108,6 +2108,18 @@ Process this note:
 
     console.log('[GenAI SDK] Final result:', result);
 
+    // ======================================================================
+    // AUTO-DETECT EXPENSES: Check if note contains monetary amounts
+    // ======================================================================
+    const expenseDetected = detectAndCreateExpense(
+      supabase, result, safeText, user_id, couple_id,
+      mediaUrls.length > 0 ? mediaUrls[0] : null,
+      source
+    );
+    expenseDetected.catch(err => {
+      console.warn('[Expense Detection] Non-blocking error:', err);
+    });
+
     // Auto-extract memories from brain-dump (async, non-blocking) - only if there's actual text
     if (safeText.trim()) {
       extractMemoriesFromDump(genai, supabase, safeText, user_id).catch(err => {
