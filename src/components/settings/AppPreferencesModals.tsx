@@ -247,6 +247,13 @@ export const AppPreferencesModals: React.FC = () => {
     <>
       <div className="-mx-5 -mb-5">
         <PreferenceRow
+          icon={<LayoutDashboard className="h-5 w-5 text-primary" />}
+          iconBg="bg-primary/10"
+          title={t('defaultHomeView.title', 'Default Home View')}
+          subtitle={t('defaultHomeView.subtitle', 'Choose your default tab')}
+          onClick={() => setActiveModal('defaultView')}
+        />
+        <PreferenceRow
           icon={<Bell className="h-5 w-5 text-stone-500" />}
           iconBg="bg-stone-100"
           title={t('settings.notifications.title')}
