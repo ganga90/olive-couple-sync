@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2, Bell, Mail } from "lucide-react";
+import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2, Bell, Mail, CalendarDays } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/providers/AuthProvider";
