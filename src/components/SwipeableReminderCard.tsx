@@ -135,7 +135,7 @@ export const SwipeableReminderCard = ({
                       {format(reminder.time, "MMM d 'at' h:mm a")}
                     </span>
                     <span className="text-xs">
-                      ({formatDistanceToNow(reminder.time, { addSuffix: true })})
+                      ({formatDistanceToNow(reminder.time, { addSuffix: true, locale: dateLocale })})
                     </span>
                   </div>
                   
