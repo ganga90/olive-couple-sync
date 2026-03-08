@@ -4,14 +4,14 @@
     "pricing": "Pricing",
     "login": "Log In",
     "cta": "Try Olive Free",
-    "betaCta": "Get Early Access",
+    "betaCta": "Get Access to Olive",
     "microCopy": "No app download needed"
   },
   "hero": {
     "eyebrow": "Your AI-powered second brain",
     "headline": "She remembers, so you don't have to.",
     "subheadline": "Gate codes, grocery lists, brilliant ideas — just text Olive. She organizes everything and gives it back to you, clean and sorted, whenever you need it.",
-    "betaCta": "Get Early Access",
+    "betaCta": "Get Access to Olive",
     "ctaPrimary": "Start Using Olive — Free",
     "ctaSecondary": "See How It Works",
     "trustSignal": "Currently in Beta — shaping the future of personal organization"
@@ -19,7 +19,7 @@
   "chooseMode": {
     "headline": "One assistant. Every part of your life.",
     "subheadline": "Whether you're solo, syncing with a partner, or running a business — Olive adapts to you.",
-    "waitlistCta": "Get Early Access",
+    "waitlistCta": "Get Access to Olive",
     "personal": {
       "headline": "For You.",
       "painPoint": "You text yourself reminders, links, and ideas. They vanish into the void. Olive catches them all and puts them exactly where they belong.",
@@ -106,7 +106,7 @@
       "feature1": "Unlimited WhatsApp capture",
       "feature2": "AI-powered organization & memory",
       "feature3": "Shared space with your partner",
-      "cta": "Get Early Access",
+      "cta": "Get Access to Olive",
       "note": "No credit card required. We'll announce pricing well before Beta ends."
     },
     "personal": {
@@ -143,7 +143,7 @@
   "footerCta": {
     "headline": "Your ideas deserve better than a chat with yourself.",
     "subheadline": "Join our Beta and help build the future of personal organization.",
-    "betaCta": "Get Early Access",
+    "betaCta": "Get Access to Olive",
     "cta": "Start Using Olive — Free",
     "trustNote": "Free during Beta. No credit card required."
   },

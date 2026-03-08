@@ -4,14 +4,14 @@
     "pricing": "Prezzi",
     "login": "Accedi",
     "cta": "Prova Olive Gratis",
-    "betaCta": "Accesso Anticipato",
+    "betaCta": "Accedi a Olive",
     "microCopy": "Nessuna app da scaricare"
   },
   "hero": {
     "eyebrow": "Il tuo secondo cervello con IA",
     "headline": "Lei ricorda, così tu non devi.",
     "subheadline": "Codici d'accesso, liste della spesa, idee brillanti — scrivi a Olive. Lei organizza tutto e te lo restituisce, pulito e ordinato, quando ne hai bisogno.",
-    "betaCta": "Accesso Anticipato",
+    "betaCta": "Accedi a Olive",
     "ctaPrimary": "Inizia a Usare Olive — Gratis",
     "ctaSecondary": "Scopri Come Funziona",
     "trustSignal": "Attualmente in Beta — stiamo costruendo il futuro dell'organizzazione personale"
@@ -19,7 +19,7 @@
   "chooseMode": {
     "headline": "Un'assistente. Ogni parte della tua vita.",
     "subheadline": "Che tu sia da solo, in coppia o che gestisca un'attività — Olive si adatta a te.",
-    "waitlistCta": "Accesso Anticipato",
+    "waitlistCta": "Accedi a Olive",
     "personal": {
       "headline": "Per Te.",
       "painPoint": "Ti mandi promemoria, link e idee. Scompaiono nel vuoto. Olive li cattura tutti e li mette esattamente dove devono stare.",
@@ -106,7 +106,7 @@
       "feature1": "Cattura illimitata via WhatsApp",
       "feature2": "Organizzazione e memoria con IA",
       "feature3": "Spazio condiviso con il tuo partner",
-      "cta": "Accesso Anticipato",
+      "cta": "Accedi a Olive",
       "note": "Nessuna carta di credito richiesta. Annunceremo i prezzi prima della fine della Beta."
     },
     "personal": {
@@ -143,7 +143,7 @@
   "footerCta": {
     "headline": "Le tue idee meritano più di una chat con te stesso.",
     "subheadline": "Unisciti alla nostra Beta e aiutaci a costruire il futuro dell'organizzazione personale.",
-    "betaCta": "Accesso Anticipato",
+    "betaCta": "Accedi a Olive",
     "cta": "Inizia a Usare Olive — Gratis",
     "trustNote": "Gratis durante la Beta. Nessuna carta di credito."
   },
