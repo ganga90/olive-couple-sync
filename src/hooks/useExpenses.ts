@@ -124,6 +124,7 @@ export function getCurrencySymbol(currency: string): string {
 export function useExpenses() {
   const { user } = useUser();
   const { currentCouple } = useSupabaseCouple();
+  const { t } = useTranslation('expenses');
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [settlements, setSettlements] = useState<ExpenseSettlement[]>([]);
   const [budgetLimits, setBudgetLimits] = useState<BudgetLimit[]>([]);
