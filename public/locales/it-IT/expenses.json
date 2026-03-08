@@ -128,5 +128,22 @@
     "modeShared": "Condiviso con partner",
     "defaultSplit": "Divisione predefinita",
     "defaultCurrency": "Valuta predefinita"
+  },
+  "recurring": {
+    "label": "Spesa ricorrente",
+    "description": "Creata automaticamente secondo il programma",
+    "frequency": "Frequenza",
+    "weekly": "Settimanale",
+    "monthly": "Mensile",
+    "yearly": "Annuale"
+  },
+  "edit": {
+    "title": "Modifica Spesa",
+    "description": "Aggiorna i dettagli della spesa",
+    "button": "Modifica",
+    "save": "Salva Modifiche"
+  },
+  "export": {
+    "button": "Esporta CSV"
   }
 }
