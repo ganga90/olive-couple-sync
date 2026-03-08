@@ -113,7 +113,8 @@ const resources = {
     calendar: itCalendar,
     auth: itAuth,
     organize: itOrganize,
-    legal: itLegal
+    legal: itLegal,
+    expenses: itExpenses
   }
 };
 
