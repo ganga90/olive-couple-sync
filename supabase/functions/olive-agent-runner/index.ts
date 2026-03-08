@@ -397,30 +397,14 @@ async function runSmartBillReminder(ctx: AgentContext): Promise<AgentResult> {
 
 // ─── Agent 3: Energy-Aware Task Suggester ───────────────────────
 async function runEnergyTaskSuggester(ctx: AgentContext): Promise<AgentResult> {
-  // Fetch Oura data
-  const { data: ouraConn } = await ctx.supabase
-    .from("oura_connections")
-    .select("is_active")
-    .eq("user_id", ctx.userId)
-    .eq("is_active", true)
-    .maybeSingle();
+  const { scores, connected } = await fetchOuraFromAPI(ctx.supabase, ctx.userId, 2);
 
-  if (!ouraConn) {
+  if (!connected) {
     return { success: true, message: "Oura not connected", notifyUser: false };
   }
 
-  const today = new Date().toISOString().split("T")[0];
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
-
-  const { data: ouraData } = await ctx.supabase
-    .from("oura_daily_data")
-    .select("day, readiness_score, sleep_score, stress_high_minutes, resilience_level")
-    .eq("user_id", ctx.userId)
-    .in("day", [today, yesterday])
-    .order("day", { ascending: false });
-
-  const latestOura = ouraData?.[0];
-  if (!latestOura || !latestOura.readiness_score) {
+  const latestOura = scores[0];
+  if (!latestOura || !latestOura.readinessScore) {
     return { success: true, message: "No Oura data available", notifyUser: false };
   }
 
