@@ -351,10 +351,10 @@ export function useExpenses() {
       const { error } = await supabase.from('expenses').delete().eq('id', id);
       if (error) throw error;
       setExpenses(prev => prev.filter(e => e.id !== id));
-      toast.success('Expense deleted');
+      toast.success(t('toast.deleted', 'Expense deleted'));
     } catch (err) {
       console.error('[useExpenses] delete error:', err);
-      toast.error('Failed to delete expense');
+      toast.error(t('toast.deleteError', 'Failed to delete expense'));
     }
   }, []);
 
