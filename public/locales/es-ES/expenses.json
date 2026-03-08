@@ -1,0 +1,95 @@
+{
+  "title": "Gastos",
+  "subtitle": "Registra, divide y liquida gastos",
+  "addButton": "Añadir",
+  "you": "Tú",
+  "partner": "Pareja",
+  "loading": "Cargando gastos...",
+  "settle": "Liquidar",
+  "clearFilter": "Limpiar",
+  "topCategories": "Categorías Principales",
+  "summary": {
+    "total": "Total Activo",
+    "balance": "Balance Neto",
+    "owesYou": "debe",
+    "youOwe": "Tú debes",
+    "settled": "¡Todo liquidado!",
+    "unsettled": "Sin liquidar",
+    "expenses": "gastos"
+  },
+  "tabs": {
+    "active": "Activos",
+    "analytics": "Analíticas",
+    "archive": "Archivo"
+  },
+  "split": {
+    "youPaidSplit": "{{you}} pagó, dividir equitativamente",
+    "youOwedFull": "{{partner}} debe el monto total",
+    "partnerPaidSplit": "{{partner}} pagó, dividir equitativamente",
+    "partnerOwedFull": "{{you}} debe el monto total",
+    "individual": "Individual (sin división)"
+  },
+  "row": {
+    "youLent": "{{you}} prestó {{symbol}}{{amount}}",
+    "partnerOwes": "{{partner}} debe {{symbol}}{{amount}}",
+    "youOwe": "{{you}} debe {{symbol}}{{amount}}",
+    "youOweFull": "{{you}} debe {{symbol}}{{amount}}",
+    "individual": "Individual"
+  },
+  "addDialog": {
+    "title": "Añadir Gasto",
+    "description": "Registrar un nuevo gasto",
+    "name": "Nombre del gasto",
+    "namePlaceholder": "ej. Compras en el supermercado",
+    "amount": "Monto",
+    "currency": "Moneda",
+    "category": "Categoría",
+    "splitType": "Tipo de división",
+    "cancel": "Cancelar",
+    "save": "Añadir Gasto",
+    "fillFields": "Por favor completa todos los campos",
+    "invalidAmount": "Por favor ingresa un monto válido"
+  },
+  "details": {
+    "amount": "Monto",
+    "category": "Categoría",
+    "date": "Fecha",
+    "changeSplit": "Cambiar división",
+    "originalNote": "Nota original",
+    "viewNote": "Ver nota vinculada",
+    "receipt": "Recibo",
+    "delete": "Eliminar",
+    "close": "Cerrar"
+  },
+  "empty": {
+    "title": "Sin gastos aún",
+    "description": "Añade un gasto o envía una nota con un monto en $"
+  },
+  "archive": {
+    "empty": "Sin gastos liquidados",
+    "description": "Los gastos liquidados aparecerán aquí"
+  },
+  "analytics": {
+    "spending": "Gastos por Categoría",
+    "noData": "Sin gastos en este período",
+    "transactions": "transacciones",
+    "total": "Total"
+  },
+  "range": {
+    "week": "Esta Semana",
+    "month": "Este Mes",
+    "30days": "Últimos 30 Días"
+  },
+  "toast": {
+    "splitUpdated": "División actualizada"
+  },
+  "preferences": {
+    "title": "Seguimiento de Gastos",
+    "description": "Configura cómo se rastrean y dividen los gastos",
+    "mode": "Modo de seguimiento",
+    "modeIndividual": "Individual",
+    "modeShared": "Compartido con pareja",
+    "defaultSplit": "División por defecto",
+    "defaultCurrency": "Moneda por defecto"
+  }
+}

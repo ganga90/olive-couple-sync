@@ -1,0 +1,95 @@
+{
+  "title": "Expenses",
+  "subtitle": "Track, split, and settle expenses",
+  "addButton": "Add",
+  "you": "You",
+  "partner": "Partner",
+  "loading": "Loading expenses...",
+  "settle": "Settle Up",
+  "clearFilter": "Clear",
+  "topCategories": "Top Categories",
+  "summary": {
+    "total": "Total Active",
+    "balance": "Net Balance",
+    "owesYou": "owes",
+    "youOwe": "You owe",
+    "settled": "All settled!",
+    "unsettled": "Unsettled",
+    "expenses": "expenses"
+  },
+  "tabs": {
+    "active": "Active",
+    "analytics": "Analytics",
+    "archive": "Archive"
+  },
+  "split": {
+    "youPaidSplit": "{{you}} paid, split equally",
+    "youOwedFull": "{{partner}} owes full amount",
+    "partnerPaidSplit": "{{partner}} paid, split equally",
+    "partnerOwedFull": "{{you}} owes full amount",
+    "individual": "Individual (no split)"
+  },
+  "row": {
+    "youLent": "{{you}} lent {{symbol}}{{amount}}",
+    "partnerOwes": "{{partner}} owes {{symbol}}{{amount}}",
+    "youOwe": "{{you}} owes {{symbol}}{{amount}}",
+    "youOweFull": "{{you}} owes {{symbol}}{{amount}}",
+    "individual": "Individual"
+  },
+  "addDialog": {
+    "title": "Add Expense",
+    "description": "Track a new expense",
+    "name": "Expense name",
+    "namePlaceholder": "e.g. Whole Foods groceries",
+    "amount": "Amount",
+    "currency": "Currency",
+    "category": "Category",
+    "splitType": "Split type",
+    "cancel": "Cancel",
+    "save": "Add Expense",
+    "fillFields": "Please fill in all fields",
+    "invalidAmount": "Please enter a valid amount"
+  },
+  "details": {
+    "amount": "Amount",
+    "category": "Category",
+    "date": "Date",
+    "changeSplit": "Change split",
+    "originalNote": "Original note",
+    "viewNote": "View linked note",
+    "receipt": "Receipt",
+    "delete": "Delete",
+    "close": "Close"
+  },
+  "empty": {
+    "title": "No expenses yet",
+    "description": "Add an expense or send a note with a $ amount"
+  },
+  "archive": {
+    "empty": "No settled expenses",
+    "description": "Settled expenses will appear here"
+  },
+  "analytics": {
+    "spending": "Spending by Category",
+    "noData": "No expenses in this period",
+    "transactions": "transactions",
+    "total": "Total"
+  },
+  "range": {
+    "week": "This Week",
+    "month": "This Month",
+    "30days": "Last 30 Days"
+  },
+  "toast": {
+    "splitUpdated": "Split updated"
+  },
+  "preferences": {
+    "title": "Expense Tracking",
+    "description": "Configure how expenses are tracked and split",
+    "mode": "Tracking mode",
+    "modeIndividual": "Individual",
+    "modeShared": "Shared with partner",
+    "defaultSplit": "Default split",
+    "defaultCurrency": "Default currency"
+  }
+}

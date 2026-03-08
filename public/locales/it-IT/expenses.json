@@ -1,0 +1,95 @@
+{
+  "title": "Spese",
+  "subtitle": "Traccia, dividi e salda le spese",
+  "addButton": "Aggiungi",
+  "you": "Tu",
+  "partner": "Partner",
+  "loading": "Caricamento spese...",
+  "settle": "Salda",
+  "clearFilter": "Pulisci",
+  "topCategories": "Categorie Principali",
+  "summary": {
+    "total": "Totale Attivo",
+    "balance": "Saldo Netto",
+    "owesYou": "deve",
+    "youOwe": "Tu devi",
+    "settled": "Tutto saldato!",
+    "unsettled": "Non saldati",
+    "expenses": "spese"
+  },
+  "tabs": {
+    "active": "Attive",
+    "analytics": "Analitiche",
+    "archive": "Archivio"
+  },
+  "split": {
+    "youPaidSplit": "{{you}} ha pagato, diviso equamente",
+    "youOwedFull": "{{partner}} deve l'intero importo",
+    "partnerPaidSplit": "{{partner}} ha pagato, diviso equamente",
+    "partnerOwedFull": "{{you}} deve l'intero importo",
+    "individual": "Individuale (nessuna divisione)"
+  },
+  "row": {
+    "youLent": "{{you}} ha prestato {{symbol}}{{amount}}",
+    "partnerOwes": "{{partner}} deve {{symbol}}{{amount}}",
+    "youOwe": "{{you}} deve {{symbol}}{{amount}}",
+    "youOweFull": "{{you}} deve {{symbol}}{{amount}}",
+    "individual": "Individuale"
+  },
+  "addDialog": {
+    "title": "Aggiungi Spesa",
+    "description": "Registra una nuova spesa",
+    "name": "Nome della spesa",
+    "namePlaceholder": "es. Spesa al supermercato",
+    "amount": "Importo",
+    "currency": "Valuta",
+    "category": "Categoria",
+    "splitType": "Tipo di divisione",
+    "cancel": "Annulla",
+    "save": "Aggiungi Spesa",
+    "fillFields": "Per favore compila tutti i campi",
+    "invalidAmount": "Per favore inserisci un importo valido"
+  },
+  "details": {
+    "amount": "Importo",
+    "category": "Categoria",
+    "date": "Data",
+    "changeSplit": "Cambia divisione",
+    "originalNote": "Nota originale",
+    "viewNote": "Vedi nota collegata",
+    "receipt": "Ricevuta",
+    "delete": "Elimina",
+    "close": "Chiudi"
+  },
+  "empty": {
+    "title": "Nessuna spesa ancora",
+    "description": "Aggiungi una spesa o invia una nota con un importo in $"
+  },
+  "archive": {
+    "empty": "Nessuna spesa saldata",
+    "description": "Le spese saldate appariranno qui"
+  },
+  "analytics": {
+    "spending": "Spese per Categoria",
+    "noData": "Nessuna spesa in questo periodo",
+    "transactions": "transazioni",
+    "total": "Totale"
+  },
+  "range": {
+    "week": "Questa Settimana",
+    "month": "Questo Mese",
+    "30days": "Ultimi 30 Giorni"
+  },
+  "toast": {
+    "splitUpdated": "Divisione aggiornata"
+  },
+  "preferences": {
+    "title": "Tracciamento Spese",
+    "description": "Configura come vengono tracciate e divise le spese",
+    "mode": "Modalità di tracciamento",
+    "modeIndividual": "Individuale",
+    "modeShared": "Condiviso con partner",
+    "defaultSplit": "Divisione predefinita",
+    "defaultCurrency": "Valuta predefinita"
+  }
+}
