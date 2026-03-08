@@ -15,7 +15,8 @@
     "youOwe": "Tú debes",
     "settled": "¡Todo liquidado!",
     "unsettled": "Sin liquidar",
-    "expenses": "gastos"
+    "expenses": "gastos",
+    "count": "Cantidad"
   },
   "tabs": {
     "active": "Activos",
@@ -59,7 +60,8 @@
     "viewNote": "Ver nota vinculada",
     "receipt": "Recibo",
     "delete": "Eliminar",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "description": "Detalles y opciones del gasto"
   },
   "empty": {
     "title": "Sin gastos aún",
@@ -73,7 +75,8 @@
     "spending": "Gastos por Categoría",
     "noData": "Sin gastos en este período",
     "transactions": "transacciones",
-    "total": "Total"
+    "total": "Total",
+    "monthlyTrend": "Gasto Mensual"
   },
   "range": {
     "week": "Esta Semana",
@@ -82,6 +85,26 @@
   },
   "toast": {
     "splitUpdated": "División actualizada"
+  },
+  "receipt": {
+    "label": "Recibo (opcional)",
+    "upload": "Escanear Recibo",
+    "scanning": "Escaneando...",
+    "scanned": "¡Recibo escaneado exitosamente!"
+  },
+  "budget": {
+    "title": "Límites de Presupuesto",
+    "description": "Establece límites de gasto mensual por categoría",
+    "category": "Categoría",
+    "monthlyLimit": "Límite mensual",
+    "addLimit": "Establecer Límite",
+    "progress": "Progreso del Presupuesto",
+    "overLimit": "{{category}} sobre presupuesto: {{spent}}/{{limit}}",
+    "nearLimit": "{{category}} al {{pct}}% del presupuesto"
+  },
+  "filter": {
+    "from": "Desde",
+    "to": "Hasta"
   },
   "preferences": {
     "title": "Seguimiento de Gastos",
