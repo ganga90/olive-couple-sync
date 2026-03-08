@@ -6,7 +6,7 @@ import type { Note } from "@/types/note";
 
 export type SupabaseNote = {
   id: string;
-  couple_id: string | null; // Now optional
+  couple_id: string | null;
   author_id?: string;
   original_text: string;
   summary: string;
@@ -26,6 +26,10 @@ export type SupabaseNote = {
   location?: any | null;
   created_at: string;
   updated_at: string;
+  // Encryption fields
+  is_sensitive?: boolean;
+  encrypted_original_text?: string | null;
+  encrypted_summary?: string | null;
 };
 
 export const useSupabaseNotes = (coupleId?: string | null) => {
