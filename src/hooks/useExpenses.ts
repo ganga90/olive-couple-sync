@@ -340,7 +340,7 @@ export function useExpenses() {
       return data as Expense;
     } catch (err) {
       console.error('[useExpenses] update error:', err);
-      toast.error('Failed to update expense');
+      toast.error(t('toast.updateError', 'Failed to update expense'));
       return null;
     }
   }, []);
