@@ -2,24 +2,22 @@ import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
-import { useExpenses, Expense, ExpenseSplitType, getCategoryIcon, EXPENSE_CATEGORY_ICONS } from '@/hooks/useExpenses';
-import { format, subDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
+import { useExpenses, Expense, ExpenseSplitType, getCategoryIcon, getCurrencySymbol, EXPENSE_CATEGORY_ICONS } from '@/hooks/useExpenses';
+import { format, subDays, startOfMonth, startOfWeek } from 'date-fns';
 import {
   DollarSign, Receipt, TrendingUp, Archive, ChevronRight, Check,
   Plus, ArrowLeftRight, BarChart3, Filter, Image, FileText,
-  Wallet, HandCoins, Eye
+  Wallet, Eye
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -53,6 +51,14 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
   const [splitType, setSplitType] = useState<ExpenseSplitType>(hasPartner ? defaultSplit : 'individual');
   const [currency, setCurrency] = useState(defaultCurrency);
   const [saving, setSaving] = useState(false);
+
+  // Reset defaults when dialog opens
+  React.useEffect(() => {
+    if (open) {
+      setCurrency(defaultCurrency);
+      setSplitType(hasPartner ? defaultSplit : 'individual');
+    }
+  }, [open, defaultCurrency, defaultSplit, hasPartner]);
 
   const handleSave = async () => {
     if (!name.trim() || !amount) {
@@ -167,7 +173,7 @@ interface ExpenseRowProps {
 const ExpenseRow: React.FC<ExpenseRowProps> = ({ expense, youName, partnerName, userId, onUpdateSplit, onViewDetails }) => {
   const { t } = useTranslation('expenses');
   const dateLocale = useDateLocale();
-  const currencySymbol = expense.currency === 'EUR' ? '€' : expense.currency === 'GBP' ? '£' : '$';
+  const currencySymbol = getCurrencySymbol(expense.currency);
 
   let splitLabel = '';
   let splitColor = 'text-muted-foreground';
@@ -176,19 +182,19 @@ const ExpenseRow: React.FC<ExpenseRowProps> = ({ expense, youName, partnerName, 
   switch (expense.split_type) {
     case 'you_paid_split':
       splitLabel = t('row.youLent', '{{you}} lent {{symbol}}{{amount}}', { you: youName, symbol: currencySymbol, amount: half.toFixed(2) });
-      splitColor = 'text-emerald-600';
+      splitColor = 'text-[hsl(var(--success))]';
       break;
     case 'you_owed_full':
       splitLabel = t('row.partnerOwes', '{{partner}} owes {{symbol}}{{amount}}', { partner: partnerName, symbol: currencySymbol, amount: expense.amount.toFixed(2) });
-      splitColor = 'text-emerald-600';
+      splitColor = 'text-[hsl(var(--success))]';
       break;
     case 'partner_paid_split':
       splitLabel = t('row.youOwe', '{{you}} owes {{symbol}}{{amount}}', { you: youName, symbol: currencySymbol, amount: half.toFixed(2) });
-      splitColor = 'text-amber-600';
+      splitColor = 'text-[hsl(var(--warning,40_100%_50%))]';
       break;
     case 'partner_owed_full':
       splitLabel = t('row.youOweFull', '{{you}} owes {{symbol}}{{amount}}', { you: youName, symbol: currencySymbol, amount: expense.amount.toFixed(2) });
-      splitColor = 'text-amber-600';
+      splitColor = 'text-[hsl(var(--warning,40_100%_50%))]';
       break;
     case 'individual':
       splitLabel = t('row.individual', 'Individual');
@@ -235,19 +241,21 @@ interface ExpenseDetailsProps {
   youName: string;
   partnerName: string;
   userId?: string;
+  hasPartner: boolean;
   onUpdateSplit: (id: string, split: ExpenseSplitType) => void;
   onDelete: (id: string) => void;
 }
 
 const ExpenseDetailsDialog: React.FC<ExpenseDetailsProps> = ({
-  expense, open, onOpenChange, youName, partnerName, userId, onUpdateSplit, onDelete
+  expense, open, onOpenChange, youName, partnerName, userId, hasPartner, onUpdateSplit, onDelete
 }) => {
   const { t } = useTranslation('expenses');
   const navigate = useNavigate();
   const getLocalizedPath = useLocalizedHref();
+  const dateLocale = useDateLocale();
 
   if (!expense) return null;
-  const currencySymbol = expense.currency === 'EUR' ? '€' : expense.currency === 'GBP' ? '£' : '$';
+  const currencySymbol = getCurrencySymbol(expense.currency);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -257,6 +265,7 @@ const ExpenseDetailsDialog: React.FC<ExpenseDetailsProps> = ({
             <span className="text-2xl">{expense.category_icon || getCategoryIcon(expense.category)}</span>
             {expense.name}
           </DialogTitle>
+          <DialogDescription>{t('details.description', 'Expense details and options')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="flex justify-between items-center">
@@ -271,11 +280,11 @@ const ExpenseDetailsDialog: React.FC<ExpenseDetailsProps> = ({
             </div>
             <div>
               <span className="text-muted-foreground">{t('details.date', 'Date')}</span>
-              <p className="font-medium">{format(new Date(expense.expense_date), 'PPP')}</p>
+              <p className="font-medium">{format(new Date(expense.expense_date), 'PPP', { locale: dateLocale })}</p>
             </div>
           </div>
 
-          {expense.split_type !== 'individual' && (
+          {hasPartner && expense.split_type !== 'individual' && (
             <>
               <Separator />
               <div>
@@ -283,10 +292,10 @@ const ExpenseDetailsDialog: React.FC<ExpenseDetailsProps> = ({
                 <Select value={expense.split_type} onValueChange={v => onUpdateSplit(expense.id, v as ExpenseSplitType)}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="you_paid_split">{youName} paid, split equally</SelectItem>
-                    <SelectItem value="you_owed_full">{partnerName} owes full</SelectItem>
-                    <SelectItem value="partner_paid_split">{partnerName} paid, split equally</SelectItem>
-                    <SelectItem value="partner_owed_full">{youName} owes full</SelectItem>
+                    <SelectItem value="you_paid_split">{t('split.youPaidSplit', '{{you}} paid, split equally', { you: youName })}</SelectItem>
+                    <SelectItem value="you_owed_full">{t('split.youOwedFull', '{{partner}} owes full amount', { partner: partnerName })}</SelectItem>
+                    <SelectItem value="partner_paid_split">{t('split.partnerPaidSplit', '{{partner}} paid, split equally', { partner: partnerName })}</SelectItem>
+                    <SelectItem value="partner_owed_full">{t('split.partnerOwedFull', '{{you}} owes full amount', { you: youName })}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -345,7 +354,7 @@ const ExpensesPage: React.FC = () => {
   const { user } = useAuth();
   const { currentCouple, you, partner } = useSupabaseCouple();
   const {
-    activeExpenses, archivedExpenses, loading, analytics, netBalance,
+    activeExpenses, archivedExpenses, loading, analytics, netBalance, preferences,
     addExpense, updateExpense, deleteExpense, settleExpenses
   } = useExpenses();
 
@@ -358,7 +367,7 @@ const ExpensesPage: React.FC = () => {
   const hasPartner = Boolean(currentCouple && partner);
   const youName = you || t('you', 'You');
   const partnerName = partner || t('partner', 'Partner');
-  const currencySymbol = '$'; // From first expense or default
+  const currencySymbol = getCurrencySymbol(preferences.defaultCurrency);
 
   const handleUpdateSplit = async (id: string, split: ExpenseSplitType) => {
     await updateExpense(id, { split_type: split });
@@ -408,7 +417,7 @@ const ExpensesPage: React.FC = () => {
       </div>
 
       {/* Balance Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <div className={cn("grid gap-3", hasPartner ? "grid-cols-2 md:grid-cols-3" : "grid-cols-2")}>
         <Card className="bg-card/80 backdrop-blur">
           <CardContent className="pt-4 pb-3 px-4">
             <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
@@ -419,15 +428,31 @@ const ExpensesPage: React.FC = () => {
           </CardContent>
         </Card>
 
+        <Card className="bg-card/80 backdrop-blur">
+          <CardContent className="pt-4 pb-3 px-4">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+              <Receipt className="w-3.5 h-3.5" />
+              {t('summary.count', 'Count')}
+            </div>
+            <p className="text-xl font-bold">{activeExpenses.length}</p>
+            {activeExpenses.length > 0 && !hasPartner && (
+              <Button size="sm" variant="ghost" onClick={settleExpenses} className="rounded-full text-xs mt-1 h-7 px-2">
+                <Check className="w-3 h-3 mr-1" />
+                {t('settle', 'Settle Up')}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
         {hasPartner && (
           <>
-            <Card className={cn("bg-card/80 backdrop-blur", netBalance > 0 ? "border-emerald-200" : netBalance < 0 ? "border-amber-200" : "")}>
+            <Card className={cn("bg-card/80 backdrop-blur", netBalance > 0 ? "border-[hsl(var(--success))]/30" : netBalance < 0 ? "border-[hsl(var(--warning,40_100%_50%))]/30" : "")}>
               <CardContent className="pt-4 pb-3 px-4">
                 <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                   <ArrowLeftRight className="w-3.5 h-3.5" />
                   {t('summary.balance', 'Net Balance')}
                 </div>
-                <p className={cn("text-xl font-bold", netBalance > 0 ? "text-emerald-600" : netBalance < 0 ? "text-amber-600" : "")}>
+                <p className={cn("text-xl font-bold", netBalance > 0 ? "text-[hsl(var(--success))]" : netBalance < 0 ? "text-[hsl(var(--warning,40_100%_50%))]" : "")}>
                   {netBalance > 0
                     ? `${partnerName} ${t('summary.owesYou', 'owes')} ${currencySymbol}${netBalance.toFixed(2)}`
                     : netBalance < 0
@@ -482,7 +507,7 @@ const ExpensesPage: React.FC = () => {
 
       {/* Tabs: Active / Archive / Analytics */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3 bg-stone-100/80 rounded-full">
+        <TabsList className="grid w-full grid-cols-3 rounded-full">
           <TabsTrigger value="active" className="rounded-full text-xs">
             <Wallet className="w-3.5 h-3.5 mr-1" />
             {t('tabs.active', 'Active')}
@@ -648,8 +673,8 @@ const ExpensesPage: React.FC = () => {
         youName={youName}
         partnerName={partnerName}
         hasPartner={hasPartner}
-        defaultCurrency="USD"
-        defaultSplit="you_paid_split"
+        defaultCurrency={preferences.defaultCurrency}
+        defaultSplit={preferences.defaultSplit}
       />
       <ExpenseDetailsDialog
         expense={detailsExpense}
@@ -658,6 +683,7 @@ const ExpensesPage: React.FC = () => {
         youName={youName}
         partnerName={partnerName}
         userId={user?.id}
+        hasPartner={hasPartner}
         onUpdateSplit={handleUpdateSplit}
         onDelete={deleteExpense}
       />
