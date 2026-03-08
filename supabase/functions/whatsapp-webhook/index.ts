@@ -3878,7 +3878,7 @@ serve(async (req) => {
             body: {
               text: taskDescription,
               user_id: userId,
-              couple_id: coupleId,
+              couple_id: effectiveCoupleId,
               timezone: profile.timezone || 'America/New_York',
             }
           });
