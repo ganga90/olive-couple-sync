@@ -363,7 +363,7 @@ export function useExpenses() {
     if (!userId) return;
     const unsettled = expenses.filter(e => !e.is_settled);
     if (unsettled.length === 0) {
-      toast.info('No expenses to settle');
+      toast.info(t('toast.nothingToSettle', 'No expenses to settle'));
       return;
     }
 
