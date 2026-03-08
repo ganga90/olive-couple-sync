@@ -499,7 +499,7 @@ const BudgetLimitDialog: React.FC<BudgetLimitDialogProps> = ({
                     </div>
                     <Progress
                       value={Math.min(bl.percentage, 100)}
-                      className={cn("h-1.5 mt-1", bl.status === 'over' ? '[&>div]:bg-destructive' : bl.status === 'warning' ? '[&>div]:bg-[hsl(var(--warning,40_100%_50%))]' : '')}
+                      className={cn("h-1.5 mt-1", bl.status === 'over' ? '[&>div]:bg-destructive' : bl.status === 'warning' ? '[&>div]:bg-[hsl(var(--warning))]' : '')}
                     />
                   </div>
                   <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => onRemove(bl.id)}>
