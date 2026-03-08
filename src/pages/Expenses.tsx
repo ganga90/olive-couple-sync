@@ -3,11 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
 import { useExpenses, Expense, ExpenseSplitType, getCategoryIcon, getCurrencySymbol, EXPENSE_CATEGORY_ICONS, BudgetLimit } from '@/hooks/useExpenses';
-import { format, subDays, startOfMonth, startOfWeek, isWithinInterval, parseISO } from 'date-fns';
+import { format, subDays, startOfMonth, startOfWeek } from 'date-fns';
 import {
   DollarSign, Receipt, TrendingUp, Archive, ChevronRight, Check,
   Plus, ArrowLeftRight, BarChart3, Filter, Image, FileText,
-  Wallet, Eye, Calendar, Target, Trash2, Upload, X
+  Wallet, Calendar, Target, Trash2, Upload, X, Download, Repeat, Pencil
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -26,6 +27,7 @@ import { useLocalizedHref } from '@/hooks/useLocalizedNavigate';
 import { useDateLocale } from '@/hooks/useDateLocale';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { supabase } from '@/lib/supabaseClient';
+import { expensesToCSV, downloadCSV, generateExportFilename } from '@/utils/csvExport';
 
 // ============================================================================
 // ADD EXPENSE DIALOG
@@ -57,6 +59,9 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
+  // Recurring
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceFreq, setRecurrenceFreq] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -65,6 +70,8 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
       setSplitType(hasPartner ? defaultSplit : 'individual');
       setReceiptFile(null);
       setReceiptPreview(null);
+      setIsRecurring(false);
+      setRecurrenceFreq('monthly');
     }
   }, [open, defaultCurrency, defaultSplit, hasPartner]);
 
@@ -73,7 +80,6 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
     const preview = URL.createObjectURL(file);
     setReceiptPreview(preview);
 
-    // OCR via process-receipt
     setOcrLoading(true);
     try {
       const reader = new FileReader();
@@ -112,7 +118,6 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
 
     setSaving(true);
 
-    // Upload receipt if present
     let receiptUrl: string | null = null;
     if (receiptFile && userId) {
       try {
@@ -130,6 +135,19 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
       }
     }
 
+    const now = new Date();
+    // For recurring: calculate next_recurrence_date
+    let nextDate: string | null = null;
+    if (isRecurring) {
+      const next = new Date(now);
+      switch (recurrenceFreq) {
+        case 'weekly': next.setDate(next.getDate() + 7); break;
+        case 'monthly': next.setMonth(next.getMonth() + 1); break;
+        case 'yearly': next.setFullYear(next.getFullYear() + 1); break;
+      }
+      nextDate = next.toISOString();
+    }
+
     await onAdd({
       name: name.trim(),
       amount: amountNum,
@@ -140,8 +158,12 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
       paid_by: (splitType === 'partner_paid_split' || splitType === 'partner_owed_full') ? 'partner' : userId,
       is_shared: splitType !== 'individual',
       couple_id: splitType !== 'individual' ? coupleId : null,
-      expense_date: new Date().toISOString(),
+      expense_date: now.toISOString(),
       receipt_url: receiptUrl,
+      is_recurring: isRecurring,
+      recurrence_frequency: isRecurring ? recurrenceFreq : null,
+      recurrence_interval: isRecurring ? 1 : null,
+      next_recurrence_date: nextDate,
     });
     setSaving(false);
     setName('');
@@ -149,6 +171,7 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
     setCategory('Other');
     setReceiptFile(null);
     setReceiptPreview(null);
+    setIsRecurring(false);
     onOpenChange(false);
   };
 
@@ -252,10 +275,142 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
               </Select>
             </div>
           )}
+
+          {/* Recurring toggle */}
+          <div className="flex items-center justify-between rounded-lg border border-border p-3">
+            <div className="flex items-center gap-2">
+              <Repeat className="w-4 h-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">{t('recurring.label', 'Recurring expense')}</p>
+                <p className="text-xs text-muted-foreground">{t('recurring.description', 'Auto-creates on schedule')}</p>
+              </div>
+            </div>
+            <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
+          </div>
+          {isRecurring && (
+            <div>
+              <Label className="text-xs">{t('recurring.frequency', 'Frequency')}</Label>
+              <Select value={recurrenceFreq} onValueChange={v => setRecurrenceFreq(v as any)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="weekly">{t('recurring.weekly', 'Weekly')}</SelectItem>
+                  <SelectItem value="monthly">{t('recurring.monthly', 'Monthly')}</SelectItem>
+                  <SelectItem value="yearly">{t('recurring.yearly', 'Yearly')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('addDialog.cancel', 'Cancel')}</Button>
           <Button onClick={handleSave} disabled={saving || ocrLoading}>{saving ? '...' : t('addDialog.save', 'Add Expense')}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ============================================================================
+// EDIT EXPENSE DIALOG
+// ============================================================================
+
+interface EditExpenseDialogProps {
+  expense: Expense | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSave: (id: string, updates: Partial<Expense>) => Promise<any>;
+}
+
+const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ expense, open, onOpenChange, onSave }) => {
+  const { t } = useTranslation('expenses');
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [category, setCategory] = useState('Other');
+  const [currency, setCurrency] = useState('USD');
+  const [expenseDate, setExpenseDate] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  React.useEffect(() => {
+    if (expense && open) {
+      setName(expense.name);
+      setAmount(String(expense.amount));
+      setCategory(expense.category);
+      setCurrency(expense.currency);
+      setExpenseDate(expense.expense_date.split('T')[0]);
+    }
+  }, [expense, open]);
+
+  if (!expense) return null;
+
+  const handleSave = async () => {
+    if (!name.trim() || !amount) return;
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) return;
+
+    setSaving(true);
+    await onSave(expense.id, {
+      name: name.trim(),
+      amount: amountNum,
+      category,
+      category_icon: getCategoryIcon(category),
+      currency,
+      expense_date: new Date(expenseDate).toISOString(),
+    } as Partial<Expense>);
+    setSaving(false);
+    onOpenChange(false);
+    toast.success(t('toast.updated', 'Expense updated'));
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t('edit.title', 'Edit Expense')}</DialogTitle>
+          <DialogDescription>{t('edit.description', 'Update expense details')}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div>
+            <Label>{t('addDialog.name', 'Expense name')}</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} className="mt-1" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>{t('addDialog.amount', 'Amount')}</Label>
+              <Input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label>{t('addDialog.currency', 'Currency')}</Label>
+              <Select value={currency} onValueChange={setCurrency}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">$ USD</SelectItem>
+                  <SelectItem value="EUR">€ EUR</SelectItem>
+                  <SelectItem value="GBP">£ GBP</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <Label>{t('addDialog.category', 'Category')}</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(EXPENSE_CATEGORY_ICONS).map(([cat, icon]) => (
+                  <SelectItem key={cat} value={cat}>
+                    <span className="flex items-center gap-2"><span>{icon}</span> {cat}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>{t('details.date', 'Date')}</Label>
+            <Input type="date" value={expenseDate} onChange={e => setExpenseDate(e.target.value)} className="mt-1" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t('addDialog.cancel', 'Cancel')}</Button>
+          <Button onClick={handleSave} disabled={saving}>{saving ? '...' : t('edit.save', 'Save Changes')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -315,6 +470,7 @@ const ExpenseRow: React.FC<ExpenseRowProps> = ({ expense, youName, partnerName, 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <p className="font-medium text-sm truncate">{expense.name}</p>
+          {expense.is_recurring && <Repeat className="w-3 h-3 text-muted-foreground flex-shrink-0" />}
           {expense.receipt_url && <Image className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
         </div>
         <div className="flex items-center gap-2 mt-0.5">
@@ -349,10 +505,11 @@ interface ExpenseDetailsProps {
   hasPartner: boolean;
   onUpdateSplit: (id: string, split: ExpenseSplitType) => void;
   onDelete: (id: string) => void;
+  onEdit: (expense: Expense) => void;
 }
 
 const ExpenseDetailsDialog: React.FC<ExpenseDetailsProps> = ({
-  expense, open, onOpenChange, youName, partnerName, userId, hasPartner, onUpdateSplit, onDelete
+  expense, open, onOpenChange, youName, partnerName, userId, hasPartner, onUpdateSplit, onDelete, onEdit
 }) => {
   const { t } = useTranslation('expenses');
   const navigate = useNavigate();
@@ -369,6 +526,12 @@ const ExpenseDetailsDialog: React.FC<ExpenseDetailsProps> = ({
           <DialogTitle className="flex items-center gap-2">
             <span className="text-2xl">{expense.category_icon || getCategoryIcon(expense.category)}</span>
             {expense.name}
+            {expense.is_recurring && (
+              <Badge variant="outline" className="text-[10px] gap-1">
+                <Repeat className="w-3 h-3" />
+                {expense.recurrence_frequency}
+              </Badge>
+            )}
           </DialogTitle>
           <DialogDescription>{t('details.description', 'Expense details and options')}</DialogDescription>
         </DialogHeader>
@@ -441,7 +604,12 @@ const ExpenseDetailsDialog: React.FC<ExpenseDetailsProps> = ({
         </div>
         <DialogFooter className="flex-row gap-2">
           <Button variant="destructive" size="sm" onClick={() => { onDelete(expense.id); onOpenChange(false); }}>
+            <Trash2 className="w-3.5 h-3.5 mr-1" />
             {t('details.delete', 'Delete')}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => { onOpenChange(false); onEdit(expense); }}>
+            <Pencil className="w-3.5 h-3.5 mr-1" />
+            {t('edit.button', 'Edit')}
           </Button>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('details.close', 'Close')}</Button>
         </DialogFooter>
@@ -481,7 +649,6 @@ const BudgetLimitDialog: React.FC<BudgetLimitDialogProps> = ({
           <DialogDescription>{t('budget.description', 'Set monthly spending limits per category')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          {/* Existing limits */}
           {budgetStatus.length > 0 && (
             <div className="space-y-2">
               {budgetStatus.map(bl => (
@@ -512,7 +679,6 @@ const BudgetLimitDialog: React.FC<BudgetLimitDialogProps> = ({
 
           <Separator />
 
-          {/* Add new limit */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">{t('budget.category', 'Category')}</Label>
@@ -551,6 +717,29 @@ const BudgetLimitDialog: React.FC<BudgetLimitDialogProps> = ({
 };
 
 // ============================================================================
+// MULTI-CURRENCY BALANCE DISPLAY
+// ============================================================================
+const CurrencyBalances: React.FC<{ balances: Record<string, number>; partnerName: string; t: any }> = ({ balances, partnerName, t }) => {
+  const entries = Object.entries(balances).filter(([, v]) => Math.abs(v) > 0.01);
+  if (entries.length === 0) return <span>{t('summary.settled', 'All settled!')}</span>;
+  return (
+    <div className="space-y-0.5">
+      {entries.map(([currency, balance]) => {
+        const sym = getCurrencySymbol(currency);
+        return (
+          <p key={currency} className={cn("text-sm font-bold", balance > 0 ? "text-[hsl(var(--success))]" : "text-[hsl(var(--warning))]")}>
+            {balance > 0
+              ? `${partnerName} ${t('summary.owesYou', 'owes')} ${sym}${balance.toFixed(2)}`
+              : `${t('summary.youOwe', 'You owe')} ${sym}${Math.abs(balance).toFixed(2)}`
+            }
+          </p>
+        );
+      })}
+    </div>
+  );
+};
+
+// ============================================================================
 // MAIN EXPENSES PAGE
 // ============================================================================
 
@@ -559,13 +748,14 @@ const ExpensesPage: React.FC = () => {
   const { user } = useAuth();
   const { currentCouple, you, partner } = useSupabaseCouple();
   const {
-    activeExpenses, archivedExpenses, loading, analytics, netBalance, preferences,
+    expenses, activeExpenses, archivedExpenses, loading, analytics, netBalance, netBalanceByCurrency, preferences,
     addExpense, updateExpense, deleteExpense, settleExpenses,
     budgetStatus, monthlyTrends, setBudgetLimit, removeBudgetLimit
   } = useExpenses();
 
   const [addOpen, setAddOpen] = useState(false);
   const [detailsExpense, setDetailsExpense] = useState<Expense | null>(null);
+  const [editExpense, setEditExpense] = useState<Expense | null>(null);
   const [activeTab, setActiveTab] = useState('active');
   const [analyticsRange, setAnalyticsRange] = useState<'week' | 'month' | '30days'>('month');
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
@@ -580,9 +770,22 @@ const ExpensesPage: React.FC = () => {
   const partnerName = partner || t('partner', 'Partner');
   const currencySymbol = getCurrencySymbol(preferences.defaultCurrency);
 
+  // Detect multiple currencies in active expenses
+  const activeCurrencies = useMemo(() => {
+    const currencies = new Set(activeExpenses.map(e => e.currency || 'USD'));
+    return Array.from(currencies);
+  }, [activeExpenses]);
+  const isMultiCurrency = activeCurrencies.length > 1;
+
   const handleUpdateSplit = async (id: string, split: ExpenseSplitType) => {
     await updateExpense(id, { split_type: split });
     toast.success(t('toast.splitUpdated', 'Split updated'));
+  };
+
+  const handleExportCSV = () => {
+    const csv = expensesToCSV(expenses);
+    downloadCSV(csv, generateExportFilename('expenses'));
+    toast.success(t('toast.exported', 'Expenses exported'));
   };
 
   // Filtered expenses for analytics range
@@ -590,16 +793,9 @@ const ExpensesPage: React.FC = () => {
     const now = new Date();
     let start: Date;
     switch (analyticsRange) {
-      case 'week':
-        start = startOfWeek(now);
-        break;
-      case '30days':
-        start = subDays(now, 30);
-        break;
-      case 'month':
-      default:
-        start = startOfMonth(now);
-        break;
+      case 'week': start = startOfWeek(now); break;
+      case '30days': start = subDays(now, 30); break;
+      case 'month': default: start = startOfMonth(now); break;
     }
     return activeExpenses.filter(e => new Date(e.expense_date) >= start);
   }, [activeExpenses, analyticsRange]);
@@ -607,18 +803,9 @@ const ExpensesPage: React.FC = () => {
   // Category + date range filtered active expenses
   const displayExpenses = useMemo(() => {
     let filtered = activeExpenses;
-    if (categoryFilter) {
-      filtered = filtered.filter(e => e.category === categoryFilter);
-    }
-    if (dateFrom) {
-      const from = new Date(dateFrom);
-      filtered = filtered.filter(e => new Date(e.expense_date) >= from);
-    }
-    if (dateTo) {
-      const to = new Date(dateTo);
-      to.setHours(23, 59, 59);
-      filtered = filtered.filter(e => new Date(e.expense_date) <= to);
-    }
+    if (categoryFilter) filtered = filtered.filter(e => e.category === categoryFilter);
+    if (dateFrom) { const from = new Date(dateFrom); filtered = filtered.filter(e => new Date(e.expense_date) >= from); }
+    if (dateTo) { const to = new Date(dateTo); to.setHours(23, 59, 59); filtered = filtered.filter(e => new Date(e.expense_date) <= to); }
     return filtered;
   }, [activeExpenses, categoryFilter, dateFrom, dateTo]);
 
@@ -637,6 +824,9 @@ const ExpensesPage: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button size="sm" variant="outline" className="rounded-full" onClick={handleExportCSV} title={t('export.button', 'Export CSV')}>
+            <Download className="w-4 h-4" />
+          </Button>
           <Button size="sm" variant="outline" className="rounded-full" onClick={() => setBudgetDialogOpen(true)}>
             <Target className="w-4 h-4" />
           </Button>
@@ -678,7 +868,15 @@ const ExpensesPage: React.FC = () => {
               <DollarSign className="w-3.5 h-3.5" />
               {t('summary.total', 'Total Active')}
             </div>
-            <p className="text-xl font-bold">{currencySymbol}{analytics.totalExpenses.toFixed(2)}</p>
+            {isMultiCurrency ? (
+              <div className="space-y-0.5">
+                {Object.entries(analytics.totalsByCurrency).map(([c, total]) => (
+                  <p key={c} className="text-lg font-bold">{getCurrencySymbol(c)}{total.toFixed(2)}</p>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xl font-bold">{currencySymbol}{analytics.totalExpenses.toFixed(2)}</p>
+            )}
           </CardContent>
         </Card>
 
@@ -706,17 +904,21 @@ const ExpensesPage: React.FC = () => {
                   <ArrowLeftRight className="w-3.5 h-3.5" />
                   {t('summary.balance', 'Net Balance')}
                 </div>
-                <p className={cn("text-xl font-bold", netBalance > 0 ? "text-[hsl(var(--success))]" : netBalance < 0 ? "text-[hsl(var(--warning))]" : "")}>
-                  {netBalance > 0
-                    ? `${partnerName} ${t('summary.owesYou', 'owes')} ${currencySymbol}${netBalance.toFixed(2)}`
-                    : netBalance < 0
-                      ? `${t('summary.youOwe', 'You owe')} ${currencySymbol}${Math.abs(netBalance).toFixed(2)}`
-                      : t('summary.settled', 'All settled!')
-                  }
-                </p>
+                {isMultiCurrency ? (
+                  <CurrencyBalances balances={netBalanceByCurrency} partnerName={partnerName} t={t} />
+                ) : (
+                  <p className={cn("text-xl font-bold", netBalance > 0 ? "text-[hsl(var(--success))]" : netBalance < 0 ? "text-[hsl(var(--warning))]" : "")}>
+                    {netBalance > 0
+                      ? `${partnerName} ${t('summary.owesYou', 'owes')} ${currencySymbol}${netBalance.toFixed(2)}`
+                      : netBalance < 0
+                        ? `${t('summary.youOwe', 'You owe')} ${currencySymbol}${Math.abs(netBalance).toFixed(2)}`
+                        : t('summary.settled', 'All settled!')
+                    }
+                  </p>
+                )}
               </CardContent>
             </Card>
-            <Card className="bg-card/80 backdrop-blur col-span-2 md:col-span-1 lg:col-span-1">
+            <Card className="bg-card/80 backdrop-blur col-span-2 md:col-span-1">
               <CardContent className="pt-4 pb-3 px-4 flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">{t('summary.unsettled', 'Unsettled')}</p>
@@ -739,9 +941,9 @@ const ExpensesPage: React.FC = () => {
         <div>
           <h3 className="text-sm font-semibold text-muted-foreground mb-2">{t('topCategories', 'Top Categories')}</h3>
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {analytics.topCategories.slice(0, 5).map(cat => (
+            {analytics.topCategories.slice(0, 5).map((cat, i) => (
               <button
-                key={cat.category}
+                key={`${cat.category}-${cat.currency}-${i}`}
                 onClick={() => setCategoryFilter(categoryFilter === cat.category ? null : cat.category)}
                 className={cn(
                   "flex items-center gap-2 px-3 py-2 rounded-full border text-sm whitespace-nowrap transition-colors",
@@ -752,7 +954,7 @@ const ExpensesPage: React.FC = () => {
               >
                 <span>{cat.icon}</span>
                 <span className="font-medium">{cat.category}</span>
-                <span className="text-xs opacity-70">{currencySymbol}{cat.total.toFixed(0)}</span>
+                <span className="text-xs opacity-70">{getCurrencySymbol(cat.currency)}{cat.total.toFixed(0)}</span>
               </button>
             ))}
           </div>
@@ -782,21 +984,9 @@ const ExpensesPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 flex-1">
               <Calendar className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
-                className="h-8 text-xs"
-                placeholder={t('filter.from', 'From')}
-              />
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-8 text-xs" />
               <span className="text-muted-foreground text-xs">–</span>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
-                className="h-8 text-xs"
-                placeholder={t('filter.to', 'To')}
-              />
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-8 text-xs" />
             </div>
             {hasDateFilter && (
               <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => { setDateFrom(''); setDateTo(''); }}>
@@ -948,21 +1138,23 @@ const ExpensesPage: React.FC = () => {
               ) : (
                 <div className="space-y-3">
                   {(() => {
-                    const catMap: Record<string, { total: number; count: number; icon: string }> = {};
+                    // Group by category+currency for multi-currency
+                    const catMap: Record<string, { total: number; count: number; icon: string; currency: string }> = {};
                     rangeFilteredExpenses.forEach(e => {
-                      if (!catMap[e.category]) catMap[e.category] = { total: 0, count: 0, icon: e.category_icon || getCategoryIcon(e.category) };
-                      catMap[e.category].total += e.amount;
-                      catMap[e.category].count++;
+                      const key = `${e.category}__${e.currency || 'USD'}`;
+                      if (!catMap[key]) catMap[key] = { total: 0, count: 0, icon: e.category_icon || getCategoryIcon(e.category), currency: e.currency || 'USD' };
+                      catMap[key].total += e.amount;
+                      catMap[key].count++;
                     });
                     const sorted = Object.entries(catMap).sort(([, a], [, b]) => b.total - a.total);
                     const maxTotal = sorted[0]?.[1]?.total || 1;
-                    return sorted.map(([cat, data]) => (
-                      <div key={cat} className="flex items-center gap-3">
+                    return sorted.map(([key, data]) => (
+                      <div key={key} className="flex items-center gap-3">
                         <span className="text-xl">{data.icon}</span>
                         <div className="flex-1">
                           <div className="flex justify-between text-sm mb-1">
-                            <span className="font-medium">{cat}</span>
-                            <span className="font-semibold">{currencySymbol}{data.total.toFixed(2)}</span>
+                            <span className="font-medium">{key.split('__')[0]}</span>
+                            <span className="font-semibold">{getCurrencySymbol(data.currency)}{data.total.toFixed(2)}</span>
                           </div>
                           <div className="h-2 rounded-full bg-muted overflow-hidden">
                             <div
@@ -976,10 +1168,20 @@ const ExpensesPage: React.FC = () => {
                     ));
                   })()}
                   <Separator />
-                  <div className="flex justify-between font-semibold text-sm">
-                    <span>{t('analytics.total', 'Total')}</span>
-                    <span>{currencySymbol}{rangeFilteredExpenses.reduce((s, e) => s + e.amount, 0).toFixed(2)}</span>
-                  </div>
+                  {/* Multi-currency totals */}
+                  {(() => {
+                    const totals: Record<string, number> = {};
+                    rangeFilteredExpenses.forEach(e => {
+                      const c = e.currency || 'USD';
+                      totals[c] = (totals[c] || 0) + e.amount;
+                    });
+                    return Object.entries(totals).map(([c, total]) => (
+                      <div key={c} className="flex justify-between font-semibold text-sm">
+                        <span>{t('analytics.total', 'Total')} ({c})</span>
+                        <span>{getCurrencySymbol(c)}{total.toFixed(2)}</span>
+                      </div>
+                    ));
+                  })()}
                 </div>
               )}
             </CardContent>
@@ -1039,6 +1241,13 @@ const ExpensesPage: React.FC = () => {
         hasPartner={hasPartner}
         onUpdateSplit={handleUpdateSplit}
         onDelete={deleteExpense}
+        onEdit={(exp) => setEditExpense(exp)}
+      />
+      <EditExpenseDialog
+        expense={editExpense}
+        open={!!editExpense}
+        onOpenChange={v => { if (!v) setEditExpense(null); }}
+        onSave={updateExpense}
       />
       <BudgetLimitDialog
         open={budgetDialogOpen}
