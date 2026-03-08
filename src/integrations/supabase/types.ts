@@ -648,6 +648,47 @@ export type Database = {
         }
         Relationships: []
       }
+      expense_budget_limits: {
+        Row: {
+          category: string
+          couple_id: string | null
+          created_at: string
+          currency: string
+          id: string
+          monthly_limit: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category: string
+          couple_id?: string | null
+          created_at?: string
+          currency?: string
+          id?: string
+          monthly_limit?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          couple_id?: string | null
+          created_at?: string
+          currency?: string
+          id?: string
+          monthly_limit?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_budget_limits_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_couples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expense_settlements: {
         Row: {
           couple_id: string | null
