@@ -152,6 +152,15 @@ const Profile = () => {
           >
             <DefaultPrivacyCard />
           </SettingsCard>
+
+          <SettingsCard
+            icon={<Wallet className="h-5 w-5 text-primary" />}
+            iconBg="bg-primary/10"
+            title={t('expenses:preferences.title', 'Expense Tracking')}
+            subtitle={t('expenses:preferences.description', 'Configure how expenses are tracked and split')}
+          >
+            <ExpensePreferencesCard />
+          </SettingsCard>
         </CollapsibleSection>
 
         {/* ============================================ */}
