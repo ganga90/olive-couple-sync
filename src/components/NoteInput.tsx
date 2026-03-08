@@ -337,7 +337,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         taskOwner: aiProcessedNote.task_owner || null,
         listId: aiProcessedNote.list_id || listId || null,
         completed: false,
-        mediaUrls: aiProcessedNote.media_urls || mediaUrls
+        mediaUrls: aiProcessedNote.media_urls || mediaUrls,
+        is_sensitive: aiProcessedNote.is_sensitive || false,
+        encrypted_original_text: aiProcessedNote.encrypted_original_text || null,
+        encrypted_summary: aiProcessedNote.encrypted_summary || null,
       });
 
       // Success feedback
