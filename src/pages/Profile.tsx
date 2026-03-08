@@ -16,7 +16,8 @@ import { OliveSkillsManager } from "@/components/settings/OliveSkillsManager";
 import { BackgroundAgentsManager } from "@/components/settings/BackgroundAgentsManager";
 import { DefaultPrivacyCard } from "@/components/settings/DefaultPrivacyCard";
 import { CollapsibleSection } from "@/components/settings/CollapsibleSection";
-import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot, Mail } from "lucide-react";
+import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot, Mail, Fingerprint } from "lucide-react";
+import { PasskeySettingsCard } from "@/components/settings/PasskeySettingsCard";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
 import { useLanguage } from "@/providers/LanguageProvider";
@@ -178,15 +179,6 @@ const Profile = () => {
           </SettingsCard>
 
           <SettingsCard
-            icon={<span className="text-lg">🌍</span>}
-            iconBg="bg-blue-500/10"
-            title={t('profile:regional.title', 'Regional Format')}
-            subtitle={t('profile:regional.subtitle', 'Language & timezone settings')}
-          >
-            <RegionalFormatCard />
-          </SettingsCard>
-
-          <SettingsCard
             icon={<BellRing className="h-5 w-5 text-[hsl(var(--magic-accent))]" />}
             iconBg="bg-[hsl(var(--magic-accent))]/10"
             title={t('profile:olivePreferences.title', 'Olive Proactive Settings')}
@@ -269,6 +261,24 @@ const Profile = () => {
           icon={<Settings className="h-3.5 w-3.5 text-stone-500" />}
           delay={200}
         >
+          <SettingsCard
+            icon={<span className="text-lg">🌍</span>}
+            iconBg="bg-blue-500/10"
+            title={t('profile:regional.title', 'Regional Format')}
+            subtitle={t('profile:regional.subtitle', 'Language & timezone settings')}
+          >
+            <RegionalFormatCard />
+          </SettingsCard>
+
+          <SettingsCard
+            icon={<Fingerprint className="h-5 w-5 text-primary" />}
+            iconBg="bg-primary/10"
+            title={t('auth:passkey.settingsTitle', 'Passkey')}
+            subtitle={t('auth:passkey.settingsSubtitle', 'Sign in faster with biometrics')}
+          >
+            <PasskeySettingsCard />
+          </SettingsCard>
+
           <SettingsCard
             icon={<Settings className="h-5 w-5 text-stone-500" />}
             iconBg="bg-stone-100"
