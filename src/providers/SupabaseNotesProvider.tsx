@@ -83,8 +83,17 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
   };
 
   // Map task_owner to display name
+  // If no explicit owner is set AND the note is private, default to the creator
   const getTaskOwnerName = (taskOwner: string | null): string | undefined => {
-    if (!taskOwner) return undefined;
+    if (!taskOwner) {
+      // For private notes (no couple_id), default owner to the note creator
+      if (!supabaseNote.couple_id && supabaseNote.author_id) {
+        if (supabaseNote.author_id === currentUser?.id) {
+          return resolvedYouName || currentUser?.firstName || currentUser?.fullName || "You";
+        }
+      }
+      return undefined;
+    }
     
     // Get resolved names
     const resolvedYouName = currentCouple?.resolvedYouName || currentCouple?.you_name;

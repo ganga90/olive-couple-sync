@@ -563,7 +563,7 @@ const NoteDetails = () => {
               <Button
                 variant="outline"
                 size="lg"
-                className="flex-1 min-w-0 rounded-full border-[hsl(var(--success))]/30 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 text-sm"
+                className="shrink-0 rounded-full border-[hsl(var(--success))]/30 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 text-sm px-5 whitespace-nowrap"
                 onClick={async () => {
                   await updateNote(note.id, { completed: true });
                   toast.success(t('toast.markedComplete'));

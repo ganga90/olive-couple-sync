@@ -1,6 +1,7 @@
 {
   "title": "Lists",
   "searchPlaceholder": "Search lists and tasks...",
+  "searchPlaceholderShort": "Search...",
   "signInPrompt": "Sign in to manage your lists",
   "subtitle": "Organize your life, beautifully",
   "quickAccess": {
