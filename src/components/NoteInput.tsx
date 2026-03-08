@@ -350,6 +350,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       setText("");
       setInterim("");
       clearMediaFiles();
+      setIsSensitive(false);
 
       // Don't call onNoteAdded yet - wait for user to accept
     } catch (error) {
