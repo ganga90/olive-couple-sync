@@ -539,17 +539,17 @@ const NoteDetails = () => {
           {!note.completed && (
             <div className="flex items-center gap-3 animate-fade-up" style={{ animationDelay: '150ms' }}>
               {/* Primary actions */}
-              <div className="relative flex-1 min-w-0">
+              <div className="relative shrink-0">
                 <Button 
                   variant="accent"
                   size="lg" 
-                  className="w-full rounded-full shadow-lg text-sm"
+                  className="rounded-full shadow-lg text-sm px-5 whitespace-nowrap"
                   onClick={() => {
                     askOliveOnboarding.dismiss();
                     setChatOpen(true);
                   }}
                 >
-                  <Sparkles className="h-4 w-4 mr-2 shrink-0" />
+                  <Sparkles className="h-4 w-4 mr-1.5 shrink-0" />
                   {t('askOlive')}
                 </Button>
                 <OnboardingTooltip
