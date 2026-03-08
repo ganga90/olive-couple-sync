@@ -219,6 +219,18 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
       if (noteData.recurrence_interval) {
         insertData.recurrence_interval = noteData.recurrence_interval;
       }
+      // Encryption fields
+      if ((noteData as any).is_sensitive) {
+        insertData.is_sensitive = true;
+      }
+      if ((noteData as any).encrypted_original_text) {
+        insertData.encrypted_original_text = (noteData as any).encrypted_original_text;
+        insertData.original_text = '[ENCRYPTED]';
+      }
+      if ((noteData as any).encrypted_summary) {
+        insertData.encrypted_summary = (noteData as any).encrypted_summary;
+        insertData.summary = '[ENCRYPTED]';
+      }
       
       
       const { data, error } = await supabase
