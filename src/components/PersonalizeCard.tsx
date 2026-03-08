@@ -89,9 +89,24 @@ export const PersonalizeCard = () => {
 
   if (dismissed || hasExistingPrefs === null || hasExistingPrefs) return null;
 
-  const handleDismiss = () => {
+  const handleDismiss = async () => {
     localStorage.setItem(COMPLETED_KEY, "true");
     setDismissed(true);
+    
+    if (user?.id) {
+      try {
+        await supabase.from("olive_memory_chunks").insert({
+          user_id: user.id,
+          content: "User dismissed personalization onboarding",
+          chunk_type: "preference",
+          importance: 1,
+          source: "personalization",
+          metadata: { type: "system", action: "dismissed" },
+        });
+      } catch (e) {
+        console.error("Failed to save dismissal to DB", e);
+      }
+    }
   };
 
   const handleSave = async () => {
