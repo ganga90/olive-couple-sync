@@ -33,6 +33,7 @@ import { supabase } from "@/lib/supabaseClient";
 const Home = () => {
   const { t } = useTranslation(['home', 'common']);
   const { getLocalizedPath } = useLanguage();
+  const dateLocale = useDateLocale();
   
   useSEO({ 
     title: "Home — Olive", 
