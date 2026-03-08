@@ -916,7 +916,7 @@ const ExpensesPage: React.FC = () => {
                     </div>
                     <Progress
                       value={Math.min(bl.percentage, 100)}
-                      className={cn("h-2", bl.status === 'over' ? '[&>div]:bg-destructive' : bl.status === 'warning' ? '[&>div]:bg-[hsl(var(--warning,40_100%_50%))]' : '')}
+                      className={cn("h-2", bl.status === 'over' ? '[&>div]:bg-destructive' : bl.status === 'warning' ? '[&>div]:bg-[hsl(var(--warning))]' : '')}
                     />
                   </div>
                 ))}
