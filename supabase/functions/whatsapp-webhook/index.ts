@@ -2082,7 +2082,7 @@ serve(async (req) => {
       // Authenticate user first (need userId, coupleId for note creation)
       const { data: mediaProfiles, error: mediaProfileError } = await supabase
         .from('clerk_profiles')
-        .select('id, display_name, timezone, language_preference')
+        .select('id, display_name, timezone, language_preference, default_privacy')
         .eq('phone_number', fromNumber)
         .limit(1);
 
@@ -2114,6 +2114,10 @@ serve(async (req) => {
         .limit(1)
         .single();
       const mediaCoupleId = mediaCoupleM?.couple_id || null;
+      
+      // Respect user's default privacy preference
+      const mediaDefaultPrivacy = mediaProfile.default_privacy || 'shared';
+      const mediaEffectiveCoupleId = mediaDefaultPrivacy === 'private' ? null : mediaCoupleId;
 
       // ====================================================================
       // IMAGE / DOCUMENT processing via process-note (non-audio media only)
@@ -2123,7 +2127,7 @@ serve(async (req) => {
       const mediaPayload: any = {
         text: '',
         user_id: mediaUserId,
-        couple_id: mediaCoupleId,
+        couple_id: mediaEffectiveCoupleId,
         timezone: mediaProfile.timezone || 'America/New_York',
         media: mediaUrls,
         mediaTypes: mediaTypes,
@@ -2144,7 +2148,7 @@ serve(async (req) => {
       try {
         const noteData = {
           author_id: mediaUserId,
-          couple_id: mediaCoupleId,
+          couple_id: mediaEffectiveCoupleId,
           original_text: processData.summary || 'Media attachment',
           summary: processData.summary || 'Media attachment',
           category: processData.category || 'task',
@@ -2250,7 +2254,7 @@ serve(async (req) => {
     // Authenticate user by WhatsApp number
     const { data: profiles, error: profileError } = await supabase
       .from('clerk_profiles')
-      .select('id, display_name, timezone, language_preference')
+      .select('id, display_name, timezone, language_preference, default_privacy')
       .eq('phone_number', fromNumber)
       .limit(1);
 
@@ -2324,6 +2328,12 @@ serve(async (req) => {
       .single();
 
     const coupleId = coupleMember?.couple_id || null;
+
+    // Respect user's default privacy preference for note creation
+    // 'private' → couple_id = null; 'shared' (default) → couple_id = coupleId
+    const defaultPrivacy = profile.default_privacy || 'shared';
+    const effectiveCoupleId = defaultPrivacy === 'private' ? null : coupleId;
+    console.log(`[Privacy] default_privacy=${defaultPrivacy}, coupleId=${coupleId}, effectiveCoupleId=${effectiveCoupleId}`);
 
     // ========================================================================
     // HELPER: Save referenced entity to session for pronoun resolution
@@ -2792,7 +2802,7 @@ serve(async (req) => {
             body: {
               text: effectiveMessage,
               user_id: userId,
-              couple_id: coupleId || undefined,
+              couple_id: effectiveCoupleId || undefined,
               timezone: profile?.timezone || 'America/New_York',
               source: 'whatsapp',
               isUrgent: isUrgent || false,
@@ -3868,7 +3878,7 @@ serve(async (req) => {
             body: {
               text: taskDescription,
               user_id: userId,
-              couple_id: coupleId,
+              couple_id: effectiveCoupleId,
               timezone: profile.timezone || 'America/New_York',
             }
           });
@@ -3915,7 +3925,7 @@ serve(async (req) => {
           
           const noteData: any = {
             author_id: userId,
-            couple_id: coupleId,
+            couple_id: effectiveCoupleId,
             original_text: messageBody || taskDescription,
             summary: processData.summary || taskDescription,
             category: processData.category || 'Task',
@@ -4214,7 +4224,7 @@ serve(async (req) => {
             .insert({ 
               name: targetListName, 
               author_id: userId, 
-              couple_id: coupleId,
+              couple_id: effectiveCoupleId,
               is_manual: true
             })
             .select('id, name')
@@ -4364,7 +4374,7 @@ serve(async (req) => {
             body: {
               image_url: mediaUrls[0],
               user_id: userId,
-              couple_id: coupleId,
+              couple_id: effectiveCoupleId,
               caption: expenseText || undefined,
             },
           });
@@ -4428,7 +4438,7 @@ Description: "${description}"`;
           .from('transactions')
           .insert({
             user_id: userId,
-            couple_id: coupleId,
+            couple_id: effectiveCoupleId,
             amount,
             merchant,
             category,
@@ -6020,7 +6030,7 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
     const notePayload: any = { 
       text: createMessage, 
       user_id: userId,
-      couple_id: coupleId,
+      couple_id: effectiveCoupleId,
       timezone: profile.timezone || 'America/New_York',
       force_priority: isUrgent ? 'high' : undefined
     };
@@ -6090,7 +6100,7 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
       if (processData.multiple && Array.isArray(processData.notes)) {
         const notesToInsert = processData.notes.map((note: any) => ({
           author_id: userId,
-          couple_id: coupleId,
+          couple_id: effectiveCoupleId,
           original_text: messageBody || note.summary || 'Media attachment',
           summary: note.summary,
           category: note.category || 'task',
@@ -6126,7 +6136,7 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
       } else {
         const noteData = {
           author_id: userId,
-          couple_id: coupleId,
+          couple_id: effectiveCoupleId,
           original_text: messageBody || processData.summary || 'Media attachment',
           summary: processData.summary,
           category: processData.category || 'task',
