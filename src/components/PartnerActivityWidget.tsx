@@ -145,7 +145,7 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
                   {activity.summary}
                 </p>
                 <p className="text-[11px] text-muted-foreground/70 mt-1.5">
-                  {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
+                  {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true, locale: dateLocale })}
                 </p>
               </div>
               <ArrowRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-primary
