@@ -86,6 +86,8 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
     }
 
     try {
+      let allNotes: SupabaseNote[] = [];
+      
       if (coupleId) {
         // If couple ID is provided, fetch BOTH personal notes AND couple notes
         
@@ -106,16 +108,10 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
         if (coupleNotesResult.error) throw coupleNotesResult.error;
 
         // Combine both personal and couple notes
-        const combinedNotes = [
+        allNotes = [
           ...(personalNotesResult.data || []),
           ...(coupleNotesResult.data || [])
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-        // Decrypt sensitive notes client-side via edge function
-        const decryptedNotes = await decryptSensitiveNotes(combinedNotes, user.id);
-
-        
-        setNotes(decryptedNotes);
       } else {
         // If no couple ID, fetch only personal notes
         const { data, error } = await supabase
@@ -125,10 +121,30 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
           .order("created_at", { ascending: false });
 
         if (error) throw error;
-        
-        const decryptedNotes = await decryptSensitiveNotes(data || [], user.id);
-        setNotes(decryptedNotes);
+        allNotes = data || [];
       }
+
+      // Filter out notes that are linked to expenses (to avoid showing them in lists)
+      const { data: expenseLinkedNotes, error: expenseError } = await supabase
+        .from("expenses")
+        .select("note_id")
+        .not("note_id", "is", null);
+
+      if (expenseError) {
+        console.warn("[Notes] Error fetching expense-linked notes:", expenseError);
+      }
+
+      const expenseNoteIds = new Set(
+        (expenseLinkedNotes || []).map(expense => expense.note_id).filter(Boolean)
+      );
+
+      // Filter out notes that are linked to expenses
+      const filteredNotes = allNotes.filter(note => !expenseNoteIds.has(note.id));
+
+      // Decrypt sensitive notes client-side via edge function
+      const decryptedNotes = await decryptSensitiveNotes(filteredNotes, user.id);
+
+      setNotes(decryptedNotes);
     } catch (error) {
       console.error("[Notes] Error fetching notes:", error);
       toast.error("Failed to load notes");
