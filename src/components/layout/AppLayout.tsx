@@ -23,11 +23,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   // Routes that should hide the app layout entirely (landing, auth, onboarding)
   const hideLayoutRoutes = [
     '/landing',
+    '/auth',
     '/sign-in',
     '/sign-up',
     '/request-access',
     '/onboarding',
     '/welcome',
+    '/native-welcome',
+    '/auth-redirect-native',
+    '/legal/terms',
+    '/legal/privacy',
+    '/accept-invite',
     '/'
   ];
   
