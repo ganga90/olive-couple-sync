@@ -319,15 +319,19 @@ interface EditExpenseDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onSave: (id: string, updates: Partial<Expense>) => Promise<any>;
+  hasPartner?: boolean;
+  youName?: string;
+  partnerName?: string;
 }
 
-const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ expense, open, onOpenChange, onSave }) => {
+const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ expense, open, onOpenChange, onSave, hasPartner, youName, partnerName }) => {
   const { t } = useTranslation('expenses');
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Other');
   const [currency, setCurrency] = useState('USD');
   const [expenseDate, setExpenseDate] = useState('');
+  const [splitType, setSplitType] = useState<ExpenseSplitType>('individual');
   const [saving, setSaving] = useState(false);
 
   React.useEffect(() => {
@@ -337,6 +341,7 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ expense, open, on
       setCategory(expense.category);
       setCurrency(expense.currency);
       setExpenseDate(expense.expense_date.split('T')[0]);
+      setSplitType(expense.split_type);
     }
   }, [expense, open]);
 
@@ -355,6 +360,8 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ expense, open, on
       category_icon: getCategoryIcon(category),
       currency,
       expense_date: new Date(expenseDate).toISOString(),
+      split_type: splitType,
+      is_shared: splitType !== 'individual',
     } as Partial<Expense>);
     setSaving(false);
     onOpenChange(false);
@@ -403,6 +410,21 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ expense, open, on
               </SelectContent>
             </Select>
           </div>
+          {hasPartner && (
+            <div>
+              <Label>{t('addDialog.splitType', 'Split type')}</Label>
+              <Select value={splitType} onValueChange={v => setSplitType(v as ExpenseSplitType)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="you_paid_split">{t('split.youPaidSplit', '{{you}} paid, split equally', { you: youName })}</SelectItem>
+                  <SelectItem value="you_owed_full">{t('split.youOwedFull', '{{partner}} owes full amount', { partner: partnerName })}</SelectItem>
+                  <SelectItem value="partner_paid_split">{t('split.partnerPaidSplit', '{{partner}} paid, split equally', { partner: partnerName })}</SelectItem>
+                  <SelectItem value="partner_owed_full">{t('split.partnerOwedFull', '{{you}} owes full amount', { you: youName })}</SelectItem>
+                  <SelectItem value="individual">{t('split.individual', 'Individual (no split)')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <Label>{t('details.date', 'Date')}</Label>
             <Input type="date" value={expenseDate} onChange={e => setExpenseDate(e.target.value)} className="mt-1" />
@@ -412,6 +434,10 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ expense, open, on
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('addDialog.cancel', 'Cancel')}</Button>
           <Button onClick={handleSave} disabled={saving}>{saving ? '...' : t('edit.save', 'Save Changes')}</Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
       </DialogContent>
     </Dialog>
   );
