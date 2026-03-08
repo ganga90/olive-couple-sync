@@ -4438,7 +4438,7 @@ Description: "${description}"`;
           .from('transactions')
           .insert({
             user_id: userId,
-            couple_id: coupleId,
+            couple_id: effectiveCoupleId,
             amount,
             merchant,
             category,
