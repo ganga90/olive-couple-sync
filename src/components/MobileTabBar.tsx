@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Home, ListTodo, Calendar, Sun } from "lucide-react";
+import { Home, ListTodo, Calendar, Sun, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
