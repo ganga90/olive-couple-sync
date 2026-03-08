@@ -438,10 +438,10 @@ export function useExpenses() {
         if (error) throw error;
         setBudgetLimits(prev => [...prev, data as BudgetLimit]);
       }
-      toast.success(`Budget limit set for ${category}`);
+      toast.success(t('toast.budgetSet', 'Budget limit set for {{category}}', { category }));
     } catch (err) {
       console.error('[useExpenses] set budget limit error:', err);
-      toast.error('Failed to set budget limit');
+      toast.error(t('toast.budgetSetError', 'Failed to set budget limit'));
     }
   }, [userId, coupleId, budgetLimits, preferences.defaultCurrency]);
 
