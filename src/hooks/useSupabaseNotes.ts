@@ -76,18 +76,19 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
         const decryptedNotes = await decryptSensitiveNotes(combinedNotes, user.id);
 
         
-        setNotes(combinedNotes);
+        setNotes(decryptedNotes);
       } else {
         // If no couple ID, fetch only personal notes
         const { data, error } = await supabase
           .from("clerk_notes")
-          .select("*")
+          .select("*, is_sensitive, encrypted_original_text, encrypted_summary")
           .is("couple_id", null)
           .order("created_at", { ascending: false });
 
         if (error) throw error;
         
-        setNotes(data || []);
+        const decryptedNotes = await decryptSensitiveNotes(data || [], user.id);
+        setNotes(decryptedNotes);
       }
     } catch (error) {
       console.error("[Notes] Error fetching notes:", error);
