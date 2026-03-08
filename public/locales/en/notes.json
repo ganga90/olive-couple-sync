@@ -106,5 +106,13 @@
     "placeholder": "DD/MM/YYYY",
     "save": "Save",
     "clear": "Clear"
+  },
+  "sensitive": {
+    "label": "Encrypted",
+    "labelOff": "Not encrypted",
+    "tooltip": "Mark as sensitive — content will be encrypted at rest",
+    "enabled": "Encryption enabled",
+    "disabled": "Encryption disabled",
+    "badge": "Encrypted"
   }
 }
