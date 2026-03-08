@@ -154,8 +154,7 @@ const Home = () => {
     });
   };
 
-  // Get daily view tasks (next 3 days)
-  const dailyViewTasks = useMemo(() => getTasksForDays([0, 1, 2]), [filteredNotes]);
+  // Get weekly view tasks (next 5 days)
 
   // Get weekly view tasks (next 5 days)
   const weeklyViewTasks = useMemo(() => getTasksForDays([0, 1, 2, 3, 4]), [filteredNotes]);
@@ -332,12 +331,9 @@ const Home = () => {
                   {t('home:tabs.sectionLabel', 'Your Tasks')}
                 </p>
                 
-                <TabsList className="w-full grid grid-cols-5 bg-stone-100/80 mb-5 md:mb-6 h-12 md:h-14 rounded-full p-1">
+                <TabsList className="w-full grid grid-cols-4 bg-stone-100/80 mb-5 md:mb-6 h-12 md:h-14 rounded-full p-1">
                   <TabsTrigger value="priority" className="text-xs md:text-sm font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
                     {t('home:tabs.priority')}
-                  </TabsTrigger>
-                  <TabsTrigger value="daily" className="text-xs md:text-sm font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
-                    {t('home:tabs.daily')}
                   </TabsTrigger>
                   <TabsTrigger value="weekly" className="text-xs md:text-sm font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
                     {t('home:tabs.weekly')}
@@ -421,40 +417,7 @@ const Home = () => {
                 </div>
               </TabsContent>
 
-              {/* Daily Tab - DESKTOP PADDING */}
-              <TabsContent value="daily" className="mt-0">
-                <div className="p-4 md:p-8 space-y-6 md:space-y-8">
-                  {dailyViewTasks.map((dayData, dayIndex) => (
-                    <div key={dayData.date.toISOString()} className={`animate-fade-up stagger-${Math.min(dayIndex + 1, 3)}`}>
-                      <h3 className="text-base md:text-lg font-semibold text-foreground mb-3 md:mb-4 flex items-center gap-2">
-                        <span className={dayIndex === 0 ? "text-primary" : ""}>
-                          {dayIndex === 0 ? t('common:common.today') : dayIndex === 1 ? t('common:common.tomorrow') : format(dayData.date, 'EEEE')}
-                        </span>
-                        <span className="text-muted-foreground font-normal">
-                          {format(dayData.date, 'MMM d')}
-                        </span>
-                      </h3>
-                      {dayData.tasks.length > 0 ? (
-                        <div className="space-y-4 md:space-y-5">
-                          {dayData.tasks.map((task) => (
-                            <TaskItem
-                              key={task.id}
-                              task={task}
-                              onToggleComplete={handleToggleComplete}
-                              onTaskClick={handleTaskClick}
-                              authorName={getAuthorName(task)}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-6 md:py-8 text-muted-foreground text-sm md:text-base bg-muted/30 rounded-xl">
-                          {t('home:emptyState.noTasksScheduled')}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </TabsContent>
+
 
               {/* Weekly Tab - 5-day view */}
               <TabsContent value="weekly" className="mt-0">
