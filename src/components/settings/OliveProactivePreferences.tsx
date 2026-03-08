@@ -6,7 +6,8 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Loader2, Sun, Moon, Bell, Sparkles, Clock } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, Sun, Moon, Bell, Sparkles, Clock, AlarmClock } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -21,6 +22,7 @@ interface OlivePreferences {
   quiet_hours_end: string;
   max_daily_messages: number;
   timezone: string;
+  reminder_advance_intervals: string[];
 }
 
 const DEFAULT_PREFERENCES: OlivePreferences = {
@@ -34,7 +36,19 @@ const DEFAULT_PREFERENCES: OlivePreferences = {
   quiet_hours_end: '07:00',
   max_daily_messages: 5,
   timezone: 'UTC',
+  reminder_advance_intervals: [],
 };
+
+// Available advance reminder intervals
+const ADVANCE_INTERVAL_OPTIONS = [
+  { value: '15min', label: '15 min', minutes: 15 },
+  { value: '30min', label: '30 min', minutes: 30 },
+  { value: '1h', label: '1 hour', minutes: 60 },
+  { value: '2h', label: '2 hours', minutes: 120 },
+  { value: '6h', label: '6 hours', minutes: 360 },
+  { value: '12h', label: '12 hours', minutes: 720 },
+  { value: '24h', label: '24 hours', minutes: 1440 },
+];
 
 export const OliveProactivePreferences: React.FC = () => {
   const { t } = useTranslation('profile');
@@ -75,6 +89,7 @@ export const OliveProactivePreferences: React.FC = () => {
           quiet_hours_end: data.quiet_hours_end ?? '07:00',
           max_daily_messages: data.max_daily_messages ?? 5,
           timezone: data.timezone ?? 'UTC',
+          reminder_advance_intervals: (data as any).reminder_advance_intervals ?? [],
         };
         setPreferences(prefs);
         setOriginalPrefs(prefs);
@@ -92,6 +107,14 @@ export const OliveProactivePreferences: React.FC = () => {
       setHasChanges(JSON.stringify(updated) !== JSON.stringify(originalPrefs));
       return updated;
     });
+  };
+
+  const toggleAdvanceInterval = (interval: string) => {
+    const current = preferences.reminder_advance_intervals;
+    const updated = current.includes(interval)
+      ? current.filter(i => i !== interval)
+      : [...current, interval];
+    updatePreference('reminder_advance_intervals', updated);
   };
 
   const savePreferences = async () => {
@@ -124,7 +147,7 @@ export const OliveProactivePreferences: React.FC = () => {
 
   if (!isAuthenticated) {
     return (
-      <p className="text-sm text-stone-500">
+      <p className="text-sm text-muted-foreground">
         {t('olivePreferences.signInRequired', 'Sign in to configure Olive preferences')}
       </p>
     );
@@ -148,7 +171,7 @@ export const OliveProactivePreferences: React.FC = () => {
           </div>
           <div>
             <Label className="text-sm font-medium">{t('olivePreferences.proactiveEnabled', 'Proactive Olive')}</Label>
-            <p className="text-xs text-stone-500">{t('olivePreferences.proactiveEnabledDesc', 'Let Olive reach out with helpful suggestions')}</p>
+            <p className="text-xs text-muted-foreground">{t('olivePreferences.proactiveEnabledDesc', 'Let Olive reach out with helpful suggestions')}</p>
           </div>
         </div>
         <Switch 
@@ -168,7 +191,7 @@ export const OliveProactivePreferences: React.FC = () => {
             <Sun className="h-5 w-5 text-amber-500" />
             <div>
               <Label className="text-sm font-medium">{t('olivePreferences.morningBriefing', 'Morning Briefing')}</Label>
-              <p className="text-xs text-stone-500">{t('olivePreferences.morningBriefingDesc', 'Daily summary of your tasks at 8 AM')}</p>
+              <p className="text-xs text-muted-foreground">{t('olivePreferences.morningBriefingDesc', 'Daily summary of your tasks at 8 AM')}</p>
             </div>
           </div>
           <Switch 
@@ -183,7 +206,7 @@ export const OliveProactivePreferences: React.FC = () => {
             <Moon className="h-5 w-5 text-indigo-500" />
             <div>
               <Label className="text-sm font-medium">{t('olivePreferences.eveningReview', 'Evening Review')}</Label>
-              <p className="text-xs text-stone-500">{t('olivePreferences.eveningReviewDesc', 'Recap what you accomplished today at 8 PM')}</p>
+              <p className="text-xs text-muted-foreground">{t('olivePreferences.eveningReviewDesc', 'Recap what you accomplished today at 8 PM')}</p>
             </div>
           </div>
           <Switch 
@@ -198,7 +221,7 @@ export const OliveProactivePreferences: React.FC = () => {
             <Bell className="h-5 w-5 text-[hsl(var(--priority-high))]" />
             <div>
               <Label className="text-sm font-medium">{t('olivePreferences.overdueNudge', 'Overdue Task Nudges')}</Label>
-              <p className="text-xs text-stone-500">{t('olivePreferences.overdueNudgeDesc', 'Gentle reminders for overdue tasks')}</p>
+              <p className="text-xs text-muted-foreground">{t('olivePreferences.overdueNudgeDesc', 'Gentle reminders for overdue tasks')}</p>
             </div>
           </div>
           <Switch 
@@ -213,7 +236,7 @@ export const OliveProactivePreferences: React.FC = () => {
             <Sparkles className="h-5 w-5 text-[hsl(var(--magic-accent))]" />
             <div>
               <Label className="text-sm font-medium">{t('olivePreferences.patternSuggestions', 'Pattern Suggestions')}</Label>
-              <p className="text-xs text-stone-500">{t('olivePreferences.patternSuggestionsDesc', 'Smart suggestions based on your habits')}</p>
+              <p className="text-xs text-muted-foreground">{t('olivePreferences.patternSuggestionsDesc', 'Smart suggestions based on your habits')}</p>
             </div>
           </div>
           <Switch 
@@ -228,7 +251,7 @@ export const OliveProactivePreferences: React.FC = () => {
             <Clock className="h-5 w-5 text-blue-500" />
             <div>
               <Label className="text-sm font-medium">{t('olivePreferences.weeklySummary', 'Weekly Summary')}</Label>
-              <p className="text-xs text-stone-500">{t('olivePreferences.weeklySummaryDesc', 'Get a weekly productivity report on Sundays')}</p>
+              <p className="text-xs text-muted-foreground">{t('olivePreferences.weeklySummaryDesc', 'Get a weekly productivity report on Sundays')}</p>
             </div>
           </div>
           <Switch 
@@ -238,43 +261,89 @@ export const OliveProactivePreferences: React.FC = () => {
         </div>
       </div>
 
+      {/* Advance Reminder Intervals */}
+      <div className="pt-4 border-t border-border">
+        <div className="flex items-center gap-3 mb-2">
+          <AlarmClock className="h-5 w-5 text-primary" />
+          <div>
+            <Label className="text-sm font-medium">{t('olivePreferences.advanceReminders', 'Advance Reminders')}</Label>
+            <p className="text-xs text-muted-foreground">{t('olivePreferences.advanceRemindersDesc', 'Get extra reminders before the scheduled time. By default, Olive only reminds you at the exact time you set.')}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 pl-8 mt-3">
+          {ADVANCE_INTERVAL_OPTIONS.map((option) => {
+            const isSelected = preferences.reminder_advance_intervals.includes(option.value);
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => toggleAdvanceInterval(option.value)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-150 select-none",
+                  "min-h-[36px] min-w-[44px]",
+                  isSelected
+                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                    : "bg-muted/50 text-muted-foreground border-border hover:border-primary/40 hover:bg-primary/5"
+                )}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+        {preferences.reminder_advance_intervals.length === 0 && (
+          <p className="text-xs text-muted-foreground/70 pl-8 mt-2 italic">
+            {t('olivePreferences.advanceRemindersNone', 'Only at the exact reminder time')}
+          </p>
+        )}
+        {preferences.reminder_advance_intervals.length > 0 && (
+          <p className="text-xs text-muted-foreground/70 pl-8 mt-2">
+            {t('olivePreferences.advanceRemindersSummary', 'Olive will also remind you {{intervals}} before', {
+              intervals: preferences.reminder_advance_intervals
+                .map(v => ADVANCE_INTERVAL_OPTIONS.find(o => o.value === v)?.label || v)
+                .join(', ')
+            })}
+          </p>
+        )}
+      </div>
+
       {/* Quiet Hours */}
-      <div className="pt-4 border-t border-stone-100">
+      <div className="pt-4 border-t border-border">
         <div className="flex items-center gap-3 mb-4">
-          <Moon className="h-5 w-5 text-stone-400" />
+          <Moon className="h-5 w-5 text-muted-foreground" />
           <div>
             <Label className="text-sm font-medium">{t('olivePreferences.quietHours', 'Quiet Hours')}</Label>
-            <p className="text-xs text-stone-500">{t('olivePreferences.quietHoursDesc', 'No proactive messages during these hours')}</p>
+            <p className="text-xs text-muted-foreground">{t('olivePreferences.quietHoursDesc', 'No proactive messages during these hours')}</p>
           </div>
         </div>
         <div className="flex items-center gap-4 pl-8">
           <div className="flex-1">
-            <Label className="text-xs text-stone-500 mb-1 block">{t('olivePreferences.from', 'From')}</Label>
+            <Label className="text-xs text-muted-foreground mb-1 block">{t('olivePreferences.from', 'From')}</Label>
             <input
               type="time"
               value={preferences.quiet_hours_start}
               onChange={(e) => updatePreference('quiet_hours_start', e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 bg-background"
             />
           </div>
           <div className="flex-1">
-            <Label className="text-xs text-stone-500 mb-1 block">{t('olivePreferences.to', 'To')}</Label>
+            <Label className="text-xs text-muted-foreground mb-1 block">{t('olivePreferences.to', 'To')}</Label>
             <input
               type="time"
               value={preferences.quiet_hours_end}
               onChange={(e) => updatePreference('quiet_hours_end', e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 bg-background"
             />
           </div>
         </div>
       </div>
 
       {/* Max Daily Messages */}
-      <div className="pt-4 border-t border-stone-100">
+      <div className="pt-4 border-t border-border">
         <div className="flex items-center justify-between mb-4">
           <div>
             <Label className="text-sm font-medium">{t('olivePreferences.maxMessages', 'Max Daily Messages')}</Label>
-            <p className="text-xs text-stone-500">{t('olivePreferences.maxMessagesDesc', 'Limit how many proactive messages Olive sends per day')}</p>
+            <p className="text-xs text-muted-foreground">{t('olivePreferences.maxMessagesDesc', 'Limit how many proactive messages Olive sends per day')}</p>
           </div>
           <span className="text-lg font-semibold text-primary">{preferences.max_daily_messages}</span>
         </div>
@@ -286,7 +355,7 @@ export const OliveProactivePreferences: React.FC = () => {
           step={1}
           className="w-full"
         />
-        <div className="flex justify-between text-xs text-stone-400 mt-1">
+        <div className="flex justify-between text-xs text-muted-foreground mt-1">
           <span>1</span>
           <span>15</span>
         </div>
