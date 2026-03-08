@@ -55,6 +55,10 @@
     "act": {
       "title": "Actúa",
       "description": "La Capa Agéntica. Olive no solo almacena datos; guarda eventos en tu calendario, investiga por ti y le recuerda a tu pareja para que tú no tengas que hacerlo."
+    },
+    "security": {
+      "title": "Tus Datos, Bajo Llave",
+      "description": "Las notas sensibles se cifran con AES-256. Solo tú puedes descifrarlas — Olive nunca almacena tus datos en texto plano."
     }
   },
   "whatsappFirst": {

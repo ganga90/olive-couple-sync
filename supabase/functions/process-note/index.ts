@@ -1197,7 +1197,7 @@ serve(async (req) => {
       throw new Error('Supabase configuration is missing');
     }
 
-    const { text, user_id, couple_id, timezone, media, mediaTypes, style, partner_names } = await req.json();
+    const { text, user_id, couple_id, timezone, media, mediaTypes, style, partner_names, is_sensitive } = await req.json();
     
     // Validate required fields - allow empty text if media is present
     if (!user_id) {
@@ -2064,8 +2064,8 @@ Process this note:
 
     // Build the base result
     let result: any = isMultiple
-      ? { multiple: true, notes: processedNotes, original_text: safeText, media_urls: mediaUrls.length > 0 ? mediaUrls : null }
-      : { ...processedNotes[0], original_text: safeText };
+      ? { multiple: true, notes: processedNotes, original_text: safeText, media_urls: mediaUrls.length > 0 ? mediaUrls : null, is_sensitive: !!is_sensitive }
+      : { ...processedNotes[0], original_text: safeText, is_sensitive: !!is_sensitive };
 
     // Include receipt processing results if a receipt was detected and processed
     if (receiptProcessingResult && receiptProcessingResult.success) {

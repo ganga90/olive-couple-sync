@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, User, Users, MessageCircle, CheckCircle2, Circle, Sparkles, Bell } from "lucide-react";
+import { CalendarDays, User, Users, MessageCircle, CheckCircle2, Circle, Sparkles, Bell, Lock } from "lucide-react";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { NotePrivacyToggle } from "@/components/NotePrivacyToggle";
@@ -86,6 +86,14 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Sensitive note badge */}
+            {note.is_sensitive && (
+              <Badge variant="outline" className="text-xs flex items-center gap-1 border-amber-500/50 text-amber-700 bg-amber-50">
+                <Lock className="h-3 w-3" />
+                {t('card.encrypted')}
+              </Badge>
+            )}
+            
             {/* AI Auto tag - shown for all AI-processed notes */}
             <Badge variant="ai" className="text-xs flex items-center gap-1">
               <Sparkles className="h-3 w-3" />

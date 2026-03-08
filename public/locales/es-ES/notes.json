@@ -38,6 +38,7 @@
     "partner": "Pareja",
     "auto": "Auto",
     "moreItems": "+{{count}} más elementos",
+    "encrypted": "Cifrada",
     "reminderLabel": "Recordatorio:",
     "editReminder": "Editar",
     "setReminder": "Establecer"

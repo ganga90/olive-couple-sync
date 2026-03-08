@@ -47,6 +47,8 @@ export interface Note {
   // New fields to distinguish note types
   isShared?: boolean;
   coupleId?: string;
+  // Encryption
+  is_sensitive?: boolean;
 }
 
 export interface ProcessedNote {

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.0.0";
+import { encryptNoteFields, isEncryptionAvailable } from "../_shared/encryption.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1899,6 +1900,14 @@ serve(async (req) => {
     }
     
     let messageBody = rawMessageBody?.trim() || null;
+    
+    // 🔒 Sensitive note detection — strip prefix and set flag
+    let isSensitiveNote = false;
+    if (messageBody && (messageBody.startsWith('🔒') || messageBody.startsWith('🔒 '))) {
+      isSensitiveNote = true;
+      messageBody = messageBody.replace(/^🔒\s*/, '').trim() || null;
+      console.log('[WhatsApp] 🔒 Sensitive note detected, flag set');
+    }
     
     // Validate coordinates
     if (!isValidCoordinates(latitude, longitude)) {
@@ -6216,24 +6225,42 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
       }
       
       if (processData.multiple && Array.isArray(processData.notes)) {
-        const notesToInsert = processData.notes.map((note: any) => ({
-          author_id: userId,
-          couple_id: effectiveCoupleId,
-          original_text: messageBody || note.summary || 'Media attachment',
-          summary: note.summary,
-          category: note.category || 'task',
-          due_date: note.due_date,
-          reminder_time: note.reminder_time,
-          recurrence_frequency: note.recurrence_frequency,
-          recurrence_interval: note.recurrence_interval,
-          priority: isUrgent ? 'high' : (note.priority || 'medium'),
-          tags: note.tags || [],
-          items: note.items || [],
-          task_owner: note.task_owner,
-          list_id: note.list_id,
-          location: latitude && longitude ? { latitude, longitude } : null,
-          media_urls: mediaUrls.length > 0 ? mediaUrls : null,
-          completed: false
+        // For multi-note: encrypt each note if sensitive
+        const notesToInsert = await Promise.all(processData.notes.map(async (note: any) => {
+          const rawText = messageBody || note.summary || 'Media attachment';
+          const rawSum = note.summary;
+          let encFields = {
+            original_text: rawText,
+            summary: rawSum,
+            encrypted_original_text: null as string | null,
+            encrypted_summary: null as string | null,
+            is_sensitive: isSensitiveNote || !!processData.is_sensitive,
+          };
+          
+          if (encFields.is_sensitive && isEncryptionAvailable()) {
+            try {
+              encFields = await encryptNoteFields(rawText, rawSum, userId, true);
+            } catch (e) { /* fallback to plaintext */ }
+          }
+          
+          return {
+            author_id: userId,
+            couple_id: effectiveCoupleId,
+            ...encFields,
+            category: note.category || 'task',
+            due_date: note.due_date,
+            reminder_time: note.reminder_time,
+            recurrence_frequency: note.recurrence_frequency,
+            recurrence_interval: note.recurrence_interval,
+            priority: isUrgent ? 'high' : (note.priority || 'medium'),
+            tags: note.tags || [],
+            items: note.items || [],
+            task_owner: note.task_owner,
+            list_id: note.list_id,
+            location: latitude && longitude ? { latitude, longitude } : null,
+            media_urls: mediaUrls.length > 0 ? mediaUrls : null,
+            completed: false
+          };
         }));
 
         const { data: insertedNotes, error: insertError } = await supabase
@@ -6252,11 +6279,31 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
         
         return reply(`✅ Saved ${count} items!\n${itemsList}${moreText}\n\n📂 Added to: ${listName}\n\n🔗 Manage: https://witholive.app\n\n💡 ${getRandomTip()}`);
       } else {
+        // Build note data with optional encryption for sensitive notes
+        const rawOriginalText = messageBody || processData.summary || 'Media attachment';
+        const rawSummary = processData.summary;
+        
+        let encryptionFields = {
+          original_text: rawOriginalText,
+          summary: rawSummary,
+          encrypted_original_text: null as string | null,
+          encrypted_summary: null as string | null,
+          is_sensitive: isSensitiveNote || !!processData.is_sensitive,
+        };
+        
+        if (encryptionFields.is_sensitive && isEncryptionAvailable()) {
+          try {
+            encryptionFields = await encryptNoteFields(rawOriginalText, rawSummary, userId, true);
+            console.log('[WhatsApp] 🔐 Note fields encrypted for sensitive note');
+          } catch (encErr) {
+            console.warn('[WhatsApp] Encryption failed, storing as plaintext:', encErr);
+          }
+        }
+        
         const noteData = {
           author_id: userId,
           couple_id: effectiveCoupleId,
-          original_text: messageBody || processData.summary || 'Media attachment',
-          summary: processData.summary,
+          ...encryptionFields,
           category: processData.category || 'task',
           due_date: processData.due_date,
           reminder_time: processData.reminder_time,
@@ -6329,14 +6376,16 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
             `Reply "Merge" to combine them.`
           ].join('\n');
         } else {
+          const sensitiveLabel = encryptionFields.is_sensitive ? '\n🔒 Encrypted at rest' : '';
           confirmationMessage = [
-            `✅ Saved: ${insertedNoteSummary}`,
+            `✅ Saved: ${rawSummary}`,
             `📂 Added to: ${listName}`,
+            sensitiveLabel,
             ``,
             `🔗 Manage: https://witholive.app`,
             ``,
             `💡 ${getRandomTip()}`
-          ].join('\n');
+          ].filter(Boolean).join('\n');
         }
 
         // Store newly created task as referenced entity for context follow-ups

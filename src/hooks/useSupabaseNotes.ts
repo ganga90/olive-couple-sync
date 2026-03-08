@@ -6,7 +6,7 @@ import type { Note } from "@/types/note";
 
 export type SupabaseNote = {
   id: string;
-  couple_id: string | null; // Now optional
+  couple_id: string | null;
   author_id?: string;
   original_text: string;
   summary: string;
@@ -26,7 +26,50 @@ export type SupabaseNote = {
   location?: any | null;
   created_at: string;
   updated_at: string;
+  // Encryption fields
+  is_sensitive?: boolean;
+  encrypted_original_text?: string | null;
+  encrypted_summary?: string | null;
 };
+
+// Decrypt sensitive notes by calling the decrypt-note edge function
+async function decryptSensitiveNotes(notes: SupabaseNote[], userId: string): Promise<SupabaseNote[]> {
+  const sensitiveNotes = notes.filter(n => n.is_sensitive && n.encrypted_original_text);
+  
+  if (sensitiveNotes.length === 0) return notes;
+  
+  // Decrypt in parallel (batched to avoid overwhelming the function)
+  const decryptResults = await Promise.allSettled(
+    sensitiveNotes.map(async (note) => {
+      try {
+        const { data, error } = await supabase.functions.invoke('decrypt-note', {
+          body: { note_id: note.id, user_id: userId }
+        });
+        if (error || !data) return null;
+        return { noteId: note.id, original_text: data.original_text, summary: data.summary };
+      } catch {
+        return null;
+      }
+    })
+  );
+  
+  // Build a map of decrypted content
+  const decryptedMap = new Map<string, { original_text: string; summary: string }>();
+  for (const result of decryptResults) {
+    if (result.status === 'fulfilled' && result.value) {
+      decryptedMap.set(result.value.noteId, result.value);
+    }
+  }
+  
+  // Replace encrypted placeholders with decrypted content
+  return notes.map(note => {
+    const decrypted = decryptedMap.get(note.id);
+    if (decrypted) {
+      return { ...note, original_text: decrypted.original_text, summary: decrypted.summary };
+    }
+    return note;
+  });
+}
 
 export const useSupabaseNotes = (coupleId?: string | null) => {
   const { user } = useUser();
@@ -49,12 +92,12 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
         const [personalNotesResult, coupleNotesResult] = await Promise.all([
           supabase
             .from("clerk_notes")
-            .select("*")
+            .select("*, is_sensitive, encrypted_original_text, encrypted_summary")
             .is("couple_id", null)
             .order("created_at", { ascending: false }),
           supabase
             .from("clerk_notes")
-            .select("*")
+            .select("*, is_sensitive, encrypted_original_text, encrypted_summary")
             .eq("couple_id", coupleId)
             .order("created_at", { ascending: false })
         ]);
@@ -68,19 +111,23 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
           ...(coupleNotesResult.data || [])
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
+        // Decrypt sensitive notes client-side via edge function
+        const decryptedNotes = await decryptSensitiveNotes(combinedNotes, user.id);
+
         
-        setNotes(combinedNotes);
+        setNotes(decryptedNotes);
       } else {
         // If no couple ID, fetch only personal notes
         const { data, error } = await supabase
           .from("clerk_notes")
-          .select("*")
+          .select("*, is_sensitive, encrypted_original_text, encrypted_summary")
           .is("couple_id", null)
           .order("created_at", { ascending: false });
 
         if (error) throw error;
         
-        setNotes(data || []);
+        const decryptedNotes = await decryptSensitiveNotes(data || [], user.id);
+        setNotes(decryptedNotes);
       }
     } catch (error) {
       console.error("[Notes] Error fetching notes:", error);
