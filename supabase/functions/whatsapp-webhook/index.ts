@@ -6136,7 +6136,7 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
       } else {
         const noteData = {
           author_id: userId,
-          couple_id: coupleId,
+          couple_id: effectiveCoupleId,
           original_text: messageBody || processData.summary || 'Media attachment',
           summary: processData.summary,
           category: processData.category || 'task',
