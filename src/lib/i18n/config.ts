@@ -125,7 +125,7 @@ i18n
     resources,
     supportedLngs: Object.keys(SUPPORTED_LANGUAGES),
     fallbackLng: DEFAULT_LANGUAGE,
-    ns: ['common', 'home', 'landing', 'profile', 'notes', 'onboarding', 'lists', 'reminders', 'calendar', 'auth', 'organize', 'legal'],
+    ns: ['common', 'home', 'landing', 'profile', 'notes', 'onboarding', 'lists', 'reminders', 'calendar', 'auth', 'organize', 'legal', 'expenses'],
     defaultNS: 'common',
     detection: {
       order: ['path', 'localStorage', 'navigator'],
