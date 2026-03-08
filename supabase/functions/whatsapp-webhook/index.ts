@@ -2148,7 +2148,7 @@ serve(async (req) => {
       try {
         const noteData = {
           author_id: mediaUserId,
-          couple_id: mediaCoupleId,
+          couple_id: mediaEffectiveCoupleId,
           original_text: processData.summary || 'Media attachment',
           summary: processData.summary || 'Media attachment',
           category: processData.category || 'task',
