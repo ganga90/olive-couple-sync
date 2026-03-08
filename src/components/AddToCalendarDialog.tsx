@@ -64,9 +64,9 @@ export function AddToCalendarDialog({ note, open, onOpenChange }: AddToCalendarD
     }
 
     // Time: use note's reminder_time if available, otherwise default 09:00
-    if (note.reminderTime) {
+    if (note.reminder_time) {
       try {
-        const rd = new Date(note.reminderTime);
+        const rd = new Date(note.reminder_time);
         if (!isNaN(rd.getTime())) {
           const h = String(rd.getHours()).padStart(2, '0');
           const m = String(rd.getMinutes()).padStart(2, '0');
