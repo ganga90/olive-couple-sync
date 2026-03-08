@@ -21,10 +21,12 @@ interface ProcessedNote {
 }
 
 export const SimpleNoteInput: React.FC<SimpleNoteInputProps> = ({ onNoteAdded }) => {
+  const { t } = useTranslation('notes');
   const [text, setText] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedNote, setProcessedNote] = useState<ProcessedNote | null>(null);
   const [showResult, setShowResult] = useState(false);
+  const [isSensitive, setIsSensitive] = useState(false);
 
   const simulateAIProcessing = async (noteText: string): Promise<ProcessedNote> => {
     // Simulate AI processing with realistic delay
