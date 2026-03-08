@@ -1,7 +1,7 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
-import { Home, ListTodo, Calendar, Bell, User, Settings, Sun } from "lucide-react";
+import { Home, ListTodo, Calendar, Bell, User, Settings, Sun, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OliveLogoWithText } from "@/components/OliveLogo";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
