@@ -38,6 +38,7 @@
     "partner": "Partner",
     "auto": "Auto",
     "moreItems": "+{{count}} altri elementi",
+    "encrypted": "Crittografata",
     "reminderLabel": "Promemoria:",
     "editReminder": "Modifica",
     "setReminder": "Imposta"

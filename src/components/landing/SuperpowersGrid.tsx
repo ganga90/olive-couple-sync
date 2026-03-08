@@ -238,3 +238,42 @@ const ActVisual = () => (
     </div>
   </motion.div>
 );
+
+const SecurityVisual = () => (
+  <div className="relative w-full h-full flex items-center justify-center">
+    <motion.div
+      initial={{ scale: 0.8, opacity: 0 }}
+      whileInView={{ scale: 1, opacity: 1 }}
+      transition={{ duration: 0.5 }}
+      className="bg-white rounded-2xl p-4 shadow-lg max-w-[220px]"
+    >
+      <div className="flex flex-col items-center gap-3">
+        <motion.div
+          initial={{ rotate: -10 }}
+          whileInView={{ rotate: 0 }}
+          transition={{ delay: 0.3, type: "spring" }}
+          className="w-12 h-12 rounded-xl bg-sky-100 flex items-center justify-center"
+        >
+          <Lock className="w-6 h-6 text-sky-600" />
+        </motion.div>
+        <div className="text-center">
+          <p className="text-xs font-semibold text-stone-800">AES-256 Encrypted</p>
+          <p className="text-[10px] text-stone-500 mt-0.5">Your sensitive notes are encrypted at rest</p>
+        </div>
+        <div className="flex gap-1.5 mt-1">
+          {['🔒', '🛡️', '✓'].map((icon, i) => (
+            <motion.div
+              key={i}
+              initial={{ scale: 0 }}
+              whileInView={{ scale: 1 }}
+              transition={{ delay: 0.5 + i * 0.15, type: "spring" }}
+              className="w-7 h-7 rounded-full bg-sky-50 flex items-center justify-center text-xs"
+            >
+              {icon}
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </motion.div>
+  </div>
+);

@@ -60,6 +60,7 @@
     "partner": "Partner",
     "auto": "Auto",
     "moreItems": "+{{count}} more items",
+    "encrypted": "Encrypted",
     "reminderLabel": "Reminder:",
     "editReminder": "Edit",
     "setReminder": "Set"

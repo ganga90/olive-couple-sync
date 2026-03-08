@@ -55,6 +55,10 @@
     "act": {
       "title": "You Find It",
       "description": "Everything is clean, searchable, and shareable. Ask Olive anything — she remembers it all. She can even remind your partner for you."
+    },
+    "security": {
+      "title": "Your Data, Locked Tight",
+      "description": "Sensitive notes are encrypted at rest with AES-256. Only you can unlock them — not even Olive stores your data in plain text."
     }
   },
   "whatsappFirst": {

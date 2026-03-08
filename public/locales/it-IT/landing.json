@@ -55,6 +55,10 @@
     "act": {
       "title": "Agisci",
       "description": "Il Livello Agentivo. Olive non si limita a memorizzare dati; salva eventi nel calendario, fa ricerche per te e sollecita il tuo partner così non devi farlo tu."
+    },
+    "security": {
+      "title": "I Tuoi Dati, Blindati",
+      "description": "Le note sensibili sono crittografate con AES-256. Solo tu puoi decifrarle — Olive non conserva mai i tuoi dati in chiaro."
     }
   },
   "whatsappFirst": {
