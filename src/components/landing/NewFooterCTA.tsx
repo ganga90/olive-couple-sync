@@ -1,9 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
+import oliveLogoFull from "@/assets/olive-logo-full.png";
 
 export const NewFooterCTA = () => {
   const { t } = useTranslation('landing');
@@ -18,15 +19,18 @@ export const NewFooterCTA = () => {
           viewport={{ once: true }}
           className="space-y-8"
         >
-          {/* Icon */}
+          {/* Logo */}
           <motion.div
-            initial={{ scale: 0 }}
-            whileInView={{ scale: 1 }}
+            initial={{ scale: 0.8, opacity: 0 }}
+            whileInView={{ scale: 1, opacity: 1 }}
             viewport={{ once: true }}
             transition={{ type: "spring", delay: 0.2 }}
-            className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-olive/20"
           >
-            <Sparkles className="w-8 h-8 text-olive" />
+            <img 
+              src={oliveLogoFull} 
+              alt="Olive — Your AI-powered second brain" 
+              className="h-28 md:h-36 mx-auto object-contain"
+            />
           </motion.div>
 
           {/* Headline */}
@@ -45,7 +49,7 @@ export const NewFooterCTA = () => {
               size="lg"
               className="bg-olive hover:bg-olive/90 text-white font-semibold px-10 py-7 rounded-full shadow-2xl shadow-olive/30 text-lg"
             >
-              {t('footerCta.betaCta', 'Request Beta Access')}
+              {t('footerCta.betaCta', 'Get Early Access')}
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </Link>

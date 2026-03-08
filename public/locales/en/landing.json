@@ -2,25 +2,27 @@
   "nav": {
     "features": "How It Works",
     "pricing": "Pricing",
-    "login": "Login",
+    "login": "Log In",
     "cta": "Try Olive Free",
+    "betaCta": "Get Early Access",
     "microCopy": "No app download needed"
   },
   "hero": {
-    "eyebrow": "Meet your personal assistant",
+    "eyebrow": "Your AI-powered second brain",
     "headline": "She remembers, so you don't have to.",
-    "subheadline": "Gate codes, grocery lists, brilliant ideas — drop anything to Olive. She organizes it all and gives it back to you, clean and sorted, whenever you need it.",
+    "subheadline": "Gate codes, grocery lists, brilliant ideas — just text Olive. She organizes everything and gives it back to you, clean and sorted, whenever you need it.",
+    "betaCta": "Get Early Access",
     "ctaPrimary": "Start Using Olive — Free",
     "ctaSecondary": "See How It Works",
-    "trustSignal": "Loved by 500+ people who stopped losing things"
+    "trustSignal": "Currently in Beta — shaping the future of personal organization"
   },
   "chooseMode": {
-    "headline": "Olive fits your life.",
-    "subheadline": "Whether you're keeping your own life together, syncing with a partner, or running a business — Olive adapts.",
-    "waitlistCta": "Start Organizing for Free",
+    "headline": "One assistant. Every part of your life.",
+    "subheadline": "Whether you're solo, syncing with a partner, or running a business — Olive adapts to you.",
+    "waitlistCta": "Get Early Access",
     "personal": {
       "headline": "For You.",
-      "painPoint": "You text yourself reminders, links, and ideas. They disappear into the void. Olive catches them all and puts them where they belong.",
+      "painPoint": "You text yourself reminders, links, and ideas. They vanish into the void. Olive catches them all and puts them exactly where they belong.",
       "feature1": "Auto-sorts notes by category",
       "feature2": "Smart reminders from your messages",
       "feature3": "Voice note transcription"
@@ -34,27 +36,27 @@
     },
     "business": {
       "headline": "For Your Business.",
-      "painPoint": "Log decisions, scan receipts, and track expenses — all from your phone. No spreadsheets, no forgotten context.",
-      "feature1": "Receipt scanning & expenses",
+      "painPoint": "Log decisions, scan receipts, track expenses — all from your phone. No spreadsheets. No forgotten context.",
+      "feature1": "Receipt scanning & expense tracking",
       "feature2": "Decision logging",
-      "feature3": "Export to CSV & integrations"
+      "feature3": "CSV export & integrations"
     }
   },
   "superpowers": {
     "eyebrow": "How It Works",
-    "headline": "You already do the work. Olive makes it count.",
-    "subheadline": "Don't change your habits. Just let Olive turn your messages into organized actions.",
+    "headline": "Three steps. Zero effort.",
+    "subheadline": "Keep doing what you already do. Olive turns your messages into organized actions — automatically.",
     "capture": {
-      "title": "Drop It",
-      "description": "Text, voice note, photo, link — just send it to Olive on WhatsApp. Don't format it. Don't organize it. Just dump it."
+      "title": "1. Drop It",
+      "description": "Text, voice note, photo, link — just send it to Olive on WhatsApp. No formatting. No folders. Just dump it."
     },
     "organize": {
-      "title": "She Organizes",
-      "description": "Olive reads the chaos and files it for you. Groceries go to your grocery list. Dates go to your calendar. Ideas get saved. Automatically."
+      "title": "2. Olive Organizes",
+      "description": "Groceries go to your grocery list. Dates land on your calendar. Ideas get saved. All automatic, all instant."
     },
     "act": {
-      "title": "You Find It",
-      "description": "Everything is clean, searchable, and shareable. Ask Olive anything — she remembers it all. She can even remind your partner for you."
+      "title": "3. Find It Instantly",
+      "description": "Everything is clean, searchable, and shareable. Ask Olive anything — she'll find it in seconds. She can even nudge your partner for you."
     },
     "security": {
       "title": "Your Data, Locked Tight",
@@ -73,11 +75,11 @@
     }
   },
   "testimonials": {
-    "eyebrow": "People who stopped losing things",
+    "eyebrow": "Early adopters",
     "headline": "\"I finally have a second brain.\"",
     "items": [
       {
-        "quote": "I used to text myself 10 things a day. Now I text Olive and everything just... appears organized. It's like magic.",
+        "quote": "I used to text myself 10 things a day. Now I text Olive and everything just... appears organized. It feels like magic.",
         "author": "Sarah K.",
         "role": "Busy Mom & Freelancer"
       },
@@ -98,6 +100,15 @@
     "subheadline": "No credit card. No commitment. Just start dropping things to Olive.",
     "mostPopular": "Most Popular",
     "trustNote": "Cancel anytime. No credit card required to start.",
+    "beta": {
+      "headline": "Free while in Beta",
+      "description": "We're building Olive with our earliest users. Everything is free during Beta — help us shape the future of personal organization.",
+      "feature1": "Unlimited WhatsApp capture",
+      "feature2": "AI-powered organization & memory",
+      "feature3": "Shared space with your partner",
+      "cta": "Get Early Access",
+      "note": "No credit card required. We'll announce pricing well before Beta ends."
+    },
     "personal": {
       "name": "Starter",
       "tagline": "For getting your life together",
@@ -130,18 +141,19 @@
     }
   },
   "footerCta": {
-    "headline": "Your ideas deserve better than dying in a chat with yourself.",
-    "subheadline": "Join thousands of people who stopped losing track and started using Olive.",
+    "headline": "Your ideas deserve better than a chat with yourself.",
+    "subheadline": "Join our Beta and help build the future of personal organization.",
+    "betaCta": "Get Early Access",
     "cta": "Start Using Olive — Free",
-    "trustNote": "Free forever to start. No credit card."
+    "trustNote": "Free during Beta. No credit card required."
   },
   "footer": {
     "pricing": "Pricing",
-    "login": "Login",
+    "login": "Log In",
     "privacy": "Privacy Policy",
     "terms": "Terms of Service",
     "copyright": "© 2026 Olive App by GV Digital Labs. All rights reserved.",
     "madeWith": "Olive Assistant — Made with ❤️ in Miami",
-    "tagline": "With Olive, everything stays organized."
+    "tagline": "She remembers, so you don't have to."
   }
 }

@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 import { Instagram, Twitter } from "lucide-react";
+import oliveIcon from "@/assets/olive-icon.png";
 
 export const NewLandingFooter = () => {
   const { t } = useTranslation('landing');
@@ -23,11 +24,13 @@ export const NewLandingFooter = () => {
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row items-center justify-between gap-8">
           {/* Logo */}
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-olive to-olive/80 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">O</span>
-            </div>
-            <span className="text-xl font-bold">Olive Assistant</span>
+          <div className="flex items-center gap-2.5">
+            <img 
+              src={oliveIcon} 
+              alt="Olive" 
+              className="w-8 h-8 rounded-lg object-contain"
+            />
+            <span className="text-xl font-bold">Olive</span>
           </div>
 
           {/* Links */}
@@ -82,7 +85,7 @@ export const NewLandingFooter = () => {
           <p className="text-stone-600 text-xs mt-2">
             {t('footer.madeWith')}
           </p>
-          <p className="text-stone-600 text-xs mt-1">
+          <p className="text-stone-500 text-xs mt-1 italic">
             {t('footer.tagline')}
           </p>
         </div>

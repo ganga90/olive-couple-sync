@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 import { motion } from "framer-motion";
+import oliveIcon from "@/assets/olive-icon.png";
 
 export const NewLandingNav = () => {
   const { t } = useTranslation('landing');
@@ -22,11 +23,13 @@ export const NewLandingNav = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-olive to-olive/80 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">O</span>
-            </div>
-            <span className="text-xl font-bold text-stone-900">Olive</span>
+          <Link to="/" className="flex items-center gap-2.5">
+            <img 
+              src={oliveIcon} 
+              alt="Olive" 
+              className="w-9 h-9 rounded-xl object-contain"
+            />
+            <span className="text-xl font-bold text-stone-900 tracking-tight">Olive</span>
             <span className="inline-flex items-center rounded-full font-bold uppercase tracking-wider text-[9px] px-1.5 py-0.5 bg-primary/15 text-primary border border-primary/30">Beta</span>
           </Link>
 
@@ -68,7 +71,7 @@ export const NewLandingNav = () => {
                 size="sm"
                 className="bg-olive hover:bg-olive/90 text-white font-semibold px-4 py-2 rounded-full shadow-lg shadow-olive/20"
               >
-                {t('nav.betaCta', 'Request Beta Access')}
+                {t('nav.betaCta', 'Get Early Access')}
               </Button>
             </Link>
           </div>

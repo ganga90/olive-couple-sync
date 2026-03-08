@@ -53,7 +53,7 @@ export const NewLandingHero = () => {
                   size="lg"
                   className="w-full sm:w-auto bg-olive hover:bg-olive/90 text-white font-semibold px-8 py-6 rounded-full shadow-xl shadow-olive/25 text-lg"
                 >
-                  {t('hero.betaCta', 'Request Beta Access')}
+                  {t('hero.betaCta', 'Get Early Access')}
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </Link>
@@ -69,22 +69,18 @@ export const NewLandingHero = () => {
               </Button>
             </div>
 
-            {/* Trust Signal */}
+            {/* Trust Signal — Beta-transparent */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.5 }}
-              className="flex items-center gap-4 pt-4"
+              className="flex items-center gap-3 pt-4"
             >
-              <div className="flex -space-x-2">
-                {['😊', '🙌', '💪', '✨'].map((emoji, i) => (
-                  <div 
-                    key={i}
-                    className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-sm border-2 border-white"
-                  >
-                    {emoji}
-                  </div>
-                ))}
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+                  Beta
+                </span>
               </div>
               <p className="text-sm text-stone-500">
                 {t('hero.trustSignal')}
