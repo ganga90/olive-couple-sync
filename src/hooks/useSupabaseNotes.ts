@@ -53,12 +53,12 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
         const [personalNotesResult, coupleNotesResult] = await Promise.all([
           supabase
             .from("clerk_notes")
-            .select("*")
+            .select("*, is_sensitive, encrypted_original_text, encrypted_summary")
             .is("couple_id", null)
             .order("created_at", { ascending: false }),
           supabase
             .from("clerk_notes")
-            .select("*")
+            .select("*, is_sensitive, encrypted_original_text, encrypted_summary")
             .eq("couple_id", coupleId)
             .order("created_at", { ascending: false })
         ]);
@@ -71,6 +71,9 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
           ...(personalNotesResult.data || []),
           ...(coupleNotesResult.data || [])
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        // Decrypt sensitive notes client-side via edge function
+        const decryptedNotes = await decryptSensitiveNotes(combinedNotes, user.id);
 
         
         setNotes(combinedNotes);
