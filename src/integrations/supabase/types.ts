@@ -612,6 +612,33 @@ export type Database = {
         }
         Relationships: []
       }
+      decryption_audit_log: {
+        Row: {
+          created_at: string
+          function_name: string
+          id: string
+          ip_address: string | null
+          note_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          function_name: string
+          id?: string
+          ip_address?: string | null
+          note_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          function_name?: string
+          id?: string
+          ip_address?: string | null
+          note_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       invites: {
         Row: {
           couple_id: string
