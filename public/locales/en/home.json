@@ -104,7 +104,10 @@
   "contextRail": {
     "calendar": "Calendar",
     "upcoming": "Upcoming",
-    "noEvents": "No upcoming events"
+    "noEvents": "No upcoming events",
+    "expenseTips": "Expense Tips",
+    "expenseTip1": "Use $ prefix in WhatsApp to quickly log expenses",
+    "expenseTip2": "Set budget limits per category to track spending"
   },
   "insights": {
     "header": "Olive noticed something...",
