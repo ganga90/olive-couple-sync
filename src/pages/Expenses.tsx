@@ -782,6 +782,7 @@ const ExpensesPage: React.FC = () => {
   const [analyticsRange, setAnalyticsRange] = useState<'week' | 'month' | '30days'>('month');
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
+  const [settleConfirmOpen, setSettleConfirmOpen] = useState(false);
 
   // Date range filter state
   const [dateFrom, setDateFrom] = useState('');
