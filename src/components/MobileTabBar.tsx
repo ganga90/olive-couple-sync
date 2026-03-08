@@ -78,20 +78,21 @@ const MobileTabBar = () => {
         // Premium shadow for elevation
         "shadow-[0_8px_32px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.04)]"
       )}>
-        <div className="flex items-center justify-around px-3 py-3">
+        <div className="flex items-center justify-around px-2 py-2.5">
           {tabs.map((tab) => {
             const localizedPath = getLocalizedPath(tab.to);
             const isActive = location.pathname === localizedPath || 
               location.pathname.endsWith(tab.to) ||
               (tab.to === "/lists" && location.pathname.includes("/lists/")) ||
-              (tab.to === "/home" && location.pathname.includes("/notes/"));
+              (tab.to === "/home" && location.pathname.includes("/notes/")) ||
+              (tab.to === "/expenses" && location.pathname.includes("/expenses"));
             
             return (
               <NavLink
                 key={tab.to}
                 to={localizedPath}
                 className={cn(
-                  "relative flex flex-col items-center justify-center gap-1.5 py-2 px-6 rounded-full transition-all duration-300 ease-out select-ui touch-target-48",
+                  "relative flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-full transition-all duration-300 ease-out select-ui touch-target-48",
                   isActive 
                     ? "text-[hsl(130_25%_18%)]" 
                     : "text-stone-400 active:text-stone-600",
