@@ -492,7 +492,7 @@ const BudgetLimitDialog: React.FC<BudgetLimitDialogProps> = ({
                       <span className="font-medium">{bl.category}</span>
                       <span className={cn(
                         "text-xs",
-                        bl.status === 'over' ? 'text-destructive' : bl.status === 'warning' ? 'text-[hsl(var(--warning,40_100%_50%))]' : 'text-muted-foreground'
+                        bl.status === 'over' ? 'text-destructive' : bl.status === 'warning' ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground'
                       )}>
                         {currencySymbol}{bl.spent.toFixed(0)} / {currencySymbol}{bl.monthly_limit.toFixed(0)}
                       </span>
