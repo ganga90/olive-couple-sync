@@ -4,13 +4,13 @@ import { useAdmin } from "@/hooks/useAdmin";
 import { useAuth } from "@/providers/AuthProvider";
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 import { supabase } from "@/lib/supabaseClient";
-import { OliveLogo } from "@/components/OliveLogo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Users, Mail, Clock, Shield, RefreshCw } from "lucide-react";
+import { ArrowLeft, Users, Mail, Clock, Shield, RefreshCw, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
+import { AnalyticsDashboard } from "@/components/admin/AnalyticsDashboard";
 
 interface BetaRequest {
   id: string;
@@ -39,8 +39,10 @@ const AdminPage = () => {
 
   const [betaRequests, setBetaRequests] = useState<BetaRequest[]>([]);
   const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [loadingData, setLoadingData] = useState(true);
-  const [activeTab, setActiveTab] = useState<"beta" | "feedback">("beta");
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [activeTab, setActiveTab] = useState<"analytics" | "beta" | "feedback">("analytics");
 
   useEffect(() => {
     if (adminLoading || authLoading) return;
@@ -49,20 +51,16 @@ const AdminPage = () => {
       return;
     }
     fetchData();
+    fetchAnalytics();
   }, [isAdmin, adminLoading, authLoading]);
 
   const fetchData = async () => {
     setLoadingData(true);
     try {
-      // We need to use the edge function since beta_feedback SELECT is blocked by RLS
-      // Instead, query directly — admin has RLS on user_roles but beta_feedback has SELECT = false
-      // We'll create a simple admin edge function
       const { data, error } = await supabase.functions.invoke("admin-dashboard", {
         body: { action: "list" },
       });
-
       if (error) throw error;
-
       setBetaRequests(data?.betaRequests || []);
       setFeedback(data?.feedback || []);
     } catch (err) {
@@ -73,10 +71,34 @@ const AdminPage = () => {
     }
   };
 
+  const fetchAnalytics = async () => {
+    setLoadingAnalytics(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-dashboard", {
+        body: { action: "analytics" },
+      });
+      if (error) throw error;
+      setAnalyticsData(data);
+    } catch (err) {
+      console.error("[Admin] Error fetching analytics:", err);
+      toast.error("Failed to load analytics");
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    if (activeTab === "analytics") {
+      fetchAnalytics();
+    } else {
+      fetchData();
+    }
+  };
+
   if (adminLoading || authLoading) {
     return (
       <main className="min-h-screen bg-background p-6">
-        <div className="max-w-4xl mx-auto space-y-4">
+        <div className="max-w-5xl mx-auto space-y-4">
           <Skeleton className="h-8 w-48" />
           <Skeleton className="h-64 w-full" />
         </div>
@@ -97,7 +119,7 @@ const AdminPage = () => {
 
   return (
     <main className="min-h-screen bg-background">
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -109,32 +131,43 @@ const AdminPage = () => {
               <h1 className="text-2xl font-bold text-foreground">Admin Dashboard</h1>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchData}>
+          <Button variant="outline" size="sm" onClick={handleRefresh}>
             <RefreshCw className="h-4 w-4 mr-1" />
             Refresh
           </Button>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-4">
-          <Card className="cursor-pointer transition-colors" onClick={() => setActiveTab("beta")}>
+        {/* Stats Summary */}
+        <div className="grid grid-cols-3 gap-3">
+          <Card className="cursor-pointer transition-colors border-2" style={{ borderColor: activeTab === "analytics" ? "hsl(var(--primary))" : "transparent" }} onClick={() => setActiveTab("analytics")}>
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <BarChart3 className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-lg font-bold">{analyticsData?.overview?.totalUsers || "—"}</p>
+                <p className="text-xs text-muted-foreground">Analytics</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="cursor-pointer transition-colors border-2" style={{ borderColor: activeTab === "beta" ? "hsl(var(--primary))" : "transparent" }} onClick={() => setActiveTab("beta")}>
             <CardContent className="p-4 flex items-center gap-3">
               <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
                 <Users className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{betaRequests.length}</p>
+                <p className="text-lg font-bold">{betaRequests.length}</p>
                 <p className="text-xs text-muted-foreground">Beta Requests</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="cursor-pointer transition-colors" onClick={() => setActiveTab("feedback")}>
+          <Card className="cursor-pointer transition-colors border-2" style={{ borderColor: activeTab === "feedback" ? "hsl(var(--primary))" : "transparent" }} onClick={() => setActiveTab("feedback")}>
             <CardContent className="p-4 flex items-center gap-3">
               <div className="h-10 w-10 rounded-full bg-accent/50 flex items-center justify-center">
                 <Mail className="h-5 w-5 text-accent-foreground" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{feedback.length}</p>
+                <p className="text-lg font-bold">{feedback.length}</p>
                 <p className="text-xs text-muted-foreground">Feedback</p>
               </div>
             </CardContent>
@@ -143,90 +176,87 @@ const AdminPage = () => {
 
         {/* Tabs */}
         <div className="flex gap-2 border-b border-border pb-2">
-          <button
-            onClick={() => setActiveTab("beta")}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-              activeTab === "beta"
-                ? "text-primary border-b-2 border-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Beta Requests
-          </button>
-          <button
-            onClick={() => setActiveTab("feedback")}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-              activeTab === "feedback"
-                ? "text-primary border-b-2 border-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Feedback
-          </button>
+          {(["analytics", "beta", "feedback"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === tab
+                  ? "text-primary border-b-2 border-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab === "analytics" ? "Analytics" : tab === "beta" ? "Beta Requests" : "Feedback"}
+            </button>
+          ))}
         </div>
 
         {/* Content */}
-        {loadingData ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-24 w-full" />
-            ))}
-          </div>
+        {activeTab === "analytics" ? (
+          <AnalyticsDashboard data={analyticsData} loading={loadingAnalytics} />
         ) : activeTab === "beta" ? (
-          <div className="space-y-3">
-            {betaRequests.length === 0 ? (
-              <p className="text-muted-foreground text-center py-12">No beta requests yet.</p>
-            ) : (
-              betaRequests.map((req) => (
-                <Card key={req.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <p className="font-semibold text-foreground">{req.user_name || "Unknown"}</p>
-                        <p className="text-sm text-muted-foreground">{req.contact_email}</p>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        {formatDate(req.created_at)}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {feedback.length === 0 ? (
-              <p className="text-muted-foreground text-center py-12">No feedback yet.</p>
-            ) : (
-              feedback.map((fb) => (
-                <Card key={fb.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <p className="font-semibold text-foreground">{fb.user_name || "Anonymous"}</p>
-                          <Badge variant="outline" className="text-xs">{fb.category}</Badge>
+          loadingData ? (
+            <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}</div>
+          ) : (
+            <div className="space-y-3">
+              {betaRequests.length === 0 ? (
+                <p className="text-muted-foreground text-center py-12">No beta requests yet.</p>
+              ) : (
+                betaRequests.map((req) => (
+                  <Card key={req.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <p className="font-semibold text-foreground">{req.user_name || "Unknown"}</p>
+                          <p className="text-sm text-muted-foreground">{req.contact_email}</p>
                         </div>
-                        {fb.contact_email && (
-                          <p className="text-sm text-muted-foreground">{fb.contact_email}</p>
-                        )}
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          {formatDate(req.created_at)}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        {formatDate(fb.created_at)}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          )
+        ) : (
+          loadingData ? (
+            <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}</div>
+          ) : (
+            <div className="space-y-3">
+              {feedback.length === 0 ? (
+                <p className="text-muted-foreground text-center py-12">No feedback yet.</p>
+              ) : (
+                feedback.map((fb) => (
+                  <Card key={fb.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-foreground">{fb.user_name || "Anonymous"}</p>
+                            <Badge variant="outline" className="text-xs">{fb.category}</Badge>
+                          </div>
+                          {fb.contact_email && (
+                            <p className="text-sm text-muted-foreground">{fb.contact_email}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          {formatDate(fb.created_at)}
+                        </div>
                       </div>
-                    </div>
-                    <p className="text-sm text-foreground whitespace-pre-wrap">{fb.message}</p>
-                    {fb.page && (
-                      <p className="text-xs text-muted-foreground mt-1">Page: {fb.page}</p>
-                    )}
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
+                      <p className="text-sm text-foreground whitespace-pre-wrap">{fb.message}</p>
+                      {fb.page && (
+                        <p className="text-xs text-muted-foreground mt-1">Page: {fb.page}</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          )
         )}
       </div>
     </main>
