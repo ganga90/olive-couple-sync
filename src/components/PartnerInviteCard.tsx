@@ -55,6 +55,7 @@ export const PartnerInviteCard = () => {
       if (!error && inviteData?.token) {
         const link = `${window.location.origin}/accept-invite?token=${inviteData.token}`;
         setInviteUrl(link);
+        localStorage.setItem(INVITE_SENT_KEY, "true");
 
         if (navigator.share) {
           try {
