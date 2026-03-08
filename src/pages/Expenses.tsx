@@ -295,11 +295,11 @@ const ExpenseRow: React.FC<ExpenseRowProps> = ({ expense, youName, partnerName, 
       break;
     case 'partner_paid_split':
       splitLabel = t('row.youOwe', '{{you}} owes {{symbol}}{{amount}}', { you: youName, symbol: currencySymbol, amount: half.toFixed(2) });
-      splitColor = 'text-[hsl(var(--warning,40_100%_50%))]';
+      splitColor = 'text-[hsl(var(--warning))]';
       break;
     case 'partner_owed_full':
       splitLabel = t('row.youOweFull', '{{you}} owes {{symbol}}{{amount}}', { you: youName, symbol: currencySymbol, amount: expense.amount.toFixed(2) });
-      splitColor = 'text-[hsl(var(--warning,40_100%_50%))]';
+      splitColor = 'text-[hsl(var(--warning))]';
       break;
     case 'individual':
       splitLabel = t('row.individual', 'Individual');
