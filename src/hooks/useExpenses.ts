@@ -402,10 +402,10 @@ export function useExpenses() {
         )
       );
       setSettlements(prev => [settlement as ExpenseSettlement, ...prev]);
-      toast.success(`Settled ${unsettled.length} expenses!`);
+      toast.success(t('toast.settled', 'Settled {{count}} expenses!', { count: unsettled.length }));
     } catch (err) {
       console.error('[useExpenses] settle error:', err);
-      toast.error('Failed to settle expenses');
+      toast.error(t('toast.settleError', 'Failed to settle expenses'));
     }
   }, [userId, coupleId, expenses, preferences.defaultCurrency]);
 
