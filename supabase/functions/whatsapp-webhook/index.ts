@@ -6358,14 +6358,16 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
             `Reply "Merge" to combine them.`
           ].join('\n');
         } else {
+          const sensitiveLabel = encryptionFields.is_sensitive ? '\n🔒 Encrypted at rest' : '';
           confirmationMessage = [
-            `✅ Saved: ${insertedNoteSummary}`,
+            `✅ Saved: ${rawSummary}`,
             `📂 Added to: ${listName}`,
+            sensitiveLabel,
             ``,
             `🔗 Manage: https://witholive.app`,
             ``,
             `💡 ${getRandomTip()}`
-          ].join('\n');
+          ].filter(Boolean).join('\n');
         }
 
         // Store newly created task as referenced entity for context follow-ups
