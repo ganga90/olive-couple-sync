@@ -154,8 +154,7 @@ const Home = () => {
     });
   };
 
-  // Get daily view tasks (next 3 days)
-  const dailyViewTasks = useMemo(() => getTasksForDays([0, 1, 2]), [filteredNotes]);
+  // Get weekly view tasks (next 5 days)
 
   // Get weekly view tasks (next 5 days)
   const weeklyViewTasks = useMemo(() => getTasksForDays([0, 1, 2, 3, 4]), [filteredNotes]);
