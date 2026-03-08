@@ -44,6 +44,7 @@ import itCalendar from '../../../public/locales/it-IT/calendar.json';
 import itAuth from '../../../public/locales/it-IT/auth.json';
 import itOrganize from '../../../public/locales/it-IT/organize.json';
 import itLegal from '../../../public/locales/it-IT/legal.json';
+import itExpenses from '../../../public/locales/it-IT/expenses.json';
 
 // Custom path detector for URL-based locale detection
 const PathDetector = {
