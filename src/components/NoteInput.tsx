@@ -647,6 +647,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                     </Tooltip>
                   </TooltipProvider>
                 )}
+              </div>
             </div>
 
             {/* Media previews */}
