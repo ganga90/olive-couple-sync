@@ -23,21 +23,28 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   // Routes that should hide the app layout entirely (landing, auth, onboarding)
   const hideLayoutRoutes = [
     '/landing',
+    '/auth',
     '/sign-in',
     '/sign-up',
     '/request-access',
     '/onboarding',
     '/welcome',
+    '/native-welcome',
+    '/auth-redirect-native',
+    '/legal/terms',
+    '/legal/privacy',
+    '/accept-invite',
     '/'
   ];
   
   const shouldHideLayout = hideLayoutRoutes.includes(cleanPath);
   
   // Main app routes that get the full navigation treatment
-  const mainAppRoutes = ['/home', '/lists', '/calendar', '/reminders', '/profile', '/budget', '/myday'];
+  const mainAppRoutes = ['/home', '/lists', '/calendar', '/reminders', '/profile', '/budget', '/myday', '/admin'];
   const isMainAppRoute = mainAppRoutes.includes(cleanPath) ||
     cleanPath.startsWith('/lists/') ||
-    cleanPath.startsWith('/notes/');
+    cleanPath.startsWith('/notes/') ||
+    cleanPath.startsWith('/agents/');
 
   // If we should hide the layout, just render children
   if (shouldHideLayout) {
