@@ -655,7 +655,7 @@ const ExpensesPage: React.FC = () => {
               key={bl.id}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-xl text-sm",
-                bl.status === 'over' ? "bg-destructive/10 text-destructive" : "bg-[hsl(var(--warning,40_100%_50%))]/10 text-[hsl(var(--warning,40_100%_50%))]"
+                bl.status === 'over' ? "bg-destructive/10 text-destructive" : "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]"
               )}
             >
               <Target className="w-4 h-4 flex-shrink-0" />
