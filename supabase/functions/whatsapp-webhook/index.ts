@@ -126,6 +126,11 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'es': '✅ ¡Hecho! Le dije a {partner} y guardé una tarea:\n\n📋 "{task}"\n📂 Asignado a: {partner}\n💬 Notificado vía WhatsApp',
     'it': '✅ Fatto! Ho detto a {partner} e salvato un\'attività:\n\n📋 "{task}"\n📂 Assegnato a: {partner}\n💬 Notificato via WhatsApp',
   },
+  partner_message_existing_task: {
+    en: '✅ Done! I reminded {partner} about an existing task:\n\n📋 "{task}"\n💬 Notified via WhatsApp\n\nℹ️ No duplicate created — task already tracked.',
+    'es': '✅ ¡Hecho! Le recordé a {partner} sobre una tarea existente:\n\n📋 "{task}"\n💬 Notificado vía WhatsApp\n\nℹ️ No se creó duplicado — tarea ya registrada.',
+    'it': '✅ Fatto! Ho ricordato a {partner} un\'attività esistente:\n\n📋 "{task}"\n💬 Notificato via WhatsApp\n\nℹ️ Nessun duplicato creato — attività già tracciata.',
+  },
   partner_no_phone: {
     en: '😕 I\'d love to message {partner}, but they haven\'t linked their WhatsApp yet.\n\nAsk them to open Olive → Profile → Link WhatsApp.',
     'es': '😕 Me encantaría enviarle un mensaje a {partner}, pero aún no ha vinculado su WhatsApp.\n\nPídele que abra Olive → Perfil → Vincular WhatsApp.',
