@@ -1,4 +1,4 @@
-import { useSignIn, useAuth } from "@clerk/clerk-react";
+import { useSignIn, useAuth, useUser } from "@clerk/clerk-react";
 import { useTranslation } from "react-i18next";
 import { useSEO } from "@/hooks/useSEO";
 import { Card } from "@/components/ui/card";
@@ -6,7 +6,7 @@ import { OliveLogo } from "@/components/OliveLogo";
 import { LegalConsentText } from "@/components/LegalConsentText";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { PasskeyPromptDialog, shouldPromptPasskey } from "@/components/PasskeyPromptDialog";
 
 type SignInMethod = "email_code" | "password";
 
@@ -26,6 +27,7 @@ const SignInPage = () => {
   const isNative = Capacitor.isNativePlatform();
   const isNativeRequest = searchParams.get("native") === "true";
   const { isSignedIn } = useAuth();
+  const { user } = useUser();
   const { signIn, isLoaded, setActive } = useSignIn();
   const navigate = useLocalizedNavigate();
   const rawNavigate = useNavigate();
@@ -37,6 +39,8 @@ const SignInPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [pendingVerification, setPendingVerification] = useState(false);
   const [method, setMethod] = useState<SignInMethod>("email_code");
+  const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
+  const [pendingRedirect, setPendingRedirect] = useState<string | null>(null);
 
   useSEO({ title: `${t('signIn.title')} — Olive`, description: t('signIn.description') });
 
@@ -48,12 +52,34 @@ const SignInPage = () => {
     }
   }, [isNativeRequest, isSignedIn, isNative]);
 
-  // Redirect if already signed in
+  // Redirect if already signed in (only if no passkey prompt pending)
   useEffect(() => {
-    if (isSignedIn && !isNativeRequest) {
+    if (isSignedIn && !isNativeRequest && !showPasskeyPrompt && !pendingRedirect) {
       navigate(redirectUrl);
     }
-  }, [isSignedIn, isNativeRequest, navigate, redirectUrl]);
+  }, [isSignedIn, isNativeRequest, navigate, redirectUrl, showPasskeyPrompt, pendingRedirect]);
+
+  const handleSuccessfulSignIn = useCallback(async (sessionId: string, redirectTo: string) => {
+    await setActive({ session: sessionId });
+    // Wait a tick for user object to populate
+    setTimeout(() => {
+      // Check if we should prompt for passkey
+      if (user && shouldPromptPasskey(user)) {
+        setPendingRedirect(redirectTo);
+        setShowPasskeyPrompt(true);
+      } else {
+        navigate(redirectTo);
+      }
+    }, 400);
+  }, [setActive, user, navigate]);
+
+  const handlePasskeyPromptClose = () => {
+    setShowPasskeyPrompt(false);
+    if (pendingRedirect) {
+      navigate(pendingRedirect);
+      setPendingRedirect(null);
+    }
+  };
 
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,9 +116,8 @@ const SignInPage = () => {
       });
 
       if (result.status === "complete") {
-        await setActive({ session: result.createdSessionId });
         const effectiveRedirectUrl = isNativeRequest ? '/auth-redirect-native' : redirectUrl;
-        navigate(effectiveRedirectUrl);
+        await handleSuccessfulSignIn(result.createdSessionId!, effectiveRedirectUrl);
       } else {
         toast.error(t('signIn.verificationIncomplete', 'Verification incomplete. Please try again.'));
       }
@@ -117,9 +142,8 @@ const SignInPage = () => {
       });
 
       if (result.status === "complete") {
-        await setActive({ session: result.createdSessionId });
         const effectiveRedirectUrl = isNativeRequest ? '/auth-redirect-native' : redirectUrl;
-        navigate(effectiveRedirectUrl);
+        await handleSuccessfulSignIn(result.createdSessionId!, effectiveRedirectUrl);
       } else {
         toast.error(t('signIn.verificationIncomplete', 'Verification incomplete. Please try again.'));
       }
@@ -187,11 +211,9 @@ const SignInPage = () => {
     } catch (err: any) {
       console.error('[SignIn] Passkey error:', err);
       const clerkError = err?.errors?.[0];
-      // If passkeys not supported or user cancelled
       if (clerkError?.code === 'passkey_not_supported') {
         toast.error(t('signIn.passkeyNotSupported', 'Passkeys are not supported on this device.'));
       } else if (err?.name === 'NotAllowedError' || clerkError?.code === 'passkey_registration_required') {
-        // No passkey found — prompt user to sign in first, then create one
         toast(t('signIn.passkeyNotFound', "No passkey found for this device. Sign in with email first, then create a passkey from your Profile settings."), {
           duration: 6000,
           icon: '🔑',
@@ -276,22 +298,25 @@ const SignInPage = () => {
 
                 {method === "email_code" ? (
                   /* Email Code Method */
-                  <form onSubmit={handleSendCode} className="space-y-4">
+                  <form onSubmit={handleSendCode} autoComplete="on" className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="email" className="flex items-center gap-2">
+                      <Label htmlFor="signin-email" className="flex items-center gap-2">
                         <Mail className="h-4 w-4" />
                         {t('signIn.emailLabel', 'Email address')}
                       </Label>
                       <Input
-                        id="email"
+                        id="signin-email"
                         type="email"
                         placeholder={t('signIn.emailPlaceholder', 'you@example.com')}
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
-                        autoComplete="email"
+                        autoComplete="email webauthn"
                         inputMode="email"
                         name="email"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        spellCheck={false}
                         className="bg-background text-base"
                       />
                     </div>
@@ -326,14 +351,14 @@ const SignInPage = () => {
                   </form>
                 ) : (
                   /* Password Method */
-                  <form onSubmit={handlePasswordSignIn} className="space-y-4">
+                  <form onSubmit={handlePasswordSignIn} autoComplete="on" className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="email-pw" className="flex items-center gap-2">
+                      <Label htmlFor="signin-email-pw" className="flex items-center gap-2">
                         <Mail className="h-4 w-4" />
                         {t('signIn.emailLabel', 'Email address')}
                       </Label>
                       <Input
-                        id="email-pw"
+                        id="signin-email-pw"
                         type="email"
                         placeholder={t('signIn.emailPlaceholder', 'you@example.com')}
                         value={email}
@@ -342,24 +367,28 @@ const SignInPage = () => {
                         autoComplete="email"
                         inputMode="email"
                         name="email"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        spellCheck={false}
                         className="bg-background text-base"
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="password" className="flex items-center gap-2">
+                      <Label htmlFor="signin-password" className="flex items-center gap-2">
                         <Lock className="h-4 w-4" />
                         {t('signIn.passwordLabel', 'Password')}
                       </Label>
                       <div className="relative">
                         <Input
-                          id="password"
+                          id="signin-password"
                           type={showPassword ? "text" : "password"}
                           placeholder={t('signIn.passwordPlaceholder', 'Enter your password')}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           required
                           autoComplete="current-password"
+                          name="password"
                           className="bg-background text-base pr-10"
                         />
                         <button
@@ -506,6 +535,12 @@ const SignInPage = () => {
           <LegalConsentText className="mt-4 px-2" />
         </Card>
       </section>
+
+      {/* Passkey creation prompt after successful sign-in */}
+      <PasskeyPromptDialog
+        open={showPasskeyPrompt}
+        onClose={handlePasskeyPromptClose}
+      />
     </main>
   );
 };
