@@ -96,8 +96,11 @@
     "settleError": "Error al liquidar gastos",
     "budgetSet": "Límite de presupuesto establecido para {{category}}",
     "budgetSetError": "Error al establecer límite",
+    "budgetRemoved": "Límite de presupuesto eliminado",
     "exported": "Gastos exportados",
-    "updated": "Gasto actualizado"
+    "updated": "Gasto actualizado",
+    "settleConfirm": "¿Liquidar {{count}} gastos?",
+    "settleConfirmDesc": "Esto marcará todos los gastos no liquidados como liquidados y los archivará."
   },
   "archiveAll": "Archivar Todo",
   "receipt": {

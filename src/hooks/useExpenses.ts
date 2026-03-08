@@ -377,46 +377,63 @@ export function useExpenses() {
     }
 
     try {
-      const totalAmount = unsettled.reduce((sum, e) => sum + e.amount, 0);
-      const { data: settlement, error: settleErr } = await supabase
-        .from('expense_settlements')
-        .insert({
-          couple_id: coupleId || null,
-          user_id: userId,
-          settled_by: userId,
-          total_amount: totalAmount,
-          currency: unsettled[0]?.currency || preferences.defaultCurrency,
-          expense_count: unsettled.length,
-        })
-        .select()
-        .single();
-      if (settleErr) throw settleErr;
+      // Group unsettled expenses by currency to create one settlement per currency
+      const byCurrency: Record<string, Expense[]> = {};
+      unsettled.forEach(e => {
+        const c = e.currency || 'USD';
+        if (!byCurrency[c]) byCurrency[c] = [];
+        byCurrency[c].push(e);
+      });
 
-      const ids = unsettled.map(e => e.id);
-      const { error: updateErr } = await supabase
-        .from('expenses')
-        .update({
-          is_settled: true,
-          settled_at: new Date().toISOString(),
-          settlement_id: settlement.id,
-        })
-        .in('id', ids);
-      if (updateErr) throw updateErr;
+      const allIds: string[] = [];
+      const newSettlements: ExpenseSettlement[] = [];
+
+      for (const [currency, currencyExpenses] of Object.entries(byCurrency)) {
+        const totalAmount = currencyExpenses.reduce((sum, e) => sum + e.amount, 0);
+        const { data: settlement, error: settleErr } = await supabase
+          .from('expense_settlements')
+          .insert({
+            couple_id: coupleId || null,
+            user_id: userId,
+            settled_by: userId,
+            total_amount: totalAmount,
+            currency,
+            expense_count: currencyExpenses.length,
+          })
+          .select()
+          .single();
+        if (settleErr) throw settleErr;
+
+        const ids = currencyExpenses.map(e => e.id);
+        allIds.push(...ids);
+
+        const { error: updateErr } = await supabase
+          .from('expenses')
+          .update({
+            is_settled: true,
+            settled_at: new Date().toISOString(),
+            settlement_id: settlement.id,
+          })
+          .in('id', ids);
+        if (updateErr) throw updateErr;
+
+        newSettlements.push(settlement as ExpenseSettlement);
+      }
 
       setExpenses(prev =>
-        prev.map(e =>
-          ids.includes(e.id)
-            ? { ...e, is_settled: true, settled_at: new Date().toISOString(), settlement_id: settlement.id }
-            : e
-        )
+        prev.map(e => {
+          if (!allIds.includes(e.id)) return e;
+          const s = newSettlements.find(ns => ns.currency === (e.currency || 'USD'));
+          return { ...e, is_settled: true, settled_at: new Date().toISOString(), settlement_id: s?.id || null };
+        })
       );
-      setSettlements(prev => [settlement as ExpenseSettlement, ...prev]);
+      setSettlements(prev => [...newSettlements, ...prev]);
       toast.success(t('toast.settled', 'Settled {{count}} expenses!', { count: unsettled.length }));
     } catch (err) {
       console.error('[useExpenses] settle error:', err);
       toast.error(t('toast.settleError', 'Failed to settle expenses'));
     }
-  }, [userId, coupleId, expenses, preferences.defaultCurrency]);
+  }, [userId, coupleId, expenses]);
 
   // Budget limit CRUD
   const setBudgetLimit = useCallback(async (category: string, monthlyLimit: number) => {

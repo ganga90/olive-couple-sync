@@ -255,7 +255,8 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
 
       // Link any auto-detected expenses that were created by process-note
       // (they have null note_id since the note didn't exist yet)
-      if (data?.id && data?.original_text) {
+      // Skip for encrypted notes since original_text is '[ENCRYPTED]'
+      if (data?.id && data?.original_text && data.original_text !== '[ENCRYPTED]') {
         supabase
           .from('expenses')
           .update({ note_id: data.id })

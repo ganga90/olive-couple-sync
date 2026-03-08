@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
@@ -319,15 +320,19 @@ interface EditExpenseDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onSave: (id: string, updates: Partial<Expense>) => Promise<any>;
+  hasPartner?: boolean;
+  youName?: string;
+  partnerName?: string;
 }
 
-const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ expense, open, onOpenChange, onSave }) => {
+const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ expense, open, onOpenChange, onSave, hasPartner, youName, partnerName }) => {
   const { t } = useTranslation('expenses');
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Other');
   const [currency, setCurrency] = useState('USD');
   const [expenseDate, setExpenseDate] = useState('');
+  const [splitType, setSplitType] = useState<ExpenseSplitType>('individual');
   const [saving, setSaving] = useState(false);
 
   React.useEffect(() => {
@@ -337,6 +342,7 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ expense, open, on
       setCategory(expense.category);
       setCurrency(expense.currency);
       setExpenseDate(expense.expense_date.split('T')[0]);
+      setSplitType(expense.split_type);
     }
   }, [expense, open]);
 
@@ -355,6 +361,8 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ expense, open, on
       category_icon: getCategoryIcon(category),
       currency,
       expense_date: new Date(expenseDate).toISOString(),
+      split_type: splitType,
+      is_shared: splitType !== 'individual',
     } as Partial<Expense>);
     setSaving(false);
     onOpenChange(false);
@@ -403,6 +411,21 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ expense, open, on
               </SelectContent>
             </Select>
           </div>
+          {hasPartner && (
+            <div>
+              <Label>{t('addDialog.splitType', 'Split type')}</Label>
+              <Select value={splitType} onValueChange={v => setSplitType(v as ExpenseSplitType)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="you_paid_split">{t('split.youPaidSplit', '{{you}} paid, split equally', { you: youName })}</SelectItem>
+                  <SelectItem value="you_owed_full">{t('split.youOwedFull', '{{partner}} owes full amount', { partner: partnerName })}</SelectItem>
+                  <SelectItem value="partner_paid_split">{t('split.partnerPaidSplit', '{{partner}} paid, split equally', { partner: partnerName })}</SelectItem>
+                  <SelectItem value="partner_owed_full">{t('split.partnerOwedFull', '{{you}} owes full amount', { you: youName })}</SelectItem>
+                  <SelectItem value="individual">{t('split.individual', 'Individual (no split)')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <Label>{t('details.date', 'Date')}</Label>
             <Input type="date" value={expenseDate} onChange={e => setExpenseDate(e.target.value)} className="mt-1" />
@@ -760,6 +783,7 @@ const ExpensesPage: React.FC = () => {
   const [analyticsRange, setAnalyticsRange] = useState<'week' | 'month' | '30days'>('month');
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
+  const [settleConfirmOpen, setSettleConfirmOpen] = useState(false);
 
   // Date range filter state
   const [dateFrom, setDateFrom] = useState('');
@@ -845,7 +869,7 @@ const ExpensesPage: React.FC = () => {
               key={bl.id}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-xl text-sm",
-                bl.status === 'over' ? "bg-destructive/10 text-destructive" : "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]"
+                 bl.status === 'over' ? "bg-destructive/10 text-destructive" : "bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))]"
               )}
             >
               <Target className="w-4 h-4 flex-shrink-0" />
@@ -888,7 +912,7 @@ const ExpensesPage: React.FC = () => {
             </div>
             <p className="text-xl font-bold">{activeExpenses.length}</p>
             {activeExpenses.length > 0 && !hasPartner && (
-              <Button size="sm" variant="ghost" onClick={settleExpenses} className="rounded-full text-xs mt-1 h-7 px-2">
+              <Button size="sm" variant="ghost" onClick={() => setSettleConfirmOpen(true)} className="rounded-full text-xs mt-1 h-7 px-2">
                 <Archive className="w-3 h-3 mr-1" />
                 {t('archiveAll', 'Archive All')}
               </Button>
@@ -925,7 +949,7 @@ const ExpensesPage: React.FC = () => {
                   <p className="text-lg font-semibold">{activeExpenses.length} {t('summary.expenses', 'expenses')}</p>
                 </div>
                 {activeExpenses.length > 0 && (
-                  <Button size="sm" variant="outline" onClick={settleExpenses} className="rounded-full">
+                  <Button size="sm" variant="outline" onClick={() => setSettleConfirmOpen(true)} className="rounded-full">
                     <Check className="w-4 h-4 mr-1" />
                     {t('settle', 'Settle Up')}
                   </Button>
@@ -1248,6 +1272,9 @@ const ExpensesPage: React.FC = () => {
         open={!!editExpense}
         onOpenChange={v => { if (!v) setEditExpense(null); }}
         onSave={updateExpense}
+        hasPartner={hasPartner}
+        youName={youName}
+        partnerName={partnerName}
       />
       <BudgetLimitDialog
         open={budgetDialogOpen}
@@ -1257,6 +1284,24 @@ const ExpensesPage: React.FC = () => {
         budgetStatus={budgetStatus}
         currencySymbol={currencySymbol}
       />
+      <AlertDialog open={settleConfirmOpen} onOpenChange={setSettleConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('toast.settleConfirm', 'Settle {{count}} expenses?', { count: activeExpenses.length })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('toast.settleConfirmDesc', 'This will mark all unsettled expenses as settled and archive them.')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('addDialog.cancel', 'Cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { settleExpenses(); setSettleConfirmOpen(false); }}>
+              {hasPartner ? t('settle', 'Settle Up') : t('archiveAll', 'Archive All')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
