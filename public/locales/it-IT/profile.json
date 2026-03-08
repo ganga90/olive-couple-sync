@@ -464,5 +464,14 @@
       "linkWhatsApp": "Collega WhatsApp per i Briefing",
       "linkWhatsAppFirst": "Collega prima il tuo numero WhatsApp per ricevere i briefing."
     }
+  },
+  "defaultHomeView": {
+    "title": "Vista predefinita",
+    "subtitle": "Scegli la tua scheda predefinita",
+    "description": "Scegli quale scheda si apre per prima nella tua Home.",
+    "priority": "🔥 Priorità",
+    "weekly": "📆 Settimanale",
+    "reminders": "⏰ Promemoria",
+    "recent": "🕐 Recente"
   }
 }

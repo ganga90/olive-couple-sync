@@ -464,5 +464,14 @@
       "linkWhatsApp": "Vincula WhatsApp para Resúmenes",
       "linkWhatsAppFirst": "Vincula primero tu número de WhatsApp para recibir resúmenes."
     }
+  },
+  "defaultHomeView": {
+    "title": "Vista predeterminada",
+    "subtitle": "Elige tu pestaña por defecto",
+    "description": "Elige qué pestaña se abre por defecto al visitar tu Inicio.",
+    "priority": "🔥 Prioridad",
+    "weekly": "📆 Semanal",
+    "reminders": "⏰ Recordatorios",
+    "recent": "🕐 Reciente"
   }
 }
