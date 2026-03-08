@@ -2802,7 +2802,7 @@ serve(async (req) => {
             body: {
               text: effectiveMessage,
               user_id: userId,
-              couple_id: coupleId || undefined,
+              couple_id: effectiveCoupleId || undefined,
               timezone: profile?.timezone || 'America/New_York',
               source: 'whatsapp',
               isUrgent: isUrgent || false,
