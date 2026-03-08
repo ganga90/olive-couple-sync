@@ -3925,7 +3925,7 @@ serve(async (req) => {
           
           const noteData: any = {
             author_id: userId,
-            couple_id: coupleId,
+            couple_id: effectiveCoupleId,
             original_text: messageBody || taskDescription,
             summary: processData.summary || taskDescription,
             category: processData.category || 'Task',
