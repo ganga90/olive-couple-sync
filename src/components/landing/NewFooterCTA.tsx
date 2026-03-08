@@ -49,7 +49,7 @@ export const NewFooterCTA = () => {
               size="lg"
               className="bg-olive hover:bg-olive/90 text-white font-semibold px-10 py-7 rounded-full shadow-2xl shadow-olive/30 text-lg"
             >
-              {t('footerCta.betaCta', 'Get Early Access')}
+              {t('footerCta.betaCta', 'Get Access to Olive')}
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </Link>

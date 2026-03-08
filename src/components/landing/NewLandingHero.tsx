@@ -53,7 +53,7 @@ export const NewLandingHero = () => {
                   size="lg"
                   className="w-full sm:w-auto bg-olive hover:bg-olive/90 text-white font-semibold px-8 py-6 rounded-full shadow-xl shadow-olive/25 text-lg"
                 >
-                  {t('hero.betaCta', 'Get Early Access')}
+                  {t('hero.betaCta', 'Get Access to Olive')}
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </Link>

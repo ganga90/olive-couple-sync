@@ -4,136 +4,148 @@
     "pricing": "Precios",
     "login": "Iniciar Sesión",
     "cta": "Prueba Olive Gratis",
+    "betaCta": "Accede a Olive",
     "microCopy": "Sin descargar apps"
   },
   "hero": {
-    "eyebrow": "Tus textos merecen más",
-    "headline": "Deja de mandarte mensajes al vacío.",
-    "subheadline": "Códigos de acceso, listas de compras, ideas brillantes — todo muriendo en un chat contigo mismo. Olive captura cada texto, nota de voz y foto, y los convierte en acciones organizadas.",
-    "ctaPrimary": "Prueba Olive Gratis",
-    "ctaSecondary": "Mira Cómo Funciona",
-    "trustSignal": "Elegido por más de 500 usuarios beta"
+    "eyebrow": "Tu segundo cerebro con IA",
+    "headline": "Ella recuerda para que tú no tengas que hacerlo.",
+    "subheadline": "Códigos de acceso, listas de compras, ideas brillantes — solo escríbele a Olive. Ella lo organiza todo y te lo devuelve, limpio y ordenado, cuando lo necesites.",
+    "betaCta": "Accede a Olive",
+    "ctaPrimary": "Empieza a Usar Olive — Gratis",
+    "ctaSecondary": "Descubre Cómo Funciona",
+    "trustSignal": "Actualmente en Beta — construyendo el futuro de la organización personal"
   },
   "chooseMode": {
-    "headline": "Olive se adapta a ti.",
-    "subheadline": "Ya sea que vueles solo, sincronices con tu pareja, o manejes un negocio.",
-    "waitlistCta": "Únete a la Lista de Espera Beta",
+    "headline": "Una asistente. Cada parte de tu vida.",
+    "subheadline": "Ya sea que estés solo, en pareja o manejando un negocio — Olive se adapta a ti.",
+    "waitlistCta": "Accede a Olive",
     "personal": {
-      "headline": "Para la Persona Organizada.",
-      "painPoint": "Te mandas recordatorios, enlaces e ideas a ti mismo. Desaparecen. Olive los captura todos.",
-      "feature1": "Auto-clasificación por categoría",
-      "feature2": "Recordatorios inteligentes de tus textos",
+      "headline": "Para Ti.",
+      "painPoint": "Te envías recordatorios, links e ideas. Desaparecen en el vacío. Olive los captura todos y los pone exactamente donde corresponden.",
+      "feature1": "Organiza notas por categoría",
+      "feature2": "Recordatorios inteligentes desde tus mensajes",
       "feature3": "Transcripción de notas de voz"
     },
     "partner": {
-      "headline": "Deja de Regañar. Comparte la Carga.",
-      "painPoint": "Uno de ustedes recuerda todo. El otro es caótico. Olive cierra la brecha.",
+      "headline": "Para Ti y Tu Pareja.",
+      "painPoint": "Uno recuerda todo. El otro olvida. Olive los mantiene sincronizados — sin regaños.",
       "feature1": "Listas y presupuestos compartidos",
-      "feature2": "Notificaciones a tu pareja",
-      "feature3": "Bóveda de memoria para ambos"
+      "feature2": "Recordatorios al partner",
+      "feature3": "Bóveda de recuerdos compartida"
     },
     "business": {
-      "headline": "El CRM Invisible.",
-      "painPoint": "Actualiza Salesforce vía WhatsApp. Registra decisiones sin abrir otra pestaña.",
+      "headline": "Para Tu Negocio.",
+      "painPoint": "Registra decisiones, escanea recibos y controla gastos — todo desde tu teléfono. Sin hojas de cálculo.",
       "feature1": "Escaneo de recibos y gastos",
       "feature2": "Registro de decisiones",
-      "feature3": "Exportación a CSV / integraciones"
+      "feature3": "Exportación CSV e integraciones"
     }
   },
   "superpowers": {
     "eyebrow": "Cómo Funciona",
-    "headline": "Tú ya haces el trabajo. Olive lo hace contar.",
-    "subheadline": "No cambies tus hábitos. Solo deja que Olive convierta tus textos en acción.",
+    "headline": "Tres pasos. Cero esfuerzo.",
+    "subheadline": "Sigue haciendo lo que ya haces. Olive convierte tus mensajes en acciones organizadas — automáticamente.",
     "capture": {
-      "title": "Captura",
-      "description": "No cambies tus hábitos. Solo reenvía esa nota de voz, foto o enlace a Olive en WhatsApp. Ella captura todo."
+      "title": "1. Envíalo",
+      "description": "Texto, nota de voz, foto, link — solo envíalo a Olive por WhatsApp. Sin formato. Sin carpetas. Solo envíalo."
     },
     "organize": {
-      "title": "Organiza",
-      "description": "Olive ordena el caos. Archiva recibos, programa citas y recuerda el contexto — automáticamente."
+      "title": "2. Olive Organiza",
+      "description": "Las compras van a tu lista de compras. Las citas van a tu calendario. Las ideas se guardan. Todo automático, todo instantáneo."
     },
     "act": {
-      "title": "Actúa",
-      "description": "La Capa Agéntica. Olive no solo almacena datos; guarda eventos en tu calendario, investiga por ti y le recuerda a tu pareja para que tú no tengas que hacerlo."
+      "title": "3. Encuéntralo al Instante",
+      "description": "Todo limpio, buscable y compartible. Pregúntale a Olive lo que sea — lo encuentra en segundos. Hasta puede recordarle a tu pareja por ti."
     },
     "security": {
-      "title": "Tus Datos, Bajo Llave",
-      "description": "Las notas sensibles se cifran con AES-256. Solo tú puedes descifrarlas — Olive nunca almacena tus datos en texto plano."
+      "title": "Tus Datos, Blindados",
+      "description": "Las notas sensibles están cifradas con AES-256. Solo tú puedes descifrarlas — Olive nunca almacena tus datos en texto plano."
     }
   },
   "whatsappFirst": {
     "headline": "Funciona donde ya vives.",
-    "description": "Sin nuevas apps que aprender. Solo reenvía una nota de voz, una foto o un enlace a Olive en WhatsApp. Ella se encarga del resto.",
+    "description": "Sin apps nuevas. Solo reenvía una nota de voz, foto o link a Olive por WhatsApp. Ella se encarga del resto.",
     "comingSoon": "Próximamente",
     "features": {
       "voiceNotes": "🎙️ Notas de voz",
       "photos": "📷 Fotos y recibos",
-      "links": "🔗 Enlaces",
+      "links": "🔗 Links",
       "text": "💬 Mensajes de texto"
     }
   },
   "testimonials": {
-    "eyebrow": "Usuarios Beta",
-    "headline": "De personas que dejaron de mandarse mensajes a sí mismas.",
+    "eyebrow": "Primeros usuarios",
+    "headline": "\"Por fin tengo un segundo cerebro.\"",
     "items": [
       {
-        "quote": "Me mandaba 10 cosas al día. Ahora le escribo a Olive y todo simplemente... funciona.",
-        "author": "Sara",
-        "role": "Usuaria Beta"
+        "quote": "Me mandaba 10 cosas al día. Ahora le escribo a Olive y todo simplemente... aparece organizado. Se siente como magia.",
+        "author": "Sara K.",
+        "role": "Mamá y Freelancer"
       },
       {
-        "quote": "Levantamos nuestra ronda semilla mientras manejábamos un millón de recibos. Olive nos ahorró horas cada semana.",
-        "author": "Marcos & Jenna",
-        "role": "Co-Fundadores"
+        "quote": "Dejamos de pelear por quién olvidó qué. Olive es el tercero neutral que toda pareja necesita.",
+        "author": "Marco y Jen",
+        "role": "Pareja, Madrid"
       },
       {
-        "quote": "Finalmente dejamos de pelear sobre quién olvidó qué. Olive es la tercera parte neutral que necesitábamos.",
-        "author": "David",
-        "role": "Usuario Beta"
+        "quote": "Manejo todo mi negocio con Olive. Recibos, notas, datos de clientes — todo organizado sin mover un dedo.",
+        "author": "David R.",
+        "role": "Emprendedor"
       }
     ]
   },
   "pricing": {
-    "headline": "Precios simples y transparentes.",
-    "subheadline": "Empieza gratis. Mejora cuando estés listo.",
+    "headline": "Precios simples. Empieza gratis.",
+    "subheadline": "Sin tarjeta. Sin compromiso. Solo empieza a enviarle cosas a Olive.",
     "mostPopular": "Más Popular",
-    "trustNote": "Cancela cuando quieras. Sin tarjeta de crédito para el plan gratuito.",
+    "trustNote": "Cancela cuando quieras. Sin tarjeta de crédito para empezar.",
+    "beta": {
+      "headline": "Gratis durante la Beta",
+      "description": "Estamos construyendo Olive con nuestros primeros usuarios. Todo es gratis durante la Beta — ayúdanos a dar forma al futuro de la organización personal.",
+      "feature1": "Captura ilimitada por WhatsApp",
+      "feature2": "Organización y memoria con IA",
+      "feature3": "Espacio compartido con tu pareja",
+      "cta": "Accede a Olive",
+      "note": "Sin tarjeta de crédito. Anunciaremos precios antes de que termine la Beta."
+    },
     "personal": {
-      "name": "Personal",
-      "tagline": "Para la persona organizada",
+      "name": "Starter",
+      "tagline": "Para organizar tu vida",
       "period": "para siempre",
-      "feature1": "Captura de textos ilimitada",
+      "feature1": "Captura de texto ilimitada",
       "feature2": "5 notas de voz/mes",
       "feature3": "Integración WhatsApp",
-      "cta": "Empezar"
+      "cta": "Empieza Gratis"
     },
     "partner": {
-      "name": "Pareja",
+      "name": "Partner",
       "tagline": "Para parejas y dúos",
       "period": "mes",
       "feature1": "Notas de voz ilimitadas",
       "feature2": "Escaneo de recibos y presupuestos",
-      "feature3": "Listas compartidas y bóveda de memoria",
+      "feature3": "Listas compartidas y bóveda",
       "feature4": "Soporte prioritario",
-      "cta": "Iniciar Prueba Gratis"
+      "cta": "Prueba Gratis"
     },
     "business": {
-      "name": "Negocio",
+      "name": "Business",
       "tagline": "Para equipos y emprendedores",
       "period": "mes",
-      "feature1": "Todo en Pareja",
-      "feature2": "Modo contexto empresarial",
-      "feature3": "Exportación a CSV",
+      "feature1": "Todo en Partner",
+      "feature2": "Modo contexto business",
+      "feature3": "Exportación CSV",
       "feature4": "Registro de decisiones",
       "feature5": "Soporte prioritario",
       "cta": "Contactar Ventas"
     }
   },
   "footerCta": {
-    "headline": "Tus textos merecen más que el vacío.",
-    "subheadline": "Únete a miles que dejaron de mandarse mensajes y empezaron a escribirle a Olive.",
-    "cta": "Prueba Olive Gratis",
-    "trustNote": "Gratis para empezar. Sin tarjeta de crédito requerida."
+    "headline": "Tus ideas merecen más que una chat contigo mismo.",
+    "subheadline": "Únete a nuestra Beta y ayúdanos a construir el futuro de la organización personal.",
+    "betaCta": "Accede a Olive",
+    "cta": "Empieza a Usar Olive — Gratis",
+    "trustNote": "Gratis durante la Beta. Sin tarjeta de crédito."
   },
   "footer": {
     "pricing": "Precios",
@@ -142,6 +154,6 @@
     "terms": "Términos de Servicio",
     "copyright": "© 2026 Olive App by GV Digital Labs. Todos los derechos reservados.",
     "madeWith": "Olive Assistant — Hecho con ❤️ en Miami",
-    "tagline": "Con Olive, todo se mantiene organizado."
+    "tagline": "Ella recuerda para que tú no tengas que hacerlo."
   }
 }
