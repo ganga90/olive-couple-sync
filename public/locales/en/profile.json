@@ -477,5 +477,14 @@
     "noSchedule": "No schedule configured",
     "connection": "Required Connection",
     "runHistory": "Run History"
+  },
+  "defaultHomeView": {
+    "title": "Default Home View",
+    "subtitle": "Choose your default tab",
+    "description": "Choose which tab opens by default when you visit your Home.",
+    "priority": "🔥 Priority",
+    "weekly": "📆 Weekly",
+    "reminders": "⏰ Reminders",
+    "recent": "🕐 Recent"
   }
 }
