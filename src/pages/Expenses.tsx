@@ -706,7 +706,7 @@ const ExpensesPage: React.FC = () => {
                   <ArrowLeftRight className="w-3.5 h-3.5" />
                   {t('summary.balance', 'Net Balance')}
                 </div>
-                <p className={cn("text-xl font-bold", netBalance > 0 ? "text-[hsl(var(--success))]" : netBalance < 0 ? "text-[hsl(var(--warning,40_100%_50%))]" : "")}>
+                <p className={cn("text-xl font-bold", netBalance > 0 ? "text-[hsl(var(--success))]" : netBalance < 0 ? "text-[hsl(var(--warning))]" : "")}>
                   {netBalance > 0
                     ? `${partnerName} ${t('summary.owesYou', 'owes')} ${currencySymbol}${netBalance.toFixed(2)}`
                     : netBalance < 0
