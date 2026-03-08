@@ -1324,6 +1324,7 @@ export type Database = {
           proactive_enabled: boolean | null
           quiet_hours_end: string | null
           quiet_hours_start: string | null
+          reminder_advance_intervals: string[]
           timezone: string | null
           updated_at: string | null
           user_id: string
@@ -1343,6 +1344,7 @@ export type Database = {
           proactive_enabled?: boolean | null
           quiet_hours_end?: string | null
           quiet_hours_start?: string | null
+          reminder_advance_intervals?: string[]
           timezone?: string | null
           updated_at?: string | null
           user_id: string
@@ -1362,6 +1364,7 @@ export type Database = {
           proactive_enabled?: boolean | null
           quiet_hours_end?: string | null
           quiet_hours_start?: string | null
+          reminder_advance_intervals?: string[]
           timezone?: string | null
           updated_at?: string | null
           user_id?: string
