@@ -15,8 +15,9 @@ import { OliveProactivePreferences } from "@/components/settings/OliveProactiveP
 import { OliveSkillsManager } from "@/components/settings/OliveSkillsManager";
 import { BackgroundAgentsManager } from "@/components/settings/BackgroundAgentsManager";
 import { DefaultPrivacyCard } from "@/components/settings/DefaultPrivacyCard";
+import { ExpensePreferencesCard } from "@/components/settings/ExpensePreferencesCard";
 import { CollapsibleSection } from "@/components/settings/CollapsibleSection";
-import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot, Mail, Fingerprint } from "lucide-react";
+import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot, Mail, Fingerprint, Wallet } from "lucide-react";
 import { PasskeySettingsCard } from "@/components/settings/PasskeySettingsCard";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
