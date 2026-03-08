@@ -1284,6 +1284,24 @@ const ExpensesPage: React.FC = () => {
         budgetStatus={budgetStatus}
         currencySymbol={currencySymbol}
       />
+      <AlertDialog open={settleConfirmOpen} onOpenChange={setSettleConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('toast.settleConfirm', 'Settle {{count}} expenses?', { count: activeExpenses.length })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('toast.settleConfirmDesc', 'This will mark all unsettled expenses as settled and archive them.')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('addDialog.cancel', 'Cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { settleExpenses(); setSettleConfirmOpen(false); }}>
+              {hasPartner ? t('settle', 'Settle Up') : t('archiveAll', 'Archive All')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
