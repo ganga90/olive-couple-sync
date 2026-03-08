@@ -374,13 +374,14 @@ const SignUpPage = () => {
                   <Label htmlFor="password">{t('signUp.passwordLabel', 'Create a password')}</Label>
                   <div className="relative">
                     <Input
-                      id="password"
+                      id="signup-password"
                       type={showPassword ? "text" : "password"}
                       placeholder={t('signUp.passwordPlaceholder', 'Choose a secure password')}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       autoComplete="new-password"
+                      name="password"
                       className="bg-background text-base pr-10"
                     />
                     <button
