@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useMemo } from "react";
 import { useUser } from "@clerk/clerk-react";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/lib/supabaseClient";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { toast } from "sonner";
