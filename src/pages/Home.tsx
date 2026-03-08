@@ -26,6 +26,7 @@ import { PrivacyFilterPills } from "@/components/PrivacyFilterPills";
 import { useDefaultPrivacyFilter } from "@/hooks/useDefaultPrivacyFilter";
 import { EmailTriageReviewDialog } from "@/components/EmailTriageReviewDialog";
 import { PartnerInviteCard } from "@/components/PartnerInviteCard";
+import { PersonalizeCard } from "@/components/PersonalizeCard";
 import { supabase } from "@/lib/supabaseClient";
 
 const Home = () => {
@@ -236,6 +237,11 @@ const Home = () => {
           {/* Partner Invite Card (post-onboarding) */}
           <div className="animate-fade-up stagger-2">
             <PartnerInviteCard />
+          </div>
+
+          {/* Personalize Olive Card (post-onboarding) */}
+          <div className="animate-fade-up stagger-2">
+            <PersonalizeCard />
           </div>
 
           {/* Quick Action Cards - Glass Style (only show if no notes) */}

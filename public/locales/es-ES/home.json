@@ -122,5 +122,33 @@
     "copy": "Copiar",
     "dismiss": "Cerrar",
     "error": "No se pudo crear la invitación. Inténtalo de nuevo."
+  },
+  "personalize": {
+    "title": "Personaliza Olive",
+    "subtitle": "Ayuda a Olive a entender tu estilo de vida para mejores sugerencias.",
+    "dietLabel": "Dieta",
+    "householdLabel": "Hogar",
+    "styleLabel": "Estilo de notas",
+    "diet": {
+      "none": "Sin preferencia",
+      "vegetarian": "Vegetariano",
+      "vegan": "Vegano",
+      "glutenFree": "Sin gluten"
+    },
+    "household": {
+      "solo": "Vivo solo/a",
+      "couple": "Pareja",
+      "family": "Familia",
+      "roommates": "Compañeros"
+    },
+    "style": {
+      "auto": "Automático",
+      "succinct": "Breve",
+      "conversational": "Conversacional"
+    },
+    "save": "Guardar",
+    "skip": "Omitir",
+    "saved": "¡Preferencias guardadas! Olive las usará para ayudarte mejor.",
+    "error": "No se pudo guardar. Inténtalo de nuevo."
   }
 }

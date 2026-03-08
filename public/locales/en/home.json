@@ -124,5 +124,33 @@
     "copy": "Copy",
     "dismiss": "Dismiss",
     "error": "Couldn't create invite. Try again."
+  },
+  "personalize": {
+    "title": "Personalize Olive",
+    "subtitle": "Help Olive understand your lifestyle for smarter suggestions.",
+    "dietLabel": "Diet",
+    "householdLabel": "Household",
+    "styleLabel": "Note style",
+    "diet": {
+      "none": "No preference",
+      "vegetarian": "Vegetarian",
+      "vegan": "Vegan",
+      "glutenFree": "Gluten-free"
+    },
+    "household": {
+      "solo": "Living alone",
+      "couple": "Couple",
+      "family": "Family",
+      "roommates": "Roommates"
+    },
+    "style": {
+      "auto": "Auto",
+      "succinct": "Succinct",
+      "conversational": "Conversational"
+    },
+    "save": "Save",
+    "skip": "Skip",
+    "saved": "Preferences saved! Olive will use these to help you better.",
+    "error": "Couldn't save. Try again."
   }
 }
