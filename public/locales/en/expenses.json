@@ -15,7 +15,8 @@
     "youOwe": "You owe",
     "settled": "All settled!",
     "unsettled": "Unsettled",
-    "expenses": "expenses"
+    "expenses": "expenses",
+    "count": "Count"
   },
   "tabs": {
     "active": "Active",
