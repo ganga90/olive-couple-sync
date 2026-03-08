@@ -20,6 +20,7 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
   const { user } = useAuth();
   const { partner, currentCouple } = useSupabaseCouple();
   const { getLocalizedPath } = useLanguage();
+  const dateLocale = useDateLocale();
 
   const partnerName = partner || t('common:common.partner');
   const userId = user?.id;

@@ -28,6 +28,7 @@ export const SwipeableReminderCard = ({
   onEdit, 
   onClick 
 }: SwipeableReminderCardProps) => {
+  const dateLocale = useDateLocale();
   const [offset, setOffset] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
