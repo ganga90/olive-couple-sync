@@ -59,6 +59,102 @@ function isTrivialResult(message: string): boolean {
   return TRIVIAL_MESSAGES.some((t) => lower.startsWith(t)) || lower.startsWith("too soon (");
 }
 
+// ─── Oura API Helper ───────────────────────────────────────────
+interface OuraScores {
+  sleepScore: number | null;
+  readinessScore: number | null;
+  stressHighMinutes: number | null;
+  resilienceLevel: string | null;
+}
+
+/**
+ * Fetch Oura biometric data directly from the API (not the empty oura_daily_data table).
+ * Handles token refresh transparently.
+ */
+async function fetchOuraFromAPI(
+  supabase: ReturnType<typeof createClient<any>>,
+  userId: string,
+  days: number = 2
+): Promise<{ scores: OuraScores[]; connected: boolean }> {
+  const { data: ouraConn } = await supabase
+    .from("oura_connections")
+    .select("id, access_token, refresh_token, token_expiry")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!ouraConn) return { scores: [], connected: false };
+
+  let accessToken = ouraConn.access_token;
+
+  // Refresh token if expired
+  if (ouraConn.token_expiry && new Date(ouraConn.token_expiry) < new Date()) {
+    const clientId = Deno.env.get("OURA_CLIENT_ID");
+    const clientSecret = Deno.env.get("OURA_CLIENT_SECRET");
+    if (clientId && clientSecret) {
+      try {
+        const refreshRes = await fetch("https://api.ouraring.com/oauth/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: clientId, client_secret: clientSecret,
+            grant_type: "refresh_token", refresh_token: ouraConn.refresh_token,
+          }),
+        });
+        if (refreshRes.ok) {
+          const tokens = await refreshRes.json();
+          accessToken = tokens.access_token;
+          await supabase.from("oura_connections").update({
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token || ouraConn.refresh_token,
+            token_expiry: new Date(Date.now() + (tokens.expires_in || 86400) * 1000).toISOString(),
+          }).eq("id", ouraConn.id);
+        } else {
+          console.error("[Oura] Token refresh failed:", refreshRes.status);
+          return { scores: [], connected: true };
+        }
+      } catch (err) {
+        console.error("[Oura] Token refresh error:", err);
+        return { scores: [], connected: true };
+      }
+    }
+  }
+
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const endDate = new Date().toISOString().split("T")[0];
+  const startDate = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+
+  try {
+    const [sleepRes, readinessRes] = await Promise.all([
+      fetch(`https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=${startDate}&end_date=${endDate}`, { headers }),
+      fetch(`https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=${startDate}&end_date=${endDate}`, { headers }),
+    ]);
+
+    const sleepData = sleepRes.ok ? await sleepRes.json() : { data: [] };
+    const readinessData = readinessRes.ok ? await readinessRes.json() : { data: [] };
+
+    // Build day-indexed maps
+    const sleepByDay = new Map<string, any>();
+    for (const d of sleepData.data || []) sleepByDay.set(d.day, d);
+    const readinessByDay = new Map<string, any>();
+    for (const d of readinessData.data || []) readinessByDay.set(d.day, d);
+
+    // Merge into daily scores (most recent first)
+    const allDays = [...new Set([...sleepByDay.keys(), ...readinessByDay.keys()])].sort().reverse();
+    const scores: OuraScores[] = allDays.map((day) => ({
+      sleepScore: sleepByDay.get(day)?.score ?? null,
+      readinessScore: readinessByDay.get(day)?.score ?? null,
+      stressHighMinutes: null, // Not available in basic endpoints
+      resilienceLevel: null,
+    }));
+
+    return { scores, connected: true };
+  } catch (err) {
+    console.error("[Oura] API fetch error:", err);
+    return { scores: [], connected: true };
+  }
+}
+
 // ─── Persist Agent Result to Memory Systems ─────────────────────
 async function persistAgentResultToMemory(
   supabase: ReturnType<typeof createClient<any>>,
