@@ -671,7 +671,7 @@ const ExpensesPage: React.FC = () => {
       )}
 
       {/* Balance Summary Cards */}
-      <div className={cn("grid gap-3", hasPartner ? "grid-cols-2 md:grid-cols-3" : "grid-cols-2")}>
+      <div className={cn("grid gap-3", hasPartner ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2")}>
         <Card className="bg-card/80 backdrop-blur">
           <CardContent className="pt-4 pb-3 px-4">
             <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
