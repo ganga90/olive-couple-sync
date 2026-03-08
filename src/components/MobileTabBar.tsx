@@ -51,6 +51,12 @@ const MobileTabBar = () => {
       label: t('nav.calendar'),
       badge: 0
     },
+    { 
+      to: "/expenses", 
+      icon: Wallet, 
+      label: t('nav.expenses', 'Expenses'),
+      badge: 0
+    },
   ];
 
   return (
