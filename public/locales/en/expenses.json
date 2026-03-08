@@ -84,8 +84,21 @@
     "30days": "Last 30 Days"
   },
   "toast": {
-    "splitUpdated": "Split updated"
+    "splitUpdated": "Split updated",
+    "preferencesUpdated": "Preferences updated",
+    "preferencesError": "Failed to update preferences",
+    "addError": "Failed to add expense",
+    "updateError": "Failed to update expense",
+    "deleted": "Expense deleted",
+    "deleteError": "Failed to delete expense",
+    "nothingToSettle": "No expenses to settle",
+    "settled": "Settled {{count}} expenses!",
+    "settleError": "Failed to settle expenses",
+    "budgetSet": "Budget limit set for {{category}}",
+    "budgetSetError": "Failed to set budget limit",
+    "budgetRemoved": "Budget limit removed"
   },
+  "archiveAll": "Archive All",
   "receipt": {
     "label": "Receipt (optional)",
     "upload": "Scan Receipt",
