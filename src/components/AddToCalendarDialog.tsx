@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Calendar, Loader2, Check, ExternalLink } from 'lucide-react';
 import { useCalendarEvents } from '@/hooks/useCalendarEvents';
@@ -16,6 +15,22 @@ interface AddToCalendarDialogProps {
   note: Note;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+/**
+ * Adds 1 hour to a time string "HH:MM", clamping at 23:59.
+ */
+function addOneHour(time: string): string {
+  const [h, m] = time.split(':').map(Number);
+  const newH = Math.min(h + 1, 23);
+  return `${String(newH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * Returns true if end <= start (meaning end is invalid).
+ */
+function isEndBeforeOrEqualStart(start: string, end: string): boolean {
+  return end <= start;
 }
 
 export function AddToCalendarDialog({ note, open, onOpenChange }: AddToCalendarDialogProps) {
@@ -35,28 +50,78 @@ export function AddToCalendarDialog({ note, open, onOpenChange }: AddToCalendarD
 
   // Pre-fill from note
   useEffect(() => {
-    if (open) {
-      setTitle(note.summary);
-      setDescription(note.originalText || '');
-      setEventLink(null);
-      
-      if (note.dueDate) {
-        const d = note.dueDate.split('T')[0];
-        setStartDate(d);
-      } else {
-        const today = new Date().toISOString().split('T')[0];
-        setStartDate(today);
-      }
+    if (!open) return;
 
-      if (note.location && typeof note.location === 'object' && 'name' in note.location) {
-        setLocation(String((note.location as { name: string }).name));
+    setTitle(note.summary);
+    setDescription(note.originalText || '');
+    setEventLink(null);
+
+    // Date: use note's dueDate or today
+    if (note.dueDate) {
+      setStartDate(note.dueDate.split('T')[0]);
+    } else {
+      setStartDate(new Date().toISOString().split('T')[0]);
+    }
+
+    // Time: use note's reminder_time if available, otherwise default 09:00
+    if (note.reminderTime) {
+      try {
+        const rd = new Date(note.reminderTime);
+        if (!isNaN(rd.getTime())) {
+          const h = String(rd.getHours()).padStart(2, '0');
+          const m = String(rd.getMinutes()).padStart(2, '0');
+          const noteStart = `${h}:${m}`;
+          setStartTime(noteStart);
+          setEndTime(addOneHour(noteStart));
+        } else {
+          setStartTime('09:00');
+          setEndTime('10:00');
+        }
+      } catch {
+        setStartTime('09:00');
+        setEndTime('10:00');
       }
+    } else {
+      setStartTime('09:00');
+      setEndTime('10:00');
+    }
+
+    // Location
+    if (note.location && typeof note.location === 'object' && 'name' in note.location) {
+      setLocation(String((note.location as { name: string }).name));
+    } else {
+      setLocation('');
     }
   }, [open, note]);
+
+  // Auto-adjust end time whenever start time changes so end > start
+  const handleStartTimeChange = (newStart: string) => {
+    setStartTime(newStart);
+    // If current end is now <= new start, push end to start + 1h
+    if (isEndBeforeOrEqualStart(newStart, endTime)) {
+      setEndTime(addOneHour(newStart));
+    }
+  };
+
+  // Validate end time on change — warn but allow manual override
+  const handleEndTimeChange = (newEnd: string) => {
+    if (isEndBeforeOrEqualStart(startTime, newEnd)) {
+      toast.error('End time must be after start time');
+      // Auto-correct to start + 1h
+      setEndTime(addOneHour(startTime));
+    } else {
+      setEndTime(newEnd);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!title.trim() || !startDate) {
       toast.error('Title and date are required');
+      return;
+    }
+
+    if (!allDay && isEndBeforeOrEqualStart(startTime, endTime)) {
+      toast.error('End time must be after start time');
       return;
     }
 
@@ -140,11 +205,11 @@ export function AddToCalendarDialog({ note, open, onOpenChange }: AddToCalendarD
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Start time</Label>
-                  <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                  <Input type="time" value={startTime} onChange={(e) => handleStartTimeChange(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label>End time</Label>
-                  <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+                  <Input type="time" value={endTime} onChange={(e) => handleEndTimeChange(e.target.value)} />
                 </div>
               </div>
             )}
