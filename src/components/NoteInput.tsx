@@ -34,6 +34,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const [mediaPreviews, setMediaPreviews] = useState<string[]>([]);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isSensitive, setIsSensitive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
