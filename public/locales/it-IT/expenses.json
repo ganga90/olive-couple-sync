@@ -84,8 +84,21 @@
     "30days": "Ultimi 30 Giorni"
   },
   "toast": {
-    "splitUpdated": "Divisione aggiornata"
+    "splitUpdated": "Divisione aggiornata",
+    "preferencesUpdated": "Preferenze aggiornate",
+    "preferencesError": "Errore nell'aggiornamento delle preferenze",
+    "addError": "Errore nell'aggiungere la spesa",
+    "updateError": "Errore nell'aggiornamento della spesa",
+    "deleted": "Spesa eliminata",
+    "deleteError": "Errore nell'eliminazione della spesa",
+    "nothingToSettle": "Nessuna spesa da saldare",
+    "settled": "{{count}} spese saldate!",
+    "settleError": "Errore nel saldare le spese",
+    "budgetSet": "Limite di budget impostato per {{category}}",
+    "budgetSetError": "Errore nell'impostazione del limite",
+    "budgetRemoved": "Limite di budget rimosso"
   },
+  "archiveAll": "Archivia Tutto",
   "receipt": {
     "label": "Ricevuta (opzionale)",
     "upload": "Scansiona Ricevuta",

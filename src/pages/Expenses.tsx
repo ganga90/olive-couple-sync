@@ -295,11 +295,11 @@ const ExpenseRow: React.FC<ExpenseRowProps> = ({ expense, youName, partnerName, 
       break;
     case 'partner_paid_split':
       splitLabel = t('row.youOwe', '{{you}} owes {{symbol}}{{amount}}', { you: youName, symbol: currencySymbol, amount: half.toFixed(2) });
-      splitColor = 'text-[hsl(var(--warning,40_100%_50%))]';
+      splitColor = 'text-[hsl(var(--warning))]';
       break;
     case 'partner_owed_full':
       splitLabel = t('row.youOweFull', '{{you}} owes {{symbol}}{{amount}}', { you: youName, symbol: currencySymbol, amount: expense.amount.toFixed(2) });
-      splitColor = 'text-[hsl(var(--warning,40_100%_50%))]';
+      splitColor = 'text-[hsl(var(--warning))]';
       break;
     case 'individual':
       splitLabel = t('row.individual', 'Individual');
@@ -492,14 +492,14 @@ const BudgetLimitDialog: React.FC<BudgetLimitDialogProps> = ({
                       <span className="font-medium">{bl.category}</span>
                       <span className={cn(
                         "text-xs",
-                        bl.status === 'over' ? 'text-destructive' : bl.status === 'warning' ? 'text-[hsl(var(--warning,40_100%_50%))]' : 'text-muted-foreground'
+                        bl.status === 'over' ? 'text-destructive' : bl.status === 'warning' ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground'
                       )}>
                         {currencySymbol}{bl.spent.toFixed(0)} / {currencySymbol}{bl.monthly_limit.toFixed(0)}
                       </span>
                     </div>
                     <Progress
                       value={Math.min(bl.percentage, 100)}
-                      className={cn("h-1.5 mt-1", bl.status === 'over' ? '[&>div]:bg-destructive' : bl.status === 'warning' ? '[&>div]:bg-[hsl(var(--warning,40_100%_50%))]' : '')}
+                      className={cn("h-1.5 mt-1", bl.status === 'over' ? '[&>div]:bg-destructive' : bl.status === 'warning' ? '[&>div]:bg-[hsl(var(--warning))]' : '')}
                     />
                   </div>
                   <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => onRemove(bl.id)}>
@@ -655,7 +655,7 @@ const ExpensesPage: React.FC = () => {
               key={bl.id}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-xl text-sm",
-                bl.status === 'over' ? "bg-destructive/10 text-destructive" : "bg-[hsl(var(--warning,40_100%_50%))]/10 text-[hsl(var(--warning,40_100%_50%))]"
+                bl.status === 'over' ? "bg-destructive/10 text-destructive" : "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]"
               )}
             >
               <Target className="w-4 h-4 flex-shrink-0" />
@@ -671,7 +671,7 @@ const ExpensesPage: React.FC = () => {
       )}
 
       {/* Balance Summary Cards */}
-      <div className={cn("grid gap-3", hasPartner ? "grid-cols-2 md:grid-cols-3" : "grid-cols-2")}>
+      <div className={cn("grid gap-3", hasPartner ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2")}>
         <Card className="bg-card/80 backdrop-blur">
           <CardContent className="pt-4 pb-3 px-4">
             <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
@@ -691,8 +691,8 @@ const ExpensesPage: React.FC = () => {
             <p className="text-xl font-bold">{activeExpenses.length}</p>
             {activeExpenses.length > 0 && !hasPartner && (
               <Button size="sm" variant="ghost" onClick={settleExpenses} className="rounded-full text-xs mt-1 h-7 px-2">
-                <Check className="w-3 h-3 mr-1" />
-                {t('settle', 'Settle Up')}
+                <Archive className="w-3 h-3 mr-1" />
+                {t('archiveAll', 'Archive All')}
               </Button>
             )}
           </CardContent>
@@ -700,13 +700,13 @@ const ExpensesPage: React.FC = () => {
 
         {hasPartner && (
           <>
-            <Card className={cn("bg-card/80 backdrop-blur", netBalance > 0 ? "border-[hsl(var(--success))]/30" : netBalance < 0 ? "border-[hsl(var(--warning,40_100%_50%))]/30" : "")}>
+            <Card className={cn("bg-card/80 backdrop-blur", netBalance > 0 ? "border-[hsl(var(--success))]/30" : netBalance < 0 ? "border-[hsl(var(--warning))]/30" : "")}>
               <CardContent className="pt-4 pb-3 px-4">
                 <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                   <ArrowLeftRight className="w-3.5 h-3.5" />
                   {t('summary.balance', 'Net Balance')}
                 </div>
-                <p className={cn("text-xl font-bold", netBalance > 0 ? "text-[hsl(var(--success))]" : netBalance < 0 ? "text-[hsl(var(--warning,40_100%_50%))]" : "")}>
+                <p className={cn("text-xl font-bold", netBalance > 0 ? "text-[hsl(var(--success))]" : netBalance < 0 ? "text-[hsl(var(--warning))]" : "")}>
                   {netBalance > 0
                     ? `${partnerName} ${t('summary.owesYou', 'owes')} ${currencySymbol}${netBalance.toFixed(2)}`
                     : netBalance < 0
@@ -716,7 +716,7 @@ const ExpensesPage: React.FC = () => {
                 </p>
               </CardContent>
             </Card>
-            <Card className="bg-card/80 backdrop-blur col-span-2 md:col-span-1">
+            <Card className="bg-card/80 backdrop-blur col-span-2 md:col-span-1 lg:col-span-1">
               <CardContent className="pt-4 pb-3 px-4 flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">{t('summary.unsettled', 'Unsettled')}</p>
@@ -909,14 +909,14 @@ const ExpensesPage: React.FC = () => {
                       </span>
                       <span className={cn(
                         "text-xs",
-                        bl.status === 'over' ? 'text-destructive font-semibold' : bl.status === 'warning' ? 'text-[hsl(var(--warning,40_100%_50%))]' : 'text-muted-foreground'
+                        bl.status === 'over' ? 'text-destructive font-semibold' : bl.status === 'warning' ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground'
                       )}>
                         {currencySymbol}{bl.spent.toFixed(0)} / {currencySymbol}{bl.monthly_limit.toFixed(0)} ({bl.percentage}%)
                       </span>
                     </div>
                     <Progress
                       value={Math.min(bl.percentage, 100)}
-                      className={cn("h-2", bl.status === 'over' ? '[&>div]:bg-destructive' : bl.status === 'warning' ? '[&>div]:bg-[hsl(var(--warning,40_100%_50%))]' : '')}
+                      className={cn("h-2", bl.status === 'over' ? '[&>div]:bg-destructive' : bl.status === 'warning' ? '[&>div]:bg-[hsl(var(--warning))]' : '')}
                     />
                   </div>
                 ))}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useMemo } from "react";
 import { useUser } from "@clerk/clerk-react";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/lib/supabaseClient";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { toast } from "sonner";
@@ -124,6 +125,7 @@ export function getCurrencySymbol(currency: string): string {
 export function useExpenses() {
   const { user } = useUser();
   const { currentCouple } = useSupabaseCouple();
+  const { t } = useTranslation('expenses');
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [settlements, setSettlements] = useState<ExpenseSettlement[]>([]);
   const [budgetLimits, setBudgetLimits] = useState<BudgetLimit[]>([]);
@@ -174,10 +176,10 @@ export function useExpenses() {
         .eq('id', userId);
       if (error) throw error;
       setPreferences(prev => ({ ...prev, ...updates }));
-      toast.success('Preferences updated');
+      toast.success(t('toast.preferencesUpdated', 'Preferences updated'));
     } catch (err) {
       console.error('[useExpenses] preferences update error:', err);
-      toast.error('Failed to update preferences');
+      toast.error(t('toast.preferencesError', 'Failed to update preferences'));
     }
   }, [userId]);
 
@@ -319,7 +321,7 @@ export function useExpenses() {
       return data as Expense;
     } catch (err) {
       console.error('[useExpenses] add error:', err);
-      toast.error('Failed to add expense');
+      toast.error(t('toast.addError', 'Failed to add expense'));
       return null;
     }
   }, [userId, budgetLimits, expenses]);
@@ -338,7 +340,7 @@ export function useExpenses() {
       return data as Expense;
     } catch (err) {
       console.error('[useExpenses] update error:', err);
-      toast.error('Failed to update expense');
+      toast.error(t('toast.updateError', 'Failed to update expense'));
       return null;
     }
   }, []);
@@ -349,10 +351,10 @@ export function useExpenses() {
       const { error } = await supabase.from('expenses').delete().eq('id', id);
       if (error) throw error;
       setExpenses(prev => prev.filter(e => e.id !== id));
-      toast.success('Expense deleted');
+      toast.success(t('toast.deleted', 'Expense deleted'));
     } catch (err) {
       console.error('[useExpenses] delete error:', err);
-      toast.error('Failed to delete expense');
+      toast.error(t('toast.deleteError', 'Failed to delete expense'));
     }
   }, []);
 
@@ -361,7 +363,7 @@ export function useExpenses() {
     if (!userId) return;
     const unsettled = expenses.filter(e => !e.is_settled);
     if (unsettled.length === 0) {
-      toast.info('No expenses to settle');
+      toast.info(t('toast.nothingToSettle', 'No expenses to settle'));
       return;
     }
 
@@ -400,10 +402,10 @@ export function useExpenses() {
         )
       );
       setSettlements(prev => [settlement as ExpenseSettlement, ...prev]);
-      toast.success(`Settled ${unsettled.length} expenses!`);
+      toast.success(t('toast.settled', 'Settled {{count}} expenses!', { count: unsettled.length }));
     } catch (err) {
       console.error('[useExpenses] settle error:', err);
-      toast.error('Failed to settle expenses');
+      toast.error(t('toast.settleError', 'Failed to settle expenses'));
     }
   }, [userId, coupleId, expenses, preferences.defaultCurrency]);
 
@@ -436,10 +438,10 @@ export function useExpenses() {
         if (error) throw error;
         setBudgetLimits(prev => [...prev, data as BudgetLimit]);
       }
-      toast.success(`Budget limit set for ${category}`);
+      toast.success(t('toast.budgetSet', 'Budget limit set for {{category}}', { category }));
     } catch (err) {
       console.error('[useExpenses] set budget limit error:', err);
-      toast.error('Failed to set budget limit');
+      toast.error(t('toast.budgetSetError', 'Failed to set budget limit'));
     }
   }, [userId, coupleId, budgetLimits, preferences.defaultCurrency]);
 
@@ -448,7 +450,7 @@ export function useExpenses() {
       const { error } = await supabase.from('expense_budget_limits').delete().eq('id', id);
       if (error) throw error;
       setBudgetLimits(prev => prev.filter(bl => bl.id !== id));
-      toast.success('Budget limit removed');
+      toast.success(t('toast.budgetRemoved', 'Budget limit removed'));
     } catch (err) {
       console.error('[useExpenses] remove budget limit error:', err);
     }
@@ -519,7 +521,7 @@ export function useExpenses() {
     });
     return Object.entries(months).map(([month, total]) => ({
       month,
-      label: new Date(month + '-01').toLocaleDateString('en', { month: 'short' }),
+      label: new Date(month + '-01').toLocaleDateString(undefined, { month: 'short' }),
       total: Math.round(total * 100) / 100,
     }));
   }, [expenses]);
