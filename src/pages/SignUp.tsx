@@ -353,7 +353,7 @@ const SignUpPage = () => {
                 <div className="space-y-2">
                   <Label htmlFor="email">{t('signUp.emailLabel', 'Email address')}</Label>
                   <Input
-                    id="email"
+                    id="signup-email"
                     name="email"
                     type="email"
                     inputMode="email"
@@ -362,6 +362,9 @@ const SignUpPage = () => {
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     autoComplete="email"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     autoFocus
                     className="bg-background text-base"
                   />
