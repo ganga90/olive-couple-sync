@@ -203,6 +203,21 @@ serve(async (req) => {
 
     console.log(`Found ${explicitReminders?.length || 0} notes with explicit reminders`);
 
+    // ── Fetch notes with due dates for auto-reminders ──────────────────────
+    const { data: dueDateNotes, error: dueDateError } = await supabase
+      .from('clerk_notes')
+      .select('id, summary, due_date, author_id, auto_reminders_sent')
+      .eq('completed', false)
+      .not('due_date', 'is', null)
+      .gte('due_date', now.toISOString())
+      .limit(200);
+
+    if (dueDateError) {
+      console.error('Error fetching due-date notes:', dueDateError);
+    }
+
+    console.log(`Found ${dueDateNotes?.length || 0} notes with due dates for auto-reminders`);
+
     // ── AUTO-REMINDERS based on user preferences ──────────────────────────
     // By default (empty reminder_advance_intervals), NO auto-reminders are sent
     // for due_date notes. Users opt-in to advance intervals via Settings.
