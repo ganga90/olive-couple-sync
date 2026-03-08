@@ -57,10 +57,13 @@ export interface ExpenseSettlement {
 }
 
 export interface ExpenseAnalytics {
-  totalExpenses: number;
+  totalsByCurrency: Record<string, number>;
+  youOweByCurrency: Record<string, number>;
+  partnerOwesByCurrency: Record<string, number>;
+  totalExpenses: number; // kept for backwards compat (default currency)
   youOwe: number;
   partnerOwes: number;
-  topCategories: Array<{ category: string; icon: string; total: number; count: number }>;
+  topCategories: Array<{ category: string; icon: string; total: number; count: number; currency: string }>;
 }
 
 export interface ExpensePreferences {
