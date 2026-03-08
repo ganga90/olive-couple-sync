@@ -21,7 +21,6 @@ import OuraCallback from "./pages/OuraCallback";
 import MyDay from "./pages/MyDay";
 import TermsOfService from "./pages/legal/TermsOfService";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
-import BudgetPage from "./pages/Budget";
 import ExpensesPage from "./pages/Expenses";
 import RequestAccessPage from "./pages/RequestAccess";
 import AdminPage from "./pages/Admin";
