@@ -856,6 +856,24 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 disabled={isProcessing || isUploadingMedia}
               />
 
+              {/* Sensitive lock toggle - mobile */}
+              {hasContent && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsSensitive(!isSensitive)}
+                  className={cn(
+                    "h-11 w-11 rounded-full transition-all duration-300",
+                    isSensitive
+                      ? "text-amber-600 bg-amber-50 active:bg-amber-100"
+                      : "text-muted-foreground hover:text-foreground active:bg-muted"
+                  )}
+                >
+                  {isSensitive ? <Lock className="h-5 w-5" /> : <LockOpen className="h-5 w-5" />}
+                </Button>
+              )}
+
               {/* Send button - primary action, most prominent */}
               <Button
                 type="submit"
