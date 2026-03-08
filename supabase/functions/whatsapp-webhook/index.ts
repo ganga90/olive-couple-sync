@@ -4374,7 +4374,7 @@ serve(async (req) => {
             body: {
               image_url: mediaUrls[0],
               user_id: userId,
-              couple_id: coupleId,
+              couple_id: effectiveCoupleId,
               caption: expenseText || undefined,
             },
           });
