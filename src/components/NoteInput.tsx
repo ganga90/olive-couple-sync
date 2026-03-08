@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Send, Sparkles, Image, X, Mic, Brain } from "lucide-react";
+import { Send, Sparkles, Image, X, Mic, Brain, Lock, LockOpen } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
@@ -33,6 +34,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const [mediaPreviews, setMediaPreviews] = useState<string[]>([]);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isSensitive, setIsSensitive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
@@ -279,7 +281,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           couple_id: currentCouple?.id || null,
           list_id: listId || null,
           media: mediaUrls.length > 0 ? mediaUrls : undefined,
-          style: noteStyle
+          style: noteStyle,
+          is_sensitive: isSensitive || undefined,
         }
       });
 
@@ -334,7 +337,10 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         taskOwner: aiProcessedNote.task_owner || null,
         listId: aiProcessedNote.list_id || listId || null,
         completed: false,
-        mediaUrls: aiProcessedNote.media_urls || mediaUrls
+        mediaUrls: aiProcessedNote.media_urls || mediaUrls,
+        is_sensitive: aiProcessedNote.is_sensitive || false,
+        encrypted_original_text: aiProcessedNote.encrypted_original_text || null,
+        encrypted_summary: aiProcessedNote.encrypted_summary || null,
       });
 
       // Success feedback
@@ -344,6 +350,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       setText("");
       setInterim("");
       clearMediaFiles();
+      setIsSensitive(false);
 
       // Don't call onNoteAdded yet - wait for user to accept
     } catch (error) {
@@ -393,7 +400,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     try {
 
       // Prepare note data in the correct format for SupabaseNotesProvider (Note shape)
-      const noteData = {
+      const noteData: any = {
         originalText: processedNote.originalText,
         summary: processedNote.summary,
         category: processedNote.category,
@@ -405,6 +412,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         list_id: processedNote.listId || null,
         task_owner: processedNote.taskOwner || null,
         media_urls: processedNote.mediaUrls || [],
+        is_sensitive: processedNote.is_sensitive || false,
+        encrypted_original_text: processedNote.encrypted_original_text || null,
+        encrypted_summary: processedNote.encrypted_summary || null,
       };
 
 
@@ -608,6 +618,35 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                   setInterim={setInterim}
                   disabled={isProcessing || isUploadingMedia}
                 />
+
+                {/* Lock toggle for sensitive notes */}
+                {hasContent && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setIsSensitive(!isSensitive)}
+                          className={cn(
+                            "h-10 w-10 rounded-full transition-all duration-300",
+                            isSensitive
+                              ? "text-amber-600 bg-amber-50 hover:bg-amber-100"
+                              : "text-stone-400 hover:text-stone-600 hover:bg-stone-100"
+                          )}
+                        >
+                          {isSensitive ? <Lock className="h-4.5 w-4.5" /> : <LockOpen className="h-4.5 w-4.5" />}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p className="text-xs max-w-[200px]">
+                          {isSensitive ? 'Encryption enabled — content encrypted at rest' : 'Mark as sensitive — encrypt at rest'}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
               </div>
             </div>
 
@@ -817,6 +856,24 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 setInterim={setInterim}
                 disabled={isProcessing || isUploadingMedia}
               />
+
+              {/* Sensitive lock toggle - mobile */}
+              {hasContent && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsSensitive(!isSensitive)}
+                  className={cn(
+                    "h-11 w-11 rounded-full transition-all duration-300",
+                    isSensitive
+                      ? "text-amber-600 bg-amber-50 active:bg-amber-100"
+                      : "text-muted-foreground hover:text-foreground active:bg-muted"
+                  )}
+                >
+                  {isSensitive ? <Lock className="h-5 w-5" /> : <LockOpen className="h-5 w-5" />}
+                </Button>
+              )}
 
               {/* Send button - primary action, most prominent */}
               <Button

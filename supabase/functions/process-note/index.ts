@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@1.0.0";
+import { encryptNoteFields, isEncryptionAvailable } from "../_shared/encryption.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -2066,6 +2067,26 @@ Process this note:
     let result: any = isMultiple
       ? { multiple: true, notes: processedNotes, original_text: safeText, media_urls: mediaUrls.length > 0 ? mediaUrls : null, is_sensitive: !!is_sensitive }
       : { ...processedNotes[0], original_text: safeText, is_sensitive: !!is_sensitive };
+
+    // Encrypt sensitive note fields server-side (AES-256-GCM)
+    if (is_sensitive && isEncryptionAvailable()) {
+      try {
+        if (isMultiple && result.notes) {
+          // Encrypt each note in the batch
+          for (let i = 0; i < result.notes.length; i++) {
+            const n = result.notes[i];
+            const enc = await encryptNoteFields(n.original_text || safeText, n.summary, user_id, true);
+            result.notes[i] = { ...n, ...enc };
+          }
+        } else {
+          const enc = await encryptNoteFields(result.original_text || safeText, result.summary, user_id, true);
+          result = { ...result, ...enc };
+        }
+        console.log('[process-note] 🔐 Encrypted sensitive note fields');
+      } catch (encErr) {
+        console.warn('[process-note] Encryption failed, storing plaintext:', encErr);
+      }
+    }
 
     // Include receipt processing results if a receipt was detected and processed
     if (receiptProcessingResult && receiptProcessingResult.success) {

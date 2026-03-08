@@ -128,6 +128,7 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
     // Add metadata to distinguish note types
     isShared: supabaseNote.couple_id !== null,
     coupleId: supabaseNote.couple_id || undefined,
+    is_sensitive: supabaseNote.is_sensitive || false,
   };
 };
 
