@@ -15,7 +15,8 @@
     "youOwe": "Tu devi",
     "settled": "Tutto saldato!",
     "unsettled": "Non saldati",
-    "expenses": "spese"
+    "expenses": "spese",
+    "count": "Conteggio"
   },
   "tabs": {
     "active": "Attive",
@@ -59,7 +60,8 @@
     "viewNote": "Vedi nota collegata",
     "receipt": "Ricevuta",
     "delete": "Elimina",
-    "close": "Chiudi"
+    "close": "Chiudi",
+    "description": "Dettagli e opzioni della spesa"
   },
   "empty": {
     "title": "Nessuna spesa ancora",
@@ -73,7 +75,8 @@
     "spending": "Spese per Categoria",
     "noData": "Nessuna spesa in questo periodo",
     "transactions": "transazioni",
-    "total": "Totale"
+    "total": "Totale",
+    "monthlyTrend": "Spesa Mensile"
   },
   "range": {
     "week": "Questa Settimana",
@@ -82,6 +85,26 @@
   },
   "toast": {
     "splitUpdated": "Divisione aggiornata"
+  },
+  "receipt": {
+    "label": "Ricevuta (opzionale)",
+    "upload": "Scansiona Ricevuta",
+    "scanning": "Scansione...",
+    "scanned": "Ricevuta scansionata con successo!"
+  },
+  "budget": {
+    "title": "Limiti di Budget",
+    "description": "Imposta limiti di spesa mensili per categoria",
+    "category": "Categoria",
+    "monthlyLimit": "Limite mensile",
+    "addLimit": "Imposta Limite",
+    "progress": "Progresso Budget",
+    "overLimit": "{{category}} oltre il budget: {{spent}}/{{limit}}",
+    "nearLimit": "{{category}} al {{pct}}% del budget"
+  },
+  "filter": {
+    "from": "Da",
+    "to": "A"
   },
   "preferences": {
     "title": "Tracciamento Spese",

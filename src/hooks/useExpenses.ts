@@ -62,6 +62,17 @@ export interface ExpensePreferences {
   defaultCurrency: string;
 }
 
+export interface BudgetLimit {
+  id: string;
+  user_id: string;
+  couple_id: string | null;
+  category: string;
+  monthly_limit: number;
+  currency: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // Category icon mapping
 export const EXPENSE_CATEGORY_ICONS: Record<string, string> = {
   'Groceries': '🛒',
@@ -115,6 +126,7 @@ export function useExpenses() {
   const { currentCouple } = useSupabaseCouple();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [settlements, setSettlements] = useState<ExpenseSettlement[]>([]);
+  const [budgetLimits, setBudgetLimits] = useState<BudgetLimit[]>([]);
   const [loading, setLoading] = useState(true);
   const [preferences, setPreferences] = useState<ExpensePreferences>({
     trackingMode: 'individual',
@@ -218,11 +230,63 @@ export function useExpenses() {
     }
   }, [userId, coupleId]);
 
+  // Fetch budget limits
+  const fetchBudgetLimits = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase
+        .from('expense_budget_limits')
+        .select('*')
+        .eq('user_id', userId);
+      if (error) throw error;
+      setBudgetLimits((data || []) as BudgetLimit[]);
+    } catch (err) {
+      console.error('[useExpenses] budget limits fetch error:', err);
+    }
+  }, [userId]);
+
   useEffect(() => {
     fetchExpenses();
     fetchSettlements();
     fetchPreferences();
-  }, [fetchExpenses, fetchSettlements, fetchPreferences]);
+    fetchBudgetLimits();
+  }, [fetchExpenses, fetchSettlements, fetchPreferences, fetchBudgetLimits]);
+
+  // ========================================================================
+  // REAL-TIME SUBSCRIPTION: live sync between partners
+  // ========================================================================
+  useEffect(() => {
+    if (!userId) return;
+
+    const channelFilter = coupleId
+      ? `couple_id=eq.${coupleId}`
+      : `user_id=eq.${userId}`;
+
+    const channel = supabase
+      .channel('expenses-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'expenses', filter: channelFilter },
+        (payload) => {
+          const { eventType, new: newRow, old: oldRow } = payload;
+          if (eventType === 'INSERT') {
+            setExpenses(prev => {
+              if (prev.some(e => e.id === (newRow as Expense).id)) return prev;
+              return [newRow as Expense, ...prev];
+            });
+          } else if (eventType === 'UPDATE') {
+            setExpenses(prev => prev.map(e => e.id === (newRow as Expense).id ? (newRow as Expense) : e));
+          } else if (eventType === 'DELETE') {
+            setExpenses(prev => prev.filter(e => e.id !== (oldRow as any).id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, coupleId]);
 
   // Add expense
   const addExpense = useCallback(async (expense: Omit<Expense, 'id' | 'created_at' | 'updated_at'>) => {
@@ -235,13 +299,30 @@ export function useExpenses() {
         .single();
       if (error) throw error;
       setExpenses(prev => [data as Expense, ...prev]);
+
+      // Check budget limit for this category
+      const limit = budgetLimits.find(bl => bl.category === (data as Expense).category);
+      if (limit) {
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const monthlySpent = expenses
+          .filter(e => e.category === limit.category && !e.is_settled && e.expense_date >= monthStart)
+          .reduce((sum, e) => sum + e.amount, 0) + (data as Expense).amount;
+
+        if (monthlySpent > limit.monthly_limit) {
+          toast.warning(`⚠️ Budget exceeded for ${limit.category}: ${getCurrencySymbol(limit.currency)}${monthlySpent.toFixed(2)} / ${getCurrencySymbol(limit.currency)}${limit.monthly_limit.toFixed(2)}`);
+        } else if (monthlySpent > limit.monthly_limit * 0.8) {
+          toast.info(`📊 ${limit.category} budget at ${Math.round((monthlySpent / limit.monthly_limit) * 100)}%`);
+        }
+      }
+
       return data as Expense;
     } catch (err) {
       console.error('[useExpenses] add error:', err);
       toast.error('Failed to add expense');
       return null;
     }
-  }, [userId]);
+  }, [userId, budgetLimits, expenses]);
 
   // Update expense
   const updateExpense = useCallback(async (id: string, updates: Partial<Expense>) => {
@@ -326,6 +407,53 @@ export function useExpenses() {
     }
   }, [userId, coupleId, expenses, preferences.defaultCurrency]);
 
+  // Budget limit CRUD
+  const setBudgetLimit = useCallback(async (category: string, monthlyLimit: number) => {
+    if (!userId) return;
+    try {
+      const existing = budgetLimits.find(bl => bl.category === category);
+      if (existing) {
+        const { data, error } = await supabase
+          .from('expense_budget_limits')
+          .update({ monthly_limit: monthlyLimit, updated_at: new Date().toISOString() })
+          .eq('id', existing.id)
+          .select()
+          .single();
+        if (error) throw error;
+        setBudgetLimits(prev => prev.map(bl => bl.id === existing.id ? (data as BudgetLimit) : bl));
+      } else {
+        const { data, error } = await supabase
+          .from('expense_budget_limits')
+          .insert({
+            user_id: userId,
+            couple_id: coupleId || null,
+            category,
+            monthly_limit: monthlyLimit,
+            currency: preferences.defaultCurrency,
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        setBudgetLimits(prev => [...prev, data as BudgetLimit]);
+      }
+      toast.success(`Budget limit set for ${category}`);
+    } catch (err) {
+      console.error('[useExpenses] set budget limit error:', err);
+      toast.error('Failed to set budget limit');
+    }
+  }, [userId, coupleId, budgetLimits, preferences.defaultCurrency]);
+
+  const removeBudgetLimit = useCallback(async (id: string) => {
+    try {
+      const { error } = await supabase.from('expense_budget_limits').delete().eq('id', id);
+      if (error) throw error;
+      setBudgetLimits(prev => prev.filter(bl => bl.id !== id));
+      toast.success('Budget limit removed');
+    } catch (err) {
+      console.error('[useExpenses] remove budget limit error:', err);
+    }
+  }, []);
+
   // ============================================================================
   // COMPUTED VALUES
   // ============================================================================
@@ -372,6 +500,48 @@ export function useExpenses() {
 
   const netBalance = useMemo(() => analytics.partnerOwes - analytics.youOwe, [analytics]);
 
+  // Monthly trend data for charts
+  const monthlyTrends = useMemo(() => {
+    const months: Record<string, number> = {};
+    // Get last 6 months
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      months[key] = 0;
+    }
+    expenses.forEach(e => {
+      const d = new Date(e.expense_date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (key in months) {
+        months[key] += e.amount;
+      }
+    });
+    return Object.entries(months).map(([month, total]) => ({
+      month,
+      label: new Date(month + '-01').toLocaleDateString('en', { month: 'short' }),
+      total: Math.round(total * 100) / 100,
+    }));
+  }, [expenses]);
+
+  // Budget status per category (current month)
+  const budgetStatus = useMemo(() => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    return budgetLimits.map(limit => {
+      const spent = expenses
+        .filter(e => e.category === limit.category && !e.is_settled && e.expense_date >= monthStart)
+        .reduce((sum, e) => sum + e.amount, 0);
+      const percentage = limit.monthly_limit > 0 ? (spent / limit.monthly_limit) * 100 : 0;
+      return {
+        ...limit,
+        spent,
+        percentage: Math.round(percentage),
+        status: percentage >= 100 ? 'over' as const : percentage >= 80 ? 'warning' as const : 'ok' as const,
+      };
+    });
+  }, [budgetLimits, expenses]);
+
   return {
     expenses,
     activeExpenses,
@@ -381,11 +551,16 @@ export function useExpenses() {
     analytics,
     netBalance,
     preferences,
+    budgetLimits,
+    budgetStatus,
+    monthlyTrends,
     addExpense,
     updateExpense,
     deleteExpense,
     settleExpenses,
     updatePreferences,
+    setBudgetLimit,
+    removeBudgetLimit,
     refetch: fetchExpenses,
   };
 }

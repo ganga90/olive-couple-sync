@@ -75,7 +75,8 @@
     "spending": "Spending by Category",
     "noData": "No expenses in this period",
     "transactions": "transactions",
-    "total": "Total"
+    "total": "Total",
+    "monthlyTrend": "Monthly Spending"
   },
   "range": {
     "week": "This Week",
@@ -84,6 +85,26 @@
   },
   "toast": {
     "splitUpdated": "Split updated"
+  },
+  "receipt": {
+    "label": "Receipt (optional)",
+    "upload": "Scan Receipt",
+    "scanning": "Scanning...",
+    "scanned": "Receipt scanned successfully!"
+  },
+  "budget": {
+    "title": "Budget Limits",
+    "description": "Set monthly spending limits per category",
+    "category": "Category",
+    "monthlyLimit": "Monthly limit",
+    "addLimit": "Set Limit",
+    "progress": "Budget Progress",
+    "overLimit": "{{category}} over budget: {{spent}}/{{limit}}",
+    "nearLimit": "{{category}} at {{pct}}% of budget"
+  },
+  "filter": {
+    "from": "From",
+    "to": "To"
   },
   "preferences": {
     "title": "Expense Tracking",

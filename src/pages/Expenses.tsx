@@ -1,13 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
-import { useExpenses, Expense, ExpenseSplitType, getCategoryIcon, getCurrencySymbol, EXPENSE_CATEGORY_ICONS } from '@/hooks/useExpenses';
-import { format, subDays, startOfMonth, startOfWeek } from 'date-fns';
+import { useExpenses, Expense, ExpenseSplitType, getCategoryIcon, getCurrencySymbol, EXPENSE_CATEGORY_ICONS, BudgetLimit } from '@/hooks/useExpenses';
+import { format, subDays, startOfMonth, startOfWeek, isWithinInterval, parseISO } from 'date-fns';
 import {
   DollarSign, Receipt, TrendingUp, Archive, ChevronRight, Check,
   Plus, ArrowLeftRight, BarChart3, Filter, Image, FileText,
-  Wallet, Eye
+  Wallet, Eye, Calendar, Target, Trash2, Upload, X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,11 +18,14 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useLocalizedHref } from '@/hooks/useLocalizedNavigate';
 import { useDateLocale } from '@/hooks/useDateLocale';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { supabase } from '@/lib/supabaseClient';
 
 // ============================================================================
 // ADD EXPENSE DIALOG
@@ -51,14 +54,50 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
   const [splitType, setSplitType] = useState<ExpenseSplitType>(hasPartner ? defaultSplit : 'individual');
   const [currency, setCurrency] = useState(defaultCurrency);
   const [saving, setSaving] = useState(false);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Reset defaults when dialog opens
   React.useEffect(() => {
     if (open) {
       setCurrency(defaultCurrency);
       setSplitType(hasPartner ? defaultSplit : 'individual');
+      setReceiptFile(null);
+      setReceiptPreview(null);
     }
   }, [open, defaultCurrency, defaultSplit, hasPartner]);
+
+  const handleReceiptUpload = async (file: File) => {
+    setReceiptFile(file);
+    const preview = URL.createObjectURL(file);
+    setReceiptPreview(preview);
+
+    // OCR via process-receipt
+    setOcrLoading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        const { data, error } = await supabase.functions.invoke('process-receipt', {
+          body: { image_base64: base64, user_id: userId }
+        });
+        if (!error && data?.transaction) {
+          if (data.transaction.merchant) setName(data.transaction.merchant);
+          if (data.transaction.amount) setAmount(String(data.transaction.amount));
+          if (data.transaction.category) {
+            const cat = data.transaction.category;
+            if (EXPENSE_CATEGORY_ICONS[cat]) setCategory(cat);
+          }
+          toast.success(t('receipt.scanned', 'Receipt scanned successfully!'));
+        }
+        setOcrLoading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setOcrLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!name.trim() || !amount) {
@@ -70,7 +109,27 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
       toast.error(t('addDialog.invalidAmount', 'Please enter a valid amount'));
       return;
     }
+
     setSaving(true);
+
+    // Upload receipt if present
+    let receiptUrl: string | null = null;
+    if (receiptFile && userId) {
+      try {
+        const ext = receiptFile.name.split('.').pop() || 'jpg';
+        const path = `receipts/${userId}/${Date.now()}.${ext}`;
+        const { error: uploadErr } = await supabase.storage.from('note-media').upload(path, receiptFile);
+        if (!uploadErr) {
+          const { data: urlData } = await supabase.functions.invoke('get-signed-url', {
+            body: { bucket: 'note-media', path }
+          });
+          receiptUrl = urlData?.signedUrl || null;
+        }
+      } catch (err) {
+        console.warn('Receipt upload failed:', err);
+      }
+    }
+
     await onAdd({
       name: name.trim(),
       amount: amountNum,
@@ -82,22 +141,68 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
       is_shared: splitType !== 'individual',
       couple_id: splitType !== 'individual' ? coupleId : null,
       expense_date: new Date().toISOString(),
+      receipt_url: receiptUrl,
     });
     setSaving(false);
     setName('');
     setAmount('');
     setCategory('Other');
+    setReceiptFile(null);
+    setReceiptPreview(null);
     onOpenChange(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t('addDialog.title', 'Add Expense')}</DialogTitle>
           <DialogDescription>{t('addDialog.description', 'Track a new expense')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
+          {/* Receipt Upload */}
+          <div>
+            <Label>{t('receipt.label', 'Receipt (optional)')}</Label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (file) handleReceiptUpload(file);
+              }}
+            />
+            {receiptPreview ? (
+              <div className="relative mt-1">
+                <img src={receiptPreview} alt="Receipt" className="h-24 rounded-lg object-cover w-full bg-muted" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute top-1 right-1 h-6 w-6 p-0 bg-background/80 rounded-full"
+                  onClick={() => { setReceiptFile(null); setReceiptPreview(null); }}
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+                {ocrLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
+                    <span className="text-xs text-muted-foreground animate-pulse">{t('receipt.scanning', 'Scanning...')}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-1 w-full gap-2"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="w-4 h-4" />
+                {t('receipt.upload', 'Scan Receipt')}
+              </Button>
+            )}
+          </div>
+
           <div>
             <Label>{t('addDialog.name', 'Expense name')}</Label>
             <Input value={name} onChange={e => setName(e.target.value)} placeholder={t('addDialog.namePlaceholder', 'e.g. Whole Foods groceries')} className="mt-1" />
@@ -150,7 +255,7 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('addDialog.cancel', 'Cancel')}</Button>
-          <Button onClick={handleSave} disabled={saving}>{saving ? '...' : t('addDialog.save', 'Add Expense')}</Button>
+          <Button onClick={handleSave} disabled={saving || ocrLoading}>{saving ? '...' : t('addDialog.save', 'Add Expense')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -346,6 +451,106 @@ const ExpenseDetailsDialog: React.FC<ExpenseDetailsProps> = ({
 };
 
 // ============================================================================
+// BUDGET LIMIT DIALOG
+// ============================================================================
+
+interface BudgetLimitDialogProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSave: (category: string, limit: number) => void;
+  onRemove: (id: string) => void;
+  budgetStatus: Array<BudgetLimit & { spent: number; percentage: number; status: 'ok' | 'warning' | 'over' }>;
+  currencySymbol: string;
+}
+
+const BudgetLimitDialog: React.FC<BudgetLimitDialogProps> = ({
+  open, onOpenChange, onSave, onRemove, budgetStatus, currencySymbol
+}) => {
+  const { t } = useTranslation('expenses');
+  const [category, setCategory] = useState('Groceries');
+  const [limit, setLimit] = useState('');
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Target className="w-5 h-5" />
+            {t('budget.title', 'Budget Limits')}
+          </DialogTitle>
+          <DialogDescription>{t('budget.description', 'Set monthly spending limits per category')}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          {/* Existing limits */}
+          {budgetStatus.length > 0 && (
+            <div className="space-y-2">
+              {budgetStatus.map(bl => (
+                <div key={bl.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/30">
+                  <span className="text-lg">{getCategoryIcon(bl.category)}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium">{bl.category}</span>
+                      <span className={cn(
+                        "text-xs",
+                        bl.status === 'over' ? 'text-destructive' : bl.status === 'warning' ? 'text-[hsl(var(--warning,40_100%_50%))]' : 'text-muted-foreground'
+                      )}>
+                        {currencySymbol}{bl.spent.toFixed(0)} / {currencySymbol}{bl.monthly_limit.toFixed(0)}
+                      </span>
+                    </div>
+                    <Progress
+                      value={Math.min(bl.percentage, 100)}
+                      className={cn("h-1.5 mt-1", bl.status === 'over' ? '[&>div]:bg-destructive' : bl.status === 'warning' ? '[&>div]:bg-[hsl(var(--warning,40_100%_50%))]' : '')}
+                    />
+                  </div>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => onRemove(bl.id)}>
+                    <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <Separator />
+
+          {/* Add new limit */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">{t('budget.category', 'Category')}</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(EXPENSE_CATEGORY_ICONS).map(([cat, icon]) => (
+                    <SelectItem key={cat} value={cat}>
+                      <span className="flex items-center gap-2"><span>{icon}</span> {cat}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">{t('budget.monthlyLimit', 'Monthly limit')}</Label>
+              <Input type="number" step="1" min="0" value={limit} onChange={e => setLimit(e.target.value)} placeholder="500" className="mt-1" />
+            </div>
+          </div>
+          <Button
+            size="sm"
+            className="w-full"
+            disabled={!limit || parseFloat(limit) <= 0}
+            onClick={() => {
+              onSave(category, parseFloat(limit));
+              setLimit('');
+            }}
+          >
+            <Plus className="w-4 h-4 mr-1" />
+            {t('budget.addLimit', 'Set Limit')}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ============================================================================
 // MAIN EXPENSES PAGE
 // ============================================================================
 
@@ -355,7 +560,8 @@ const ExpensesPage: React.FC = () => {
   const { currentCouple, you, partner } = useSupabaseCouple();
   const {
     activeExpenses, archivedExpenses, loading, analytics, netBalance, preferences,
-    addExpense, updateExpense, deleteExpense, settleExpenses
+    addExpense, updateExpense, deleteExpense, settleExpenses,
+    budgetStatus, monthlyTrends, setBudgetLimit, removeBudgetLimit
   } = useExpenses();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -363,6 +569,11 @@ const ExpensesPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('active');
   const [analyticsRange, setAnalyticsRange] = useState<'week' | 'month' | '30days'>('month');
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
+
+  // Date range filter state
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const hasPartner = Boolean(currentCouple && partner);
   const youName = you || t('you', 'You');
@@ -393,10 +604,25 @@ const ExpensesPage: React.FC = () => {
     return activeExpenses.filter(e => new Date(e.expense_date) >= start);
   }, [activeExpenses, analyticsRange]);
 
-  // Category-filtered active expenses
-  const displayExpenses = categoryFilter
-    ? activeExpenses.filter(e => e.category === categoryFilter)
-    : activeExpenses;
+  // Category + date range filtered active expenses
+  const displayExpenses = useMemo(() => {
+    let filtered = activeExpenses;
+    if (categoryFilter) {
+      filtered = filtered.filter(e => e.category === categoryFilter);
+    }
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      filtered = filtered.filter(e => new Date(e.expense_date) >= from);
+    }
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59);
+      filtered = filtered.filter(e => new Date(e.expense_date) <= to);
+    }
+    return filtered;
+  }, [activeExpenses, categoryFilter, dateFrom, dateTo]);
+
+  const hasDateFilter = dateFrom || dateTo;
 
   return (
     <div className="space-y-5 pb-32 md:pb-8">
@@ -410,11 +636,39 @@ const ExpensesPage: React.FC = () => {
             {t('subtitle', 'Track, split, and settle expenses')}
           </p>
         </div>
-        <Button size="sm" onClick={() => setAddOpen(true)} className="rounded-full">
-          <Plus className="w-4 h-4 mr-1" />
-          {t('addButton', 'Add')}
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" className="rounded-full" onClick={() => setBudgetDialogOpen(true)}>
+            <Target className="w-4 h-4" />
+          </Button>
+          <Button size="sm" onClick={() => setAddOpen(true)} className="rounded-full">
+            <Plus className="w-4 h-4 mr-1" />
+            {t('addButton', 'Add')}
+          </Button>
+        </div>
       </div>
+
+      {/* Budget alerts */}
+      {budgetStatus.filter(b => b.status !== 'ok').length > 0 && (
+        <div className="space-y-2">
+          {budgetStatus.filter(b => b.status !== 'ok').map(bl => (
+            <div
+              key={bl.id}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-xl text-sm",
+                bl.status === 'over' ? "bg-destructive/10 text-destructive" : "bg-[hsl(var(--warning,40_100%_50%))]/10 text-[hsl(var(--warning,40_100%_50%))]"
+              )}
+            >
+              <Target className="w-4 h-4 flex-shrink-0" />
+              <span className="flex-1">
+                {bl.status === 'over'
+                  ? t('budget.overLimit', '{{category}} over budget: {{spent}}/{{limit}}', { category: bl.category, spent: `${currencySymbol}${bl.spent.toFixed(0)}`, limit: `${currencySymbol}${bl.monthly_limit.toFixed(0)}` })
+                  : t('budget.nearLimit', '{{category}} at {{pct}}% of budget', { category: bl.category, pct: bl.percentage })
+                }
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Balance Summary Cards */}
       <div className={cn("grid gap-3", hasPartner ? "grid-cols-2 md:grid-cols-3" : "grid-cols-2")}>
@@ -505,7 +759,7 @@ const ExpensesPage: React.FC = () => {
         </div>
       )}
 
-      {/* Tabs: Active / Archive / Analytics */}
+      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-3 rounded-full">
           <TabsTrigger value="active" className="rounded-full text-xs">
@@ -523,18 +777,54 @@ const ExpensesPage: React.FC = () => {
         </TabsList>
 
         {/* Active Expenses */}
-        <TabsContent value="active" className="mt-3">
-          {categoryFilter && (
-            <div className="flex items-center justify-between mb-2">
-              <Badge variant="secondary" className="gap-1">
-                <Filter className="w-3 h-3" />
-                {categoryFilter}
-              </Badge>
-              <Button variant="ghost" size="sm" onClick={() => setCategoryFilter(null)}>
+        <TabsContent value="active" className="mt-3 space-y-3">
+          {/* Date range filter */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-1">
+              <Calendar className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="h-8 text-xs"
+                placeholder={t('filter.from', 'From')}
+              />
+              <span className="text-muted-foreground text-xs">–</span>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="h-8 text-xs"
+                placeholder={t('filter.to', 'To')}
+              />
+            </div>
+            {hasDateFilter && (
+              <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+                <X className="w-3.5 h-3.5" />
+              </Button>
+            )}
+          </div>
+
+          {(categoryFilter || hasDateFilter) && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {categoryFilter && (
+                <Badge variant="secondary" className="gap-1">
+                  <Filter className="w-3 h-3" />
+                  {categoryFilter}
+                </Badge>
+              )}
+              {hasDateFilter && (
+                <Badge variant="secondary" className="gap-1">
+                  <Calendar className="w-3 h-3" />
+                  {dateFrom && dateTo ? `${dateFrom} – ${dateTo}` : dateFrom || dateTo}
+                </Badge>
+              )}
+              <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => { setCategoryFilter(null); setDateFrom(''); setDateTo(''); }}>
                 {t('clearFilter', 'Clear')}
               </Button>
             </div>
           )}
+
           {loading ? (
             <div className="text-center py-12 text-muted-foreground">{t('loading', 'Loading expenses...')}</div>
           ) : displayExpenses.length === 0 ? (
@@ -572,6 +862,69 @@ const ExpensesPage: React.FC = () => {
 
         {/* Analytics */}
         <TabsContent value="analytics" className="mt-3 space-y-4">
+          {/* Monthly Spending Trend */}
+          <Card className="bg-card/80">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <TrendingUp className="w-4 h-4" />
+                {t('analytics.monthlyTrend', 'Monthly Spending')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {monthlyTrends.some(m => m.total > 0) ? (
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={monthlyTrends}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="label" tick={{ fontSize: 12 }} className="text-muted-foreground" />
+                    <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" width={50} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: '12px', fontSize: '13px' }}
+                      formatter={(value: number) => [`${currencySymbol}${value.toFixed(2)}`, t('analytics.total', 'Total')]}
+                    />
+                    <Bar dataKey="total" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-sm text-muted-foreground py-6 text-center">{t('analytics.noData', 'No expenses in this period')}</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Budget Progress */}
+          {budgetStatus.length > 0 && (
+            <Card className="bg-card/80">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Target className="w-4 h-4" />
+                  {t('budget.progress', 'Budget Progress')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {budgetStatus.map(bl => (
+                  <div key={bl.id}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="flex items-center gap-1.5">
+                        <span>{getCategoryIcon(bl.category)}</span>
+                        <span className="font-medium">{bl.category}</span>
+                      </span>
+                      <span className={cn(
+                        "text-xs",
+                        bl.status === 'over' ? 'text-destructive font-semibold' : bl.status === 'warning' ? 'text-[hsl(var(--warning,40_100%_50%))]' : 'text-muted-foreground'
+                      )}>
+                        {currencySymbol}{bl.spent.toFixed(0)} / {currencySymbol}{bl.monthly_limit.toFixed(0)} ({bl.percentage}%)
+                      </span>
+                    </div>
+                    <Progress
+                      value={Math.min(bl.percentage, 100)}
+                      className={cn("h-2", bl.status === 'over' ? '[&>div]:bg-destructive' : bl.status === 'warning' ? '[&>div]:bg-[hsl(var(--warning,40_100%_50%))]' : '')}
+                    />
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Category Breakdown */}
           <div className="flex gap-2">
             {(['week', 'month', '30days'] as const).map(range => (
               <Button
@@ -686,6 +1039,14 @@ const ExpensesPage: React.FC = () => {
         hasPartner={hasPartner}
         onUpdateSplit={handleUpdateSplit}
         onDelete={deleteExpense}
+      />
+      <BudgetLimitDialog
+        open={budgetDialogOpen}
+        onOpenChange={setBudgetDialogOpen}
+        onSave={setBudgetLimit}
+        onRemove={removeBudgetLimit}
+        budgetStatus={budgetStatus}
+        currencySymbol={currencySymbol}
       />
     </div>
   );
