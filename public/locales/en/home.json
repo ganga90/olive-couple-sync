@@ -40,8 +40,14 @@
     "sectionLabel": "Your Tasks",
     "priority": "🔥 Priority",
     "daily": "📅 Daily",
+    "weekly": "📆 Weekly",
     "reminders": "⏰ Reminders",
     "recent": "🕐 Recent"
+  },
+  "weekly": {
+    "task": "task",
+    "tasks": "tasks",
+    "noTasks": "Nothing scheduled"
   },
   "emptyState": {
     "noTasksMatch": "No tasks match the filters",

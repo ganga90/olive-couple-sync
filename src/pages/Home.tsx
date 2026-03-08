@@ -450,7 +450,81 @@ const Home = () => {
                 </div>
               </TabsContent>
 
-              {/* Reminders Tab */}
+              {/* Weekly Tab - 5-day view */}
+              <TabsContent value="weekly" className="mt-0">
+                <div className="p-4 md:p-8 space-y-1 md:space-y-2">
+                  {weeklyViewTasks.map((dayData, dayIndex) => {
+                    const isToday = dayIndex === 0;
+                    const isTomorrow = dayIndex === 1;
+                    const dayLabel = isToday
+                      ? t('common:common.today')
+                      : isTomorrow
+                      ? t('common:common.tomorrow')
+                      : format(dayData.date, 'EEEE');
+                    const taskCount = dayData.tasks.length;
+
+                    return (
+                      <div
+                        key={dayData.date.toISOString()}
+                        className={`animate-fade-up stagger-${Math.min(dayIndex + 1, 5)} rounded-2xl border transition-colors ${
+                          isToday
+                            ? 'border-primary/20 bg-primary/[0.03]'
+                            : 'border-stone-100 bg-white/60'
+                        } overflow-hidden`}
+                      >
+                        {/* Day header */}
+                        <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center text-xs md:text-sm font-bold ${
+                              isToday
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-stone-100 text-stone-500'
+                            }`}>
+                              {format(dayData.date, 'd')}
+                            </div>
+                            <div>
+                              <p className={`text-sm md:text-base font-semibold ${isToday ? 'text-primary' : 'text-foreground'}`}>
+                                {dayLabel}
+                              </p>
+                              <p className="text-[11px] md:text-xs text-muted-foreground">
+                                {format(dayData.date, 'MMM d')}
+                              </p>
+                            </div>
+                          </div>
+                          {taskCount > 0 && (
+                            <span className="text-xs font-medium text-muted-foreground bg-stone-100 px-2 py-0.5 rounded-full">
+                              {taskCount} {taskCount === 1 ? t('home:weekly.task') : t('home:weekly.tasks')}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Tasks for this day */}
+                        {taskCount > 0 ? (
+                          <div className="px-4 md:px-6 pb-3 md:pb-4 space-y-3 md:space-y-4">
+                            {dayData.tasks.map((task) => (
+                              <TaskItem
+                                key={task.id}
+                                task={task}
+                                onToggleComplete={handleToggleComplete}
+                                onTaskClick={handleTaskClick}
+                                authorName={getAuthorName(task)}
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="px-4 md:px-6 pb-3 md:pb-4">
+                            <p className="text-xs md:text-sm text-muted-foreground italic">
+                              {t('home:weekly.noTasks')}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </TabsContent>
+
+
               <TabsContent value="reminders" className="mt-0">
                 <div className="p-4 md:p-8 space-y-4 md:space-y-5">
                   {upcomingReminders.length > 0 ? (
