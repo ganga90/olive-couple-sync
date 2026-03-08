@@ -1197,7 +1197,7 @@ serve(async (req) => {
       throw new Error('Supabase configuration is missing');
     }
 
-    const { text, user_id, couple_id, timezone, media, mediaTypes, style, partner_names } = await req.json();
+    const { text, user_id, couple_id, timezone, media, mediaTypes, style, partner_names, is_sensitive } = await req.json();
     
     // Validate required fields - allow empty text if media is present
     if (!user_id) {
