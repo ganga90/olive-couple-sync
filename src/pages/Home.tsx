@@ -536,7 +536,7 @@ const Home = () => {
                         <div className="flex items-center gap-2 mb-2">
                           <Clock className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground" />
                           <span className="text-sm md:text-base text-muted-foreground">
-                            {formatDistanceToNow(new Date(task.createdAt), { addSuffix: true })}
+                            {formatDistanceToNow(new Date(task.createdAt), { addSuffix: true, locale: dateLocale })}
                           </span>
                         </div>
                         <TaskItem
