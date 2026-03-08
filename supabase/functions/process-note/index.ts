@@ -1779,7 +1779,7 @@ Process this note:
       'groceries': ['milk', 'eggs', 'bread', 'butter', 'cheese', 'chicken', 'beef', 'pork', 'fish', 'rice', 'pasta', 'flour', 'sugar', 'salt', 'pepper', 'oil', 'vinegar', 'tomato', 'potato', 'onion', 'garlic', 'lemon', 'lime', 'orange', 'banana', 'avocado', 'lettuce', 'spinach', 'carrot', 'broccoli', 'cucumber', 'yogurt', 'cream', 'cereal', 'coffee', 'tea', 'juice', 'water', 'soda', 'beer', 'wine', 'snack', 'chips', 'crackers', 'cookies', 'fruit', 'vegetable', 'meat', 'produce', 'dairy', 'frozen', 'canned', 'sauce', 'condiment', 'spice', 'herb', 'nut', 'seed', 'grain', 'bean', 'tofu', 'soy', 'almond', 'oat'],
       'entertainment': ['karaoke', 'dj ', 'dj night', 'happy hour', 'concert', 'festival', 'live music', 'comedy show', 'trivia', 'nightlife', 'club event', 'themed night', 'show', 'theater', 'theatre', 'standup', 'stand-up', 'open mic'],
       'shopping': ['promo code', 'coupon', 'discount', 'sale', 'deal', 'price', 'store', 'amazon', 'ebay', 'walmart', 'target', 'zara', 'nike', 'adidas', 'electronics', 'gadget', 'clothes', 'shoes', 'accessory', 'order', 'delivery'],
-      'home_improvement': ['repair', 'fix', 'plumber', 'electrician', 'paint', 'renovation', 'contractor', 'leak', 'faucet', 'pipe', 'drywall', 'tile', 'flooring', 'cabinet', 'shelf', 'furniture', 'ikea', 'hardware', 'drill', 'hammer', 'maintenance'],
+      'home_improvement': ['repair', 'fix', 'plumber', 'electrician', 'paint', 'renovation', 'contractor', 'leak', 'faucet', 'pipe', 'drywall', 'tile', 'flooring', 'cabinet', 'shelf', 'furniture', 'ikea', 'hardware', 'drill', 'hammer', 'maintenance', 'sofa', 'couch', 'bed', 'mattress', 'desk', 'table', 'chair', 'dresser', 'wardrobe', 'bookshelf', 'nightstand', 'headboard', 'armchair', 'ottoman', 'curtain', 'curtains', 'rug', 'lamp', 'mirror', 'closet'],
       'personal': ['errand', 'admin', 'register', 'renew', 'passport', 'license', 'dmv', 'post office', 'notary', 'laundry', 'dry clean', 'car wash', 'oil change', 'inspection']
     };
     
@@ -1792,7 +1792,7 @@ Process this note:
       'entertainment': 1,
       'finance': 2,
       'shopping': 2,
-      'home_improvement': 2,
+      'home_improvement': 1,
       'books': 1,
       'movies_tv': 1,
       'personal': 2,
