@@ -396,7 +396,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     try {
 
       // Prepare note data in the correct format for SupabaseNotesProvider (Note shape)
-      const noteData = {
+      const noteData: any = {
         originalText: processedNote.originalText,
         summary: processedNote.summary,
         category: processedNote.category,
@@ -408,6 +408,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         list_id: processedNote.listId || null,
         task_owner: processedNote.taskOwner || null,
         media_urls: processedNote.mediaUrls || [],
+        is_sensitive: processedNote.is_sensitive || false,
+        encrypted_original_text: processedNote.encrypted_original_text || null,
+        encrypted_summary: processedNote.encrypted_summary || null,
       };
 
 
