@@ -30,6 +30,7 @@ import esCalendar from '../../../public/locales/es-ES/calendar.json';
 import esAuth from '../../../public/locales/es-ES/auth.json';
 import esOrganize from '../../../public/locales/es-ES/organize.json';
 import esLegal from '../../../public/locales/es-ES/legal.json';
+import esExpenses from '../../../public/locales/es-ES/expenses.json';
 
 import itCommon from '../../../public/locales/it-IT/common.json';
 import itHome from '../../../public/locales/it-IT/home.json';
