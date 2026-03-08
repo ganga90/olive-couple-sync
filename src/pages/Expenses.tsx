@@ -885,7 +885,8 @@ const ExpensesPage: React.FC = () => {
       )}
 
       {/* Balance Summary Cards */}
-      <div className={cn("grid gap-3", hasPartner ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2")}>
+      {/* Summary Cards Row */}
+      <div className={cn("grid gap-3", hasPartner ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-2")}>
         <Card className="bg-card/80 backdrop-blur">
           <CardContent className="pt-4 pb-3 px-4">
             <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
@@ -911,12 +912,6 @@ const ExpensesPage: React.FC = () => {
               {t('summary.count', 'Count')}
             </div>
             <p className="text-xl font-bold">{activeExpenses.length}</p>
-            {activeExpenses.length > 0 && !hasPartner && (
-              <Button size="sm" variant="ghost" onClick={() => setSettleConfirmOpen(true)} className="rounded-full text-xs mt-1 h-7 px-2">
-                <Archive className="w-3 h-3 mr-1" />
-                {t('archiveAll', 'Archive All')}
-              </Button>
-            )}
           </CardContent>
         </Card>
 
@@ -942,23 +937,35 @@ const ExpensesPage: React.FC = () => {
                 )}
               </CardContent>
             </Card>
-            <Card className="bg-card/80 backdrop-blur col-span-2 md:col-span-1">
-              <CardContent className="pt-4 pb-3 px-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">{t('summary.unsettled', 'Unsettled')}</p>
-                  <p className="text-lg font-semibold">{activeExpenses.length} {t('summary.expenses', 'expenses')}</p>
-                </div>
-                {activeExpenses.length > 0 && (
-                  <Button size="sm" variant="outline" onClick={() => setSettleConfirmOpen(true)} className="rounded-full">
-                    <Check className="w-4 h-4 mr-1" />
-                    {t('settle', 'Settle Up')}
-                  </Button>
-                )}
+            <Card className="bg-card/80 backdrop-blur">
+              <CardContent className="pt-4 pb-3 px-4">
+                <p className="text-xs text-muted-foreground mb-1">{t('summary.unsettled', 'Unsettled')}</p>
+                <p className="text-xl font-bold">{activeExpenses.length}</p>
+                <p className="text-xs text-muted-foreground">{t('summary.expenses', 'expenses')}</p>
               </CardContent>
             </Card>
           </>
         )}
       </div>
+
+      {/* Settle / Archive action row — separate from summary cards */}
+      {activeExpenses.length > 0 && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" onClick={() => setSettleConfirmOpen(true)} className="rounded-full">
+            {hasPartner ? (
+              <>
+                <Check className="w-4 h-4 mr-1" />
+                {t('settle', 'Settle Up')}
+              </>
+            ) : (
+              <>
+                <Archive className="w-4 h-4 mr-1" />
+                {t('archiveAll', 'Archive All')}
+              </>
+            )}
+          </Button>
+        </div>
+      )}
 
       {/* Top Categories */}
       {analytics.topCategories.length > 0 && (

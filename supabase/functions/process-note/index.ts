@@ -1792,7 +1792,7 @@ Process this note:
       'entertainment': 1,
       'finance': 2,
       'shopping': 2,
-      'home_improvement': 2,
+      'home_improvement': 1,
       'books': 1,
       'movies_tv': 1,
       'personal': 2,
