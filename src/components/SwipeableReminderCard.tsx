@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Bell, Calendar, Clock, Trash2, Edit } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
+import { useDateLocale } from "@/hooks/useDateLocale";
 import type { Note } from "@/types/note";
 
 interface ReminderItem {

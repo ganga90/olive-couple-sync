@@ -6,6 +6,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useLanguage } from "@/providers/LanguageProvider";
 import { formatDistanceToNow } from "date-fns";
+import { useDateLocale } from "@/hooks/useDateLocale";
 import { cn } from "@/lib/utils";
 import type { Note } from "@/types/note";
 
