@@ -17,7 +17,7 @@ serve(async (req) => {
     const stateParam = url.searchParams.get("state");
     const error = url.searchParams.get("error");
 
-    console.log('[calendar-callback] Received callback with code:', !!code, 'state:', !!stateParam);
+    console.log('[calendar-callback] Received callback with code:', !!code, 'state:', !!stateParam, 'error:', error);
 
     if (error) {
       console.error('[calendar-callback] OAuth error:', error);
@@ -28,21 +28,26 @@ serve(async (req) => {
       return errorRedirect("Missing code or state parameter");
     }
 
-    // Decode state
+    // Decode state (supports both standard and URL-safe base64)
     let state: { user_id: string; origin: string };
     try {
-      state = JSON.parse(atob(stateParam));
-    } catch {
+      let b64 = stateParam.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4 !== 0) b64 += '=';
+      state = JSON.parse(atob(b64));
+    } catch (e) {
+      console.error('[calendar-callback] Failed to decode state:', stateParam, e);
       return errorRedirect("Invalid state parameter");
     }
 
     const { user_id, origin } = state;
-    const redirectUri = `${origin}/auth/google/callback`;
 
-    console.log('[calendar-callback] Processing for user:', user_id);
+    // Use the same redirect_uri that was used in the authorize request
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const redirectUri = `${supabaseUrl}/functions/v1/calendar-callback`;
+
+    console.log('[calendar-callback] Processing for user:', user_id, 'redirect_uri:', redirectUri);
 
     // Initialize Supabase
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -50,12 +55,16 @@ serve(async (req) => {
     const clientId = Deno.env.get("GOOGLE_CALENDAR_CLIENT_ID");
     const clientSecret = Deno.env.get("GOOGLE_CALENDAR_CLIENT_SECRET");
 
+    if (!clientId || !clientSecret) {
+      return errorRedirect("Google OAuth credentials not configured", undefined, origin);
+    }
+
     const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        client_id: clientId!,
-        client_secret: clientSecret!,
+        client_id: clientId,
+        client_secret: clientSecret,
         redirect_uri: redirectUri,
         code,
         grant_type: "authorization_code",
@@ -64,23 +73,21 @@ serve(async (req) => {
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
-      console.error('[calendar-callback] Token exchange failed:', errorText);
-      return errorRedirect("Token exchange failed");
+      console.error('[calendar-callback] Token exchange failed:', tokenResponse.status, errorText);
+      return errorRedirect("Token exchange failed", undefined, origin);
     }
 
     const tokens = await tokenResponse.json();
-    console.log('[calendar-callback] Token exchange successful');
+    console.log('[calendar-callback] Token exchange successful, expires_in:', tokens.expires_in);
 
     // Get user info
     const userInfoResponse = await fetch(
       "https://www.googleapis.com/oauth2/v2/userinfo",
-      {
-        headers: { Authorization: `Bearer ${tokens.access_token}` },
-      }
+      { headers: { Authorization: `Bearer ${tokens.access_token}` } }
     );
 
     if (!userInfoResponse.ok) {
-      return errorRedirect("Failed to get user info");
+      return errorRedirect("Failed to get user info", undefined, origin);
     }
 
     const userInfo = await userInfoResponse.json();
@@ -89,13 +96,11 @@ serve(async (req) => {
     // Get user's calendars
     const calendarsResponse = await fetch(
       "https://www.googleapis.com/calendar/v3/users/me/calendarList",
-      {
-        headers: { Authorization: `Bearer ${tokens.access_token}` },
-      }
+      { headers: { Authorization: `Bearer ${tokens.access_token}` } }
     );
 
     if (!calendarsResponse.ok) {
-      return errorRedirect("Failed to get calendar list");
+      return errorRedirect("Failed to get calendar list", undefined, origin);
     }
 
     const calendars = await calendarsResponse.json();
@@ -104,12 +109,12 @@ serve(async (req) => {
     );
 
     if (!primaryCalendar) {
-      return errorRedirect("No primary calendar found");
+      return errorRedirect("No primary calendar found", undefined, origin);
     }
 
     console.log('[calendar-callback] Found primary calendar:', primaryCalendar.summary);
 
-    // Check if Tasks scope was granted by verifying access
+    // Check if Tasks scope was granted
     let tasksEnabled = false;
     try {
       const tasksCheck = await fetch("https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=1", {
@@ -147,7 +152,7 @@ serve(async (req) => {
 
     if (insertError) {
       console.error('[calendar-callback] Insert error:', insertError);
-      return errorRedirect("Failed to save calendar connection");
+      return errorRedirect("Failed to save calendar connection", undefined, origin);
     }
 
     console.log('[calendar-callback] Calendar connection saved:', connection.id);
@@ -162,10 +167,11 @@ serve(async (req) => {
     );
 
     // Redirect to home page after successful connection
+    const redirectOrigin = origin || 'https://witholive.app';
     return new Response(null, {
       status: 303,
       headers: {
-        Location: `${origin}/home?calendar=connected`,
+        Location: `${redirectOrigin}/home?calendar=connected`,
       },
     });
   } catch (error: unknown) {
@@ -174,12 +180,13 @@ serve(async (req) => {
   }
 });
 
-function errorRedirect(message: string, details?: string) {
+function errorRedirect(message: string, details?: string, origin?: string) {
   const errorMessage = encodeURIComponent(message + (details ? `: ${details}` : ''));
+  const redirectOrigin = origin || 'https://witholive.app';
   return new Response(null, {
     status: 303,
     headers: {
-      Location: `https://witholive.app/profile?calendar=error&message=${errorMessage}`,
+      Location: `${redirectOrigin}/profile?calendar=error&message=${errorMessage}`,
     },
   });
 }
