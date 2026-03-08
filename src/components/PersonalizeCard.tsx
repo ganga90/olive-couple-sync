@@ -108,6 +108,7 @@ export const PersonalizeCard = () => {
             .from("clerk_profiles")
             .update({ note_style: style, updated_at: new Date().toISOString() })
             .eq("id", user.id)
+            .then()
         );
       }
 
@@ -121,7 +122,7 @@ export const PersonalizeCard = () => {
             importance: 4,
             source: "personalization",
             metadata: { type: "diet", value: diet },
-          })
+          }).then()
         );
       }
 
@@ -134,7 +135,7 @@ export const PersonalizeCard = () => {
             importance: 4,
             source: "personalization",
             metadata: { type: "household", value: household },
-          })
+          }).then()
         );
       }
 
