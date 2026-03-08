@@ -99,6 +99,13 @@ serve(async (req: Request) => {
       ? await decrypt(note.encrypted_summary, decryptUserId)
       : note.summary;
 
+    // Audit log for compliance
+    await supabase.from('decryption_audit_log').insert({
+      user_id,
+      note_id,
+      function_name: 'decrypt-note',
+    });
+
     return new Response(
       JSON.stringify({
         note_id: note.id,
