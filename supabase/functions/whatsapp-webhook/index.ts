@@ -6261,11 +6261,31 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
         
         return reply(`✅ Saved ${count} items!\n${itemsList}${moreText}\n\n📂 Added to: ${listName}\n\n🔗 Manage: https://witholive.app\n\n💡 ${getRandomTip()}`);
       } else {
+        // Build note data with optional encryption for sensitive notes
+        const rawOriginalText = messageBody || processData.summary || 'Media attachment';
+        const rawSummary = processData.summary;
+        
+        let encryptionFields = {
+          original_text: rawOriginalText,
+          summary: rawSummary,
+          encrypted_original_text: null as string | null,
+          encrypted_summary: null as string | null,
+          is_sensitive: isSensitiveNote || !!processData.is_sensitive,
+        };
+        
+        if (encryptionFields.is_sensitive && isEncryptionAvailable()) {
+          try {
+            encryptionFields = await encryptNoteFields(rawOriginalText, rawSummary, userId, true);
+            console.log('[WhatsApp] 🔐 Note fields encrypted for sensitive note');
+          } catch (encErr) {
+            console.warn('[WhatsApp] Encryption failed, storing as plaintext:', encErr);
+          }
+        }
+        
         const noteData = {
           author_id: userId,
           couple_id: effectiveCoupleId,
-          original_text: messageBody || processData.summary || 'Media attachment',
-          summary: processData.summary,
+          ...encryptionFields,
           category: processData.category || 'task',
           due_date: processData.due_date,
           reminder_time: processData.reminder_time,
