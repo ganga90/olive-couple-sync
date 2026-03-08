@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { MessageCircle, Loader2, ExternalLink } from 'lucide-react';
+import { MessageCircle, Loader2, ExternalLink, Monitor, Smartphone, Copy, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useOnboardingTooltip } from '@/hooks/useOnboardingTooltip';
 import { OnboardingTooltip } from '@/components/OnboardingTooltip';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { QRCodeSVG } from 'qrcode.react';
 
 export const WhatsAppLink = () => {
   const { t } = useTranslation('profile');
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   const [linkData, setLinkData] = useState<{ token: string; whatsappLink: string; expiresAt: string } | null>(null);
   const whatsappOnboarding = useOnboardingTooltip('whatsapp-link');
@@ -21,9 +24,7 @@ export const WhatsAppLink = () => {
       const { data, error } = await supabase.functions.invoke('generate-whatsapp-link', {
         body: {}
       });
-
       if (error) throw error;
-
       setLinkData(data);
       toast({
         title: t('whatsappLink.linkGenerated'),
@@ -51,6 +52,20 @@ export const WhatsAppLink = () => {
     }
   };
 
+  // Build web.whatsapp.com link from the wa.me link
+  const getWebWhatsAppLink = () => {
+    if (!linkData) return '';
+    // wa.me/{number}?text={message} → web.whatsapp.com/send?phone={number}&text={message}
+    try {
+      const url = new URL(linkData.whatsappLink);
+      const phone = url.pathname.replace('/', '');
+      const text = url.searchParams.get('text') || '';
+      return `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(text)}`;
+    } catch {
+      return linkData.whatsappLink;
+    }
+  };
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
@@ -59,11 +74,11 @@ export const WhatsAppLink = () => {
 
       {!linkData ? (
         <div className="relative">
-          <Button 
+          <Button
             onClick={() => {
               whatsappOnboarding.dismiss();
               generateLink();
-            }} 
+            }}
             disabled={loading}
             className="w-full"
           >
@@ -96,39 +111,80 @@ export const WhatsAppLink = () => {
             </AlertDescription>
           </Alert>
 
-          <div className="p-3 bg-muted rounded-[var(--radius-md)] space-y-2">
-            <p className="text-xs font-medium text-foreground">{t('whatsappLink.yourToken')}</p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-sm font-mono bg-background px-3 py-2 rounded border">
-                {linkData.token}
-              </code>
+          {isMobile ? (
+            /* ── Mobile Flow: direct deep link ── */
+            <>
               <Button
-                variant="outline"
-                size="sm"
-                onClick={copyToken}
+                onClick={() => window.open(linkData.whatsappLink, '_blank')}
+                className="w-full"
+                variant="default"
               >
-                {t('whatsappLink.copy')}
+                <ExternalLink className="mr-2 h-4 w-4" />
+                {t('whatsappLink.openWhatsapp')}
               </Button>
-            </div>
-          </div>
 
-          <Button
-            onClick={() => window.open(linkData.whatsappLink, '_blank')}
-            className="w-full"
-            variant="default"
-          >
-            <ExternalLink className="mr-2 h-4 w-4" />
-            {t('whatsappLink.openWhatsapp')}
-          </Button>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p className="font-medium">{t('whatsappLink.instructions')}</p>
+                <ol className="list-decimal list-inside space-y-1 ml-2">
+                  <li>{t('whatsappLink.step1')}</li>
+                  <li>{t('whatsappLink.step2')}</li>
+                  <li>{t('whatsappLink.step3')}</li>
+                </ol>
+              </div>
+            </>
+          ) : (
+            /* ── Desktop Flow: QR code + web fallback ── */
+            <>
+              <div className="flex flex-col items-center gap-3 p-4 bg-muted rounded-xl">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Smartphone className="h-4 w-4" />
+                  {t('whatsappLink.desktop.scanQR', 'Scan with your phone')}
+                </div>
+                <div className="bg-white p-3 rounded-lg shadow-sm">
+                  <QRCodeSVG
+                    value={linkData.whatsappLink}
+                    size={180}
+                    level="M"
+                    includeMargin={false}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground text-center max-w-[240px]">
+                  {t('whatsappLink.desktop.scanHint', 'Open your phone camera and scan this code to open WhatsApp with the token pre-filled.')}
+                </p>
+              </div>
 
-          <div className="text-xs text-muted-foreground space-y-1">
-            <p className="font-medium">{t('whatsappLink.instructions')}</p>
-            <ol className="list-decimal list-inside space-y-1 ml-2">
-              <li>{t('whatsappLink.step1')}</li>
-              <li>{t('whatsappLink.step2')}</li>
-              <li>{t('whatsappLink.step3')}</li>
-            </ol>
-          </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex-1 h-px bg-border" />
+                <span>{t('signIn.or', 'or')}</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+
+              <Button
+                onClick={() => window.open(getWebWhatsAppLink(), '_blank')}
+                className="w-full"
+                variant="outline"
+              >
+                <Monitor className="mr-2 h-4 w-4" />
+                {t('whatsappLink.desktop.openWeb', 'Open WhatsApp Web')}
+              </Button>
+
+              {/* Manual token copy fallback */}
+              <div className="p-3 bg-muted rounded-xl space-y-2">
+                <p className="text-xs font-medium text-foreground">
+                  {t('whatsappLink.desktop.manualTitle', 'Or send this token manually:')}
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-sm font-mono bg-background px-3 py-2 rounded border overflow-x-auto">
+                    {linkData.token}
+                  </code>
+                  <Button variant="outline" size="sm" onClick={copyToken}>
+                    <Copy className="h-3.5 w-3.5 mr-1" />
+                    {t('whatsappLink.copy')}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
 
           <Button
             variant="ghost"
@@ -136,6 +192,7 @@ export const WhatsAppLink = () => {
             onClick={() => setLinkData(null)}
             className="w-full"
           >
+            <RefreshCw className="mr-2 h-3.5 w-3.5" />
             {t('whatsappLink.generateNew')}
           </Button>
         </div>
