@@ -407,7 +407,10 @@ export type Database = {
           created_at: string
           due_date: string | null
           embedding: string | null
+          encrypted_original_text: string | null
+          encrypted_summary: string | null
           id: string
+          is_sensitive: boolean
           items: string[] | null
           last_reminded_at: string | null
           list_id: string | null
@@ -435,7 +438,10 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           embedding?: string | null
+          encrypted_original_text?: string | null
+          encrypted_summary?: string | null
           id?: string
+          is_sensitive?: boolean
           items?: string[] | null
           last_reminded_at?: string | null
           list_id?: string | null
@@ -463,7 +469,10 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           embedding?: string | null
+          encrypted_original_text?: string | null
+          encrypted_summary?: string | null
           id?: string
+          is_sensitive?: boolean
           items?: string[] | null
           last_reminded_at?: string | null
           list_id?: string | null
