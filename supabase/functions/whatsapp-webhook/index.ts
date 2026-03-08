@@ -126,6 +126,11 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'es': '✅ ¡Hecho! Le dije a {partner} y guardé una tarea:\n\n📋 "{task}"\n📂 Asignado a: {partner}\n💬 Notificado vía WhatsApp',
     'it': '✅ Fatto! Ho detto a {partner} e salvato un\'attività:\n\n📋 "{task}"\n📂 Assegnato a: {partner}\n💬 Notificato via WhatsApp',
   },
+  partner_message_existing_task: {
+    en: '✅ Done! I reminded {partner} about an existing task:\n\n📋 "{task}"\n💬 Notified via WhatsApp\n\nℹ️ No duplicate created — task already tracked.',
+    'es': '✅ ¡Hecho! Le recordé a {partner} sobre una tarea existente:\n\n📋 "{task}"\n💬 Notificado vía WhatsApp\n\nℹ️ No se creó duplicado — tarea ya registrada.',
+    'it': '✅ Fatto! Ho ricordato a {partner} un\'attività esistente:\n\n📋 "{task}"\n💬 Notificato via WhatsApp\n\nℹ️ Nessun duplicato creato — attività già tracciata.',
+  },
   partner_no_phone: {
     en: '😕 I\'d love to message {partner}, but they haven\'t linked their WhatsApp yet.\n\nAsk them to open Olive → Profile → Link WhatsApp.',
     'es': '😕 Me encantaría enviarle un mensaje a {partner}, pero aún no ha vinculado su WhatsApp.\n\nPídele que abra Olive → Perfil → Vincular WhatsApp.',
@@ -5810,68 +5815,149 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
       console.log('[PARTNER_MESSAGE] isTaskLike:', isTaskLike, '| isActionAlwaysTask:', isActionAlwaysTask, '| partnerAction:', partnerAction);
 
       let savedTask: { id: string; summary: string } | null = null;
+      let existingTaskFound = false;
 
       if (isTaskLike) {
         try {
-          // Use process-note for AI-powered categorization & list routing
-          const { data: processData, error: processErr } = await supabase.functions.invoke('process-note', {
-            body: {
-              text: partnerMessageContent,
-              user_id: userId,
-              couple_id: coupleId, // Partner tasks are always shared
-              timezone: profile.timezone || 'America/New_York',
-              source: 'whatsapp',
-            }
-          });
+          // ── STEP 3a: Duplicate detection ──────────────────────────────────
+          // Before creating a new task, check if one already exists that
+          // matches what the partner is being reminded about.
+          // Uses a 2-layer approach: vector similarity → keyword fallback.
+          // ────────────────────────────────────────────────────────────────────
 
-          if (processErr) {
-            console.error('[PARTNER_MESSAGE] process-note error:', processErr);
+          let duplicateNote: { id: string; summary: string } | null = null;
+
+          // Layer 1: Semantic / vector similarity (threshold 0.80, slightly
+          // lower than dedup's 0.85 to catch paraphrased reminders)
+          try {
+            const queryEmbedding = await generateEmbedding(partnerMessageContent);
+            if (queryEmbedding) {
+              const { data: similar } = await supabase.rpc('find_similar_notes', {
+                p_user_id: userId,
+                p_couple_id: coupleId,
+                p_query_embedding: JSON.stringify(queryEmbedding),
+                p_threshold: 0.80,
+                p_limit: 3,
+              });
+
+              if (similar && similar.length > 0) {
+                duplicateNote = { id: similar[0].id, summary: similar[0].summary };
+                console.log('[PARTNER_MESSAGE] 🔍 Vector duplicate found:', similar[0].summary, '| similarity:', similar[0].similarity);
+              }
+            }
+          } catch (vecErr) {
+            console.error('[PARTNER_MESSAGE] Vector duplicate check failed (non-blocking):', vecErr);
           }
 
-          const noteData = {
-            author_id: userId,
-            couple_id: coupleId, // Partner tasks are always shared
-            original_text: partnerMessageContent,
-            summary: processData?.summary || partnerMessageContent,
-            category: processData?.category || 'task',
-            due_date: processData?.due_date || null,
-            reminder_time: processData?.reminder_time || null,
-            recurrence_frequency: processData?.recurrence_frequency || null,
-            recurrence_interval: processData?.recurrence_interval || null,
-            priority: processData?.priority || 'medium',
-            tags: processData?.tags || [],
-            items: processData?.items || [],
-            task_owner: partnerId,
-            list_id: processData?.list_id || null,
-            source: 'whatsapp',
-            source_ref: `partner_relay:${partnerAction}`,
-            completed: false,
-          };
-
-          const { data: insertedNote, error: insertErr } = await supabase
-            .from('clerk_notes')
-            .insert(noteData)
-            .select('id, summary, list_id')
-            .single();
-
-          if (insertErr) {
-            console.error('[PARTNER_MESSAGE] Note insert error:', insertErr.message, insertErr.details);
-          } else if (insertedNote) {
-            savedTask = { id: insertedNote.id, summary: insertedNote.summary };
-            console.log('[PARTNER_MESSAGE] ✅ Created task for partner:', insertedNote.summary, '| list_id:', insertedNote.list_id);
-
-            // Generate embedding for semantic search (non-blocking)
+          // Layer 2: Keyword fallback — extract significant words and search
+          if (!duplicateNote) {
             try {
-              const embedding = await generateEmbedding(insertedNote.summary);
-              if (embedding) {
-                await supabase
+              const stopWords = new Set(['a','an','the','to','of','in','for','and','or','is','it','my','me','i','that','this','her','his','our','un','una','il','la','le','lo','di','da','per','che','del','al','el','de','en','por','su','con']);
+              const keywords = partnerMessageContent
+                .toLowerCase()
+                .replace(/[^\w\sáéíóúñàèìòù]/g, '')
+                .split(/\s+/)
+                .filter(w => w.length > 2 && !stopWords.has(w));
+
+              if (keywords.length > 0) {
+                // Search for incomplete tasks in the couple space matching keywords
+                const searchTerms = keywords.slice(0, 4).join(' & '); // Top 4 keywords for tsquery
+                const { data: keywordMatches } = await supabase
                   .from('clerk_notes')
-                  .update({ embedding: JSON.stringify(embedding) })
-                  .eq('id', insertedNote.id);
-                console.log('[PARTNER_MESSAGE] Embedding saved for task:', insertedNote.id);
+                  .select('id, summary, original_text')
+                  .eq('completed', false)
+                  .or(`couple_id.eq.${coupleId},and(author_id.eq.${userId},couple_id.is.null)`)
+                  .textSearch('summary', keywords.slice(0, 3).join(' | '), { type: 'plain' })
+                  .limit(5);
+
+                if (keywordMatches && keywordMatches.length > 0) {
+                  // Score by word overlap
+                  const bestMatch = keywordMatches
+                    .map(m => {
+                      const mWords = new Set((m.summary + ' ' + (m.original_text || '')).toLowerCase().split(/\s+/));
+                      const overlap = keywords.filter(k => mWords.has(k)).length;
+                      return { ...m, overlap, ratio: overlap / keywords.length };
+                    })
+                    .sort((a, b) => b.ratio - a.ratio)[0];
+
+                  if (bestMatch && bestMatch.ratio >= 0.5) {
+                    duplicateNote = { id: bestMatch.id, summary: bestMatch.summary };
+                    console.log('[PARTNER_MESSAGE] 🔍 Keyword duplicate found:', bestMatch.summary, '| overlap:', bestMatch.ratio);
+                  }
+                }
               }
-            } catch (embErr) {
-              console.error('[PARTNER_MESSAGE] Embedding error (non-blocking):', embErr);
+            } catch (kwErr) {
+              console.error('[PARTNER_MESSAGE] Keyword duplicate check failed (non-blocking):', kwErr);
+            }
+          }
+
+          // ── STEP 3b: Create or skip ──────────────────────────────────────
+          if (duplicateNote) {
+            // Task already exists — skip creation, just relay the message
+            savedTask = duplicateNote;
+            existingTaskFound = true;
+            console.log('[PARTNER_MESSAGE] ⏭️ Skipping creation — existing task:', duplicateNote.summary);
+          } else {
+            // No duplicate — create new task via process-note
+            const { data: processData, error: processErr } = await supabase.functions.invoke('process-note', {
+              body: {
+                text: partnerMessageContent,
+                user_id: userId,
+                couple_id: coupleId, // Partner tasks are always shared
+                timezone: profile.timezone || 'America/New_York',
+                source: 'whatsapp',
+              }
+            });
+
+            if (processErr) {
+              console.error('[PARTNER_MESSAGE] process-note error:', processErr);
+            }
+
+            const noteData = {
+              author_id: userId,
+              couple_id: coupleId, // Partner tasks are always shared
+              original_text: partnerMessageContent,
+              summary: processData?.summary || partnerMessageContent,
+              category: processData?.category || 'task',
+              due_date: processData?.due_date || null,
+              reminder_time: processData?.reminder_time || null,
+              recurrence_frequency: processData?.recurrence_frequency || null,
+              recurrence_interval: processData?.recurrence_interval || null,
+              priority: processData?.priority || 'medium',
+              tags: processData?.tags || [],
+              items: processData?.items || [],
+              task_owner: partnerId,
+              list_id: processData?.list_id || null,
+              source: 'whatsapp',
+              source_ref: `partner_relay:${partnerAction}`,
+              completed: false,
+            };
+
+            const { data: insertedNote, error: insertErr } = await supabase
+              .from('clerk_notes')
+              .insert(noteData)
+              .select('id, summary, list_id')
+              .single();
+
+            if (insertErr) {
+              console.error('[PARTNER_MESSAGE] Note insert error:', insertErr.message, insertErr.details);
+            } else if (insertedNote) {
+              savedTask = { id: insertedNote.id, summary: insertedNote.summary };
+              console.log('[PARTNER_MESSAGE] ✅ Created task for partner:', insertedNote.summary, '| list_id:', insertedNote.list_id);
+
+              // Generate embedding for semantic search (non-blocking)
+              try {
+                const embedding = await generateEmbedding(insertedNote.summary);
+                if (embedding) {
+                  await supabase
+                    .from('clerk_notes')
+                    .update({ embedding: JSON.stringify(embedding) })
+                    .eq('id', insertedNote.id);
+                  console.log('[PARTNER_MESSAGE] Embedding saved for task:', insertedNote.id);
+                }
+              } catch (embErr) {
+                console.error('[PARTNER_MESSAGE] Embedding error (non-blocking):', embErr);
+              }
             }
           }
         } catch (taskErr) {
@@ -6022,7 +6108,8 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
       }
 
       if (savedTask) {
-        const confirmResponse = t('partner_message_and_task', userLang, {
+        const templateKey = existingTaskFound ? 'partner_message_existing_task' : 'partner_message_and_task';
+        const confirmResponse = t(templateKey, userLang, {
           partner: partnerName,
           task: savedTask.summary,
         });
