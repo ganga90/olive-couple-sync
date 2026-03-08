@@ -1270,6 +1270,9 @@ const ExpensesPage: React.FC = () => {
         open={!!editExpense}
         onOpenChange={v => { if (!v) setEditExpense(null); }}
         onSave={updateExpense}
+        hasPartner={hasPartner}
+        youName={youName}
+        partnerName={partnerName}
       />
       <BudgetLimitDialog
         open={budgetDialogOpen}
