@@ -281,7 +281,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           couple_id: currentCouple?.id || null,
           list_id: listId || null,
           media: mediaUrls.length > 0 ? mediaUrls : undefined,
-          style: noteStyle
+          style: noteStyle,
+          is_sensitive: isSensitive || undefined,
         }
       });
 
