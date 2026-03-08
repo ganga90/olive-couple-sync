@@ -203,40 +203,60 @@ serve(async (req) => {
 
     console.log(`Found ${explicitReminders?.length || 0} notes with explicit reminders`);
 
-    // Find notes with due_date for automatic reminders (24h and 2h before)
-    const { data: dueDateNotes, error: dueDateError } = await supabase
-      .from('clerk_notes')
-      .select('id, summary, due_date, author_id, tags, category, auto_reminders_sent')
-      .not('due_date', 'is', null)
-      .eq('completed', false);
+    // ── AUTO-REMINDERS based on user preferences ──────────────────────────
+    // By default (empty reminder_advance_intervals), NO auto-reminders are sent
+    // for due_date notes. Users opt-in to advance intervals via Settings.
+    // ──────────────────────────────────────────────────────────────────────────
 
-    if (dueDateError) {
-      console.error('Error fetching due date notes:', dueDateError);
+    // Collect all unique author IDs from due date notes to batch-fetch preferences
+    const dueDateAuthorIds = [...new Set((dueDateNotes || []).map(n => n.author_id).filter(Boolean))];
+
+    // Fetch user preferences for advance reminder intervals
+    let userPrefsMap: Record<string, string[]> = {};
+    if (dueDateAuthorIds.length > 0) {
+      const { data: prefsData } = await supabase
+        .from('olive_user_preferences')
+        .select('user_id, reminder_advance_intervals')
+        .in('user_id', dueDateAuthorIds);
+
+      if (prefsData) {
+        for (const p of prefsData) {
+          userPrefsMap[p.user_id] = (p as any).reminder_advance_intervals || [];
+        }
+      }
     }
 
-    console.log(`Found ${dueDateNotes?.length || 0} notes with due dates to check for automatic reminders`);
+    // Interval label → minute offset mapping
+    const INTERVAL_MINUTES: Record<string, { min: number; max: number; key: string; message: string }> = {
+      '15min': { min: 10, max: 20, key: '15min', message: 'in 15 minutes' },
+      '30min': { min: 25, max: 35, key: '30min', message: 'in 30 minutes' },
+      '1h':    { min: 55, max: 65, key: '1h', message: 'in 1 hour' },
+      '2h':    { min: 115, max: 125, key: '2h', message: 'in 2 hours' },
+      '6h':    { min: 355, max: 365, key: '6h', message: 'in 6 hours' },
+      '12h':   { min: 715, max: 725, key: '12h', message: 'in 12 hours' },
+      '24h':   { min: 1435, max: 1445, key: '24h', message: 'in 24 hours' },
+    };
 
-    // Filter notes that need 24h, 2h, or 15min reminders
-    // Use wider windows (±5 min) aligned with the 1-minute cron interval
+    // Filter notes that need auto-reminders based on user preferences
     const autoReminders: any[] = [];
     if (dueDateNotes && dueDateNotes.length > 0) {
       for (const note of dueDateNotes) {
         const dueDate = new Date(note.due_date);
         const minutesUntilDue = (dueDate.getTime() - now.getTime()) / (1000 * 60);
-
         const alreadySent = note.auto_reminders_sent || [];
 
-        // 24h window: 23h55m to 24h05m
-        if (minutesUntilDue >= 1435 && minutesUntilDue <= 1445 && !alreadySent.includes('24h')) {
-          autoReminders.push({ ...note, reminder_type: '24h', reminder_message: 'in 24 hours' });
-        }
-        // 2h window: 1h55m to 2h05m
-        else if (minutesUntilDue >= 115 && minutesUntilDue <= 125 && !alreadySent.includes('2h')) {
-          autoReminders.push({ ...note, reminder_type: '2h', reminder_message: 'in 2 hours' });
-        }
-        // 15min window: 10m to 20m
-        else if (minutesUntilDue >= 10 && minutesUntilDue <= 20 && !alreadySent.includes('15min')) {
-          autoReminders.push({ ...note, reminder_type: '15min', reminder_message: 'in 15 minutes' });
+        // Get this user's opted-in intervals (default: none)
+        const userIntervals = userPrefsMap[note.author_id] || [];
+
+        // Only check intervals the user has opted into
+        for (const intervalKey of userIntervals) {
+          const interval = INTERVAL_MINUTES[intervalKey];
+          if (!interval) continue;
+
+          if (minutesUntilDue >= interval.min && minutesUntilDue <= interval.max && !alreadySent.includes(interval.key)) {
+            autoReminders.push({ ...note, reminder_type: interval.key, reminder_message: interval.message });
+            break; // Only one auto-reminder per note per cycle
+          }
         }
       }
     }
