@@ -34,6 +34,15 @@ export const SuperpowersGrid = () => {
       gradient: 'from-emerald-500 to-teal-500',
       bgColor: 'bg-emerald-50',
     },
+    {
+      id: 'security',
+      icon: Shield,
+      title: t('superpowers.security.title'),
+      description: t('superpowers.security.description'),
+      visual: 'security',
+      gradient: 'from-sky-500 to-indigo-500',
+      bgColor: 'bg-sky-50',
+    },
   ];
 
   return (
