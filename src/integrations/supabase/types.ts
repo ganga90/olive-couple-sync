@@ -253,6 +253,7 @@ export type Database = {
         Row: {
           couple_id: string | null
           created_at: string
+          display_name: string | null
           id: string
           role: Database["public"]["Enums"]["member_role"]
           user_id: string | null
@@ -260,6 +261,7 @@ export type Database = {
         Insert: {
           couple_id?: string | null
           created_at?: string
+          display_name?: string | null
           id?: string
           role?: Database["public"]["Enums"]["member_role"]
           user_id?: string | null
@@ -267,6 +269,7 @@ export type Database = {
         Update: {
           couple_id?: string | null
           created_at?: string
+          display_name?: string | null
           id?: string
           role?: Database["public"]["Enums"]["member_role"]
           user_id?: string | null
@@ -286,6 +289,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          max_members: number
           partner_name: string | null
           title: string | null
           updated_at: string
@@ -295,6 +299,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          max_members?: number
           partner_name?: string | null
           title?: string | null
           updated_at?: string
@@ -304,6 +309,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          max_members?: number
           partner_name?: string | null
           title?: string | null
           updated_at?: string
@@ -1936,6 +1942,15 @@ export type Database = {
     }
     Functions: {
       accept_invite: { Args: { p_token: string }; Returns: string }
+      add_member_to_space: {
+        Args: {
+          p_couple_id: string
+          p_display_name: string
+          p_role?: Database["public"]["Enums"]["member_role"]
+          p_user_id: string
+        }
+        Returns: string
+      }
       cleanup_expired_linking_tokens: { Args: never; Returns: undefined }
       create_couple: {
         Args: { p_partner_name: string; p_title: string; p_you_name: string }
@@ -1965,6 +1980,17 @@ export type Database = {
         }[]
       }
       get_clerk_user_id: { Args: never; Returns: string }
+      get_space_members: {
+        Args: { p_couple_id: string }
+        Returns: {
+          display_name: string
+          joined_at: string
+          member_id: string
+          profile_display_name: string
+          role: Database["public"]["Enums"]["member_role"]
+          user_id: string
+        }[]
+      }
       has_role: {
         Args: {
           p_role: Database["public"]["Enums"]["app_role"]
