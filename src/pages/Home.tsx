@@ -475,7 +475,7 @@ const Home = () => {
                             </div>
                           </div>
                           {taskCount > 0 && (
-                            <span className="text-xs font-medium text-muted-foreground bg-stone-100 px-2 py-0.5 rounded-full">
+                            <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                               {taskCount} {taskCount === 1 ? t('home:weekly.task') : t('home:weekly.tasks')}
                             </span>
                           )}
