@@ -63,6 +63,26 @@ const Home = () => {
   const { connection: calendarConnection } = useCalendarEvents();
   const [emailTriageOpen, setEmailTriageOpen] = useState(false);
   const [emailConnected, setEmailConnected] = useState(false);
+  // Haptics and keyboard shortcuts
+  const haptics = useHaptics();
+  const [searchOpen, setSearchOpen] = useState(false);
+  const brainDumpRef = useRef<HTMLTextAreaElement>(null);
+
+  // Keyboard shortcuts: Cmd+K (search), Cmd+N (new note)
+  useKeyboardShortcuts([
+    {
+      ...APP_SHORTCUTS.SEARCH,
+      callback: () => setSearchOpen(true),
+    },
+    {
+      ...APP_SHORTCUTS.NEW_NOTE,
+      callback: () => {
+        // Focus the brain dump input
+        const input = document.querySelector('[data-brain-dump-input]') as HTMLTextAreaElement;
+        if (input) input.focus();
+      },
+    },
+  ]);
 
   // Check if Gmail is connected
   useEffect(() => {
