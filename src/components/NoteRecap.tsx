@@ -67,24 +67,26 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
   const { currentCouple } = useSupabaseCouple();
   const { lists, createList, loading: listsLoading } = useSupabaseLists(currentCouple?.id || null);
 
+  const { members } = useSupabaseCouple();
+  
   const availableOwners = useMemo(() => {
+    if (members.length > 0) {
+      return members.map(m => ({
+        id: m.user_id,
+        name: m.display_name,
+        isCurrentUser: m.user_id === user?.id
+      }));
+    }
+    // Fallback for legacy
     const owners = [];
     if (user?.fullName) {
-      owners.push({
-        id: user.id,
-        name: currentCouple?.you_name || user.fullName,
-        isCurrentUser: true
-      });
+      owners.push({ id: user.id, name: currentCouple?.you_name || user.fullName, isCurrentUser: true });
     }
     if (currentCouple?.partner_name) {
-      owners.push({
-        id: 'partner',
-        name: currentCouple.partner_name,
-        isCurrentUser: false
-      });
+      owners.push({ id: 'partner', name: currentCouple.partner_name, isCurrentUser: false });
     }
     return owners;
-  }, [user, currentCouple]);
+  }, [members, user, currentCouple]);
 
   const getPriorityConfig = (priority?: string) => {
     switch (priority) {

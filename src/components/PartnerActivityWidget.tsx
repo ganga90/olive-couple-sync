@@ -134,12 +134,12 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
                 <p className="text-xs text-muted-foreground leading-tight">
                   {activity.isAssignedToYou ? (
                     <span>
-                      <span className="font-semibold text-foreground">{partnerName}</span>
+                      <span className="font-semibold text-foreground">{activity.authorName}</span>
                       {' '}{t('home:partnerActivity.assignedYou')}
                     </span>
                   ) : (
                     <span>
-                      <span className="font-semibold text-foreground">{partnerName}</span>
+                      <span className="font-semibold text-foreground">{activity.authorName}</span>
                       {' '}{t('home:partnerActivity.added')}
                     </span>
                   )}
