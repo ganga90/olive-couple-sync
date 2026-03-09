@@ -460,7 +460,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                   }}
                 >
                   <SelectTrigger className="h-9 text-sm border-border focus:border-primary">
-                    <SelectValue placeholder="Select list..." />
+                    <SelectValue placeholder={t("createDialog.selectList")} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No list</SelectItem>
