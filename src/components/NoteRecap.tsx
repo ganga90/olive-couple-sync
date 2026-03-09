@@ -383,7 +383,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
             {dueStatus === 'overdue' && (
               <Badge className="bg-destructive/10 text-destructive border border-destructive/20 text-xs">
                 <AlertTriangle className="w-3 h-3 mr-1" />
-                Overdue
+                {t("overdue")}
               </Badge>
             )}
             
