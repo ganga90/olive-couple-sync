@@ -306,7 +306,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                 className="h-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
               >
                 <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                Edit
+                {t("edit.edit", "Edit")}
               </Button>
             ) : (
               <div className="flex items-center gap-1">
