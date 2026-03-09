@@ -14,7 +14,7 @@ const DISMISSED_KEY = "olive_partner_invite_dismissed";
 export const PartnerInviteCard = () => {
   const { t } = useTranslation("home");
   const { user } = useAuth();
-  const { currentCouple, partner } = useSupabaseCouple();
+  const { currentCouple, members } = useSupabaseCouple();
   const INVITE_SENT_KEY = "olive_partner_invite_sent";
   const [dismissed, setDismissed] = useState(() => 
     localStorage.getItem(DISMISSED_KEY) === "true" || localStorage.getItem(INVITE_SENT_KEY) === "true"
