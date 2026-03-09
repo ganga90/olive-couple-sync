@@ -514,7 +514,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
           <div className="space-y-2 animate-fade-in">
             <div className="flex items-center gap-2">
               <List className="h-4 w-4 text-muted-foreground" />
-              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Items</h4>
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("recap.items", "Items")}</h4>
             </div>
             {isEditing ? (
               <Textarea
