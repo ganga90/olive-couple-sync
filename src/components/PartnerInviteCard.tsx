@@ -23,9 +23,9 @@ export const PartnerInviteCard = () => {
   const [loading, setLoading] = useState(false);
   const [inviteUrl, setInviteUrl] = useState("");
 
-  const maxMembers = currentCouple?.max_members || 10;
-  // Don't show if dismissed, if space is at capacity, or no couple
-  if (dismissed || !currentCouple || members.length >= maxMembers) return null;
+  const otherMembers = members.filter(m => m.user_id !== user?.id);
+  // Don't show if: dismissed, no couple, already has other members, or at capacity
+  if (dismissed || !currentCouple || otherMembers.length > 0) return null;
 
   const handleDismiss = () => {
     localStorage.setItem(DISMISSED_KEY, "true");
