@@ -566,7 +566,7 @@ export function useExpenses() {
       partnerOwes: partnerOwesByCurrency[defaultCurrency] || Object.values(partnerOwesByCurrency).reduce((s, v) => s + v, 0),
       topCategories,
     };
-  }, [activeExpenses, preferences.defaultCurrency]);
+  }, [activeExpenses, preferences.defaultCurrency, preferences.sharedWithMembers]);
 
   const netBalance = useMemo(() => analytics.partnerOwes - analytics.youOwe, [analytics]);
 
