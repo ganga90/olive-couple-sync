@@ -216,10 +216,10 @@ const Home = () => {
         <div className="px-4 md:px-0 pt-4 md:pt-0 space-y-6 md:space-y-8">
           {/* Greeting Section - MASSIVE SERIF Typography for Desktop */}
           <div className="text-center md:text-left animate-fade-up">
-            <h1 className="font-serif font-bold text-4xl md:text-5xl lg:text-6xl xl:text-7xl tracking-tight text-stone-900 mb-3 md:mb-4">
+            <h1 className="font-serif font-bold text-4xl md:text-5xl lg:text-6xl xl:text-7xl tracking-tight text-foreground mb-3 md:mb-4">
               {t('home:greeting', { name: userName })}
             </h1>
-            <p className="text-lg md:text-xl lg:text-2xl text-stone-500 font-light leading-relaxed">
+            <p className="text-lg md:text-xl lg:text-2xl text-muted-foreground font-light leading-relaxed">
               {t('home:whatsOnMind')}
             </p>
           </div>
