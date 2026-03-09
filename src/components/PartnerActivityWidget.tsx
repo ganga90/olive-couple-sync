@@ -44,18 +44,21 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
       .slice(0, 3); // Get last 3 activities
 
     return partnerNotes.map(note => {
-      // Determine if it was assigned to the current user
-      // task_owner could be 'you', the user's name, or their ID
-      const youName = currentCouple?.you_name;
+      const currentMember = members.find(m => m.user_id === userId);
+      const youName = currentMember?.display_name || currentCouple?.you_name;
       const isAssignedToYou = note.task_owner === 'you' ||
                               note.task_owner === youName ||
                               note.task_owner === userId;
+
+      // Resolve the author's display name from members
+      const authorName = note.authorId ? getMemberName(note.authorId) : partnerName;
 
       return {
         id: note.id,
         summary: note.summary,
         createdAt: note.createdAt,
         isAssignedToYou,
+        authorName: authorName === "You" ? partnerName : authorName,
         type: isAssignedToYou ? 'assigned' : 'added' as const
       };
     });
