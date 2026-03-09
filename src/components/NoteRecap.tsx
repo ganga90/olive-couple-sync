@@ -426,7 +426,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
             
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Task Owner</label>
+                <label className="text-xs font-medium text-muted-foreground">{t("assignedTo")}</label>
                 <Select
                   value={editedNote.taskOwner || "none"}
                   onValueChange={(value) => setEditedNote(prev => ({ ...prev, taskOwner: value === "none" ? "" : value }))}
