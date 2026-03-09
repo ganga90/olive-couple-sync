@@ -17,6 +17,7 @@ interface InviteFlowProps {
 }
 
 export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
+  const { t } = useTranslation('profile');
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"setup" | "invite">("setup");
   const [inviteUrl, setInviteUrl] = useState("");
