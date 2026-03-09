@@ -485,7 +485,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                 <Input
                   value={newListName}
                   onChange={(e) => setNewListName(e.target.value)}
-                  placeholder="New list name..."
+                  placeholder={t("recap.newListPlaceholder", "New list name...")}
                   className="h-9 text-sm border-border focus:border-primary"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && newListName.trim()) {
