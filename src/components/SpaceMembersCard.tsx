@@ -205,7 +205,7 @@ This link expires in 7 days. 💚`;
       </div>
 
       {/* Invite Section */}
-      {isOwner && memberCount < maxMembers && (
+      {memberCount < maxMembers && (
         <div className="space-y-3">
           {!showInviteForm && !inviteUrl && (
             <Button onClick={() => setShowInviteForm(true)} size="sm" variant="outline" className="w-full">
