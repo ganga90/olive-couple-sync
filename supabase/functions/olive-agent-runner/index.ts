@@ -657,10 +657,11 @@ async function runBirthdayGiftAgent(ctx: AgentContext): Promise<AgentResult> {
       .maybeSingle();
 
     if (date.daysUntil >= 25 && !previousSuggestions[dateKey]) {
-      // First reminder (30 days) — generate gift ideas
-      const response = await ctx.genai.models.generateContent({
-        model: "gemini-2.5-pro", // Pro: creative + personalized gift suggestions
-        contents: `You are a thoughtful gift advisor for a couples app.
+      let suggestion: string;
+      try {
+        const response = await ctx.genai.models.generateContent({
+          model: "gemini-2.5-flash", // Flash: structured gift suggestions
+          contents: `You are a thoughtful gift advisor for a couples app.
 
 Upcoming event: ${date.name} in ${date.daysUntil} days (${date.date.toLocaleDateString("en-US")})
 Person's profile context: ${memory?.content || "No specific preferences known"}
@@ -673,11 +674,14 @@ Suggest 3 gift ideas. Format for WhatsApp:
 2. [Gift idea] — ~$XX
 3. [Gift idea] — ~$XX
 
-Keep it warm and personal.`,
-        config: { temperature: 0.7, maxOutputTokens: 400 },
-      });
-
-      const suggestion = response.text || "";
+Keep it warm and personal. IMPORTANT: Always write your COMPLETE response.`,
+          config: { temperature: 0.7, maxOutputTokens: 600 },
+        });
+        suggestion = response.text?.trim() || `🎁 ${date.name} is in ${date.daysUntil} days! Time to start thinking about a gift.`;
+      } catch (err) {
+        console.error("[Birthday Agent] Gemini call failed:", err);
+        suggestion = `🎁 ${date.name} is in ${date.daysUntil} days! Time to start thinking about a gift.`;
+      }
       messages.push(suggestion);
       newState[dateKey] = [suggestion];
     } else if (date.daysUntil >= 10 && date.daysUntil <= 15) {
