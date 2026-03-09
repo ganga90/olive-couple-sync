@@ -1,10 +1,12 @@
-import React, { createContext, useContext, useEffect, useMemo } from "react";
+import React, { createContext, useCallback, useContext, useMemo } from "react";
 import { useAuth } from "./AuthProvider";
 import { useSupabaseCouples, SupabaseCouple } from "@/hooks/useSupabaseCouples";
+import type { SpaceMember } from "@/types/space";
 
 type SupabaseCoupleContextValue = {
   currentCouple: SupabaseCouple | null;
   couples: SupabaseCouple[] | [];
+  members: SpaceMember[];
   loading: boolean;
   isOnboarded: boolean;
   you: string;
@@ -14,24 +16,23 @@ type SupabaseCoupleContextValue = {
   switchCouple: (couple: SupabaseCouple) => void;
   setNames: (you: string, partner: string) => Promise<void>;
   refetch: () => Promise<void>;
+  getMemberName: (userId: string) => string;
 };
 
 const SupabaseCoupleContext = createContext<SupabaseCoupleContextValue | undefined>(undefined);
 
 export const SupabaseCoupleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const { couples, currentCouple, loading, createCouple, updateCouple, switchCouple, refetch } = useSupabaseCouples();
+  const { couples, currentCouple, members, loading, createCouple, updateCouple, switchCouple, refetch } = useSupabaseCouples();
 
   const setNames = async (you: string, partner: string) => {
     if (!currentCouple) {
-      // Create new couple if none exists
       await createCouple({
         title: `${you} & ${partner}`,
         you_name: you,
         partner_name: partner,
       });
     } else {
-      // Update existing couple
       await updateCouple(currentCouple.id, {
         you_name: you,
         partner_name: partner,
@@ -40,25 +41,37 @@ export const SupabaseCoupleProvider: React.FC<{ children: React.ReactNode }> = (
     }
   };
 
+  const getMemberName = useCallback((userId: string): string => {
+    if (!userId) return "Unknown";
+    if (userId === user?.id) return "You";
+    const member = members.find(m => m.user_id === userId);
+    if (member) return member.display_name;
+    // Fallback to legacy partner name
+    if (currentCouple?.resolvedPartnerName) return currentCouple.resolvedPartnerName;
+    return "Unknown";
+  }, [members, user?.id, currentCouple]);
+
   const value = useMemo(() => {
-    // User is onboarded if they have a couple (regardless of partner_name being set)
-    // This allows "Set up My space Only" to work properly
     const isOnboardedValue = Boolean(currentCouple);
+    const currentMember = members.find(m => m.user_id === user?.id);
+    const otherMembers = members.filter(m => m.user_id !== user?.id);
+
     return {
       currentCouple,
       couples,
+      members,
       loading,
       isOnboarded: isOnboardedValue,
-      // Use resolved names that are dynamically swapped based on logged-in user
-      you: currentCouple?.resolvedYouName || currentCouple?.you_name || "",
-      partner: currentCouple?.resolvedPartnerName || currentCouple?.partner_name || "",
+      you: currentMember?.display_name || currentCouple?.resolvedYouName || currentCouple?.you_name || "",
+      partner: otherMembers.map(m => m.display_name).join(', ') || currentCouple?.resolvedPartnerName || currentCouple?.partner_name || "",
       createCouple,
       updateCouple,
       switchCouple,
       setNames,
       refetch,
+      getMemberName,
     };
-  }, [currentCouple, couples, loading, createCouple, updateCouple, switchCouple, refetch]);
+  }, [currentCouple, couples, members, loading, createCouple, updateCouple, switchCouple, refetch, user?.id, getMemberName]);
 
   return (
     <SupabaseCoupleContext.Provider value={value}>

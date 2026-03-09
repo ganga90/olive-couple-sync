@@ -4,6 +4,7 @@ import { useSupabaseNotes, SupabaseNote } from "@/hooks/useSupabaseNotes";
 import { useAuth } from "./AuthProvider";
 import { useDefaultPrivacy } from "@/hooks/useDefaultPrivacy";
 import type { Note } from "@/types/note";
+import type { SpaceMember } from "@/types/space";
 
 type SupabaseNotesContextValue = {
   notes: Note[];
@@ -17,99 +18,66 @@ type SupabaseNotesContextValue = {
 
 const SupabaseNotesContext = createContext<SupabaseNotesContextValue | undefined>(undefined);
 
-// Well-known AI category → display name mappings (for common cases)
+// Well-known AI category → display name mappings
 const KNOWN_CATEGORY_MAP: Record<string, string> = {
-  'groceries': 'Groceries',
-  'task': 'Task',
-  'home_improvement': 'Home Improvement',
-  'travel_idea': 'Travel Idea',
-  'travel': 'Travel',
-  'date_idea': 'Date Idea',
-  'date_ideas': 'Date Ideas',
-  'shopping': 'Shopping',
-  'health': 'Health',
-  'finance': 'Finance',
-  'work': 'Work',
-  'personal': 'Personal',
-  'gift_ideas': 'Gift Ideas',
-  'recipes': 'Recipes',
-  'movies_tv': 'Movies & TV',
-  'movies_to_watch': 'Movies to Watch',
-  'books_to_read': 'Books to Read',
-  'books': 'Books',
-  'restaurants': 'Restaurants',
-  'entertainment': 'Entertainment',
-  'general': 'Task',
-  'stocks': 'Investments',
+  'groceries': 'Groceries', 'task': 'Task', 'home_improvement': 'Home Improvement',
+  'travel_idea': 'Travel Idea', 'travel': 'Travel', 'date_idea': 'Date Idea',
+  'date_ideas': 'Date Ideas', 'shopping': 'Shopping', 'health': 'Health',
+  'finance': 'Finance', 'work': 'Work', 'personal': 'Personal',
+  'gift_ideas': 'Gift Ideas', 'recipes': 'Recipes', 'movies_tv': 'Movies & TV',
+  'movies_to_watch': 'Movies to Watch', 'books_to_read': 'Books to Read',
+  'books': 'Books', 'restaurants': 'Restaurants', 'entertainment': 'Entertainment',
+  'general': 'Task', 'stocks': 'Investments',
 };
 
-// Dynamic category mapping: accepts ANY category from the AI
-// Known categories get clean display names; unknown ones get auto-formatted
 const mapAICategory = (aiCategory: string): string => {
   if (!aiCategory) return 'Task';
   const lower = aiCategory.toLowerCase().trim();
-  
-  // Check known mappings first
   if (KNOWN_CATEGORY_MAP[lower]) return KNOWN_CATEGORY_MAP[lower];
-  
-  // For any unknown category, auto-format to Title Case
-  // e.g. "real_estate" → "Real Estate", "child_care" → "Child Care", "networking" → "Networking"
-  return lower
-    .replace(/_/g, ' ')
-    .split(' ')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+  return lower.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 };
 
-// Convert Supabase note to app Note type
-const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any, currentCouple?: any): Note => {
-  // Get resolved names (already swapped based on current user in useSupabaseCouples)
-  const resolvedYouName = currentCouple?.resolvedYouName || currentCouple?.you_name;
-  const resolvedPartnerName = currentCouple?.resolvedPartnerName || currentCouple?.partner_name;
-  
-  // Map author_id to display name
+// Build a member lookup map for O(1) resolution
+const buildMemberMap = (members: SpaceMember[]): Map<string, string> => {
+  const map = new Map<string, string>();
+  members.forEach(m => map.set(m.user_id, m.display_name));
+  return map;
+};
+
+const convertSupabaseNoteToNote = (
+  supabaseNote: SupabaseNote,
+  currentUser: any,
+  currentCouple: any,
+  memberMap: Map<string, string>
+): Note => {
   const getAuthorName = (authorId: string): string => {
+    if (!authorId) return "Unknown";
     if (authorId === currentUser?.id) {
-      return resolvedYouName || currentUser?.firstName || currentUser?.fullName || "You";
+      return memberMap.get(authorId) || currentUser?.firstName || currentUser?.fullName || "You";
     }
-    
-    // For shared notes, if it's not the current user, it must be the partner
-    if (currentCouple && supabaseNote.couple_id) {
-      return resolvedPartnerName || "Partner";
-    }
-    
-    // For personal notes from unknown users, fall back to "Unknown"
+    // Look up from members
+    const name = memberMap.get(authorId);
+    if (name) return name;
+    // Legacy fallback
+    if (currentCouple?.resolvedPartnerName) return currentCouple.resolvedPartnerName;
     return "Unknown";
   };
 
-  // Map task_owner to display name
-  // If no explicit owner is set AND the note is private, default to the creator
   const getTaskOwnerName = (taskOwner: string | null): string | undefined => {
     if (!taskOwner) {
-      // For private notes (no couple_id), default owner to the note creator
       if (!supabaseNote.couple_id && supabaseNote.author_id) {
         if (supabaseNote.author_id === currentUser?.id) {
-          const youName = currentCouple?.resolvedYouName || currentCouple?.you_name;
-          return youName || currentUser?.firstName || currentUser?.fullName || "You";
+          return memberMap.get(supabaseNote.author_id) || currentUser?.firstName || "You";
         }
       }
       return undefined;
     }
-    
-    // Get resolved names
-    const resolvedYouName = currentCouple?.resolvedYouName || currentCouple?.you_name;
-    const resolvedPartnerName = currentCouple?.resolvedPartnerName || currentCouple?.partner_name;
-    
     if (taskOwner.startsWith('user_')) {
-      if (taskOwner === currentUser?.id) {
-        return resolvedYouName || currentUser?.firstName || currentUser?.fullName || "You";
-      }
-      if (currentCouple) {
-        return resolvedPartnerName || "Partner";
-      }
+      const name = memberMap.get(taskOwner);
+      if (name) return name;
+      if (taskOwner === currentUser?.id) return currentUser?.firstName || "You";
       return "Unknown";
     }
-    
     return taskOwner;
   };
 
@@ -124,7 +92,7 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
     recurrence_interval: supabaseNote.recurrence_interval || undefined,
     last_reminded_at: supabaseNote.last_reminded_at || undefined,
     addedBy: getAuthorName(supabaseNote.author_id || ""),
-    authorId: supabaseNote.author_id, // Raw ID for filtering
+    authorId: supabaseNote.author_id,
     createdAt: supabaseNote.created_at,
     updatedAt: supabaseNote.updated_at,
     completed: supabaseNote.completed,
@@ -135,18 +103,16 @@ const convertSupabaseNoteToNote = (supabaseNote: SupabaseNote, currentUser?: any
     list_id: supabaseNote.list_id || undefined,
     media_urls: supabaseNote.media_urls || undefined,
     location: supabaseNote.location as any || undefined,
-    // Add metadata to distinguish note types
     isShared: supabaseNote.couple_id !== null,
     coupleId: supabaseNote.couple_id || undefined,
     is_sensitive: supabaseNote.is_sensitive || false,
   };
 };
 
-// Convert app Note to Supabase note insert type
 const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => ({
   original_text: note.originalText,
   summary: note.summary,
-  category: note.category.toLowerCase().replace(/\s+/g, '_'), // Convert back to AI format
+  category: note.category.toLowerCase().replace(/\s+/g, '_'),
   due_date: note.dueDate,
   completed: note.completed,
   priority: note.priority || null,
@@ -158,34 +124,26 @@ const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "upda
 });
 
 export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentCouple } = useSupabaseCouple();
+  const { currentCouple, members } = useSupabaseCouple();
   const { user } = useAuth();
   const { defaultPrivacy } = useDefaultPrivacy();
-  
-  const { 
-    notes: supabaseNotes, 
-    loading, 
-    addNote: addSupabaseNote, 
-    updateNote: updateSupabaseNote, 
-    deleteNote: deleteSupabaseNote,
-    getNotesByCategory: getSupabaseNotesByCategory,
-    refetch 
-  } = useSupabaseNotes(currentCouple?.id || null); // Pass null for personal notes when no couple
 
-  const notes = useMemo(() => {
-    const convertedNotes = supabaseNotes.map(note => convertSupabaseNoteToNote(note, user, currentCouple));
-    return convertedNotes;
-  }, 
-    [supabaseNotes, user, currentCouple]
+  const {
+    notes: supabaseNotes, loading,
+    addNote: addSupabaseNote, updateNote: updateSupabaseNote,
+    deleteNote: deleteSupabaseNote, getNotesByCategory: getSupabaseNotesByCategory,
+    refetch
+  } = useSupabaseNotes(currentCouple?.id || null);
+
+  const memberMap = useMemo(() => buildMemberMap(members), [members]);
+
+  const notes = useMemo(
+    () => supabaseNotes.map(note => convertSupabaseNoteToNote(note, user, currentCouple, memberMap)),
+    [supabaseNotes, user, currentCouple, memberMap]
   );
 
   const addNote = async (noteData: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => {
-    // Determine couple_id based on privacy:
-    // 1. Explicit isShared flag from UI takes priority
-    // 2. Explicit coupleId from edge functions (e.g. process-note) takes priority
-    // 3. Otherwise, use user's default privacy preference
     let resolvedCoupleId: string | null;
-
     if (noteData.isShared === true) {
       resolvedCoupleId = currentCouple?.id || null;
     } else if (noteData.isShared === false) {
@@ -193,7 +151,6 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     } else if (noteData.coupleId !== undefined) {
       resolvedCoupleId = noteData.coupleId || null;
     } else {
-      // Use default privacy preference
       resolvedCoupleId = defaultPrivacy === "private" ? null : (currentCouple?.id || null);
     }
 
@@ -202,12 +159,11 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
       couple_id: resolvedCoupleId,
     };
     const result = await addSupabaseNote(supabaseNoteData);
-    return result ? convertSupabaseNoteToNote(result, user, currentCouple) : null;
+    return result ? convertSupabaseNoteToNote(result, user, currentCouple, memberMap) : null;
   };
 
   const updateNote = async (id: string, updates: Partial<Note>) => {
     const supabaseUpdates: any = {};
-    
     if (updates.originalText !== undefined) supabaseUpdates.original_text = updates.originalText;
     if (updates.summary !== undefined) supabaseUpdates.summary = updates.summary;
     if (updates.category !== undefined) supabaseUpdates.category = updates.category.toLowerCase().replace(/\s+/g, '_');
@@ -223,28 +179,19 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     if (updates.recurrence_interval !== undefined) supabaseUpdates.recurrence_interval = updates.recurrence_interval;
     if (updates.last_reminded_at !== undefined) supabaseUpdates.last_reminded_at = updates.last_reminded_at;
 
-    // Let useSupabaseNotes handle all field mapping, just pass through the Note fields
     const result = await updateSupabaseNote(id, updates);
-    return result ? convertSupabaseNoteToNote(result, user, currentCouple) : null;
+    return result ? convertSupabaseNoteToNote(result, user, currentCouple, memberMap) : null;
   };
 
-  const deleteNote = async (id: string) => {
-    return await deleteSupabaseNote(id);
-  };
+  const deleteNote = async (id: string) => await deleteSupabaseNote(id);
 
   const getNotesByCategory = (category: string) => {
-    const categoryNotes = getSupabaseNotesByCategory(category.toLowerCase().replace(/\s+/g, '_'));
-    return categoryNotes.map(note => convertSupabaseNoteToNote(note, user, currentCouple));
+    return getSupabaseNotesByCategory(category.toLowerCase().replace(/\s+/g, '_'))
+      .map(note => convertSupabaseNoteToNote(note, user, currentCouple, memberMap));
   };
 
   const value = useMemo(() => ({
-    notes,
-    loading,
-    addNote,
-    updateNote,
-    deleteNote,
-    getNotesByCategory,
-    refetch,
+    notes, loading, addNote, updateNote, deleteNote, getNotesByCategory, refetch,
   }), [notes, loading, refetch]);
 
   return (

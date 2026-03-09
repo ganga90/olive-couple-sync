@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
 import { getSupabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
+import type { SpaceMember } from "@/types/space";
 
 export type SupabaseCouple = {
   id: string;
@@ -11,7 +12,8 @@ export type SupabaseCouple = {
   created_by?: string;
   created_at: string;
   updated_at: string;
-  // Dynamic names based on current user (computed, not stored)
+  max_members?: number;
+  // Legacy compat fields (computed)
   resolvedYouName?: string;
   resolvedPartnerName?: string;
 };
@@ -20,7 +22,8 @@ export type SupabaseCoupleMember = {
   id: string;
   couple_id: string;
   user_id: string;
-  role: 'owner' | 'partner';
+  role: 'owner' | 'member';
+  display_name?: string;
   created_at: string;
 };
 
@@ -28,36 +31,48 @@ export const useSupabaseCouples = () => {
   const { user } = useUser();
   const [couples, setCouples] = useState<SupabaseCouple[]>([]);
   const [currentCouple, setCurrentCouple] = useState<SupabaseCouple | null>(() => {
-    // Load persisted couple session
     const stored = localStorage.getItem('olive_current_couple');
     return stored ? JSON.parse(stored) : null;
   });
+  const [members, setMembers] = useState<SpaceMember[]>([]);
   const [loading, setLoading] = useState(true);
-  
 
+  // Fetch members for a specific couple via RPC
+  const fetchMembers = useCallback(async (coupleId: string) => {
+    try {
+      const supabase = getSupabase();
+      const { data, error } = await supabase.rpc('get_space_members', { p_couple_id: coupleId });
+      if (error) {
+        console.error("[Couples] Error fetching members:", error);
+        return [];
+      }
+      return (data || []) as SpaceMember[];
+    } catch (e) {
+      console.error("[Couples] Exception fetching members:", e);
+      return [];
+    }
+  }, []);
 
   const fetchCouples = useCallback(async () => {
     if (!user) {
       setCouples([]);
       setCurrentCouple(null);
+      setMembers([]);
       setLoading(false);
       return;
     }
 
     setLoading(true);
     try {
-      
       const supabase = getSupabase();
-      
-      // First ensure user profile exists
+
+      // Ensure user profile exists
       await supabase
         .from('clerk_profiles')
         .upsert({
           id: user.id,
           display_name: user.fullName || user.emailAddresses[0]?.emailAddress.split('@')[0] || 'User',
-        }, {
-          onConflict: 'id'
-        });
+        }, { onConflict: 'id' });
 
       const { data, error } = await supabase
         .from("clerk_couple_members")
@@ -65,49 +80,51 @@ export const useSupabaseCouples = () => {
           couple_id,
           role,
           clerk_couples!inner (
-            id,
-            title,
-            you_name,
-            partner_name,
-            created_by,
-            created_at,
-            updated_at
+            id, title, you_name, partner_name, created_by, created_at, updated_at, max_members
           )
         `)
         .eq("user_id", user.id);
 
       if (error) throw error;
 
-      // Transform couples with resolved names based on current user
       const userCouples = (data?.map(member => {
         const couple = member?.clerk_couples as unknown as SupabaseCouple;
         if (!couple) return null;
-        
-        // Determine if current user is the creator or the partner
+
+        // Legacy compat: resolve names from members (will be overwritten below for current couple)
         const isCreator = couple.created_by === user.id;
-        
-        // Swap names based on who is logged in:
-        // - If current user is the creator: you_name is correct, partner_name is correct
-        // - If current user is NOT the creator: swap them (partner sees you_name as their partner)
-        const resolvedYouName = isCreator ? couple.you_name : couple.partner_name;
-        const resolvedPartnerName = isCreator ? couple.partner_name : couple.you_name;
-        
-        
         return {
           ...couple,
-          resolvedYouName,
-          resolvedPartnerName,
+          resolvedYouName: isCreator ? couple.you_name : couple.partner_name,
+          resolvedPartnerName: isCreator ? couple.partner_name : couple.you_name,
         };
       }).filter(Boolean) || []) as SupabaseCouple[];
-      
+
       setCouples(userCouples);
-      
-      // Set the first couple as current if none selected, or clear if no couples
-      if (userCouples.length > 0 && !currentCouple) {
-        setCurrentCouple(userCouples[0]);
-      } else if (userCouples.length === 0) {
+
+      // Determine current couple
+      let activeCoupleId = currentCouple?.id;
+      let activeCouple = userCouples.find(c => c.id === activeCoupleId) || userCouples[0] || null;
+
+      if (activeCouple) {
+        // Fetch members for the active couple
+        const spaceMembers = await fetchMembers(activeCouple.id);
+        setMembers(spaceMembers);
+
+        // Update resolved names from members array
+        const currentMember = spaceMembers.find(m => m.user_id === user.id);
+        const otherMembers = spaceMembers.filter(m => m.user_id !== user.id);
+
+        activeCouple = {
+          ...activeCouple,
+          resolvedYouName: currentMember?.display_name || activeCouple.you_name || '',
+          resolvedPartnerName: otherMembers.map(m => m.display_name).join(', ') || activeCouple.partner_name || '',
+        };
+
+        setCurrentCouple(activeCouple);
+      } else {
         setCurrentCouple(null);
-        // Also clear from localStorage
+        setMembers([]);
         localStorage.removeItem('olive_current_couple');
       }
     } catch (error) {
@@ -116,7 +133,7 @@ export const useSupabaseCouples = () => {
     } finally {
       setLoading(false);
     }
-  }, [user]); // Remove currentCouple dependency to avoid infinite loop
+  }, [user, fetchMembers]);
 
   useEffect(() => {
     fetchCouples();
@@ -124,94 +141,52 @@ export const useSupabaseCouples = () => {
     if (!user) return;
 
     const supabase = getSupabase();
-    
-    // Set up realtime subscription
     const channel = supabase
       .channel("clerk_couples_changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "clerk_couples",
-        },
-        (payload) => {
-          fetchCouples();
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "clerk_couple_members",
-        },
-        (payload) => {
-          fetchCouples();
-        }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "clerk_couples" }, () => fetchCouples())
+      .on("postgres_changes", { event: "*", schema: "public", table: "clerk_couple_members" }, () => fetchCouples())
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [user, fetchCouples]);
 
   const createCouple = useCallback(async (coupleData: { title?: string; you_name?: string; partner_name?: string }) => {
-    
     if (!user) {
-      console.error("[Couples] No user found when creating couple");
       toast.error("You must be signed in to create a couple");
       return null;
     }
 
     try {
       const supabase = getSupabase();
-      
-      // Use the new RPC function to create couple + owner membership
-      const rpcArgs = {
+      const { data, error } = await supabase.rpc('create_couple', {
         p_title: coupleData.title || `${coupleData.you_name} & ${coupleData.partner_name}`,
         p_you_name: coupleData.you_name || '',
         p_partner_name: coupleData.partner_name || ''
-      };
-      const { data, error } = await supabase.rpc('create_couple', rpcArgs);
+      });
 
       if (error) {
-        console.error('[Couples] Failed to create couple via RPC:', error);
         toast.error(`Failed to create couple: ${error.message}`);
         return null;
       }
 
-      
-      // The RPC now returns just the couple_id UUID
       if (!data) {
-        console.error('[Couples] Invalid RPC response - missing couple_id');
         toast.error('Failed to create couple - invalid response');
         return null;
       }
 
-      const coupleId = data;
-      
-      // Fetch the created couple details
       const { data: newCouple, error: fetchError } = await supabase
         .from('clerk_couples')
         .select('*')
-        .eq('id', coupleId)
+        .eq('id', data)
         .single();
 
-      if (fetchError) {
-        console.error('[Couples] Error fetching created couple:', fetchError);
-        throw fetchError;
-      }
+      if (fetchError) throw fetchError;
 
-      
-      // Refresh couples list and set current
       await fetchCouples();
       setCurrentCouple(newCouple);
       toast.success("Your workspace is ready!");
-      
       return newCouple;
-    } catch (error) {
+    } catch (error: any) {
       console.error("[Couples] Exception in createCouple:", error);
       toast.error(`Failed to create couple workspace: ${error.message || error}`);
       return null;
@@ -226,7 +201,6 @@ export const useSupabaseCouples = () => {
 
     try {
       const supabase = getSupabase();
-      
       const { data, error } = await supabase
         .from("clerk_couples")
         .update(updates)
@@ -236,12 +210,10 @@ export const useSupabaseCouples = () => {
 
       if (error) throw error;
       toast.success("Couple workspace updated successfully");
-      
-      // Update current couple if it's the one being updated
+
       if (currentCouple?.id === id) {
         setCurrentCouple(data);
       }
-      
       return data;
     } catch (error) {
       console.error("[Couples] Error updating couple:", error);
@@ -250,12 +222,15 @@ export const useSupabaseCouples = () => {
     }
   }, [user, currentCouple]);
 
-  const switchCouple = useCallback((couple: SupabaseCouple) => {
+  const switchCouple = useCallback(async (couple: SupabaseCouple) => {
     setCurrentCouple(couple);
     localStorage.setItem('olive_current_couple', JSON.stringify(couple));
-  }, []);
+    // Refresh members for new couple
+    const spaceMembers = await fetchMembers(couple.id);
+    setMembers(spaceMembers);
+  }, [fetchMembers]);
 
-  // Persist current couple to localStorage whenever it changes
+  // Persist current couple to localStorage
   useEffect(() => {
     if (currentCouple) {
       localStorage.setItem('olive_current_couple', JSON.stringify(currentCouple));
@@ -267,6 +242,7 @@ export const useSupabaseCouples = () => {
   return {
     couples,
     currentCouple,
+    members,
     loading,
     createCouple,
     updateCouple,
