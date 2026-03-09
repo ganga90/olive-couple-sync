@@ -206,30 +206,30 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
 
   if (!inviteUrl) {
     return (
-      <Card className="p-6 bg-white/50 border-olive/20 shadow-soft space-y-6">
+      <Card className="p-6 bg-card/50 border-border/30 shadow-soft space-y-6">
         <div className="text-center space-y-2">
-          <h3 className="text-lg font-semibold text-olive-dark">Create Invite for {partner}</h3>
+          <h3 className="text-lg font-semibold text-foreground">{t('partnerInfo.createInviteFor', 'Create Invite for {{partner}}', { partner })}</h3>
           <p className="text-sm text-muted-foreground">
-            Generate a shareable link and message to invite {partner} to your Olive space.
+            {t('partnerInfo.generateLinkDescription', 'Generate a shareable link and message to invite {{partner}} to your Olive space.', { partner })}
           </p>
         </div>
 
         <div className="space-y-3">
           <Button 
             onClick={handleCreateInvite}
-            className="w-full bg-olive hover:bg-olive/90 text-white shadow-soft"
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-soft"
             disabled={loading}
           >
-            {loading ? "Creating Invite..." : "Generate Invite Link"}
+            {loading ? t('partnerInfo.creatingInvite', 'Creating Invite...') : t('partnerInfo.generateInviteLink', 'Generate Invite Link')}
           </Button>
 
           <Button 
             onClick={() => setMode("setup")}
             variant="ghost"
-            className="w-full text-muted-foreground hover:text-olive"
+            className="w-full text-muted-foreground hover:text-foreground"
             disabled={loading}
           >
-            Back
+            {t('common:buttons.back', 'Back')}
           </Button>
         </div>
       </Card>
