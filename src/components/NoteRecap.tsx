@@ -64,10 +64,9 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
   
   const { updateNote } = useSupabaseNotesContext();
   const { user } = useAuth();
-  const { currentCouple } = useSupabaseCouple();
+  const { currentCouple, members } = useSupabaseCouple();
   const { lists, createList, loading: listsLoading } = useSupabaseLists(currentCouple?.id || null);
 
-  const { members } = useSupabaseCouple();
   
   const availableOwners = useMemo(() => {
     if (members.length > 0) {
