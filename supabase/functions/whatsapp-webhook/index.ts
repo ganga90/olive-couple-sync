@@ -3754,6 +3754,7 @@ serve(async (req) => {
             }
           }
         }
+      }
 
       // 1. If AI provided a specific task UUID, look it up directly (fastest, most accurate)
       if (!foundTask && aiTaskId) {
