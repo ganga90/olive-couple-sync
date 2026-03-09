@@ -51,13 +51,12 @@ serve(async (req) => {
     const { noteContent, userMessage, noteCategory, user_id } = await req.json();
     console.log('[Ask Olive] Processing request with note:', noteContent);
 
-    const geminiApiKey = Deno.env.get('GEMINI_API');
-    if (!geminiApiKey) {
+    if (!GEMINI_KEY) {
       throw new Error('GEMINI_API environment variable not found');
     }
 
-    // Initialize clients
-    const genai = new GoogleGenAI({ apiKey: geminiApiKey });
+    // Initialize clients using shared config
+    const genai = new GoogleGenAI({ apiKey: GEMINI_KEY });
     
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
