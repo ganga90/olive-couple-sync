@@ -369,7 +369,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
 
   const clearMediaFiles = () => {
     mediaPreviews.forEach(preview => {
-      if (preview && preview !== 'audio') {
+      if (preview && preview !== 'audio' && preview !== 'pdf') {
         URL.revokeObjectURL(preview);
       }
     });

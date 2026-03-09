@@ -37,6 +37,7 @@ import AuthRedirectNative from "./pages/AuthRedirectNative";
 import NativeWelcome from "./pages/NativeWelcome";
 import CookieConsentBanner from "./components/CookieConsentBanner";
 import { FeedbackDialog } from "./components/FeedbackDialog";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 // Import i18n configuration
 import './lib/i18n/config';
@@ -78,60 +79,34 @@ const AppRoutes = () => (
 );
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <Toaster />
-    <Sonner />
-    <AuthProvider>
-      <SupabaseCoupleProvider>
-        <SupabaseNotesProvider>
-          <BrowserRouter>
-            <LanguageProvider>
-              <AppLayout>
-                <Routes>
-                  {/* Spanish (Spain) routes */}
-                  <Route path="/es-es/*" element={<AppRoutes />} />
-                  {/* Italian routes */}
-                  <Route path="/it-it/*" element={<AppRoutes />} />
-                  {/* English (default) routes */}
-                  <Route path="/" element={<Root />} />
-                  <Route path="/landing" element={<Landing />} />
-                  <Route path="/home" element={<Home />} />
-                  <Route path="/myday" element={<MyDay />} />
-                  <Route path="/lists" element={<Lists />} />
-                  <Route path="/lists/:listId" element={<ListCategory />} />
-                  <Route path="/calendar" element={<CalendarPage />} />
-                  <Route path="/reminders" element={<Reminders />} />
-                   <Route path="/expenses" element={<ExpensesPage />} />
-                  <Route path="/onboarding" element={<Onboarding />} />
-                  <Route path="/welcome" element={<Welcome />} />
-                  <Route path="/profile" element={<Profile />} />
-                  <Route path="/agents/:agentId" element={<AgentDetail />} />
-                  <Route path="/notes/:id" element={<NoteDetails />} />
-                  <Route path="/auth" element={<AuthPage />} />
-                  <Route path="/sign-in" element={<SignInPage />} />
-                  <Route path="/sign-up" element={<SignUpPage />} />
-                   <Route path="/request-access" element={<RequestAccessPage />} />
-                   <Route path="/admin" element={<AdminPage />} />
-                   <Route path="/auth-redirect-native" element={<AuthRedirectNative />} />
-                  <Route path="/native-welcome" element={<NativeWelcome />} />
-                  <Route path="/accept-invite" element={<AcceptInvite />} />
-                  <Route path="/join/:token" element={<JoinInvite />} />
-                  <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
-                  <Route path="/auth/oura/callback" element={<OuraCallback />} />
-                  <Route path="/legal/terms" element={<TermsOfService />} />
-                  <Route path="/legal/privacy" element={<PrivacyPolicy />} />
-                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-                <CookieConsentBanner />
-                <FeedbackDialog />
-              </AppLayout>
-            </LanguageProvider>
-          </BrowserRouter>
-        </SupabaseNotesProvider>
-      </SupabaseCoupleProvider>
-    </AuthProvider>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <Toaster />
+      <Sonner />
+      <AuthProvider>
+        <SupabaseCoupleProvider>
+          <SupabaseNotesProvider>
+            <BrowserRouter>
+              <LanguageProvider>
+                <AppLayout>
+                  <Routes>
+                    {/* Spanish (Spain) routes */}
+                    <Route path="/es-es/*" element={<AppRoutes />} />
+                    {/* Italian routes */}
+                    <Route path="/it-it/*" element={<AppRoutes />} />
+                    {/* English (default) routes - all handled by AppRoutes */}
+                    <Route path="*" element={<AppRoutes />} />
+                  </Routes>
+                  <CookieConsentBanner />
+                  <FeedbackDialog />
+                </AppLayout>
+              </LanguageProvider>
+            </BrowserRouter>
+          </SupabaseNotesProvider>
+        </SupabaseCoupleProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;
