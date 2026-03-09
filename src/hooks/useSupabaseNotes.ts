@@ -194,12 +194,16 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
     try {
       
       // Convert camelCase input to snake_case for database insert
+      // IMPORTANT: Use the couple_id from noteData directly — the provider has already
+      // resolved the correct value based on the user's privacy preference.
+      // Do NOT fallback to the hook-level coupleId, as that would override private notes.
+      const resolvedCoupleId = noteData.couple_id !== undefined ? noteData.couple_id : (providedCoupleId !== undefined ? providedCoupleId : coupleId);
       const insertData: any = {
         original_text: noteData.original_text,
         summary: noteData.summary,
         category: noteData.category,
         completed: noteData.completed ?? false,
-        couple_id: providedCoupleId || coupleId || null,
+        couple_id: resolvedCoupleId ?? null,
         author_id: user.id,
       };
       

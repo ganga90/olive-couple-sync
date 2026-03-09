@@ -151,7 +151,6 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     } else if (noteData.coupleId !== undefined) {
       resolvedCoupleId = noteData.coupleId || null;
     } else {
-      // Use the current defaultPrivacy value (not stale closure)
       resolvedCoupleId = defaultPrivacy === "private" ? null : (currentCouple?.id || null);
     }
 
