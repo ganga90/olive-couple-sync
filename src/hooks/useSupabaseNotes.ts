@@ -325,29 +325,41 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
             case 'couple_id': // Handle both camelCase and snake_case
               supabaseUpdates.couple_id = value;
               break;
+            case 'taskOwner':
             case 'task_owner':
               supabaseUpdates.task_owner = value;
               break;
+            case 'listId':
             case 'list_id':
               supabaseUpdates.list_id = value;
               break;
-            case 'category':
-              // Apply category transformation for AI format
-              supabaseUpdates.category = typeof value === 'string' ? value.toLowerCase().replace(/\s+/g, '_') : value;
+            case 'recurrenceFrequency':
+            case 'recurrence_frequency':
+              supabaseUpdates.recurrence_frequency = value;
               break;
-            // Direct mappings for fields that match
-            case 'summary':
-            case 'priority':
-            case 'tags':
-            case 'items':
-            case 'completed':
-              supabaseUpdates[key] = value;
+            case 'recurrenceInterval':
+            case 'recurrence_interval':
+              supabaseUpdates.recurrence_interval = value;
               break;
-            case 'isShared':
-              // Ignore isShared - privacy is controlled by couple_id
+            case 'lastRemindedAt':
+            case 'last_reminded_at':
+              supabaseUpdates.last_reminded_at = value;
+              break;
+            case 'mediaUrls':
+            case 'media_urls':
+              supabaseUpdates.media_urls = value;
               break;
             case 'is_sensitive':
               supabaseUpdates.is_sensitive = value;
+              break;
+            // Skip frontend-only / computed fields
+            case 'id':
+            case 'createdAt':
+            case 'updatedAt':
+            case 'addedBy':
+            case 'authorId':
+            case 'olive_tips':
+            case 'location':
               break;
             default:
               console.warn("[useSupabaseNotes] Ignoring unknown field:", key);

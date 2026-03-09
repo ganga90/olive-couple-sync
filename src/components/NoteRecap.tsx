@@ -624,7 +624,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
 
         {/* Original text reference */}
         <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-lg border border-border/30">
-          <span className="font-medium">Original:</span> "{note.originalText.length > 150 ? note.originalText.slice(0, 150) + '...' : note.originalText}"
+          <span className="font-medium">{t("originalNote")}:</span> "{note.originalText.length > 150 ? note.originalText.slice(0, 150) + '...' : note.originalText}"
         </div>
       </div>
     </Card>
