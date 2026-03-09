@@ -28,7 +28,9 @@
     "youOwedFull": "{{partner}} debe el monto total",
     "partnerPaidSplit": "{{partner}} pagó, dividir equitativamente",
     "partnerOwedFull": "{{you}} debe el monto total",
-    "individual": "Individual (sin división)"
+    "individual": "Individual (sin división)",
+    "othersOweFull": "Los demás deben el monto total",
+    "otherPaidSplit": "Otro pagó, dividir equitativamente"
   },
   "row": {
     "youLent": "{{you}} prestó {{symbol}}{{amount}}",
