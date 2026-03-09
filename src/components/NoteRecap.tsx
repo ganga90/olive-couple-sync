@@ -38,6 +38,7 @@ interface NoteRecapProps {
 }
 
 export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdated }) => {
+  const { t } = useTranslation("notes");
   const [isEditing, setIsEditing] = useState(false);
   
   const formatDateForEdit = (dateValue: string | null | undefined): string => {
