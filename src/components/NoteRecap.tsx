@@ -520,7 +520,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
               <Textarea
                 value={editedNote.items}
                 onChange={(e) => setEditedNote(prev => ({ ...prev, items: e.target.value }))}
-                placeholder="Enter items, one per line..."
+                placeholder={t("recap.itemsPlaceholder", "Enter items, one per line...")}
                 className="text-sm border-border focus:border-primary resize-none"
                 rows={3}
               />
