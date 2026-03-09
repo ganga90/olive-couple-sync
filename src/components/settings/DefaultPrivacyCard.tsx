@@ -72,7 +72,7 @@ export const DefaultPrivacyCard: React.FC = () => {
           selected={defaultPrivacy === "shared"}
           icon={Users}
           title={t("defaultPrivacy.shared", "Shared")}
-          description={t("defaultPrivacy.sharedDesc", "You and your partner")}
+          description={t("defaultPrivacy.sharedDesc", "You and the members of the space")}
           onClick={() => saveDefaultPrivacy("shared")}
           color="bg-primary/10"
         />
