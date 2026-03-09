@@ -280,9 +280,11 @@ async function runStaleTaskStrategist(ctx: AgentContext): Promise<AgentResult> {
     })
     .join("\n");
 
-  const response = await ctx.genai.models.generateContent({
-    model: "gemini-2.5-pro", // Pro: complex reasoning about task relevance + priorities
-    contents: `You are a productivity coach for a couples app called Olive.
+  let analysis: string;
+  try {
+    const response = await ctx.genai.models.generateContent({
+      model: "gemini-2.5-flash", // Flash: structured analysis with clear instructions
+      contents: `You are a productivity coach for a couples app called Olive.
 
 Analyze these stale tasks (not completed, no due date, older than ${stalenessdays} days). For each, suggest ONE action:
 - BREAK_DOWN: Task is too big, suggest 2-3 smaller sub-tasks
@@ -300,10 +302,23 @@ Reply in this format for a WhatsApp message (keep it concise, max 1000 chars tot
 • "[task name]" → [ACTION]: [brief reason]
 
 End with a motivational one-liner.`,
-    config: { temperature: 0.3, maxOutputTokens: 800 },
-  });
+      config: { temperature: 0.3, maxOutputTokens: 1200 },
+    });
 
-  const analysis = response.text || "Could not analyze tasks.";
+    analysis = response.text?.trim() || "";
+    if (!analysis || analysis.length < 10) {
+      console.error("[Stale Task Agent] Gemini returned empty/short response");
+      analysis = `📋 Task Strategist Report\n\nFound ${staleTasks.length} stale tasks that need attention. Open Olive to review them.`;
+    }
+  } catch (err) {
+    console.error("[Stale Task Agent] Gemini call failed:", err);
+    // Provide a useful fallback instead of "Could not analyze tasks"
+    const topTasks = staleTasks.slice(0, 5).map((t, i) => {
+      const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60 * 24));
+      return `• "${t.summary}" — ${age} days old`;
+    }).join("\n");
+    analysis = `📋 Task Strategist Report\n\n⚠️ ${staleTasks.length} tasks have been sitting for a while:\n${topTasks}\n\nConsider archiving or scheduling them!`;
+  }
 
   // Build richer data for frontend rendering
   const tasksSummary = staleTasks.map((t) => {
@@ -430,9 +445,11 @@ async function runEnergyTaskSuggester(ctx: AgentContext): Promise<AgentResult> {
 
   const taskList = tasks.map((t, i) => `${i + 1}. "${t.summary}" (priority: ${t.priority || "normal"}, category: ${t.category || "general"})`).join("\n");
 
-  const response = await ctx.genai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: `You are an energy-aware productivity coach.
+  let energyMessage: string;
+  try {
+    const response = await ctx.genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `You are an energy-aware productivity coach.
 
 User's biometrics today:
 - Readiness: ${latestOura.readinessScore}/100
@@ -441,11 +458,20 @@ User's biometrics today:
 Today's tasks:
 ${taskList}
 
-Based on their energy level, suggest the optimal order to tackle these tasks. Keep it brief (3-4 sentences max) for a WhatsApp message. Start with an energy emoji (🔋/⚡/😴) based on readiness score.`,
-    config: { temperature: 0.3, maxOutputTokens: 400 },
-  });
+Based on their energy level, suggest the optimal order to tackle these tasks. Keep it brief (3-4 sentences max) for a WhatsApp message. Start with an energy emoji (🔋/⚡/😴) based on readiness score. IMPORTANT: Always write your COMPLETE response.`,
+      config: { temperature: 0.3, maxOutputTokens: 600 },
+    });
 
-  const energyMessage = response.text || "";
+    energyMessage = response.text?.trim() || "";
+    if (!energyMessage || energyMessage.length < 10) {
+      const emoji = (latestOura.readinessScore || 0) >= 75 ? "⚡" : (latestOura.readinessScore || 0) >= 50 ? "🔋" : "😴";
+      energyMessage = `${emoji} Readiness: ${latestOura.readinessScore}/100, Sleep: ${latestOura.sleepScore || "N/A"}/100. You have ${tasks.length} tasks today. Open Olive to review them.`;
+    }
+  } catch (err) {
+    console.error("[Energy Agent] Gemini call failed:", err);
+    const emoji = (latestOura.readinessScore || 0) >= 75 ? "⚡" : (latestOura.readinessScore || 0) >= 50 ? "🔋" : "😴";
+    energyMessage = `${emoji} Readiness: ${latestOura.readinessScore}/100, Sleep: ${latestOura.sleepScore || "N/A"}/100. You have ${tasks.length} tasks today.`;
+  }
   return {
     success: true,
     message: energyMessage,
@@ -484,9 +510,11 @@ async function runSleepOptimizationCoach(ctx: AgentContext): Promise<AgentResult
     })
     .join("\n");
 
-  const response = await ctx.genai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: `You are a sleep optimization coach. Analyze this 7-day sleep data and provide ONE actionable tip.
+  let tip: string;
+  try {
+    const response = await ctx.genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `You are a sleep optimization coach. Analyze this 7-day sleep data and provide ONE actionable tip.
 
 Data:
 ${sleepSummary}
@@ -496,13 +524,26 @@ Previously sent tips (don't repeat these): ${sentTips.join(", ") || "none"}
 Rules:
 - Only respond if there's a clear pattern or issue (declining scores, inconsistency, low scores)
 - If everything looks good, respond with exactly "ALL_GOOD"
-- Keep the tip under 280 chars for WhatsApp
+- Keep the tip under 500 chars for WhatsApp
 - Start with 🛏️ and be encouraging, not preachy
-- Be specific (e.g., "try a 10pm bedtime" not "sleep earlier")`,
-    config: { temperature: 0.3, maxOutputTokens: 300 },
-  });
+- Be specific (e.g., "try a 10pm bedtime" not "sleep earlier")
+- IMPORTANT: Always write your COMPLETE response. Do not stop mid-sentence.`,
+      config: { temperature: 0.3, maxOutputTokens: 600 },
+    });
 
-  const tip = response.text || "";
+    tip = response.text?.trim() || "";
+    if (!tip || tip.length < 5) {
+      console.error("[Sleep Coach] Gemini returned empty/short response");
+      return { success: true, message: "Sleep looks good, no tip needed", notifyUser: false };
+    }
+  } catch (err) {
+    console.error("[Sleep Coach] Gemini call failed:", err);
+    // Build a basic fallback from the raw data
+    const latest = scores[0];
+    const avgSleep = Math.round(scores.reduce((s, d) => s + (d.sleepScore || 0), 0) / scores.filter(d => d.sleepScore).length);
+    tip = `🛏️ Your average sleep score this week is ${avgSleep}/100. ${avgSleep < 70 ? "Consider going to bed 30 minutes earlier tonight." : "Keep up the good routine!"}`;
+  }
+
   if (tip.includes("ALL_GOOD")) {
     return { success: true, message: "Sleep looks good, no tip needed", notifyUser: false };
   }
@@ -616,10 +657,11 @@ async function runBirthdayGiftAgent(ctx: AgentContext): Promise<AgentResult> {
       .maybeSingle();
 
     if (date.daysUntil >= 25 && !previousSuggestions[dateKey]) {
-      // First reminder (30 days) — generate gift ideas
-      const response = await ctx.genai.models.generateContent({
-        model: "gemini-2.5-pro", // Pro: creative + personalized gift suggestions
-        contents: `You are a thoughtful gift advisor for a couples app.
+      let suggestion: string;
+      try {
+        const response = await ctx.genai.models.generateContent({
+          model: "gemini-2.5-flash", // Flash: structured gift suggestions
+          contents: `You are a thoughtful gift advisor for a couples app.
 
 Upcoming event: ${date.name} in ${date.daysUntil} days (${date.date.toLocaleDateString("en-US")})
 Person's profile context: ${memory?.content || "No specific preferences known"}
@@ -632,11 +674,14 @@ Suggest 3 gift ideas. Format for WhatsApp:
 2. [Gift idea] — ~$XX
 3. [Gift idea] — ~$XX
 
-Keep it warm and personal.`,
-        config: { temperature: 0.7, maxOutputTokens: 400 },
-      });
-
-      const suggestion = response.text || "";
+Keep it warm and personal. IMPORTANT: Always write your COMPLETE response.`,
+          config: { temperature: 0.7, maxOutputTokens: 600 },
+        });
+        suggestion = response.text?.trim() || `🎁 ${date.name} is in ${date.daysUntil} days! Time to start thinking about a gift.`;
+      } catch (err) {
+        console.error("[Birthday Agent] Gemini call failed:", err);
+        suggestion = `🎁 ${date.name} is in ${date.daysUntil} days! Time to start thinking about a gift.`;
+      }
       messages.push(suggestion);
       newState[dateKey] = [suggestion];
     } else if (date.daysUntil >= 10 && date.daysUntil <= 15) {
@@ -726,9 +771,11 @@ async function runWeeklyCoupleSyncAgent(ctx: AgentContext): Promise<AgentResult>
   ⏳ Pending: ${myPending.length} tasks${myPending.filter((t: { priority: string | null }) => t.priority === "high").length > 0 ? ` (${myPending.filter((t: { priority: string | null }) => t.priority === "high").length} high priority)` : ""}`;
   });
 
-  const response = await ctx.genai.models.generateContent({
-    model: "gemini-2.5-pro", // Pro: relationship-sensitive analysis across two people
-    contents: `You are a couples coordination assistant. Generate a brief weekly sync summary.
+  let syncMessage: string;
+  try {
+    const response = await ctx.genai.models.generateContent({
+      model: "gemini-2.5-flash", // Flash: structured summary
+      contents: `You are a couples coordination assistant. Generate a brief weekly sync summary.
 
 This week's activity:
 ${partnerSummaries.join("\n\n")}
@@ -740,16 +787,24 @@ Generate a warm, brief WhatsApp message (max 600 chars) that:
 1. Celebrates what was accomplished together
 2. Highlights what's still pending
 3. Suggests 1-2 discussion topics for the couple's weekly check-in
-Start with 💑 Weekly Sync`,
-    config: { temperature: 0.5, maxOutputTokens: 500 },
-  });
+Start with 💑 Weekly Sync. IMPORTANT: Always write your COMPLETE response.`,
+      config: { temperature: 0.5, maxOutputTokens: 700 },
+    });
+    syncMessage = response.text?.trim() || "";
+    if (!syncMessage || syncMessage.length < 10) {
+      syncMessage = `💑 Weekly Sync\n\n✅ Completed: ${(completed || []).length} tasks\n⏳ Pending: ${(pending || []).length} tasks\n\nOpen Olive to review together!`;
+    }
+  } catch (err) {
+    console.error("[Couple Sync Agent] Gemini call failed:", err);
+    syncMessage = `💑 Weekly Sync\n\n✅ Completed: ${(completed || []).length} tasks\n⏳ Pending: ${(pending || []).length} tasks\n\nOpen Olive to review together!`;
+  }
 
   return {
     success: true,
-    message: response.text || "",
+    message: syncMessage,
     data: { completedTotal: (completed || []).length, pendingTotal: (pending || []).length, sendToBoth: true, partnerIds },
     notifyUser: true,
-    notificationMessage: response.text || "",
+    notificationMessage: syncMessage,
   };
 }
 
