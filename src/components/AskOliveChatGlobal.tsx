@@ -214,10 +214,48 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
     }
   }, [messages]);
 
+  // Parse Gemini SSE stream and extract text
+  const parseGeminiSSE = async (
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    onDelta: (text: string) => void
+  ) => {
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete lines
+      let newlineIndex: number;
+      while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+        let line = buffer.slice(0, newlineIndex);
+        buffer = buffer.slice(newlineIndex + 1);
+
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        if (!line.startsWith("data: ")) continue;
+
+        const jsonStr = line.slice(6).trim();
+        if (jsonStr === "[DONE]" || !jsonStr) continue;
+
+        try {
+          const parsed = JSON.parse(jsonStr);
+          // Gemini format: candidates[0].content.parts[0].text
+          const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) onDelta(text);
+        } catch {
+          // Incomplete JSON, will be completed in next chunk
+        }
+      }
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!input.trim() || !user || isLoading) return;
+    if (!input.trim() || !user || isLoading || isStreaming) return;
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
@@ -229,6 +267,10 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+    setIsStreaming(true);
+
+    // Create abort controller for cancellation
+    abortControllerRef.current = new AbortController();
 
     try {
       // Build conversation history for multi-turn context
@@ -239,68 +281,140 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
           content: m.content,
         }));
 
-      const { data, error } = await supabase.functions.invoke("ask-olive-individual", {
-        body: {
-          // ask-olive-individual expects these fields for legacy support
-          noteContent: "",
-          noteCategory: "general",
-          noteTitle: "Global chat",
-          userMessage: userMessage.content,
-          previousInteractionId: interactionId,
-          user_id: user.id,
-          // New global chat context
+      // Try streaming first
+      const streamUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ask-olive-stream`;
+      
+      const response = await fetch(streamUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
           message: userMessage.content,
+          user_id: user.id,
           couple_id: currentCouple?.id,
           context: {
             source: "global_chat",
             user_name: you,
-            // Include the user's saved data as context
             saved_items_context: userContext,
-            // Include conversation history for multi-turn
             conversation_history: conversationHistory,
           },
-        },
+        }),
+        signal: abortControllerRef.current.signal,
       });
 
-      if (error) throw error;
-
-      // Persist interaction ID (for multi-turn continuity)
-      if (data?.interactionId) {
-        setInteractionId(String(data.interactionId));
+      if (!response.ok || !response.body) {
+        throw new Error("Streaming not available");
       }
 
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        content:
-          data?.reply ||
-          data?.response ||
-          t("askOlive.error", "I'm having trouble responding right now. Please try again."),
-        timestamp: new Date(),
-        // Include RAG citations if present
-        citations: data?.citations,
-        sourcesUsed: data?.sources_used,
-        // Include task action result if present
-        action: data?.action,
-      };
+      // Create assistant message placeholder
+      const assistantId = `assistant-${Date.now()}`;
+      let assistantContent = "";
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: assistantId,
+          role: "assistant",
+          content: "",
+          timestamp: new Date(),
+        },
+      ]);
 
-      // If a task action was executed successfully, refetch notes to update the UI
-      if (data?.action?.success) {
-        refetchNotes?.();
+      setIsLoading(false);
+
+      // Stream the response
+      const reader = response.body.getReader();
+      await parseGeminiSSE(reader, (deltaText) => {
+        assistantContent += deltaText;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, content: assistantContent } : m
+          )
+        );
+      });
+
+      // If empty response, show fallback
+      if (!assistantContent.trim()) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, content: t("askOlive.error", "I'm having trouble responding right now. Please try again.") }
+              : m
+          )
+        );
       }
-    } catch (error) {
-      console.error("Ask Olive error:", error);
-      const errorMessage: Message = {
-        id: `error-${Date.now()}`,
-        role: "assistant",
-        content: t("askOlive.connectionError", "Sorry, I'm having trouble connecting right now. Please try again."),
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+
+    } catch (error: any) {
+      if (error.name === "AbortError") {
+        console.log("Stream aborted by user");
+        return;
+      }
+
+      console.error("Streaming error, falling back to non-streaming:", error);
+      
+      // Fallback to non-streaming endpoint
+      try {
+        const { data, error: invokeError } = await supabase.functions.invoke("ask-olive-individual", {
+          body: {
+            noteContent: "",
+            noteCategory: "general",
+            noteTitle: "Global chat",
+            userMessage: userMessage.content,
+            previousInteractionId: interactionId,
+            user_id: user.id,
+            message: userMessage.content,
+            couple_id: currentCouple?.id,
+            context: {
+              source: "global_chat",
+              user_name: you,
+              saved_items_context: userContext,
+              conversation_history: messages
+                .filter((m) => m.id !== "greeting")
+                .map((m) => ({ role: m.role, content: m.content })),
+            },
+          },
+        });
+
+        if (invokeError) throw invokeError;
+
+        if (data?.interactionId) {
+          setInteractionId(String(data.interactionId));
+        }
+
+        const assistantMessage: Message = {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          content:
+            data?.reply ||
+            data?.response ||
+            t("askOlive.error", "I'm having trouble responding right now. Please try again."),
+          timestamp: new Date(),
+          citations: data?.citations,
+          sourcesUsed: data?.sources_used,
+          action: data?.action,
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+
+        if (data?.action?.success) {
+          refetchNotes?.();
+        }
+      } catch (fallbackError) {
+        console.error("Fallback also failed:", fallbackError);
+        const errorMessage: Message = {
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: t("askOlive.connectionError", "Sorry, I'm having trouble connecting right now. Please try again."),
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
+      abortControllerRef.current = null;
     }
   };
 
