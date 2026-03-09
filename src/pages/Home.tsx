@@ -186,15 +186,30 @@ const Home = () => {
   };
 
   const getAuthorName = (note: Note) => {
-    if (!note.task_owner) return 'Everyone';
-    // Try to resolve as user_id first (new multi-member format)
-    const resolved = getMemberName(note.task_owner);
-    if (resolved !== 'Unknown') return resolved;
-    // Legacy fallback
-    if (note.task_owner === 'you') return you || 'You';
-    if (note.task_owner === 'partner') return partner || 'Partner';
-    // Could be a display name already
-    return note.task_owner;
+    // For private tasks, always show the actual author
+    if (!note.isShared && note.authorId) {
+      if (note.authorId === user?.id) return t('home:taskOwner.you', 'You');
+      const resolved = getMemberName(note.authorId);
+      return resolved !== 'Unknown' ? resolved : note.addedBy;
+    }
+    // For shared tasks, use task_owner if set, otherwise resolve from authorId
+    if (note.task_owner) {
+      // If the resolved task_owner matches the current user, show "You"
+      if (note.authorId === user?.id && (!note.task_owner.startsWith('user_'))) {
+        // task_owner was resolved to a display name — check if it's actually us
+        const currentUserName = getMemberName(user?.id || '');
+        if (note.task_owner === currentUserName) return t('home:taskOwner.you', 'You');
+      }
+      const resolved = getMemberName(note.task_owner);
+      if (resolved !== 'Unknown') return resolved;
+      return note.task_owner;
+    }
+    // No task_owner on a shared task — resolve from authorId
+    if (note.authorId) {
+      if (note.authorId === user?.id) return t('home:taskOwner.you', 'You');
+      return getMemberName(note.authorId);
+    }
+    return t('home:taskOwner.everyone', 'Everyone');
   };
 
   if (!isAuthenticated) {
