@@ -61,6 +61,8 @@ export default {
 				},
 				sage: 'hsl(var(--sage))',
 				cream: 'hsl(var(--cream))',
+				'desk-background': 'hsl(var(--desk-background))',
+				'paper-surface': 'hsl(var(--paper-surface))',
 				success: 'hsl(var(--success))',
 				info: 'hsl(var(--info))',
 				warning: 'hsl(var(--warning))',
