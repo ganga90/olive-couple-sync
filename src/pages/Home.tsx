@@ -724,6 +724,29 @@ const Home = () => {
         open={emailTriageOpen}
         onOpenChange={setEmailTriageOpen}
       />
+
+      {/* Command Palette (Cmd+K) */}
+      <CommandDialog open={searchOpen} onOpenChange={setSearchOpen}>
+        <CommandInput placeholder={t('home:search.placeholder', 'Search tasks, lists...')} />
+        <CommandList>
+          <CommandEmpty>{t('home:search.noResults', 'No results found')}</CommandEmpty>
+          <CommandGroup heading={t('home:search.tasks', 'Tasks')}>
+            {filteredNotes.slice(0, 8).map((task) => (
+              <CommandItem
+                key={task.id}
+                onSelect={() => {
+                  navigate(getLocalizedPath(`/notes/${task.id}`));
+                  setSearchOpen(false);
+                }}
+              >
+                <span className={task.completed ? 'line-through text-muted-foreground' : ''}>
+                  {task.summary}
+                </span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        </CommandList>
+      </CommandDialog>
     </div>
   );
 };
