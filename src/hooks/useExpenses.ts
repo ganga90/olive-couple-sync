@@ -161,11 +161,12 @@ export function useExpenses() {
         .single();
       if (error) throw error;
       if (data) {
-        setPreferences({
+        setPreferences(prev => ({
+          ...prev,
           trackingMode: data.expense_tracking_mode || 'individual',
           defaultSplit: (data.expense_default_split as ExpenseSplitType) || 'you_paid_split',
           defaultCurrency: data.expense_default_currency || 'USD',
-        });
+        }));
       }
     } catch (err) {
       console.error('[useExpenses] preferences fetch error:', err);
