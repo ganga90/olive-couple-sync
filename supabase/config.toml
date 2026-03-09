@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.recurring-expenses]
 verify_jwt = false
+
+[functions.ask-olive-stream]
+verify_jwt = false
