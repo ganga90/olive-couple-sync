@@ -499,9 +499,11 @@ async function runSleepOptimizationCoach(ctx: AgentContext): Promise<AgentResult
     })
     .join("\n");
 
-  const response = await ctx.genai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: `You are a sleep optimization coach. Analyze this 7-day sleep data and provide ONE actionable tip.
+  let tip: string;
+  try {
+    const response = await ctx.genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `You are a sleep optimization coach. Analyze this 7-day sleep data and provide ONE actionable tip.
 
 Data:
 ${sleepSummary}
@@ -511,13 +513,26 @@ Previously sent tips (don't repeat these): ${sentTips.join(", ") || "none"}
 Rules:
 - Only respond if there's a clear pattern or issue (declining scores, inconsistency, low scores)
 - If everything looks good, respond with exactly "ALL_GOOD"
-- Keep the tip under 280 chars for WhatsApp
+- Keep the tip under 500 chars for WhatsApp
 - Start with 🛏️ and be encouraging, not preachy
-- Be specific (e.g., "try a 10pm bedtime" not "sleep earlier")`,
-    config: { temperature: 0.3, maxOutputTokens: 300 },
-  });
+- Be specific (e.g., "try a 10pm bedtime" not "sleep earlier")
+- IMPORTANT: Always write your COMPLETE response. Do not stop mid-sentence.`,
+      config: { temperature: 0.3, maxOutputTokens: 600 },
+    });
 
-  const tip = response.text || "";
+    tip = response.text?.trim() || "";
+    if (!tip || tip.length < 5) {
+      console.error("[Sleep Coach] Gemini returned empty/short response");
+      return { success: true, message: "Sleep looks good, no tip needed", notifyUser: false };
+    }
+  } catch (err) {
+    console.error("[Sleep Coach] Gemini call failed:", err);
+    // Build a basic fallback from the raw data
+    const latest = scores[0];
+    const avgSleep = Math.round(scores.reduce((s, d) => s + (d.sleepScore || 0), 0) / scores.filter(d => d.sleepScore).length);
+    tip = `🛏️ Your average sleep score this week is ${avgSleep}/100. ${avgSleep < 70 ? "Consider going to bed 30 minutes earlier tonight." : "Keep up the good routine!"}`;
+  }
+
   if (tip.includes("ALL_GOOD")) {
     return { success: true, message: "Sleep looks good, no tip needed", notifyUser: false };
   }
