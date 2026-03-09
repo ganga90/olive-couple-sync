@@ -62,7 +62,7 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
         type: isAssignedToYou ? 'assigned' : 'added' as const
       };
     });
-  }, [notes, userId, currentCouple]);
+  }, [notes, userId, currentCouple, members, getMemberName, partnerName]);
 
   // Don't show widget if no couple
   if (!currentCouple || !partner) {
