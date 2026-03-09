@@ -401,7 +401,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
           <div className="space-y-3 pt-2 animate-fade-in">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Priority</label>
+                <label className="text-xs font-medium text-muted-foreground">{t("edit.priority")}</label>
                 <Select value={editedNote.priority} onValueChange={(value) => setEditedNote(prev => ({ ...prev, priority: value as "low" | "medium" | "high" }))}>
                   <SelectTrigger className="h-9 text-sm border-border focus:border-primary">
                     <SelectValue />
