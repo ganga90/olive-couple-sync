@@ -551,7 +551,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
           <div className="space-y-2 animate-fade-in">
             <div className="flex items-center gap-2">
               <Tag className="h-4 w-4 text-muted-foreground" />
-              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tags</h4>
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("tags")}</h4>
             </div>
             {isEditing ? (
               <Input
