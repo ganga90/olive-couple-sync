@@ -1025,6 +1025,65 @@ serve(async (req: Request) => {
           } catch (gwCatchErr) {
             console.error(`[Agent Runner] WhatsApp gateway threw for ${agent_id}:`, gwCatchErr);
           }
+
+          // ── Store task list in user_sessions for ordinal resolution ──
+          // When an agent report contains numbered tasks (e.g., stale-task-strategist),
+          // store them as last_displayed_list so "archive the first one" works via WhatsApp
+          const taskList = result.data?.tasks as Array<{ id: string; summary: string }> | undefined;
+          if (taskList && taskList.length > 0) {
+            try {
+              const displayedList = taskList.map((t, i) => ({
+                id: t.id,
+                summary: t.summary,
+                position: i,
+              }));
+
+              // Update user_sessions context_data
+              const { data: existingSession } = await supabase
+                .from("user_sessions")
+                .select("id, context_data")
+                .eq("user_id", user_id)
+                .order("updated_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (existingSession) {
+                const currentCtx = (existingSession.context_data || {}) as Record<string, unknown>;
+                await supabase
+                  .from("user_sessions")
+                  .update({
+                    context_data: {
+                      ...currentCtx,
+                      last_displayed_list: displayedList,
+                      list_displayed_at: new Date().toISOString(),
+                    },
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("id", existingSession.id);
+                console.log(`[Agent Runner] Stored ${displayedList.length} tasks in user_sessions for ordinal resolution`);
+              }
+
+              // Also store task IDs in last_outbound_context for webhook fallback resolution
+              const allTaskIds = taskList.map((t) => ({ id: t.id, summary: t.summary }));
+              await supabase
+                .from("clerk_profiles")
+                .update({
+                  last_outbound_context: {
+                    message_type: "agent_insight",
+                    content: (result.notificationMessage || "").substring(0, 500),
+                    sent_at: new Date().toISOString(),
+                    status: "sent",
+                    all_task_ids: allTaskIds,
+                    task_id: allTaskIds[0]?.id,
+                    task_summary: allTaskIds[0]?.summary,
+                  },
+                })
+                .eq("id", user_id);
+              console.log(`[Agent Runner] Stored ${allTaskIds.length} task IDs in last_outbound_context`);
+            } catch (ctxErr) {
+              console.warn("[Agent Runner] Failed to store task context for ordinal resolution:", ctxErr);
+            }
+          }
         }
 
         // Create in-app notification (guarded — table may not exist)
