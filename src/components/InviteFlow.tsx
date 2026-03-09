@@ -152,29 +152,29 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
 
   if (mode === "setup") {
     return (
-      <Card className="p-6 bg-white/50 border-olive/20 shadow-soft space-y-6">
+      <Card className="p-6 bg-card/50 border-border/30 shadow-soft space-y-6">
         <div className="text-center space-y-2">
-          <h3 className="text-lg font-semibold text-olive-dark">Ready to connect?</h3>
+          <h3 className="text-lg font-semibold text-foreground">{t('partnerInfo.readyToConnect', 'Ready to connect?')}</h3>
           <p className="text-sm text-muted-foreground">
-            You can start using Olive right away, or invite {partner} to join your shared space.
+            {t('partnerInfo.startUsingOlive', 'You can start using Olive right away, or invite {{partner}} to join your shared space.', { partner })}
           </p>
         </div>
 
         {authDebug && (
-          <div className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <AlertTriangle className="h-4 w-4 text-yellow-600" />
-            <span className="text-xs text-yellow-800">{authDebug}</span>
+          <div className="flex items-center gap-2 p-3 bg-warning/10 border border-warning/30 rounded-lg">
+            <AlertTriangle className="h-4 w-4 text-warning" />
+            <span className="text-xs text-warning">{authDebug}</span>
           </div>
         )}
 
         <div className="space-y-3">
           <Button 
             onClick={() => setMode("invite")}
-            className="w-full bg-olive hover:bg-olive/90 text-white shadow-soft"
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-soft"
             disabled={loading}
           >
             <Share2 className="h-4 w-4 mr-2" />
-            Create Invite Link for {partner}
+            {t('partnerInfo.createInviteLinkFor', 'Create Invite Link for {{partner}}', { partner })}
           </Button>
           
           <div className="relative">
@@ -182,23 +182,23 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
               <Separator className="w-full" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white/80 px-2 text-muted-foreground">or</span>
+              <span className="bg-card px-2 text-muted-foreground">{t('common:or', 'or')}</span>
             </div>
           </div>
 
           <Button 
             onClick={handleSetupOnly}
             variant="outline"
-            className="w-full border-olive/30 text-olive hover:bg-olive/10"
+            className="w-full border-border text-foreground hover:bg-muted/50"
             disabled={loading}
           >
             <User2 className="h-4 w-4 mr-2" />
-            Set Up My Space Only
+            {t('partnerInfo.setUpMySpaceOnly', 'Set Up My Space Only')}
           </Button>
         </div>
 
         <p className="text-xs text-center text-muted-foreground">
-          You can always invite your partner later from your profile page.
+          {t('partnerInfo.inviteLaterHint', 'You can always invite your partner later from your profile page.')}
         </p>
       </Card>
     );
