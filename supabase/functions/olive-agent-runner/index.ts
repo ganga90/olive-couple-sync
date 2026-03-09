@@ -494,10 +494,10 @@ async function runSleepOptimizationCoach(ctx: AgentContext): Promise<AgentResult
     return { success: true, message: "Not enough sleep data (need 3+ days)", notifyUser: false };
   }
 
-  // Check if we already sent a tip recently
+  // Check if we already sent a tip recently (skip throttle for manual triggers)
   const sentTips = (ctx.previousState.sent_tips as string[]) || [];
   const lastTipDate = ctx.previousState.last_tip_date as string;
-  if (lastTipDate) {
+  if (lastTipDate && !ctx.isManualTrigger) {
     const daysSinceLastTip = Math.floor((Date.now() - new Date(lastTipDate).getTime()) / 86400000);
     if (daysSinceLastTip < 2 && ctx.config.sensitivity === "actionable_only") {
       return { success: true, message: "Too soon since last tip", notifyUser: false };
