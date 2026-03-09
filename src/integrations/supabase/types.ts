@@ -2010,6 +2010,10 @@ export type Database = {
         Args: { couple_uuid: string; user_id: string }
         Returns: boolean
       }
+      is_couple_owner_safe: {
+        Args: { p_couple_id: string; p_user_id: string }
+        Returns: boolean
+      }
       is_member_of_couple: {
         Args: { p_couple_id: string; p_user_id?: string }
         Returns: boolean
