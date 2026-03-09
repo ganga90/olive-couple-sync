@@ -536,7 +536,8 @@ Rules:
     tip = response.text?.trim() || "";
     if (!tip || tip.length < 5) {
       console.error("[Sleep Coach] Gemini returned empty/short response");
-      return { success: true, message: "Sleep looks good, no tip needed", notifyUser: false };
+      const avgSleep = Math.round(scores.reduce((s, d) => s + (d.sleepScore || 0), 0) / scores.filter(d => d.sleepScore).length);
+      tip = `🛏️ Your average sleep score this week is ${avgSleep}/100. ${avgSleep < 70 ? "Consider going to bed 30 minutes earlier tonight." : "Keep up the good routine!"}`;
     }
   } catch (err) {
     console.error("[Sleep Coach] Gemini call failed:", err);
@@ -546,8 +547,10 @@ Rules:
     tip = `🛏️ Your average sleep score this week is ${avgSleep}/100. ${avgSleep < 70 ? "Consider going to bed 30 minutes earlier tonight." : "Keep up the good routine!"}`;
   }
 
+  // ALL_GOOD is no longer used, but handle it gracefully — send a positive summary instead
   if (tip.includes("ALL_GOOD")) {
-    return { success: true, message: "Sleep looks good, no tip needed", notifyUser: false };
+    const avgSleep = Math.round(scores.reduce((s, d) => s + (d.sleepScore || 0), 0) / scores.filter(d => d.sleepScore).length);
+    tip = `🌟 Great sleep consistency! Your average sleep score is ${avgSleep}/100. Keep up the solid routine!`;
   }
 
   return {
