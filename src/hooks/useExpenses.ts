@@ -518,16 +518,23 @@ export function useExpenses() {
     const partnerOwesByCurrency: Record<string, number> = {};
     const totalsByCurrency: Record<string, number> = {};
 
+    // Dynamic split count: selected members + self
+    const splitCount = preferences.sharedWithMembers.length > 0
+      ? preferences.sharedWithMembers.length + 1
+      : 2; // fallback to 2 for legacy
+
     activeExpenses.forEach(e => {
       const c = e.currency || 'USD';
       totalsByCurrency[c] = (totalsByCurrency[c] || 0) + e.amount;
 
       if (e.split_type === 'you_paid_split') {
-        partnerOwesByCurrency[c] = (partnerOwesByCurrency[c] || 0) + e.amount / 2;
+        // Others owe their share: amount * (splitCount - 1) / splitCount
+        partnerOwesByCurrency[c] = (partnerOwesByCurrency[c] || 0) + (e.amount * (splitCount - 1)) / splitCount;
       } else if (e.split_type === 'you_owed_full') {
         partnerOwesByCurrency[c] = (partnerOwesByCurrency[c] || 0) + e.amount;
       } else if (e.split_type === 'partner_paid_split') {
-        youOweByCurrency[c] = (youOweByCurrency[c] || 0) + e.amount / 2;
+        // You owe your share: amount / splitCount
+        youOweByCurrency[c] = (youOweByCurrency[c] || 0) + e.amount / splitCount;
       } else if (e.split_type === 'partner_owed_full') {
         youOweByCurrency[c] = (youOweByCurrency[c] || 0) + e.amount;
       }
