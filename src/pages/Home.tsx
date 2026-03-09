@@ -380,7 +380,7 @@ const Home = () => {
                     
                     {currentCouple && members.length > 0 && (
                       <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-                        <SelectTrigger className="h-10 text-sm flex-1 bg-white/80 rounded-full border-stone-200/50 shadow-sm">
+                        <SelectTrigger className="h-10 text-sm flex-1 bg-background/80 rounded-full border-border/50 shadow-sm">
                           <SelectValue placeholder={t('common:common.everyone')} />
                         </SelectTrigger>
                         <SelectContent>
