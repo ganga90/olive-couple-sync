@@ -21,6 +21,7 @@ interface AgentContext {
   config: Record<string, unknown>;
   previousState: Record<string, unknown>;
   runId: string;
+  isManualTrigger?: boolean; // true when user clicks "Run Now" in the UI
 }
 
 // ─── Agent Result ───────────────────────────────────────────────
