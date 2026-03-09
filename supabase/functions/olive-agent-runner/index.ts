@@ -445,9 +445,11 @@ async function runEnergyTaskSuggester(ctx: AgentContext): Promise<AgentResult> {
 
   const taskList = tasks.map((t, i) => `${i + 1}. "${t.summary}" (priority: ${t.priority || "normal"}, category: ${t.category || "general"})`).join("\n");
 
-  const response = await ctx.genai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: `You are an energy-aware productivity coach.
+  let energyMessage: string;
+  try {
+    const response = await ctx.genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `You are an energy-aware productivity coach.
 
 User's biometrics today:
 - Readiness: ${latestOura.readinessScore}/100
@@ -456,11 +458,20 @@ User's biometrics today:
 Today's tasks:
 ${taskList}
 
-Based on their energy level, suggest the optimal order to tackle these tasks. Keep it brief (3-4 sentences max) for a WhatsApp message. Start with an energy emoji (🔋/⚡/😴) based on readiness score.`,
-    config: { temperature: 0.3, maxOutputTokens: 400 },
-  });
+Based on their energy level, suggest the optimal order to tackle these tasks. Keep it brief (3-4 sentences max) for a WhatsApp message. Start with an energy emoji (🔋/⚡/😴) based on readiness score. IMPORTANT: Always write your COMPLETE response.`,
+      config: { temperature: 0.3, maxOutputTokens: 600 },
+    });
 
-  const energyMessage = response.text || "";
+    energyMessage = response.text?.trim() || "";
+    if (!energyMessage || energyMessage.length < 10) {
+      const emoji = (latestOura.readinessScore || 0) >= 75 ? "⚡" : (latestOura.readinessScore || 0) >= 50 ? "🔋" : "😴";
+      energyMessage = `${emoji} Readiness: ${latestOura.readinessScore}/100, Sleep: ${latestOura.sleepScore || "N/A"}/100. You have ${tasks.length} tasks today. Open Olive to review them.`;
+    }
+  } catch (err) {
+    console.error("[Energy Agent] Gemini call failed:", err);
+    const emoji = (latestOura.readinessScore || 0) >= 75 ? "⚡" : (latestOura.readinessScore || 0) >= 50 ? "🔋" : "😴";
+    energyMessage = `${emoji} Readiness: ${latestOura.readinessScore}/100, Sleep: ${latestOura.sleepScore || "N/A"}/100. You have ${tasks.length} tasks today.`;
+  }
   return {
     success: true,
     message: energyMessage,
