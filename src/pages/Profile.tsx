@@ -2,7 +2,7 @@ import { useSEO } from "@/hooks/useSEO";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { PartnerInfo } from "@/components/PartnerInfo";
+import { SpaceMembersCard as PartnerInfo } from "@/components/SpaceMembersCard";
 import { NoteStyleField } from "@/components/NoteStyleField";
 import { MemoryPersonalization } from "@/components/MemoryPersonalization";
 import { GoogleServicesSection } from "@/components/settings/GoogleServicesSection";
