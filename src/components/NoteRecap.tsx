@@ -472,7 +472,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                     <SelectItem value="new">
                       <div className="flex items-center gap-1.5">
                         <Plus className="h-3.5 w-3.5" />
-                        New list...
+                        {t("recap.newList", "New list...")}
                       </div>
                     </SelectItem>
                   </SelectContent>
