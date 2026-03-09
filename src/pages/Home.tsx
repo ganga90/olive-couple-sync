@@ -334,7 +334,7 @@ const Home = () => {
 
           {/* Tabs Widget - PREMIUM CARD: Subtle shadow, generous padding */}
           <div className="bg-card rounded-3xl shadow-xl border border-border/50 overflow-hidden animate-fade-up stagger-3">
-            <Tabs defaultValue={localStorage.getItem('olive_default_home_tab') || 'weekly'} className="w-full">
+            <Tabs defaultValue={() => localStorage.getItem('olive_default_home_tab') || 'weekly'} className="w-full">
               {/* Header with tabs and filters - EDITORIAL STYLE */}
               <div className="px-6 md:px-10 py-6 md:py-8 border-b border-border">
                 {/* Section Label - UPPERCASE tracking-widest */}

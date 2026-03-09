@@ -192,7 +192,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const value = useMemo(() => ({
     notes, loading, addNote, updateNote, deleteNote, getNotesByCategory, refetch,
-  }), [notes, loading, refetch]);
+  }), [notes, loading, addNote, updateNote, deleteNote, getNotesByCategory, refetch]);
 
   return (
     <SupabaseNotesContext.Provider value={value}>
