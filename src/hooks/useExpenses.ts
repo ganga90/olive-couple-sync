@@ -144,6 +144,7 @@ export function useExpenses() {
     trackingMode: 'individual',
     defaultSplit: 'you_paid_split',
     defaultCurrency: 'USD',
+    sharedWithMembers: [],
   });
 
   const userId = user?.id;
