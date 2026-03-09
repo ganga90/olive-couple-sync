@@ -142,7 +142,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     [supabaseNotes, user, currentCouple, memberMap]
   );
 
-  const addNote = async (noteData: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => {
+  const addNote = useCallback(async (noteData: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => {
     let resolvedCoupleId: string | null;
     if (noteData.isShared === true) {
       resolvedCoupleId = currentCouple?.id || null;
@@ -151,6 +151,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     } else if (noteData.coupleId !== undefined) {
       resolvedCoupleId = noteData.coupleId || null;
     } else {
+      // Use the current defaultPrivacy value (not stale closure)
       resolvedCoupleId = defaultPrivacy === "private" ? null : (currentCouple?.id || null);
     }
 
@@ -160,9 +161,9 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     };
     const result = await addSupabaseNote(supabaseNoteData);
     return result ? convertSupabaseNoteToNote(result, user, currentCouple, memberMap) : null;
-  };
+  }, [defaultPrivacy, currentCouple, addSupabaseNote, user, memberMap]);
 
-  const updateNote = async (id: string, updates: Partial<Note>) => {
+  const updateNote = useCallback(async (id: string, updates: Partial<Note>) => {
     const supabaseUpdates: any = {};
     if (updates.originalText !== undefined) supabaseUpdates.original_text = updates.originalText;
     if (updates.summary !== undefined) supabaseUpdates.summary = updates.summary;
@@ -181,14 +182,14 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const result = await updateSupabaseNote(id, updates);
     return result ? convertSupabaseNoteToNote(result, user, currentCouple, memberMap) : null;
-  };
+  }, [updateSupabaseNote, user, currentCouple, memberMap]);
 
-  const deleteNote = async (id: string) => await deleteSupabaseNote(id);
+  const deleteNote = useCallback(async (id: string) => await deleteSupabaseNote(id), [deleteSupabaseNote]);
 
-  const getNotesByCategory = (category: string) => {
+  const getNotesByCategory = useCallback((category: string) => {
     return getSupabaseNotesByCategory(category.toLowerCase().replace(/\s+/g, '_'))
       .map(note => convertSupabaseNoteToNote(note, user, currentCouple, memberMap));
-  };
+  }, [getSupabaseNotesByCategory, user, currentCouple, memberMap]);
 
   const value = useMemo(() => ({
     notes, loading, addNote, updateNote, deleteNote, getNotesByCategory, refetch,
