@@ -39,7 +39,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
   const { user, loading, isAuthenticated } = useAuth();
-  const { currentCouple, createCouple } = useSupabaseCouple();
+  const { currentCouple, createCouple, members } = useSupabaseCouple();
   const { addNote, refetch: refetchNotes } = useSupabaseNotesContext();
   const { style: noteStyle } = useNoteStyle();
 
