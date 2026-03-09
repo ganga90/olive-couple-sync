@@ -47,7 +47,20 @@
   "weekly": {
     "task": "attività",
     "tasks": "attività",
-    "noTasks": "Nulla in programma"
+    "noTasks": "Nulla in programma",
+    "emptyTitle": "La tua settimana è libera!",
+    "emptyDescription": "Goditi la calma, o aggiungi qualche idea sopra per iniziare a pianificare."
+  },
+  "search": {
+    "title": "Cerca",
+    "placeholder": "Cerca attività, liste...",
+    "noResults": "Nessun risultato",
+    "tasks": "Attività",
+    "lists": "Liste"
+  },
+  "taskOwner": {
+    "you": "Tu",
+    "everyone": "Tutti"
   },
   "emptyState": {
     "noTasksMatch": "Nessuna attività corrisponde ai filtri",

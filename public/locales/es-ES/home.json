@@ -47,7 +47,20 @@
   "weekly": {
     "task": "tarea",
     "tasks": "tareas",
-    "noTasks": "Nada programado"
+    "noTasks": "Nada programado",
+    "emptyTitle": "¡Tu semana está libre!",
+    "emptyDescription": "Disfruta la calma, o añade algunas ideas arriba para empezar a planificar."
+  },
+  "search": {
+    "title": "Buscar",
+    "placeholder": "Buscar tareas, listas...",
+    "noResults": "Sin resultados",
+    "tasks": "Tareas",
+    "lists": "Listas"
+  },
+  "taskOwner": {
+    "you": "Tú",
+    "everyone": "Todos"
   },
   "emptyState": {
     "noTasksMatch": "No hay tareas que coincidan con los filtros",

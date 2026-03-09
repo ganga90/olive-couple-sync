@@ -47,7 +47,20 @@
   "weekly": {
     "task": "task",
     "tasks": "tasks",
-    "noTasks": "Nothing scheduled"
+    "noTasks": "Nothing scheduled",
+    "emptyTitle": "Your week looks clear!",
+    "emptyDescription": "Enjoy the calm, or brain dump some ideas above to start planning."
+  },
+  "search": {
+    "title": "Search",
+    "placeholder": "Search tasks, lists...",
+    "noResults": "No results found",
+    "tasks": "Tasks",
+    "lists": "Lists"
+  },
+  "taskOwner": {
+    "you": "You",
+    "everyone": "Everyone"
   },
   "emptyState": {
     "noTasksMatch": "No tasks match the filters",

@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2, Bell, Mail, CalendarDays } from "lucide-react";
+import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2, Bell, Mail, CalendarDays, Undo2, Search, Coffee } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/providers/AuthProvider";
@@ -30,6 +30,17 @@ import { EmailTriageReviewDialog } from "@/components/EmailTriageReviewDialog";
 import { PartnerInviteCard } from "@/components/PartnerInviteCard";
 import { PersonalizeCard } from "@/components/PersonalizeCard";
 import { supabase } from "@/lib/supabaseClient";
+import { useHaptics } from "@/hooks/useHaptics";
+import { useKeyboardShortcuts, APP_SHORTCUTS } from "@/hooks/useKeyboardShortcuts";
+import { toast } from "sonner";
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 
 const Home = () => {
   const { t } = useTranslation(['home', 'common']);
@@ -52,6 +63,26 @@ const Home = () => {
   const { connection: calendarConnection } = useCalendarEvents();
   const [emailTriageOpen, setEmailTriageOpen] = useState(false);
   const [emailConnected, setEmailConnected] = useState(false);
+  // Haptics and keyboard shortcuts
+  const haptics = useHaptics();
+  const [searchOpen, setSearchOpen] = useState(false);
+  const brainDumpRef = useRef<HTMLTextAreaElement>(null);
+
+  // Keyboard shortcuts: Cmd+K (search), Cmd+N (new note)
+  useKeyboardShortcuts([
+    {
+      ...APP_SHORTCUTS.SEARCH,
+      callback: () => setSearchOpen(true),
+    },
+    {
+      ...APP_SHORTCUTS.NEW_NOTE,
+      callback: () => {
+        // Focus the brain dump input
+        const input = document.querySelector('[data-brain-dump-input]') as HTMLTextAreaElement;
+        if (input) input.focus();
+      },
+    },
+  ]);
 
   // Check if Gmail is connected
   useEffect(() => {
@@ -177,9 +208,47 @@ const Home = () => {
     ).length;
   }, [notes]);
 
-  const handleToggleComplete = async (task: Note) => {
-    await updateNote(task.id, { completed: !task.completed });
-  };
+  // Optimistic UI for task completion with undo
+  const handleToggleComplete = useCallback(async (task: Note) => {
+    const previousState = task.completed;
+    const newState = !previousState;
+    
+    // Optimistic update - immediate UI feedback
+    // Note: We can't directly mutate state, but TaskItem handles animation
+    
+    // Haptic feedback on native
+    if (newState) {
+      haptics.notificationSuccess();
+    } else {
+      haptics.impactLight();
+    }
+    
+    // Show toast with undo action
+    if (newState) {
+      toast(t('home:toast.taskCompleted', 'Task completed! 🎉'), {
+        description: task.summary,
+        action: {
+          label: t('common:buttons.undo', 'Undo'),
+          onClick: async () => {
+            // Revert the completion
+            await updateNote(task.id, { completed: false });
+            haptics.impactLight();
+          },
+        },
+        duration: 5000,
+      });
+    }
+    
+    // Perform the actual update
+    try {
+      await updateNote(task.id, { completed: newState });
+    } catch (error) {
+      // Rollback on error - refetch to restore state
+      console.error('Failed to toggle task:', error);
+      toast.error(t('home:toast.updateFailed', 'Failed to update task'));
+      refetchNotes();
+    }
+  }, [updateNote, haptics, t, refetchNotes]);
 
   const handleTaskClick = (task: Note) => {
     navigate(getLocalizedPath(`/notes/${task.id}`));
@@ -478,74 +547,83 @@ const Home = () => {
               {/* Weekly Tab - 5-day view */}
               <TabsContent value="weekly" className="mt-0">
                 <div className="p-4 md:p-8 space-y-1 md:space-y-2">
-                  {weeklyViewTasks.map((dayData, dayIndex) => {
-                    const isToday = dayIndex === 0;
-                    const isTomorrow = dayIndex === 1;
-                    const dayLabel = isToday
-                      ? t('common:common.today')
-                      : isTomorrow
-                      ? t('common:common.tomorrow')
-                      : format(dayData.date, 'EEEE', { locale: dateLocale });
-                    const taskCount = dayData.tasks.length;
+                  {/* Check if ALL days have no tasks for motivational empty state */}
+                  {weeklyViewTasks.every(d => d.tasks.length === 0) ? (
+                    <div className="flex flex-col items-center justify-center py-12 md:py-16 text-center animate-fade-up">
+                      <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-primary/10 flex items-center justify-center mb-4 md:mb-6">
+                        <Coffee className="w-8 h-8 md:w-10 md:h-10 text-primary" />
+                      </div>
+                      <h3 className="text-xl md:text-2xl font-serif font-bold text-foreground mb-2">
+                        {t('home:weekly.emptyTitle', 'Your week looks clear!')}
+                      </h3>
+                      <p className="text-muted-foreground text-sm md:text-base max-w-xs md:max-w-sm">
+                        {t('home:weekly.emptyDescription', 'Enjoy the calm, or brain dump some ideas above to start planning.')}
+                      </p>
+                    </div>
+                  ) : (
+                    weeklyViewTasks.map((dayData, dayIndex) => {
+                      const isToday = dayIndex === 0;
+                      const isTomorrow = dayIndex === 1;
+                      const dayLabel = isToday
+                        ? t('common:common.today')
+                        : isTomorrow
+                        ? t('common:common.tomorrow')
+                        : format(dayData.date, 'EEEE', { locale: dateLocale });
+                      const taskCount = dayData.tasks.length;
 
-                    return (
-                      <div
-                        key={dayData.date.toISOString()}
-                        className={`animate-fade-up stagger-${Math.min(dayIndex + 1, 5)} rounded-2xl border transition-colors ${
-                          isToday
-                            ? 'border-primary/20 bg-primary/[0.03]'
-                            : 'border-stone-100 bg-white/60'
-                        } overflow-hidden`}
-                      >
-                        {/* Day header */}
-                        <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4">
-                          <div className="flex items-center gap-2.5">
-                            <div className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center text-xs md:text-sm font-bold ${
-                              isToday
-                                ? 'bg-primary text-primary-foreground'
-                                : 'bg-stone-100 text-stone-500'
-                            }`}>
-                              {format(dayData.date, 'd')}
-                            </div>
-                            <div>
-                              <p className={`text-sm md:text-base font-semibold ${isToday ? 'text-primary' : 'text-foreground'}`}>
-                                {dayLabel}
+                      return (
+                        <div
+                          key={dayData.date.toISOString()}
+                          className={`animate-fade-up stagger-${Math.min(dayIndex + 1, 5)} rounded-2xl border transition-colors ${
+                            isToday
+                              ? 'border-primary/20 bg-primary/[0.03]'
+                              : 'border-stone-100 bg-white/60'
+                          } overflow-hidden`}
+                        >
+                          {/* Day header */}
+                          <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4">
+                            <div className="flex items-center gap-2.5">
+                              <div className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center text-xs md:text-sm font-bold ${
+                                isToday
+                                  ? 'bg-primary text-primary-foreground'
+                                  : 'bg-stone-100 text-stone-500'
+                              }`}>
+                                {format(dayData.date, 'd')}
+                              </div>
+                              <div>
+                                <p className={`text-sm md:text-base font-semibold ${isToday ? 'text-primary' : 'text-foreground'}`}>
+                                  {dayLabel}
+                                </p>
+                              <p className="text-[11px] md:text-xs text-muted-foreground">
+                                {format(dayData.date, 'MMM d', { locale: dateLocale })}
                               </p>
-                            <p className="text-[11px] md:text-xs text-muted-foreground">
-                              {format(dayData.date, 'MMM d', { locale: dateLocale })}
-                            </p>
+                              </div>
                             </div>
+                            {taskCount > 0 && (
+                              <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                                {taskCount} {taskCount === 1 ? t('home:weekly.task') : t('home:weekly.tasks')}
+                              </span>
+                            )}
                           </div>
+
+                          {/* Tasks for this day - only show section if has tasks */}
                           {taskCount > 0 && (
-                            <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                              {taskCount} {taskCount === 1 ? t('home:weekly.task') : t('home:weekly.tasks')}
-                            </span>
+                            <div className="px-4 md:px-6 pb-3 md:pb-4 space-y-3 md:space-y-4">
+                              {dayData.tasks.map((task) => (
+                                <TaskItem
+                                  key={task.id}
+                                  task={task}
+                                  onToggleComplete={handleToggleComplete}
+                                  onTaskClick={handleTaskClick}
+                                  authorName={getAuthorName(task)}
+                                />
+                              ))}
+                            </div>
                           )}
                         </div>
-
-                        {/* Tasks for this day */}
-                        {taskCount > 0 ? (
-                          <div className="px-4 md:px-6 pb-3 md:pb-4 space-y-3 md:space-y-4">
-                            {dayData.tasks.map((task) => (
-                              <TaskItem
-                                key={task.id}
-                                task={task}
-                                onToggleComplete={handleToggleComplete}
-                                onTaskClick={handleTaskClick}
-                                authorName={getAuthorName(task)}
-                              />
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="px-4 md:px-6 pb-3 md:pb-4">
-                            <p className="text-xs md:text-sm text-muted-foreground italic">
-                              {t('home:weekly.noTasks')}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
               </TabsContent>
 
@@ -646,6 +724,29 @@ const Home = () => {
         open={emailTriageOpen}
         onOpenChange={setEmailTriageOpen}
       />
+
+      {/* Command Palette (Cmd+K) */}
+      <CommandDialog open={searchOpen} onOpenChange={setSearchOpen}>
+        <CommandInput placeholder={t('home:search.placeholder', 'Search tasks, lists...')} />
+        <CommandList>
+          <CommandEmpty>{t('home:search.noResults', 'No results found')}</CommandEmpty>
+          <CommandGroup heading={t('home:search.tasks', 'Tasks')}>
+            {filteredNotes.slice(0, 8).map((task) => (
+              <CommandItem
+                key={task.id}
+                onSelect={() => {
+                  navigate(getLocalizedPath(`/notes/${task.id}`));
+                  setSearchOpen(false);
+                }}
+              >
+                <span className={task.completed ? 'line-through text-muted-foreground' : ''}>
+                  {task.summary}
+                </span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        </CommandList>
+      </CommandDialog>
     </div>
   );
 };
