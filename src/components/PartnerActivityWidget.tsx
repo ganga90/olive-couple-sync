@@ -18,7 +18,7 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
   const { t } = useTranslation(['home', 'common']);
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { partner, currentCouple } = useSupabaseCouple();
+  const { partner, currentCouple, members, getMemberName } = useSupabaseCouple();
   const { getLocalizedPath } = useLanguage();
   const dateLocale = useDateLocale();
 
