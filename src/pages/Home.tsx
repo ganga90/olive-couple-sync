@@ -42,7 +42,7 @@ const Home = () => {
 
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
-  const { you, partner, currentCouple } = useSupabaseCouple();
+  const { you, partner, currentCouple, members, getMemberName } = useSupabaseCouple();
   const { notes, updateNote, refetch: refetchNotes } = useSupabaseNotesContext();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
@@ -90,7 +90,10 @@ const Home = () => {
   const filteredNotes = useMemo(() => {
     return notes.filter(note => {
       if (categoryFilter !== "all" && note.category.toLowerCase() !== categoryFilter.toLowerCase()) return false;
-      if (ownerFilter !== "all" && note.task_owner !== ownerFilter) return false;
+      if (ownerFilter !== "all") {
+        // Support both user_id and legacy name-based matching
+        if (note.task_owner !== ownerFilter && note.authorId !== ownerFilter) return false;
+      }
       if (privacyFilter === "private" && note.isShared) return false;
       if (privacyFilter === "shared" && !note.isShared) return false;
       return true;
@@ -181,9 +184,15 @@ const Home = () => {
   };
 
   const getAuthorName = (note: Note) => {
+    if (!note.task_owner) return 'Everyone';
+    // Try to resolve as user_id first (new multi-member format)
+    const resolved = getMemberName(note.task_owner);
+    if (resolved !== 'Unknown') return resolved;
+    // Legacy fallback
     if (note.task_owner === 'you') return you || 'You';
     if (note.task_owner === 'partner') return partner || 'Partner';
-    return 'Both';
+    // Could be a display name already
+    return note.task_owner;
   };
 
   if (!isAuthenticated) {
@@ -369,15 +378,18 @@ const Home = () => {
                       </SelectContent>
                     </Select>
                     
-                    {currentCouple && (
+                    {currentCouple && members.length > 0 && (
                       <Select value={ownerFilter} onValueChange={setOwnerFilter}>
                         <SelectTrigger className="h-10 text-sm flex-1 bg-white/80 rounded-full border-stone-200/50 shadow-sm">
                           <SelectValue placeholder={t('common:common.everyone')} />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">{t('common:common.everyone')}</SelectItem>
-                          <SelectItem value="you">{you || t('common:common.you')}</SelectItem>
-                          <SelectItem value="partner">{partner || t('common:common.partner')}</SelectItem>
+                          {members.map(m => (
+                            <SelectItem key={m.user_id} value={m.user_id}>
+                              {m.display_name} {m.user_id === user?.id ? `(${t('common:common.you', 'You')})` : ''}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     )}
