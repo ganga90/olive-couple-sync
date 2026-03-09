@@ -557,7 +557,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
               <Input
                 value={editedNote.tags}
                 onChange={(e) => setEditedNote(prev => ({ ...prev, tags: e.target.value }))}
-                placeholder="Enter tags separated by commas..."
+                placeholder={t("recap.tagsPlaceholder", "Enter tags separated by commas...")}
                 className="h-9 text-sm border-border focus:border-primary"
               />
             ) : (
