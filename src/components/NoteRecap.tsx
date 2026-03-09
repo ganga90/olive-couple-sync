@@ -463,7 +463,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                     <SelectValue placeholder={t("createDialog.selectList")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No list</SelectItem>
+                    <SelectItem value="none">{t("createDialog.noList")}</SelectItem>
                     {lists.map((list) => (
                       <SelectItem key={list.id} value={list.id}>
                         {list.name}
