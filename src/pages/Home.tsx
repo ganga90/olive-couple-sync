@@ -612,6 +612,7 @@ const Home = () => {
               </span>
             </button>
           )}
+          </>)}
         </div>
       </div>
 
