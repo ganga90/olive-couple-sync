@@ -90,7 +90,10 @@ const Home = () => {
   const filteredNotes = useMemo(() => {
     return notes.filter(note => {
       if (categoryFilter !== "all" && note.category.toLowerCase() !== categoryFilter.toLowerCase()) return false;
-      if (ownerFilter !== "all" && note.task_owner !== ownerFilter) return false;
+      if (ownerFilter !== "all") {
+        // Support both user_id and legacy name-based matching
+        if (note.task_owner !== ownerFilter && note.authorId !== ownerFilter) return false;
+      }
       if (privacyFilter === "private" && note.isShared) return false;
       if (privacyFilter === "shared" && !note.isShared) return false;
       return true;

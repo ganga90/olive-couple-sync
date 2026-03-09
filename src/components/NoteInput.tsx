@@ -274,6 +274,11 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
 
       // Process the note with Gemini AI (including media and style)
       // Send empty string for media-only notes - process-note will derive content from media
+      // Build member names list for AI task_owner assignment
+      const memberNames = members.length > 0
+        ? members.map(m => m.display_name).filter(Boolean)
+        : undefined;
+
       const { data: aiProcessedNote, error } = await supabase.functions.invoke('process-note', {
         body: {
           text: text.trim(),
@@ -283,6 +288,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           media: mediaUrls.length > 0 ? mediaUrls : undefined,
           style: noteStyle,
           is_sensitive: isSensitive || undefined,
+          partner_names: memberNames,
         }
       });
 
