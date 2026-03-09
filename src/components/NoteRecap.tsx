@@ -414,7 +414,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Due Date</label>
+                <label className="text-xs font-medium text-muted-foreground">{t("dueDate")}</label>
                 <Input
                   type="date"
                   value={editedNote.dueDate}
