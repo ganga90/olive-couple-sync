@@ -70,6 +70,7 @@ export interface ExpensePreferences {
   trackingMode: string;
   defaultSplit: ExpenseSplitType;
   defaultCurrency: string;
+  sharedWithMembers: string[]; // user_ids of members to split with
 }
 
 export interface BudgetLimit {
@@ -143,6 +144,7 @@ export function useExpenses() {
     trackingMode: 'individual',
     defaultSplit: 'you_paid_split',
     defaultCurrency: 'USD',
+    sharedWithMembers: [],
   });
 
   const userId = user?.id;
@@ -159,11 +161,20 @@ export function useExpenses() {
         .single();
       if (error) throw error;
       if (data) {
-        setPreferences({
+        // Load locally stored member selection
+        let savedMembers: string[] = [];
+        try {
+          const stored = localStorage.getItem(`olive_expense_members_${userId}`);
+          if (stored) savedMembers = JSON.parse(stored);
+        } catch {}
+
+        setPreferences(prev => ({
+          ...prev,
           trackingMode: data.expense_tracking_mode || 'individual',
           defaultSplit: (data.expense_default_split as ExpenseSplitType) || 'you_paid_split',
           defaultCurrency: data.expense_default_currency || 'USD',
-        });
+          sharedWithMembers: savedMembers,
+        }));
       }
     } catch (err) {
       console.error('[useExpenses] preferences fetch error:', err);
@@ -173,10 +184,23 @@ export function useExpenses() {
   // Update preferences
   const updatePreferences = useCallback(async (updates: Partial<ExpensePreferences>) => {
     if (!userId) return;
+    
+    // sharedWithMembers is stored locally only (no DB column)
+    if (updates.sharedWithMembers) {
+      setPreferences(prev => ({ ...prev, sharedWithMembers: updates.sharedWithMembers! }));
+      try {
+        localStorage.setItem(`olive_expense_members_${userId}`, JSON.stringify(updates.sharedWithMembers));
+      } catch {}
+      // If only updating members, skip DB call
+      if (Object.keys(updates).length === 1) return;
+    }
+
     const dbUpdates: Record<string, string> = {};
     if (updates.trackingMode) dbUpdates.expense_tracking_mode = updates.trackingMode;
     if (updates.defaultSplit) dbUpdates.expense_default_split = updates.defaultSplit;
     if (updates.defaultCurrency) dbUpdates.expense_default_currency = updates.defaultCurrency;
+
+    if (Object.keys(dbUpdates).length === 0) return;
 
     try {
       const { error } = await supabase
@@ -494,16 +518,23 @@ export function useExpenses() {
     const partnerOwesByCurrency: Record<string, number> = {};
     const totalsByCurrency: Record<string, number> = {};
 
+    // Dynamic split count: selected members + self
+    const splitCount = preferences.sharedWithMembers.length > 0
+      ? preferences.sharedWithMembers.length + 1
+      : 2; // fallback to 2 for legacy
+
     activeExpenses.forEach(e => {
       const c = e.currency || 'USD';
       totalsByCurrency[c] = (totalsByCurrency[c] || 0) + e.amount;
 
       if (e.split_type === 'you_paid_split') {
-        partnerOwesByCurrency[c] = (partnerOwesByCurrency[c] || 0) + e.amount / 2;
+        // Others owe their share: amount * (splitCount - 1) / splitCount
+        partnerOwesByCurrency[c] = (partnerOwesByCurrency[c] || 0) + (e.amount * (splitCount - 1)) / splitCount;
       } else if (e.split_type === 'you_owed_full') {
         partnerOwesByCurrency[c] = (partnerOwesByCurrency[c] || 0) + e.amount;
       } else if (e.split_type === 'partner_paid_split') {
-        youOweByCurrency[c] = (youOweByCurrency[c] || 0) + e.amount / 2;
+        // You owe your share: amount / splitCount
+        youOweByCurrency[c] = (youOweByCurrency[c] || 0) + e.amount / splitCount;
       } else if (e.split_type === 'partner_owed_full') {
         youOweByCurrency[c] = (youOweByCurrency[c] || 0) + e.amount;
       }
@@ -535,7 +566,7 @@ export function useExpenses() {
       partnerOwes: partnerOwesByCurrency[defaultCurrency] || Object.values(partnerOwesByCurrency).reduce((s, v) => s + v, 0),
       topCategories,
     };
-  }, [activeExpenses, preferences.defaultCurrency]);
+  }, [activeExpenses, preferences.defaultCurrency, preferences.sharedWithMembers]);
 
   const netBalance = useMemo(() => analytics.partnerOwes - analytics.youOwe, [analytics]);
 

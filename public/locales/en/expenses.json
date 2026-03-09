@@ -28,7 +28,9 @@
     "youOwedFull": "{{partner}} owes full amount",
     "partnerPaidSplit": "{{partner}} paid, split equally",
     "partnerOwedFull": "{{you}} owes full amount",
-    "individual": "Individual (no split)"
+    "individual": "Individual (no split)",
+    "othersOweFull": "Others owe full amount",
+    "otherPaidSplit": "Other paid, split equally"
   },
   "row": {
     "youLent": "{{you}} lent {{symbol}}{{amount}}",
@@ -129,8 +131,12 @@
     "mode": "Tracking mode",
     "modeIndividual": "Individual",
     "modeShared": "Shared with partner",
+    "modeSharedWith": "Shared with {{names}}",
     "defaultSplit": "Default split",
-    "defaultCurrency": "Default currency"
+    "defaultCurrency": "Default currency",
+    "splitWith": "Split expenses with",
+    "selectAll": "All members",
+    "splitInfo": "Expenses split equally among {{count}} people"
   },
   "recurring": {
     "label": "Recurring expense",

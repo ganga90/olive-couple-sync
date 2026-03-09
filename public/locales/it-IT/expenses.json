@@ -28,7 +28,9 @@
     "youOwedFull": "{{partner}} deve l'intero importo",
     "partnerPaidSplit": "{{partner}} ha pagato, diviso equamente",
     "partnerOwedFull": "{{you}} deve l'intero importo",
-    "individual": "Individuale (nessuna divisione)"
+    "individual": "Individuale (nessuna divisione)",
+    "othersOweFull": "Gli altri devono l'intero importo",
+    "otherPaidSplit": "Altro ha pagato, diviso equamente"
   },
   "row": {
     "youLent": "{{you}} ha prestato {{symbol}}{{amount}}",
@@ -129,8 +131,12 @@
     "mode": "Modalità di tracciamento",
     "modeIndividual": "Individuale",
     "modeShared": "Condiviso con partner",
+    "modeSharedWith": "Condiviso con {{names}}",
     "defaultSplit": "Divisione predefinita",
-    "defaultCurrency": "Valuta predefinita"
+    "defaultCurrency": "Valuta predefinita",
+    "splitWith": "Dividi le spese con",
+    "selectAll": "Tutti i membri",
+    "splitInfo": "Spese divise equamente tra {{count}} persone"
   },
   "recurring": {
     "label": "Spesa ricorrente",
