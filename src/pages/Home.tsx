@@ -361,7 +361,7 @@ const Home = () => {
                 <div className="space-y-3">
                   <div className="flex gap-3">
                     <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                      <SelectTrigger className="h-10 text-sm flex-1 bg-white/80 rounded-full border-stone-200/50 shadow-sm">
+                      <SelectTrigger className="h-10 text-sm flex-1 bg-background/80 rounded-full border-border/50 shadow-sm">
                         <SelectValue placeholder={t('common:common.allCategories')} />
                       </SelectTrigger>
                       <SelectContent>
