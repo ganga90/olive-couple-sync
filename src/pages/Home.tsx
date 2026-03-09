@@ -375,15 +375,18 @@ const Home = () => {
                       </SelectContent>
                     </Select>
                     
-                    {currentCouple && (
+                    {currentCouple && members.length > 0 && (
                       <Select value={ownerFilter} onValueChange={setOwnerFilter}>
                         <SelectTrigger className="h-10 text-sm flex-1 bg-white/80 rounded-full border-stone-200/50 shadow-sm">
                           <SelectValue placeholder={t('common:common.everyone')} />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">{t('common:common.everyone')}</SelectItem>
-                          <SelectItem value="you">{you || t('common:common.you')}</SelectItem>
-                          <SelectItem value="partner">{partner || t('common:common.partner')}</SelectItem>
+                          {members.map(m => (
+                            <SelectItem key={m.user_id} value={m.user_id}>
+                              {m.display_name} {m.user_id === user?.id ? `(${t('common:common.you', 'You')})` : ''}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     )}
