@@ -538,7 +538,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                 ))}
                 {note.items && note.items.length > 4 && (
                   <p className="text-xs text-muted-foreground pt-1">
-                    +{note.items.length - 4} more items
+                    {t("card.moreItems", { count: note.items.length - 4 })}
                   </p>
                 )}
               </div>
