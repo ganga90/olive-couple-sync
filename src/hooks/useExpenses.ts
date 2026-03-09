@@ -176,10 +176,23 @@ export function useExpenses() {
   // Update preferences
   const updatePreferences = useCallback(async (updates: Partial<ExpensePreferences>) => {
     if (!userId) return;
+    
+    // sharedWithMembers is stored locally only (no DB column)
+    if (updates.sharedWithMembers) {
+      setPreferences(prev => ({ ...prev, sharedWithMembers: updates.sharedWithMembers! }));
+      try {
+        localStorage.setItem(`olive_expense_members_${userId}`, JSON.stringify(updates.sharedWithMembers));
+      } catch {}
+      // If only updating members, skip DB call
+      if (Object.keys(updates).length === 1) return;
+    }
+
     const dbUpdates: Record<string, string> = {};
     if (updates.trackingMode) dbUpdates.expense_tracking_mode = updates.trackingMode;
     if (updates.defaultSplit) dbUpdates.expense_default_split = updates.defaultSplit;
     if (updates.defaultCurrency) dbUpdates.expense_default_currency = updates.defaultCurrency;
+
+    if (Object.keys(dbUpdates).length === 0) return;
 
     try {
       const { error } = await supabase
