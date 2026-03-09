@@ -3734,6 +3734,24 @@ serve(async (req) => {
             }
           } else {
             console.log('[Context] No displayed list in session for ordinal resolution');
+            // Fallback: check last_outbound_context.all_task_ids (set by agent-runner)
+            try {
+              const outboundCtx = await getOutboundContextWithTaskId(supabase, userId);
+              if (outboundCtx?.all_task_ids && ordinalIndex < outboundCtx.all_task_ids.length) {
+                const taskRef = outboundCtx.all_task_ids[ordinalIndex];
+                const { data: outboundTask } = await supabase
+                  .from('clerk_notes')
+                  .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time')
+                  .eq('id', taskRef.id)
+                  .maybeSingle();
+                if (outboundTask) {
+                  foundTask = outboundTask;
+                  console.log(`[Context] Resolved ordinal #${ordinalIndex + 1} from outbound context: ${outboundTask.summary}`);
+                }
+              }
+            } catch (outboundErr) {
+              console.warn('[Context] Outbound context ordinal fallback failed:', outboundErr);
+            }
           }
         }
       }

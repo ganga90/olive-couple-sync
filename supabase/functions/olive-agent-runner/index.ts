@@ -21,6 +21,7 @@ interface AgentContext {
   config: Record<string, unknown>;
   previousState: Record<string, unknown>;
   runId: string;
+  isManualTrigger?: boolean; // true when user clicks "Run Now" in the UI
 }
 
 // ─── Agent Result ───────────────────────────────────────────────
@@ -493,10 +494,10 @@ async function runSleepOptimizationCoach(ctx: AgentContext): Promise<AgentResult
     return { success: true, message: "Not enough sleep data (need 3+ days)", notifyUser: false };
   }
 
-  // Check if we already sent a tip recently
+  // Check if we already sent a tip recently (skip throttle for manual triggers)
   const sentTips = (ctx.previousState.sent_tips as string[]) || [];
   const lastTipDate = ctx.previousState.last_tip_date as string;
-  if (lastTipDate) {
+  if (lastTipDate && !ctx.isManualTrigger) {
     const daysSinceLastTip = Math.floor((Date.now() - new Date(lastTipDate).getTime()) / 86400000);
     if (daysSinceLastTip < 2 && ctx.config.sensitivity === "actionable_only") {
       return { success: true, message: "Too soon since last tip", notifyUser: false };
@@ -522,10 +523,11 @@ ${sleepSummary}
 Previously sent tips (don't repeat these): ${sentTips.join(", ") || "none"}
 
 Rules:
-- Only respond if there's a clear pattern or issue (declining scores, inconsistency, low scores)
-- If everything looks good, respond with exactly "ALL_GOOD"
-- Keep the tip under 500 chars for WhatsApp
-- Start with 🛏️ and be encouraging, not preachy
+- Analyze the data for patterns: declining scores, inconsistency, low scores, or improvement trends
+- If everything looks great, give a positive reinforcement message celebrating their consistency (start with 🌟)
+- If there's an issue, give ONE specific actionable tip (start with 🛏️)
+- Keep the response under 500 chars for WhatsApp
+- Be encouraging, not preachy
 - Be specific (e.g., "try a 10pm bedtime" not "sleep earlier")
 - IMPORTANT: Always write your COMPLETE response. Do not stop mid-sentence.`,
       config: { temperature: 0.3, maxOutputTokens: 600 },
@@ -534,7 +536,8 @@ Rules:
     tip = response.text?.trim() || "";
     if (!tip || tip.length < 5) {
       console.error("[Sleep Coach] Gemini returned empty/short response");
-      return { success: true, message: "Sleep looks good, no tip needed", notifyUser: false };
+      const avgSleep = Math.round(scores.reduce((s, d) => s + (d.sleepScore || 0), 0) / scores.filter(d => d.sleepScore).length);
+      tip = `🛏️ Your average sleep score this week is ${avgSleep}/100. ${avgSleep < 70 ? "Consider going to bed 30 minutes earlier tonight." : "Keep up the good routine!"}`;
     }
   } catch (err) {
     console.error("[Sleep Coach] Gemini call failed:", err);
@@ -544,8 +547,10 @@ Rules:
     tip = `🛏️ Your average sleep score this week is ${avgSleep}/100. ${avgSleep < 70 ? "Consider going to bed 30 minutes earlier tonight." : "Keep up the good routine!"}`;
   }
 
+  // ALL_GOOD is no longer used, but handle it gracefully — send a positive summary instead
   if (tip.includes("ALL_GOOD")) {
-    return { success: true, message: "Sleep looks good, no tip needed", notifyUser: false };
+    const avgSleep = Math.round(scores.reduce((s, d) => s + (d.sleepScore || 0), 0) / scores.filter(d => d.sleepScore).length);
+    tip = `🌟 Great sleep consistency! Your average sleep score is ${avgSleep}/100. Keep up the solid routine!`;
   }
 
   return {
@@ -952,6 +957,7 @@ serve(async (req: Request) => {
         .select("id")
         .single();
 
+      const isManual = !!(config_override); // Manual runs always pass config_override from the UI
       const ctx: AgentContext = {
         supabase,
         genai,
@@ -961,6 +967,7 @@ serve(async (req: Request) => {
         config: { ...(agent.agent_config || {}), ...(config_override || {}) },
         previousState: prevRun?.state || {},
         runId: run!.id,
+        isManualTrigger: isManual,
       };
 
       const result = await runAgent(ctx);
@@ -1017,6 +1024,65 @@ serve(async (req: Request) => {
             }
           } catch (gwCatchErr) {
             console.error(`[Agent Runner] WhatsApp gateway threw for ${agent_id}:`, gwCatchErr);
+          }
+
+          // ── Store task list in user_sessions for ordinal resolution ──
+          // When an agent report contains numbered tasks (e.g., stale-task-strategist),
+          // store them as last_displayed_list so "archive the first one" works via WhatsApp
+          const taskList = result.data?.tasks as Array<{ id: string; summary: string }> | undefined;
+          if (taskList && taskList.length > 0) {
+            try {
+              const displayedList = taskList.map((t, i) => ({
+                id: t.id,
+                summary: t.summary,
+                position: i,
+              }));
+
+              // Update user_sessions context_data
+              const { data: existingSession } = await supabase
+                .from("user_sessions")
+                .select("id, context_data")
+                .eq("user_id", user_id)
+                .order("updated_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (existingSession) {
+                const currentCtx = (existingSession.context_data || {}) as Record<string, unknown>;
+                await supabase
+                  .from("user_sessions")
+                  .update({
+                    context_data: {
+                      ...currentCtx,
+                      last_displayed_list: displayedList,
+                      list_displayed_at: new Date().toISOString(),
+                    },
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("id", existingSession.id);
+                console.log(`[Agent Runner] Stored ${displayedList.length} tasks in user_sessions for ordinal resolution`);
+              }
+
+              // Also store task IDs in last_outbound_context for webhook fallback resolution
+              const allTaskIds = taskList.map((t) => ({ id: t.id, summary: t.summary }));
+              await supabase
+                .from("clerk_profiles")
+                .update({
+                  last_outbound_context: {
+                    message_type: "agent_insight",
+                    content: (result.notificationMessage || "").substring(0, 500),
+                    sent_at: new Date().toISOString(),
+                    status: "sent",
+                    all_task_ids: allTaskIds,
+                    task_id: allTaskIds[0]?.id,
+                    task_summary: allTaskIds[0]?.summary,
+                  },
+                })
+                .eq("id", user_id);
+              console.log(`[Agent Runner] Stored ${allTaskIds.length} task IDs in last_outbound_context`);
+            } catch (ctxErr) {
+              console.warn("[Agent Runner] Failed to store task context for ordinal resolution:", ctxErr);
+            }
           }
         }
 
