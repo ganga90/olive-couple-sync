@@ -144,14 +144,6 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const addNote = useCallback(async (noteData: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => {
     let resolvedCoupleId: string | null;
-    
-    console.log('[SupabaseNotesProvider] addNote called with:', {
-      isShared: noteData.isShared,
-      coupleId: noteData.coupleId,
-      defaultPrivacy,
-      currentCoupleId: currentCouple?.id,
-    });
-    
     if (noteData.isShared === true) {
       resolvedCoupleId = currentCouple?.id || null;
     } else if (noteData.isShared === false) {
@@ -161,8 +153,6 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
     } else {
       resolvedCoupleId = defaultPrivacy === "private" ? null : (currentCouple?.id || null);
     }
-    
-    console.log('[SupabaseNotesProvider] resolved couple_id:', resolvedCoupleId);
 
     const supabaseNoteData = {
       ...convertNoteToSupabaseInsert(noteData),
