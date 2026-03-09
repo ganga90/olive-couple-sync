@@ -14,6 +14,7 @@ import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface NoteRecapProps {
   note: {
