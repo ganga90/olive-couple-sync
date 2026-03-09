@@ -216,10 +216,10 @@ const Home = () => {
         <div className="px-4 md:px-0 pt-4 md:pt-0 space-y-6 md:space-y-8">
           {/* Greeting Section - MASSIVE SERIF Typography for Desktop */}
           <div className="text-center md:text-left animate-fade-up">
-            <h1 className="font-serif font-bold text-4xl md:text-5xl lg:text-6xl xl:text-7xl tracking-tight text-stone-900 mb-3 md:mb-4">
+            <h1 className="font-serif font-bold text-4xl md:text-5xl lg:text-6xl xl:text-7xl tracking-tight text-foreground mb-3 md:mb-4">
               {t('home:greeting', { name: userName })}
             </h1>
-            <p className="text-lg md:text-xl lg:text-2xl text-stone-500 font-light leading-relaxed">
+            <p className="text-lg md:text-xl lg:text-2xl text-muted-foreground font-light leading-relaxed">
               {t('home:whatsOnMind')}
             </p>
           </div>
@@ -267,7 +267,7 @@ const Home = () => {
                   </div>
                   <div>
                     <p className="heading-card">{t('home:connectCalendar.title')}</p>
-                    <p className="text-sm text-stone-500">{t('home:connectCalendar.subtitle')}</p>
+                    <p className="text-sm text-muted-foreground">{t('home:connectCalendar.subtitle')}</p>
                   </div>
                 </div>
               </div>
@@ -333,16 +333,16 @@ const Home = () => {
           </div>
 
           {/* Tabs Widget - PREMIUM CARD: Subtle shadow, generous padding */}
-          <div className="bg-white rounded-3xl shadow-xl border border-stone-100/50 overflow-hidden animate-fade-up stagger-3">
+          <div className="bg-card rounded-3xl shadow-xl border border-border/50 overflow-hidden animate-fade-up stagger-3">
             <Tabs defaultValue={localStorage.getItem('olive_default_home_tab') || 'weekly'} className="w-full">
               {/* Header with tabs and filters - EDITORIAL STYLE */}
-              <div className="px-6 md:px-10 py-6 md:py-8 border-b border-stone-100">
+              <div className="px-6 md:px-10 py-6 md:py-8 border-b border-border">
                 {/* Section Label - UPPERCASE tracking-widest */}
-                <p className="text-xs md:text-sm uppercase tracking-widest font-bold text-stone-500 mb-4 md:mb-6">
+                <p className="text-xs md:text-sm uppercase tracking-widest font-bold text-muted-foreground mb-4 md:mb-6">
                   {t('home:tabs.sectionLabel', 'Your Tasks')}
                 </p>
                 
-                <TabsList className="w-full grid grid-cols-4 bg-stone-100/80 mb-5 md:mb-6 h-12 md:h-14 rounded-full p-1">
+                <TabsList className="w-full grid grid-cols-4 bg-muted/80 mb-5 md:mb-6 h-12 md:h-14 rounded-full p-1">
                   <TabsTrigger value="priority" className="text-xs md:text-sm font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
                     {t('home:tabs.priority')}
                   </TabsTrigger>
@@ -361,7 +361,7 @@ const Home = () => {
                 <div className="space-y-3">
                   <div className="flex gap-3">
                     <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                      <SelectTrigger className="h-10 text-sm flex-1 bg-white/80 rounded-full border-stone-200/50 shadow-sm">
+                      <SelectTrigger className="h-10 text-sm flex-1 bg-background/80 rounded-full border-border/50 shadow-sm">
                         <SelectValue placeholder={t('common:common.allCategories')} />
                       </SelectTrigger>
                       <SelectContent>
@@ -380,7 +380,7 @@ const Home = () => {
                     
                     {currentCouple && members.length > 0 && (
                       <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-                        <SelectTrigger className="h-10 text-sm flex-1 bg-white/80 rounded-full border-stone-200/50 shadow-sm">
+                        <SelectTrigger className="h-10 text-sm flex-1 bg-background/80 rounded-full border-border/50 shadow-sm">
                           <SelectValue placeholder={t('common:common.everyone')} />
                         </SelectTrigger>
                         <SelectContent>
@@ -475,7 +475,7 @@ const Home = () => {
                             </div>
                           </div>
                           {taskCount > 0 && (
-                            <span className="text-xs font-medium text-muted-foreground bg-stone-100 px-2 py-0.5 rounded-full">
+                            <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                               {taskCount} {taskCount === 1 ? t('home:weekly.task') : t('home:weekly.tasks')}
                             </span>
                           )}
