@@ -292,8 +292,8 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-foreground">Note Organized!</h3>
-              <p className="text-xs text-muted-foreground">AI processed your input</p>
+              <h3 className="text-base font-semibold text-foreground">{t("recap.title", "Note Organized!")}</h3>
+              <p className="text-xs text-muted-foreground">{t("recap.subtitle", "AI processed your input")}</p>
             </div>
           </div>
           
