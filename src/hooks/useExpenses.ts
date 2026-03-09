@@ -161,11 +161,19 @@ export function useExpenses() {
         .single();
       if (error) throw error;
       if (data) {
+        // Load locally stored member selection
+        let savedMembers: string[] = [];
+        try {
+          const stored = localStorage.getItem(`olive_expense_members_${userId}`);
+          if (stored) savedMembers = JSON.parse(stored);
+        } catch {}
+
         setPreferences(prev => ({
           ...prev,
           trackingMode: data.expense_tracking_mode || 'individual',
           defaultSplit: (data.expense_default_split as ExpenseSplitType) || 'you_paid_split',
           defaultCurrency: data.expense_default_currency || 'USD',
+          sharedWithMembers: savedMembers,
         }));
       }
     } catch (err) {
