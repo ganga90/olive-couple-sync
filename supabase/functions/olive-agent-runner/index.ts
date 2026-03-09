@@ -957,6 +957,7 @@ serve(async (req: Request) => {
         .select("id")
         .single();
 
+      const isManual = !!(config_override); // Manual runs always pass config_override from the UI
       const ctx: AgentContext = {
         supabase,
         genai,
@@ -966,6 +967,7 @@ serve(async (req: Request) => {
         config: { ...(agent.agent_config || {}), ...(config_override || {}) },
         previousState: prevRun?.state || {},
         runId: run!.id,
+        isManualTrigger: isManual,
       };
 
       const result = await runAgent(ctx);
