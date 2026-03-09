@@ -280,9 +280,11 @@ async function runStaleTaskStrategist(ctx: AgentContext): Promise<AgentResult> {
     })
     .join("\n");
 
-  const response = await ctx.genai.models.generateContent({
-    model: "gemini-2.5-pro", // Pro: complex reasoning about task relevance + priorities
-    contents: `You are a productivity coach for a couples app called Olive.
+  let analysis: string;
+  try {
+    const response = await ctx.genai.models.generateContent({
+      model: "gemini-2.5-flash", // Flash: structured analysis with clear instructions
+      contents: `You are a productivity coach for a couples app called Olive.
 
 Analyze these stale tasks (not completed, no due date, older than ${stalenessdays} days). For each, suggest ONE action:
 - BREAK_DOWN: Task is too big, suggest 2-3 smaller sub-tasks
@@ -300,10 +302,23 @@ Reply in this format for a WhatsApp message (keep it concise, max 1000 chars tot
 • "[task name]" → [ACTION]: [brief reason]
 
 End with a motivational one-liner.`,
-    config: { temperature: 0.3, maxOutputTokens: 800 },
-  });
+      config: { temperature: 0.3, maxOutputTokens: 1200 },
+    });
 
-  const analysis = response.text || "Could not analyze tasks.";
+    analysis = response.text?.trim() || "";
+    if (!analysis || analysis.length < 10) {
+      console.error("[Stale Task Agent] Gemini returned empty/short response");
+      analysis = `📋 Task Strategist Report\n\nFound ${staleTasks.length} stale tasks that need attention. Open Olive to review them.`;
+    }
+  } catch (err) {
+    console.error("[Stale Task Agent] Gemini call failed:", err);
+    // Provide a useful fallback instead of "Could not analyze tasks"
+    const topTasks = staleTasks.slice(0, 5).map((t, i) => {
+      const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60 * 24));
+      return `• "${t.summary}" — ${age} days old`;
+    }).join("\n");
+    analysis = `📋 Task Strategist Report\n\n⚠️ ${staleTasks.length} tasks have been sitting for a while:\n${topTasks}\n\nConsider archiving or scheduling them!`;
+  }
 
   // Build richer data for frontend rendering
   const tasksSummary = staleTasks.map((t) => {
