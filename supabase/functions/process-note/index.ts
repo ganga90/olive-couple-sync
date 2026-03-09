@@ -1626,25 +1626,39 @@ When the note text mentions any of these names, use the EXACT name for task_owne
 - If the note says "tell ${partner_names[0]} to...", assign task_owner to "${partner_names[0]}"
 - The first name mentioned as the actor/doer is the task_owner`;
     } else if (couple_id) {
-      // Fetch couple names from DB if not provided
+      // Fetch member names from the members table (supports multi-member spaces)
       try {
-        const { data: coupleData } = await supabase
-          .from('clerk_couples')
-          .select('you_name, partner_name')
-          .eq('id', couple_id)
-          .maybeSingle();
-        if (coupleData) {
-          const names = [coupleData.you_name, coupleData.partner_name].filter(Boolean);
+        const { data: membersData } = await supabase
+          .from('clerk_couple_members')
+          .select('display_name')
+          .eq('couple_id', couple_id);
+        
+        if (membersData && membersData.length > 0) {
+          const names = membersData.map((m: any) => m.display_name).filter(Boolean);
           if (names.length > 0) {
-            coupleNamesContext = `\n\n**COUPLE/PARTNER NAMES**: ${names.join(', ')}
+            coupleNamesContext = `\n\n**SPACE MEMBER NAMES**: ${names.join(', ')}
 When the note text mentions any of these names, use the EXACT name for task_owner assignment.
 - If the note starts with a name (e.g., "${names[0]} check 401k"), assign task_owner to "${names[0]}"
 - If the note says "tell ${names[0]} to...", assign task_owner to "${names[0]}"
 - The first name mentioned as the actor/doer is the task_owner`;
           }
+        } else {
+          // Final fallback: legacy couple fields
+          const { data: coupleData } = await supabase
+            .from('clerk_couples')
+            .select('you_name, partner_name')
+            .eq('id', couple_id)
+            .maybeSingle();
+          if (coupleData) {
+            const names = [coupleData.you_name, coupleData.partner_name].filter(Boolean);
+            if (names.length > 0) {
+              coupleNamesContext = `\n\n**COUPLE/PARTNER NAMES**: ${names.join(', ')}
+When the note text mentions any of these names, use the EXACT name for task_owner assignment.`;
+            }
+          }
         }
       } catch (err) {
-        console.warn('[process-note] Could not fetch couple names:', err);
+        console.warn('[process-note] Could not fetch member names:', err);
       }
     }
 
