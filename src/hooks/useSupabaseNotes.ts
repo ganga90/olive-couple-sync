@@ -313,16 +313,34 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
             case 'originalText':
               supabaseUpdates.original_text = value;
               break;
+            case 'summary':
+              supabaseUpdates.summary = value;
+              break;
+            case 'category':
+              supabaseUpdates.category = value;
+              break;
+            case 'completed':
+              supabaseUpdates.completed = value;
+              break;
+            case 'priority':
+              supabaseUpdates.priority = value;
+              break;
+            case 'tags':
+              supabaseUpdates.tags = value;
+              break;
+            case 'items':
+              supabaseUpdates.items = value;
+              break;
             case 'dueDate':
-            case 'due_date': // Handle both camelCase and snake_case
+            case 'due_date':
               supabaseUpdates.due_date = value;
               break;
             case 'reminderTime':
-            case 'reminder_time': // Handle both camelCase and snake_case
+            case 'reminder_time':
               supabaseUpdates.reminder_time = value;
               break;
             case 'coupleId':
-            case 'couple_id': // Handle both camelCase and snake_case
+            case 'couple_id':
               supabaseUpdates.couple_id = value;
               break;
             case 'taskOwner':
@@ -358,8 +376,10 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
             case 'updatedAt':
             case 'addedBy':
             case 'authorId':
+            case 'author_id':
             case 'olive_tips':
             case 'location':
+            case 'isShared':
               break;
             default:
               console.warn("[useSupabaseNotes] Ignoring unknown field:", key);
