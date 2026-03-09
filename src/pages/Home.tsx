@@ -181,9 +181,15 @@ const Home = () => {
   };
 
   const getAuthorName = (note: Note) => {
+    if (!note.task_owner) return 'Everyone';
+    // Try to resolve as user_id first (new multi-member format)
+    const resolved = getMemberName(note.task_owner);
+    if (resolved !== 'Unknown') return resolved;
+    // Legacy fallback
     if (note.task_owner === 'you') return you || 'You';
     if (note.task_owner === 'partner') return partner || 'Partner';
-    return 'Both';
+    // Could be a display name already
+    return note.task_owner;
   };
 
   if (!isAuthenticated) {
