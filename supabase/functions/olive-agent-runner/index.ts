@@ -771,9 +771,11 @@ async function runWeeklyCoupleSyncAgent(ctx: AgentContext): Promise<AgentResult>
   ⏳ Pending: ${myPending.length} tasks${myPending.filter((t: { priority: string | null }) => t.priority === "high").length > 0 ? ` (${myPending.filter((t: { priority: string | null }) => t.priority === "high").length} high priority)` : ""}`;
   });
 
-  const response = await ctx.genai.models.generateContent({
-    model: "gemini-2.5-pro", // Pro: relationship-sensitive analysis across two people
-    contents: `You are a couples coordination assistant. Generate a brief weekly sync summary.
+  let syncMessage: string;
+  try {
+    const response = await ctx.genai.models.generateContent({
+      model: "gemini-2.5-flash", // Flash: structured summary
+      contents: `You are a couples coordination assistant. Generate a brief weekly sync summary.
 
 This week's activity:
 ${partnerSummaries.join("\n\n")}
@@ -785,16 +787,24 @@ Generate a warm, brief WhatsApp message (max 600 chars) that:
 1. Celebrates what was accomplished together
 2. Highlights what's still pending
 3. Suggests 1-2 discussion topics for the couple's weekly check-in
-Start with 💑 Weekly Sync`,
-    config: { temperature: 0.5, maxOutputTokens: 500 },
-  });
+Start with 💑 Weekly Sync. IMPORTANT: Always write your COMPLETE response.`,
+      config: { temperature: 0.5, maxOutputTokens: 700 },
+    });
+    syncMessage = response.text?.trim() || "";
+    if (!syncMessage || syncMessage.length < 10) {
+      syncMessage = `💑 Weekly Sync\n\n✅ Completed: ${(completed || []).length} tasks\n⏳ Pending: ${(pending || []).length} tasks\n\nOpen Olive to review together!`;
+    }
+  } catch (err) {
+    console.error("[Couple Sync Agent] Gemini call failed:", err);
+    syncMessage = `💑 Weekly Sync\n\n✅ Completed: ${(completed || []).length} tasks\n⏳ Pending: ${(pending || []).length} tasks\n\nOpen Olive to review together!`;
+  }
 
   return {
     success: true,
-    message: response.text || "",
+    message: syncMessage,
     data: { completedTotal: (completed || []).length, pendingTotal: (pending || []).length, sendToBoth: true, partnerIds },
     notifyUser: true,
-    notificationMessage: response.text || "",
+    notificationMessage: syncMessage,
   };
 }
 
