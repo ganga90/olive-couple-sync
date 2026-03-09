@@ -43,7 +43,7 @@ const Home = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const { you, partner, currentCouple, members, getMemberName } = useSupabaseCouple();
-  const { notes, updateNote, refetch: refetchNotes } = useSupabaseNotesContext();
+  const { notes, loading: notesLoading, updateNote, refetch: refetchNotes } = useSupabaseNotesContext();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const { privacyFilter, setPrivacyFilter } = useDefaultPrivacyFilter();
