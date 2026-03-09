@@ -435,7 +435,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                     <SelectValue placeholder="Select owner..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No owner</SelectItem>
+                    <SelectItem value="none">{t("notAssigned")}</SelectItem>
                     {availableOwners.map((owner) => (
                       <SelectItem key={owner.id} value={owner.id}>
                         {owner.name} {owner.isCurrentUser ? "(You)" : ""}
