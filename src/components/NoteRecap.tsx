@@ -390,7 +390,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
             {dueStatus === 'today' && (
               <Badge className="bg-primary/10 text-primary border border-primary/20 text-xs">
                 <Clock className="w-3 h-3 mr-1" />
-                Due Today
+                {t("recap.dueToday", "Due Today")}
               </Badge>
             )}
           </div>
