@@ -10,6 +10,7 @@ import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useLanguage } from "@/providers/LanguageProvider";
 import { TaskItem } from "@/components/TaskItem";
 import type { Note } from "@/types/note";
+import { Skeleton } from "@/components/ui/skeleton";
 import { NoteInput } from "@/components/NoteInput";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { format, addDays, startOfDay, isSameDay, formatDistanceToNow } from "date-fns";
