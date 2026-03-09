@@ -208,9 +208,47 @@ const Home = () => {
     ).length;
   }, [notes]);
 
-  const handleToggleComplete = async (task: Note) => {
-    await updateNote(task.id, { completed: !task.completed });
-  };
+  // Optimistic UI for task completion with undo
+  const handleToggleComplete = useCallback(async (task: Note) => {
+    const previousState = task.completed;
+    const newState = !previousState;
+    
+    // Optimistic update - immediate UI feedback
+    // Note: We can't directly mutate state, but TaskItem handles animation
+    
+    // Haptic feedback on native
+    if (newState) {
+      haptics.notificationSuccess();
+    } else {
+      haptics.impactLight();
+    }
+    
+    // Show toast with undo action
+    if (newState) {
+      toast(t('home:toast.taskCompleted', 'Task completed! 🎉'), {
+        description: task.summary,
+        action: {
+          label: t('common:buttons.undo', 'Undo'),
+          onClick: async () => {
+            // Revert the completion
+            await updateNote(task.id, { completed: false });
+            haptics.impactLight();
+          },
+        },
+        duration: 5000,
+      });
+    }
+    
+    // Perform the actual update
+    try {
+      await updateNote(task.id, { completed: newState });
+    } catch (error) {
+      // Rollback on error - refetch to restore state
+      console.error('Failed to toggle task:', error);
+      toast.error(t('home:toast.updateFailed', 'Failed to update task'));
+      refetchNotes();
+    }
+  }, [updateNote, haptics, t, refetchNotes]);
 
   const handleTaskClick = (task: Note) => {
     navigate(getLocalizedPath(`/notes/${task.id}`));
