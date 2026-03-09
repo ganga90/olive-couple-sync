@@ -446,7 +446,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
               </div>
               
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">List</label>
+                <label className="text-xs font-medium text-muted-foreground">{t("createDialog.list")}</label>
                 <Select
                   value={showNewListInput ? "new" : (editedNote.listId || "none")}
                   onValueChange={(value) => {
