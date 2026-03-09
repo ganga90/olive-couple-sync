@@ -18,7 +18,7 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
   const { t } = useTranslation(['home', 'common']);
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { partner, currentCouple } = useSupabaseCouple();
+  const { partner, currentCouple, members, getMemberName } = useSupabaseCouple();
   const { getLocalizedPath } = useLanguage();
   const dateLocale = useDateLocale();
 
@@ -44,22 +44,25 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
       .slice(0, 3); // Get last 3 activities
 
     return partnerNotes.map(note => {
-      // Determine if it was assigned to the current user
-      // task_owner could be 'you', the user's name, or their ID
-      const youName = currentCouple?.you_name;
+      const currentMember = members.find(m => m.user_id === userId);
+      const youName = currentMember?.display_name || currentCouple?.you_name;
       const isAssignedToYou = note.task_owner === 'you' ||
                               note.task_owner === youName ||
                               note.task_owner === userId;
+
+      // Resolve the author's display name from members
+      const authorName = note.authorId ? getMemberName(note.authorId) : partnerName;
 
       return {
         id: note.id,
         summary: note.summary,
         createdAt: note.createdAt,
         isAssignedToYou,
+        authorName: authorName === "You" ? partnerName : authorName,
         type: isAssignedToYou ? 'assigned' : 'added' as const
       };
     });
-  }, [notes, userId, currentCouple]);
+  }, [notes, userId, currentCouple, members, getMemberName, partnerName]);
 
   // Don't show widget if no couple
   if (!currentCouple || !partner) {
@@ -131,12 +134,12 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
                 <p className="text-xs text-muted-foreground leading-tight">
                   {activity.isAssignedToYou ? (
                     <span>
-                      <span className="font-semibold text-foreground">{partnerName}</span>
+                      <span className="font-semibold text-foreground">{activity.authorName}</span>
                       {' '}{t('home:partnerActivity.assignedYou')}
                     </span>
                   ) : (
                     <span>
-                      <span className="font-semibold text-foreground">{partnerName}</span>
+                      <span className="font-semibold text-foreground">{activity.authorName}</span>
                       {' '}{t('home:partnerActivity.added')}
                     </span>
                   )}
