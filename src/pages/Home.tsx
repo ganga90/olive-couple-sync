@@ -333,16 +333,16 @@ const Home = () => {
           </div>
 
           {/* Tabs Widget - PREMIUM CARD: Subtle shadow, generous padding */}
-          <div className="bg-white rounded-3xl shadow-xl border border-stone-100/50 overflow-hidden animate-fade-up stagger-3">
+          <div className="bg-card rounded-3xl shadow-xl border border-border/50 overflow-hidden animate-fade-up stagger-3">
             <Tabs defaultValue={localStorage.getItem('olive_default_home_tab') || 'weekly'} className="w-full">
               {/* Header with tabs and filters - EDITORIAL STYLE */}
-              <div className="px-6 md:px-10 py-6 md:py-8 border-b border-stone-100">
+              <div className="px-6 md:px-10 py-6 md:py-8 border-b border-border">
                 {/* Section Label - UPPERCASE tracking-widest */}
-                <p className="text-xs md:text-sm uppercase tracking-widest font-bold text-stone-500 mb-4 md:mb-6">
+                <p className="text-xs md:text-sm uppercase tracking-widest font-bold text-muted-foreground mb-4 md:mb-6">
                   {t('home:tabs.sectionLabel', 'Your Tasks')}
                 </p>
                 
-                <TabsList className="w-full grid grid-cols-4 bg-stone-100/80 mb-5 md:mb-6 h-12 md:h-14 rounded-full p-1">
+                <TabsList className="w-full grid grid-cols-4 bg-muted/80 mb-5 md:mb-6 h-12 md:h-14 rounded-full p-1">
                   <TabsTrigger value="priority" className="text-xs md:text-sm font-semibold rounded-full transition-all duration-300 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg">
                     {t('home:tabs.priority')}
                   </TabsTrigger>
