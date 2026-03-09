@@ -147,10 +147,11 @@ User's Question: ${userMessage}
 
 Please provide helpful, contextual assistance based on this specific note, the user's memories/preferences, any activated skill knowledge, and their question.`;
 
-    console.log('[Ask Olive] Calling Gemini via SDK...');
+    console.log('[Ask Olive] Calling Gemini via SDK with', getModel('standard'));
     
+    // Use shared config for model selection
     const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: getModel('standard'),
       contents: contextualPrompt,
       config: {
         temperature: 0.8,
