@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2, Bell, Mail, CalendarDays } from "lucide-react";
@@ -10,6 +10,7 @@ import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useLanguage } from "@/providers/LanguageProvider";
 import { TaskItem } from "@/components/TaskItem";
 import type { Note } from "@/types/note";
+import { Skeleton } from "@/components/ui/skeleton";
 import { NoteInput } from "@/components/NoteInput";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { format, addDays, startOfDay, isSameDay, formatDistanceToNow } from "date-fns";
@@ -43,8 +44,9 @@ const Home = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const { you, partner, currentCouple, members, getMemberName } = useSupabaseCouple();
-  const { notes, updateNote, refetch: refetchNotes } = useSupabaseNotesContext();
+  const { notes, loading: notesLoading, updateNote, refetch: refetchNotes } = useSupabaseNotesContext();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [defaultHomeTab] = useState(() => localStorage.getItem('olive_default_home_tab') || 'weekly');
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const { privacyFilter, setPrivacyFilter } = useDefaultPrivacyFilter();
   const { connection: calendarConnection } = useCalendarEvents();
@@ -214,6 +216,31 @@ const Home = () => {
       <div className="flex-1 overflow-y-auto pb-32 scrollbar-thin relative z-10">
         {/* Reduced spacing between sections for tighter layout */}
         <div className="px-4 md:px-0 pt-4 md:pt-0 space-y-6 md:space-y-8">
+
+          {/* Loading Skeleton State */}
+          {notesLoading && (
+            <div className="space-y-6 animate-fade-up">
+              {/* Greeting skeleton */}
+              <div className="text-center md:text-left">
+                <Skeleton className="h-12 w-3/4 mb-3 mx-auto md:mx-0" />
+                <Skeleton className="h-6 w-1/2 mx-auto md:mx-0" />
+              </div>
+              {/* Input skeleton */}
+              <Skeleton className="h-24 w-full rounded-2xl" />
+              {/* Tasks skeleton */}
+              <div className="bg-card rounded-3xl shadow-xl border border-border/50 overflow-hidden p-6 md:p-10 space-y-4">
+                <Skeleton className="h-5 w-24" />
+                <Skeleton className="h-12 w-full rounded-full" />
+                <div className="space-y-3 pt-4">
+                  {[1, 2, 3, 4].map(i => (
+                    <Skeleton key={i} className="h-16 w-full rounded-xl" />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!notesLoading && (<>
           {/* Greeting Section - MASSIVE SERIF Typography for Desktop */}
           <div className="text-center md:text-left animate-fade-up">
             <h1 className="font-serif font-bold text-4xl md:text-5xl lg:text-6xl xl:text-7xl tracking-tight text-foreground mb-3 md:mb-4">
@@ -334,7 +361,7 @@ const Home = () => {
 
           {/* Tabs Widget - PREMIUM CARD: Subtle shadow, generous padding */}
           <div className="bg-card rounded-3xl shadow-xl border border-border/50 overflow-hidden animate-fade-up stagger-3">
-            <Tabs defaultValue={localStorage.getItem('olive_default_home_tab') || 'weekly'} className="w-full">
+            <Tabs defaultValue={defaultHomeTab} className="w-full">
               {/* Header with tabs and filters - EDITORIAL STYLE */}
               <div className="px-6 md:px-10 py-6 md:py-8 border-b border-border">
                 {/* Section Label - UPPERCASE tracking-widest */}
@@ -585,6 +612,7 @@ const Home = () => {
               </span>
             </button>
           )}
+          </>)}
         </div>
       </div>
 

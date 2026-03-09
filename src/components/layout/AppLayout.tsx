@@ -90,7 +90,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   // Desktop layout: 3-Column Grid - Sidebar | Floating Sheet | Context Rail
   return (
-    <div className="min-h-screen bg-[hsl(40_20%_88%)]">
+    <div className="min-h-screen bg-desk-background">
       {/* CSS Grid: Precise 3-column layout for xl screens */}
       <div className="grid grid-cols-[280px_1fr] xl:grid-cols-[280px_1fr_320px] min-h-screen">
         {/* Left Column: Navigation Sidebar - blends with stone */}
@@ -99,7 +99,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         {/* Center Column: "FLOATING SHEET OF PAPER" */}
         <main className="py-6 px-6 xl:px-8">
           {/* Paper Surface - Floating sheet with heavy shadow */}
-          <div className="bg-[hsl(48_60%_99%)] rounded-3xl shadow-2xl min-h-[calc(100vh-3rem)] overflow-hidden">
+          <div className="bg-paper-surface rounded-3xl shadow-2xl min-h-[calc(100vh-3rem)] overflow-hidden">
             {/* Central Focus Container - max-w-3xl (768px) centered with generous top padding */}
             <div className="max-w-3xl mx-auto px-8 lg:px-12 pt-12 lg:pt-16 pb-12">
               {children}

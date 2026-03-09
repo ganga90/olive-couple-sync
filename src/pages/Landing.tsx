@@ -21,7 +21,7 @@ const Landing = () => {
   return (
     <>
       <NewLandingNav />
-      <main className="min-h-screen bg-[#EAE8E0]">
+      <main className="min-h-screen bg-desk-background">
         <NewLandingHero />
         <ChooseYourMode />
         <SuperpowersGrid />

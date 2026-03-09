@@ -73,7 +73,7 @@ const AuthPage = () => {
         >
           {/* Create Account Card */}
           <Card 
-            className="p-6 bg-white/80 border-olive/20 shadow-soft hover:shadow-lg transition-all cursor-pointer group"
+            className="p-6 bg-card/80 backdrop-blur-sm border-olive/20 shadow-soft hover:shadow-lg transition-all cursor-pointer group"
             onClick={() => navigate(`/sign-up?redirect=${encodeURIComponent(redirectUrl)}`)}
           >
             <div className="flex items-center gap-4">
@@ -93,7 +93,7 @@ const AuthPage = () => {
 
           {/* Login Card */}
           <Card 
-            className="p-6 bg-white/80 border-olive/20 shadow-soft hover:shadow-lg transition-all cursor-pointer group"
+            className="p-6 bg-card/80 backdrop-blur-sm border-olive/20 shadow-soft hover:shadow-lg transition-all cursor-pointer group"
             onClick={() => navigate(`/sign-in?redirect=${encodeURIComponent(redirectUrl)}`)}
           >
             <div className="flex items-center gap-4">
