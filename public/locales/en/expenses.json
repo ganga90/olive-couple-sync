@@ -129,8 +129,12 @@
     "mode": "Tracking mode",
     "modeIndividual": "Individual",
     "modeShared": "Shared with partner",
+    "modeSharedWith": "Shared with {{names}}",
     "defaultSplit": "Default split",
-    "defaultCurrency": "Default currency"
+    "defaultCurrency": "Default currency",
+    "splitWith": "Split expenses with",
+    "selectAll": "All members",
+    "splitInfo": "Expenses split equally among {{count}} people"
   },
   "recurring": {
     "label": "Recurring expense",

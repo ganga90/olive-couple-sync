@@ -70,6 +70,7 @@ export interface ExpensePreferences {
   trackingMode: string;
   defaultSplit: ExpenseSplitType;
   defaultCurrency: string;
+  sharedWithMembers: string[]; // user_ids of members to split with
 }
 
 export interface BudgetLimit {

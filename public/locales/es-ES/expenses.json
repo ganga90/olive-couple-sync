@@ -129,8 +129,12 @@
     "mode": "Modo de seguimiento",
     "modeIndividual": "Individual",
     "modeShared": "Compartido con pareja",
+    "modeSharedWith": "Compartido con {{names}}",
     "defaultSplit": "División por defecto",
-    "defaultCurrency": "Moneda por defecto"
+    "defaultCurrency": "Moneda por defecto",
+    "splitWith": "Dividir gastos con",
+    "selectAll": "Todos los miembros",
+    "splitInfo": "Gastos divididos equitativamente entre {{count}} personas"
   },
   "recurring": {
     "label": "Gasto recurrente",
