@@ -14,6 +14,7 @@ import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface NoteRecapProps {
   note: {
@@ -37,6 +38,7 @@ interface NoteRecapProps {
 }
 
 export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdated }) => {
+  const { t } = useTranslation("notes");
   const [isEditing, setIsEditing] = useState(false);
   
   const formatDateForEdit = (dateValue: string | null | undefined): string => {
@@ -290,8 +292,8 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-foreground">Note Organized!</h3>
-              <p className="text-xs text-muted-foreground">AI processed your input</p>
+              <h3 className="text-base font-semibold text-foreground">{t("recap.title", "Note Organized!")}</h3>
+              <p className="text-xs text-muted-foreground">{t("recap.subtitle", "AI processed your input")}</p>
             </div>
           </div>
           
@@ -304,7 +306,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                 className="h-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
               >
                 <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                Edit
+                {t("edit.edit", "Edit")}
               </Button>
             ) : (
               <div className="flex items-center gap-1">
@@ -381,14 +383,14 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
             {dueStatus === 'overdue' && (
               <Badge className="bg-destructive/10 text-destructive border border-destructive/20 text-xs">
                 <AlertTriangle className="w-3 h-3 mr-1" />
-                Overdue
+                {t("overdue")}
               </Badge>
             )}
             
             {dueStatus === 'today' && (
               <Badge className="bg-primary/10 text-primary border border-primary/20 text-xs">
                 <Clock className="w-3 h-3 mr-1" />
-                Due Today
+                {t("recap.dueToday", "Due Today")}
               </Badge>
             )}
           </div>
@@ -399,7 +401,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
           <div className="space-y-3 pt-2 animate-fade-in">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Priority</label>
+                <label className="text-xs font-medium text-muted-foreground">{t("edit.priority")}</label>
                 <Select value={editedNote.priority} onValueChange={(value) => setEditedNote(prev => ({ ...prev, priority: value as "low" | "medium" | "high" }))}>
                   <SelectTrigger className="h-9 text-sm border-border focus:border-primary">
                     <SelectValue />
@@ -412,7 +414,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Due Date</label>
+                <label className="text-xs font-medium text-muted-foreground">{t("dueDate")}</label>
                 <Input
                   type="date"
                   value={editedNote.dueDate}
@@ -424,7 +426,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
             
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Task Owner</label>
+                <label className="text-xs font-medium text-muted-foreground">{t("assignedTo")}</label>
                 <Select
                   value={editedNote.taskOwner || "none"}
                   onValueChange={(value) => setEditedNote(prev => ({ ...prev, taskOwner: value === "none" ? "" : value }))}
@@ -433,7 +435,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                     <SelectValue placeholder="Select owner..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No owner</SelectItem>
+                    <SelectItem value="none">{t("notAssigned")}</SelectItem>
                     {availableOwners.map((owner) => (
                       <SelectItem key={owner.id} value={owner.id}>
                         {owner.name} {owner.isCurrentUser ? "(You)" : ""}
@@ -444,7 +446,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
               </div>
               
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">List</label>
+                <label className="text-xs font-medium text-muted-foreground">{t("createDialog.list")}</label>
                 <Select
                   value={showNewListInput ? "new" : (editedNote.listId || "none")}
                   onValueChange={(value) => {
@@ -458,10 +460,10 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                   }}
                 >
                   <SelectTrigger className="h-9 text-sm border-border focus:border-primary">
-                    <SelectValue placeholder="Select list..." />
+                    <SelectValue placeholder={t("createDialog.selectList")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No list</SelectItem>
+                    <SelectItem value="none">{t("createDialog.noList")}</SelectItem>
                     {lists.map((list) => (
                       <SelectItem key={list.id} value={list.id}>
                         {list.name}
@@ -470,7 +472,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                     <SelectItem value="new">
                       <div className="flex items-center gap-1.5">
                         <Plus className="h-3.5 w-3.5" />
-                        New list...
+                        {t("recap.newList", "New list...")}
                       </div>
                     </SelectItem>
                   </SelectContent>
@@ -483,7 +485,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                 <Input
                   value={newListName}
                   onChange={(e) => setNewListName(e.target.value)}
-                  placeholder="New list name..."
+                  placeholder={t("recap.newListPlaceholder", "New list name...")}
                   className="h-9 text-sm border-border focus:border-primary"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && newListName.trim()) {
@@ -512,13 +514,13 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
           <div className="space-y-2 animate-fade-in">
             <div className="flex items-center gap-2">
               <List className="h-4 w-4 text-muted-foreground" />
-              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Items</h4>
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("recap.items", "Items")}</h4>
             </div>
             {isEditing ? (
               <Textarea
                 value={editedNote.items}
                 onChange={(e) => setEditedNote(prev => ({ ...prev, items: e.target.value }))}
-                placeholder="Enter items, one per line..."
+                placeholder={t("recap.itemsPlaceholder", "Enter items, one per line...")}
                 className="text-sm border-border focus:border-primary resize-none"
                 rows={3}
               />
@@ -536,7 +538,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
                 ))}
                 {note.items && note.items.length > 4 && (
                   <p className="text-xs text-muted-foreground pt-1">
-                    +{note.items.length - 4} more items
+                    {t("card.moreItems", { count: note.items.length - 4 })}
                   </p>
                 )}
               </div>
@@ -549,13 +551,13 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
           <div className="space-y-2 animate-fade-in">
             <div className="flex items-center gap-2">
               <Tag className="h-4 w-4 text-muted-foreground" />
-              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tags</h4>
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("tags")}</h4>
             </div>
             {isEditing ? (
               <Input
                 value={editedNote.tags}
                 onChange={(e) => setEditedNote(prev => ({ ...prev, tags: e.target.value }))}
-                placeholder="Enter tags separated by commas..."
+                placeholder={t("recap.tagsPlaceholder", "Enter tags separated by commas...")}
                 className="h-9 text-sm border-border focus:border-primary"
               />
             ) : (
@@ -622,7 +624,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
 
         {/* Original text reference */}
         <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-lg border border-border/30">
-          <span className="font-medium">Original:</span> "{note.originalText.length > 150 ? note.originalText.slice(0, 150) + '...' : note.originalText}"
+          <span className="font-medium">{t("originalNote")}:</span> "{note.originalText.length > 150 ? note.originalText.slice(0, 150) + '...' : note.originalText}"
         </div>
       </div>
     </Card>

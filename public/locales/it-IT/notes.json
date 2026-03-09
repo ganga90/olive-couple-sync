@@ -114,5 +114,24 @@
     "enabled": "Crittografia attivata",
     "disabled": "Crittografia disattivata",
     "badge": "Crittografato"
+  },
+  "recap": {
+    "title": "Nota Organizzata!",
+    "subtitle": "L'IA ha elaborato il tuo input",
+    "dueToday": "Scade Oggi",
+    "newList": "Nuova lista...",
+    "newListPlaceholder": "Nome della nuova lista...",
+    "items": "Elementi",
+    "itemsPlaceholder": "Inserisci elementi, uno per riga...",
+    "tagsPlaceholder": "Inserisci tag separati da virgola..."
+  },
+  "askOlive": {
+    "actions": {
+      "taskCompleted": "Attività completata",
+      "dueDateUpdated": "Data di scadenza aggiornata",
+      "priorityUpdated": "Priorità aggiornata",
+      "taskDeleted": "Attività eliminata",
+      "actionCompleted": "Azione completata"
+    }
   }
 }

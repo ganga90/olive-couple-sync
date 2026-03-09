@@ -349,13 +349,13 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
                     {/* Show task action badge if an action was performed */}
                     {message.action && message.action.success && (
                       <div className="mt-2 pt-2 border-t border-border/50">
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          ✅ {message.action.type === 'complete' ? 'Task completed' :
-                              message.action.type === 'set_due' ? 'Due date updated' :
-                              message.action.type === 'set_priority' ? 'Priority updated' :
-                              message.action.type === 'delete' ? 'Task deleted' :
-                              'Action completed'}
-                          {message.action.task_summary && (
+                         <span className="text-xs text-muted-foreground flex items-center gap-1">
+                           ✅ {message.action.type === 'complete' ? t("askOlive.actions.taskCompleted", "Task completed") :
+                               message.action.type === 'set_due' ? t("askOlive.actions.dueDateUpdated", "Due date updated") :
+                               message.action.type === 'set_priority' ? t("askOlive.actions.priorityUpdated", "Priority updated") :
+                               message.action.type === 'delete' ? t("askOlive.actions.taskDeleted", "Task deleted") :
+                               t("askOlive.actions.actionCompleted", "Action completed")}
+                           {message.action.task_summary && (
                             <span className="font-medium">— {message.action.task_summary}</span>
                           )}
                         </span>

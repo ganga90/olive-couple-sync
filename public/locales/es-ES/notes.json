@@ -114,5 +114,24 @@
     "enabled": "Cifrado activado",
     "disabled": "Cifrado desactivado",
     "badge": "Cifrado"
+  },
+  "recap": {
+    "title": "¡Nota Organizada!",
+    "subtitle": "La IA procesó tu entrada",
+    "dueToday": "Vence Hoy",
+    "newList": "Nueva lista...",
+    "newListPlaceholder": "Nombre de la nueva lista...",
+    "items": "Elementos",
+    "itemsPlaceholder": "Escribe elementos, uno por línea...",
+    "tagsPlaceholder": "Escribe etiquetas separadas por comas..."
+  },
+  "askOlive": {
+    "actions": {
+      "taskCompleted": "Tarea completada",
+      "dueDateUpdated": "Fecha límite actualizada",
+      "priorityUpdated": "Prioridad actualizada",
+      "taskDeleted": "Tarea eliminada",
+      "actionCompleted": "Acción completada"
+    }
   }
 }

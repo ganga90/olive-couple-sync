@@ -114,5 +114,24 @@
     "enabled": "Encryption enabled",
     "disabled": "Encryption disabled",
     "badge": "Encrypted"
+  },
+  "recap": {
+    "title": "Note Organized!",
+    "subtitle": "AI processed your input",
+    "dueToday": "Due Today",
+    "newList": "New list...",
+    "newListPlaceholder": "New list name...",
+    "items": "Items",
+    "itemsPlaceholder": "Enter items, one per line...",
+    "tagsPlaceholder": "Enter tags separated by commas..."
+  },
+  "askOlive": {
+    "actions": {
+      "taskCompleted": "Task completed",
+      "dueDateUpdated": "Due date updated",
+      "priorityUpdated": "Priority updated",
+      "taskDeleted": "Task deleted",
+      "actionCompleted": "Action completed"
+    }
   }
 }
