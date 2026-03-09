@@ -267,7 +267,7 @@ const Home = () => {
                   </div>
                   <div>
                     <p className="heading-card">{t('home:connectCalendar.title')}</p>
-                    <p className="text-sm text-stone-500">{t('home:connectCalendar.subtitle')}</p>
+                    <p className="text-sm text-muted-foreground">{t('home:connectCalendar.subtitle')}</p>
                   </div>
                 </div>
               </div>

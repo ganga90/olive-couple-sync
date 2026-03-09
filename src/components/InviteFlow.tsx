@@ -237,28 +237,28 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
   }
 
   return (
-    <Card className="p-6 bg-white/50 border-olive/20 shadow-soft space-y-6">
+    <Card className="p-6 bg-card/50 border-border/30 shadow-soft space-y-6">
       <div className="text-center space-y-2">
-        <h3 className="text-lg font-semibold text-olive-dark">Invite Ready! 🌿</h3>
+        <h3 className="text-lg font-semibold text-foreground">{t('partnerInfo.inviteReady', 'Invite Ready!')} 🌿</h3>
         <p className="text-sm text-muted-foreground">
-          Copy and share this with {partner} via text, email, or any messaging app.
+          {t('partnerInfo.copyAndShare', 'Copy and share this with {{partner}} via text, email, or any messaging app.', { partner })}
         </p>
       </div>
 
       <div className="space-y-4">
         <div className="space-y-2">
-          <Label className="text-olive-dark font-medium">Invite Message</Label>
+          <Label className="text-foreground font-medium">{t('partnerInfo.inviteMessage')}</Label>
           <div className="relative">
             <textarea 
               value={inviteMessage}
               readOnly
               rows={8}
-              className="w-full p-3 text-sm bg-olive/5 border border-olive/20 rounded-lg resize-none focus:outline-none"
+              className="w-full p-3 text-sm bg-muted/30 border border-border rounded-lg resize-none focus:outline-none"
             />
             <Button
               size="sm"
               variant="outline"
-              className="absolute top-2 right-2 border-olive/30 text-olive hover:bg-olive/10"
+              className="absolute top-2 right-2 border-border text-foreground hover:bg-muted/50"
               onClick={() => copyToClipboard(inviteMessage)}
             >
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -267,17 +267,17 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         </div>
 
         <div className="space-y-2">
-          <Label className="text-olive-dark font-medium">Just the Link</Label>
+          <Label className="text-foreground font-medium">{t('partnerInfo.justTheLink')}</Label>
           <div className="flex gap-2">
             <input 
               value={inviteUrl}
               readOnly
-              className="flex-1 p-2 text-sm bg-olive/5 border border-olive/20 rounded-lg focus:outline-none"
+              className="flex-1 p-2 text-sm bg-muted/30 border border-border rounded-lg focus:outline-none"
             />
             <Button
               size="sm"
               variant="outline"
-              className="border-olive/30 text-olive hover:bg-olive/10"
+              className="border-border text-foreground hover:bg-muted/50"
               onClick={() => copyToClipboard(inviteUrl)}
             >
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -288,9 +288,9 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
         <div className="space-y-3">
           <Button 
             onClick={onComplete}
-            className="w-full bg-olive hover:bg-olive/90 text-white shadow-soft"
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-soft"
           >
-            Done
+            {t('common:buttons.done', 'Done')}
           </Button>
 
           <Button 
@@ -300,9 +300,9 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
               setMode("setup");
             }}
             variant="ghost"
-            className="w-full text-muted-foreground hover:text-olive"
+            className="w-full text-muted-foreground hover:text-foreground"
           >
-            Create Another Invite
+            {t('partnerInfo.createAnother')}
           </Button>
         </div>
       </div>
