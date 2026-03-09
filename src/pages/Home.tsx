@@ -45,6 +45,7 @@ const Home = () => {
   const { you, partner, currentCouple, members, getMemberName } = useSupabaseCouple();
   const { notes, loading: notesLoading, updateNote, refetch: refetchNotes } = useSupabaseNotesContext();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [defaultHomeTab] = useState(() => localStorage.getItem('olive_default_home_tab') || 'weekly');
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const { privacyFilter, setPrivacyFilter } = useDefaultPrivacyFilter();
   const { connection: calendarConnection } = useCalendarEvents();
