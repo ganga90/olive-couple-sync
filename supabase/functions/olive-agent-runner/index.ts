@@ -523,10 +523,11 @@ ${sleepSummary}
 Previously sent tips (don't repeat these): ${sentTips.join(", ") || "none"}
 
 Rules:
-- Only respond if there's a clear pattern or issue (declining scores, inconsistency, low scores)
-- If everything looks good, respond with exactly "ALL_GOOD"
-- Keep the tip under 500 chars for WhatsApp
-- Start with 🛏️ and be encouraging, not preachy
+- Analyze the data for patterns: declining scores, inconsistency, low scores, or improvement trends
+- If everything looks great, give a positive reinforcement message celebrating their consistency (start with 🌟)
+- If there's an issue, give ONE specific actionable tip (start with 🛏️)
+- Keep the response under 500 chars for WhatsApp
+- Be encouraging, not preachy
 - Be specific (e.g., "try a 10pm bedtime" not "sleep earlier")
 - IMPORTANT: Always write your COMPLETE response. Do not stop mid-sentence.`,
       config: { temperature: 0.3, maxOutputTokens: 600 },
