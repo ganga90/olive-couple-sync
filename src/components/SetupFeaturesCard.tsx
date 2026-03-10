@@ -84,7 +84,7 @@ export const SetupFeaturesCard = () => {
             description: t("setupFeatures.whatsappDesc", {
               defaultValue: "Text Olive naturally from WhatsApp",
             }),
-            action: () => navigate(getLocalizedPath("/profile")),
+            action: () => navigate(getLocalizedPath("/profile") + "#integrations"),
           },
         ]
       : []),
@@ -96,7 +96,7 @@ export const SetupFeaturesCard = () => {
             description: t("setupFeatures.calendarDesc", {
               defaultValue: "See your schedule alongside tasks",
             }),
-            action: () => navigate(getLocalizedPath("/calendar")),
+            action: () => navigate(getLocalizedPath("/profile") + "#integrations"),
           },
         ]
       : []),

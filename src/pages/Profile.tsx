@@ -273,6 +273,7 @@ const Profile = () => {
           title={t('profile:sections.system', 'System')}
           icon={<Settings className="h-3.5 w-3.5 text-stone-500" />}
           delay={200}
+          sectionId="system"
         >
           <SettingsCard
             icon={<span className="text-lg">🌍</span>}

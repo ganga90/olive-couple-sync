@@ -26,6 +26,16 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   const [isOpen, setIsOpen] = React.useState(defaultOpen || (!!sectionId && hash === sectionId));
   const sectionRef = useRef<HTMLDivElement>(null);
 
+  // Deep-link: auto-open and scroll when hash matches sectionId
+  useEffect(() => {
+    if (sectionId && hash === sectionId && !isOpen) {
+      setIsOpen(true);
+      setTimeout(() => {
+        sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+    }
+  }, [hash, sectionId]);
+
   const handleOpenChange = useCallback((open: boolean) => {
     setIsOpen(open);
     
