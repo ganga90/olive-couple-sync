@@ -82,6 +82,9 @@ export function MemoryPersonalization() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
 
+  // Delete confirmation state
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+
   // Analyze notes function
   async function analyzeNotes() {
     if (!userId || analyzing) return;
