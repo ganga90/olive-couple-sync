@@ -612,15 +612,15 @@ export function MemoryPersonalization() {
           <Card className="bg-muted/30 border-dashed">
             <CardContent className="p-4">
               <p className="text-sm font-medium text-foreground mb-3">
-                💡 Examples of things to remember:
+                💡 {t('memory.examplesTitle', 'Examples of things to remember:')}
               </p>
               <div className="grid gap-2">
                 {[
-                  "I have 2 kids: Emma (8) and Jack (5)",
-                  "We're vegetarian and prefer Italian restaurants",
-                  "My partner's name is Sarah",
-                  "I prefer morning appointments",
-                  "Allergic to peanuts",
+                  t('memory.examples.kids', 'I have 2 kids: Emma (8) and Jack (5)'),
+                  t('memory.examples.diet', "We're vegetarian and prefer Italian restaurants"),
+                  t('memory.examples.partner', "My partner's name is Sarah"),
+                  t('memory.examples.preferences', 'I prefer morning appointments'),
+                  t('memory.examples.allergy', 'Allergic to peanuts'),
                 ].map((example, i) => (
                   <button
                     key={i}
