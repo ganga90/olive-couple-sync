@@ -418,7 +418,7 @@ export function MemoryPersonalization() {
                               ) : (
                                 <Check className="h-4 w-4 mr-1" />
                               )}
-                              Save
+                              {t('memory.saveMemory', 'Save')}
                             </Button>
                           </div>
                         </div>
