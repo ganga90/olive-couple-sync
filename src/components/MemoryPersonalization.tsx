@@ -270,6 +270,7 @@ export function MemoryPersonalization() {
     setNewCategory('personal');
     setNewImportance(3);
     setActiveTab('view');
+    haptics.notificationSuccess();
 
     try {
       setSaving(true);
