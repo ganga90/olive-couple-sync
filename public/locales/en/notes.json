@@ -35,7 +35,7 @@
   "originalNote": "Original Note",
   "details": "Details",
   "tags": "Tags",
-  "askOlive": "Ask Olive",
+  "askOliveLabel": "Ask Olive",
   "askOliveChat": {
     "greeting": "Hi! How can I help with \"{{summary}}\"?",
     "title": "Ask Olive",
