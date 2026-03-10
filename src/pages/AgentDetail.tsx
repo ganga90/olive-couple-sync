@@ -487,7 +487,11 @@ export default function AgentDetail() {
         />
       )}
 
-      {/* ── Settings Card ────────────────────────────────────── */}
+      {/* ── Email Tasks (for email-triage-agent) ─────────────── */}
+      {agent.skill_id === 'email-triage-agent' && user?.id && (
+        <EmailTasksSection userId={user.id} />
+      )}
+
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
