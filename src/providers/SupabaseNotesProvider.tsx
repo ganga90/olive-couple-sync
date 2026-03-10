@@ -3,6 +3,7 @@ import { useSupabaseCouple } from "./SupabaseCoupleProvider";
 import { useSupabaseNotes, SupabaseNote } from "@/hooks/useSupabaseNotes";
 import { useAuth } from "./AuthProvider";
 import { useDefaultPrivacy } from "@/hooks/useDefaultPrivacy";
+import { supabase } from "@/lib/supabaseClient";
 import type { Note } from "@/types/note";
 import type { SpaceMember } from "@/types/space";
 
