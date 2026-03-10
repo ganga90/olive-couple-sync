@@ -437,7 +437,7 @@ export function MemoryPersonalization() {
                                   variant="secondary" 
                                   className="text-xs font-medium"
                                 >
-                                  {categoryInfo.label}
+                                  {t(categoryInfo.labelKey, categoryInfo.value)}
                                 </Badge>
                                 {memory.metadata?.auto_extracted && (
                                   <Badge 
