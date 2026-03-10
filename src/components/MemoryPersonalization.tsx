@@ -61,6 +61,7 @@ const getCategoryInfo = (value: string) => {
 export function MemoryPersonalization() {
   const { t } = useTranslation('profile');
   const { user } = useAuth();
+  const { currentCouple } = useSupabaseCouple();
   const navigate = useNavigate();
   const { getLocalizedPath } = useLanguage();
   const userId = user?.id;
