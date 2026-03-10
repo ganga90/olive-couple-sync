@@ -13,7 +13,7 @@
   "originalNote": "Nota Original",
   "details": "Detalles",
   "tags": "Etiquetas",
-  "askOlive": "Preguntar a Olive",
+  "askOliveLabel": "Preguntar a Olive",
   "askOliveChat": {
     "greeting": "¡Hola! ¿Cómo puedo ayudarte con \"{{summary}}\"?",
     "title": "Preguntar a Olive",
