@@ -146,6 +146,7 @@
     "memorySaved": "Ricordo salvato",
     "memoryUpdated": "Ricordo aggiornato",
     "memoryDeleted": "Ricordo eliminato",
+    "undo": "Annulla",
     "loadingMemories": "Caricamento ricordi...",
     "autoLearned": "Appreso automaticamente",
     "error": "Impossibile salvare il ricordo",
