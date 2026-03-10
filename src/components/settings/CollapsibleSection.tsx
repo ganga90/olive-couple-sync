@@ -9,6 +9,7 @@ interface CollapsibleSectionProps {
   children: React.ReactNode;
   defaultOpen?: boolean;
   delay?: number;
+  sectionId?: string;
 }
 
 export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
