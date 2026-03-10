@@ -130,6 +130,8 @@
     "tabMemories": "Memories",
     "tabAddNew": "Add New",
     "searchPlaceholder": "Search memories...",
+    "semanticResults": "AI-powered results",
+    "found": "found",
     "noMemoriesYet": "No memories yet",
     "noMemoriesDescription": "Tell Olive about yourself, your family, pets, preferences, and more to personalize your experience",
     "addFirstMemory": "Add your first memory",

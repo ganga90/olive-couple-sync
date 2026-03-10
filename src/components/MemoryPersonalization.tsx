@@ -76,6 +76,9 @@ export function MemoryPersonalization() {
   // Search and filter
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [semanticSearching, setSemanticSearching] = useState(false);
+  const [semanticResults, setSemanticResults] = useState<Memory[] | null>(null);
+  const searchDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // New memory form state
   const [newContent, setNewContent] = useState('');
@@ -88,6 +91,73 @@ export function MemoryPersonalization() {
 
   // Delete confirmation state
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+
+  // Semantic search via olive-search edge function
+  const performSemanticSearch = React.useCallback(async (query: string) => {
+    if (!userId || query.trim().length < 3) {
+      setSemanticResults(null);
+      return;
+    }
+    
+    try {
+      setSemanticSearching(true);
+      const { data, error } = await supabase.functions.invoke('olive-search', {
+        body: {
+          action: 'search_memory',
+          user_id: userId,
+          query: query.trim(),
+          limit: 20,
+        }
+      });
+
+      if (error || !data?.success) {
+        // Fall back to local filtering
+        setSemanticResults(null);
+        return;
+      }
+
+      // Map search results back to Memory shape
+      const mapped: Memory[] = (data.results || []).map((r: any) => ({
+        id: r.id,
+        title: r.snippet || r.content?.substring(0, 50) || '',
+        content: r.content,
+        category: r.metadata?.chunk_type || 'other',
+        importance: r.metadata?.importance || 3,
+        created_at: r.metadata?.created_at || new Date().toISOString(),
+        metadata: { auto_extracted: r.metadata?.source === 'auto' },
+      }));
+      
+      setSemanticResults(mapped);
+    } catch {
+      setSemanticResults(null);
+    } finally {
+      setSemanticSearching(false);
+    }
+  }, [userId]);
+
+  // Debounced search handler
+  const handleSearchChange = React.useCallback((value: string) => {
+    setSearchQuery(value);
+    
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    if (value.trim().length >= 3) {
+      searchDebounceRef.current = setTimeout(() => {
+        performSemanticSearch(value);
+      }, 400);
+    } else {
+      setSemanticResults(null);
+    }
+  }, [performSemanticSearch]);
+
+  // Cleanup debounce on unmount
+  React.useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, []);
 
   // Analyze notes function
   async function analyzeNotes() {
@@ -103,7 +173,6 @@ export function MemoryPersonalization() {
       
       if (data?.insight_created) {
         toast.success(data.message || t('memory.patternDetected', 'Pattern detected! Check your home screen.'));
-        // Navigate to home to see the insight card
         navigate(getLocalizedPath('/home'));
       } else {
         toast.info(data?.message || t('memory.noPatterns', 'No strong patterns detected.'));
@@ -116,8 +185,15 @@ export function MemoryPersonalization() {
     }
   }
 
-  // Filtered memories
+  // Filtered memories — use semantic results when available, else local filter
   const filteredMemories = useMemo(() => {
+    if (semanticResults !== null && searchQuery.trim().length >= 3) {
+      // Semantic search active — apply category filter on top
+      return selectedCategory === 'all'
+        ? semanticResults
+        : semanticResults.filter(m => m.category === selectedCategory);
+    }
+
     return memories.filter(memory => {
       const matchesSearch = searchQuery === '' || 
         memory.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -125,7 +201,7 @@ export function MemoryPersonalization() {
       const matchesCategory = selectedCategory === 'all' || memory.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
-  }, [memories, searchQuery, selectedCategory]);
+  }, [memories, searchQuery, selectedCategory, semanticResults]);
 
   // Displayed memories (limited or all)
   const displayedMemories = useMemo(() => {
@@ -176,16 +252,31 @@ export function MemoryPersonalization() {
   async function addMemory() {
     if (!userId || !newContent.trim()) return;
 
+    const title = newContent.split('\n')[0].substring(0, 50) || newContent.substring(0, 50);
+    const optimisticMemory: Memory = {
+      id: `temp-${Date.now()}`,
+      title,
+      content: newContent,
+      category: newCategory,
+      importance: newImportance,
+      created_at: new Date().toISOString(),
+    };
+
+    // Optimistic: add immediately
+    setMemories(prev => [optimisticMemory, ...prev]);
+    setNewContent('');
+    setNewCategory('personal');
+    setNewImportance(3);
+    setActiveTab('view');
+
     try {
       setSaving(true);
-      const title = newContent.split('\n')[0].substring(0, 50) || newContent.substring(0, 50);
-      
       const { data, error } = await supabase.functions.invoke('manage-memories', {
         body: {
           action: 'add',
           user_id: userId,
           title,
-          content: newContent,
+          content: optimisticMemory.content,
           category: newCategory,
           importance: newImportance,
         }
@@ -194,15 +285,14 @@ export function MemoryPersonalization() {
       if (error) throw error;
       if (data?.success) {
         toast.success(t('memory.memorySaved'));
-        setNewContent('');
-        setNewCategory('personal');
-        setNewImportance(3);
-        setActiveTab('view');
+        // Reload to get real ID
         await loadMemories();
       }
     } catch (error) {
       console.error('Failed to add memory:', error);
       toast.error(t('memory.error'));
+      // Rollback
+      setMemories(prev => prev.filter(m => m.id !== optimisticMemory.id));
     } finally {
       setSaving(false);
     }
@@ -211,10 +301,15 @@ export function MemoryPersonalization() {
   async function updateMemory(memoryId: string) {
     if (!userId || !editContent.trim()) return;
 
+    const title = editContent.split('\n')[0].substring(0, 50) || editContent.substring(0, 50);
+    
+    // Optimistic update
+    const previousMemories = [...memories];
+    setMemories(prev => prev.map(m => m.id === memoryId ? { ...m, title, content: editContent } : m));
+    setEditingId(null);
+
     try {
       setSaving(true);
-      const title = editContent.split('\n')[0].substring(0, 50) || editContent.substring(0, 50);
-      
       const { data, error } = await supabase.functions.invoke('manage-memories', {
         body: {
           action: 'update',
@@ -228,12 +323,12 @@ export function MemoryPersonalization() {
       if (error) throw error;
       if (data?.success) {
         toast.success(t('memory.memoryUpdated'));
-        setEditingId(null);
-        await loadMemories();
       }
     } catch (error) {
       console.error('Failed to update memory:', error);
       toast.error(t('memory.error'));
+      // Rollback
+      setMemories(previousMemories);
     } finally {
       setSaving(false);
     }
@@ -241,6 +336,10 @@ export function MemoryPersonalization() {
 
   async function deleteMemory(memoryId: string) {
     if (!userId) return;
+
+    // Optimistic delete
+    const previousMemories = [...memories];
+    setMemories(prev => prev.filter(m => m.id !== memoryId));
 
     try {
       const { data, error } = await supabase.functions.invoke('manage-memories', {
@@ -254,11 +353,12 @@ export function MemoryPersonalization() {
       if (error) throw error;
       if (data?.success) {
         toast.success(t('memory.memoryDeleted'));
-        await loadMemories();
       }
     } catch (error) {
       console.error('Failed to delete memory:', error);
       toast.error(t('memory.error'));
+      // Rollback
+      setMemories(previousMemories);
     }
   }
 
@@ -311,13 +411,22 @@ export function MemoryPersonalization() {
             <div className="space-y-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                {semanticSearching && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-primary" />
+                )}
                 <Input
                   placeholder={t('memory.searchPlaceholder')}
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-11 bg-muted/30 border-0 focus-visible:ring-1"
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="pl-9 pr-9 h-11 bg-muted/30 border-0 focus-visible:ring-1"
                 />
               </div>
+              {semanticResults !== null && searchQuery.trim().length >= 3 && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Sparkles className="h-3 w-3 text-primary" />
+                  {t('memory.semanticResults', 'AI-powered results')} · {filteredMemories.length} {t('memory.found', 'found')}
+                </p>
+              )}
               
               {/* Category Pills */}
               <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
