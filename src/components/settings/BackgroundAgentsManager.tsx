@@ -24,6 +24,7 @@ import {
   History,
   MessageCircle,
   X,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
