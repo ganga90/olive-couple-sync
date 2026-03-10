@@ -247,10 +247,27 @@ function buildTemplateParams(
 ): string[] {
   const name = displayName || 'there';
   // Truncate content to fit Meta's 1024 char body limit (leave room for template text)
-  const maxContentLen = 800;
-  const truncatedContent = content.length > maxContentLen
-    ? content.substring(0, maxContentLen) + '...'
-    : content;
+  // Smart truncation: cut at last complete sentence rather than mid-word
+  const maxContentLen = 900;
+  let truncatedContent = content;
+  if (content.length > maxContentLen) {
+    // Try to find last sentence boundary before the limit
+    const cutRegion = content.substring(0, maxContentLen);
+    const lastSentenceEnd = Math.max(
+      cutRegion.lastIndexOf('. '),
+      cutRegion.lastIndexOf('!\n'),
+      cutRegion.lastIndexOf('.\n'),
+      cutRegion.lastIndexOf('! '),
+      cutRegion.lastIndexOf('? '),
+    );
+    if (lastSentenceEnd > maxContentLen * 0.5) {
+      truncatedContent = cutRegion.substring(0, lastSentenceEnd + 1);
+    } else {
+      // Fall back to word boundary
+      const lastSpace = cutRegion.lastIndexOf(' ');
+      truncatedContent = cutRegion.substring(0, lastSpace > 0 ? lastSpace : maxContentLen) + '...';
+    }
+  }
 
   switch (messageType) {
     case 'morning_briefing':

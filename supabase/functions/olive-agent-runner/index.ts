@@ -459,11 +459,25 @@ User's biometrics today:
 Today's tasks:
 ${taskList}
 
-Based on their energy level, suggest the optimal order to tackle these tasks. Keep it brief (3-4 sentences max) for a WhatsApp message. Start with an energy emoji (🔋/⚡/😴) based on readiness score. IMPORTANT: Always write your COMPLETE response.`,
-      config: { temperature: 0.3, maxOutputTokens: 600 },
+Based on their energy level, suggest the optimal order to tackle these tasks. Keep it under 600 characters total for a WhatsApp message. Start with an energy emoji (🔋/⚡/😴) based on readiness score. End with a complete motivational sentence. IMPORTANT: Always finish every sentence completely. Never stop mid-sentence.`,
+      config: { temperature: 0.3, maxOutputTokens: 1200 },
     });
 
     energyMessage = response.text?.trim() || "";
+    // Detect truncated responses (ends mid-sentence without punctuation)
+    if (energyMessage && energyMessage.length > 20 && !/[.!?)\n🎉💪✨]$/.test(energyMessage)) {
+      // Trim to last complete sentence
+      const lastPunctuation = Math.max(
+        energyMessage.lastIndexOf('. '),
+        energyMessage.lastIndexOf('! '),
+        energyMessage.lastIndexOf('? '),
+        energyMessage.lastIndexOf('.\n'),
+        energyMessage.lastIndexOf('!\n'),
+      );
+      if (lastPunctuation > energyMessage.length * 0.4) {
+        energyMessage = energyMessage.substring(0, lastPunctuation + 1);
+      }
+    }
     if (!energyMessage || energyMessage.length < 10) {
       const emoji = (latestOura.readinessScore || 0) >= 75 ? "⚡" : (latestOura.readinessScore || 0) >= 50 ? "🔋" : "😴";
       energyMessage = `${emoji} Readiness: ${latestOura.readinessScore}/100, Sleep: ${latestOura.sleepScore || "N/A"}/100. You have ${tasks.length} tasks today. Open Olive to review them.`;
@@ -526,14 +540,27 @@ Rules:
 - Analyze the data for patterns: declining scores, inconsistency, low scores, or improvement trends
 - If everything looks great, give a positive reinforcement message celebrating their consistency (start with 🌟)
 - If there's an issue, give ONE specific actionable tip (start with 🛏️)
-- Keep the response under 500 chars for WhatsApp
+- Keep the response under 600 characters total for WhatsApp
 - Be encouraging, not preachy
 - Be specific (e.g., "try a 10pm bedtime" not "sleep earlier")
-- IMPORTANT: Always write your COMPLETE response. Do not stop mid-sentence.`,
-      config: { temperature: 0.3, maxOutputTokens: 600 },
+- End with a complete sentence. IMPORTANT: Always finish every sentence completely. Never stop mid-sentence or mid-word.`,
+      config: { temperature: 0.3, maxOutputTokens: 1200 },
     });
 
     tip = response.text?.trim() || "";
+    // Detect truncated responses (ends mid-sentence without punctuation)
+    if (tip && tip.length > 20 && !/[.!?)\n🎉💪✨🌟]$/.test(tip)) {
+      const lastPunctuation = Math.max(
+        tip.lastIndexOf('. '),
+        tip.lastIndexOf('! '),
+        tip.lastIndexOf('? '),
+        tip.lastIndexOf('.\n'),
+        tip.lastIndexOf('!\n'),
+      );
+      if (lastPunctuation > tip.length * 0.4) {
+        tip = tip.substring(0, lastPunctuation + 1);
+      }
+    }
     if (!tip || tip.length < 5) {
       console.error("[Sleep Coach] Gemini returned empty/short response");
       const avgSleep = Math.round(scores.reduce((s, d) => s + (d.sleepScore || 0), 0) / scores.filter(d => d.sleepScore).length);
