@@ -537,20 +537,20 @@ const NoteDetails = () => {
 
           {/* Action Buttons */}
           {!note.completed && (
-            <div className="flex items-center gap-3 animate-fade-up" style={{ animationDelay: '150ms' }}>
-              {/* Primary actions */}
+            <div className="flex items-center gap-2 animate-fade-up flex-wrap" style={{ animationDelay: '150ms' }}>
+              {/* Ask Olive */}
               <div className="relative shrink-0">
                 <Button 
                   variant="accent"
-                  size="lg" 
-                  className="rounded-full shadow-lg text-sm px-5 whitespace-nowrap"
+                  size="default" 
+                  className="rounded-full shadow-lg text-sm px-4 whitespace-nowrap h-10"
                   onClick={() => {
                     askOliveOnboarding.dismiss();
                     setChatOpen(true);
                   }}
                 >
                   <Sparkles className="h-4 w-4 mr-1.5 shrink-0" />
-                  {t('askOlive')}
+                  {t('askOliveLabel')}
                 </Button>
                 <OnboardingTooltip
                   isVisible={askOliveOnboarding.isVisible}
@@ -560,17 +560,18 @@ const NoteDetails = () => {
                   position="bottom"
                 />
               </div>
+              {/* Complete */}
               <Button
                 variant="outline"
-                size="lg"
-                className="shrink-0 rounded-full border-[hsl(var(--success))]/30 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 text-sm px-5 whitespace-nowrap"
+                size="default"
+                className="shrink-0 rounded-full border-[hsl(var(--success))]/30 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 text-sm px-4 whitespace-nowrap h-10"
                 onClick={async () => {
                   await updateNote(note.id, { completed: true });
                   toast.success(t('toast.markedComplete'));
                   navigate(getLocalizedPath(note.list_id ? `/lists/${note.list_id}` : "/home"));
                 }}
               >
-                <CheckCircle2 className="h-4 w-4 mr-2 shrink-0" />
+                <CheckCircle2 className="h-4 w-4 mr-1.5 shrink-0" />
                 {t('complete')}
               </Button>
               {/* Sync icon buttons */}
@@ -578,22 +579,22 @@ const NoteDetails = () => {
                 <>
                   <Button
                     variant="outline"
-                    size="icon-lg"
-                    className="rounded-full shrink-0"
+                    size="icon"
+                    className="rounded-full shrink-0 h-10 w-10"
                     onClick={() => setCalendarDialogOpen(true)}
                     title="Add to Calendar"
                   >
-                    <CalendarIcon className="h-5 w-5" />
+                    <CalendarIcon className="h-4 w-4" />
                   </Button>
                   {calendarConnection.tasks_enabled && (
                     <Button
                       variant="outline"
-                      size="icon-lg"
-                      className="rounded-full shrink-0"
+                      size="icon"
+                      className="rounded-full shrink-0 h-10 w-10"
                       onClick={() => setTasksDialogOpen(true)}
                       title="Add to Google Tasks"
                     >
-                      <ListTodo className="h-5 w-5" />
+                      <ListTodo className="h-4 w-4" />
                     </Button>
                   )}
                 </>
