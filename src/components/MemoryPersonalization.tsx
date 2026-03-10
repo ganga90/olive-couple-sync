@@ -294,7 +294,7 @@ export function MemoryPersonalization() {
     } catch (error) {
       console.error('Failed to add memory:', error);
       toast.error(t('memory.error'));
-      // Rollback
+      haptics.notificationError();
       setMemories(prev => prev.filter(m => m.id !== optimisticMemory.id));
     } finally {
       setSaving(false);
