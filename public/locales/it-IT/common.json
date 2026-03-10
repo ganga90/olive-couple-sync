@@ -163,5 +163,14 @@
     "marketingDesc": "Pubblicità e contenuti personalizzati",
     "learnMore": "Scopri di più nella nostra",
     "privacyPolicy": "Informativa sulla Privacy"
+  },
+  "search": {
+    "placeholder": "Cerca compiti, liste e ricordi...",
+    "lists": "Liste",
+    "tasks": "Compiti",
+    "memories": "Ricordi",
+    "match": "corrispondenza",
+    "noResults": "Nessun risultato per \"{{query}}\"",
+    "hint": "Scrivi per cercare compiti, liste e ricordi"
   }
 }

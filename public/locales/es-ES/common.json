@@ -163,5 +163,14 @@
     "marketingDesc": "Anuncios y contenido personalizados",
     "learnMore": "Más información en nuestra",
     "privacyPolicy": "Política de Privacidad"
+  },
+  "search": {
+    "placeholder": "Buscar tareas, listas y recuerdos...",
+    "lists": "Listas",
+    "tasks": "Tareas",
+    "memories": "Recuerdos",
+    "match": "coincidencia",
+    "noResults": "No se encontraron resultados para \"{{query}}\"",
+    "hint": "Escribe para buscar tareas, listas y recuerdos"
   }
 }
