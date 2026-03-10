@@ -173,7 +173,73 @@ function ActionItems({ agentId, data }: { agentId: string; data?: Record<string,
   return null;
 }
 
-// ── Run History Item ────────────────────────────────────────────
+// ── Email Triage Tasks (live from DB) ───────────────────────────
+function EmailTasksSection({ userId }: { userId: string }) {
+  const { t } = useTranslation('profile');
+  const [tasks, setTasks] = useState<Array<{ id: string; summary: string; category: string; priority: string | null; due_date: string | null; created_at: string }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase
+        .from('clerk_notes')
+        .select('id, summary, category, priority, due_date, created_at')
+        .eq('author_id', userId)
+        .eq('source', 'email')
+        .eq('completed', false)
+        .order('created_at', { ascending: false })
+        .limit(15);
+      setTasks(data || []);
+      setLoading(false);
+    };
+    load();
+  }, [userId]);
+
+  if (loading) return null;
+  if (tasks.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Mail className="h-4 w-4 text-red-500" />
+          {t('agentDetail.emailTasks', 'Tasks from Email')} ({tasks.length})
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ScrollArea className="max-h-[300px]">
+          <div className="space-y-2">
+            {tasks.map((task) => (
+              <div key={task.id} className="flex items-start gap-3 p-2.5 rounded-lg bg-accent/30 text-sm">
+                <CheckCircle2 className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0 space-y-0.5">
+                  <p className="font-medium truncate">{task.summary}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="text-[10px]">{task.category}</Badge>
+                    {task.priority && (
+                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                        task.priority === 'high' ? 'bg-destructive/10 text-destructive' :
+                        task.priority === 'medium' ? 'bg-amber-500/10 text-amber-600' :
+                        'bg-muted text-muted-foreground'
+                      )}>
+                        {task.priority}
+                      </span>
+                    )}
+                    {task.due_date && (
+                      <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                        <Calendar className="h-2.5 w-2.5" /> {new Date(task.due_date).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      </CardContent>
+    </Card>
+  );
+}
 function RunHistoryItem({ run }: { run: AgentRun }) {
   const [expanded, setExpanded] = useState(false);
   const message = run.result?.message || '';
