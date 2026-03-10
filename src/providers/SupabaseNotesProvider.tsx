@@ -129,6 +129,8 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
   const { user } = useAuth();
   const { defaultPrivacy } = useDefaultPrivacy();
 
+  // Track note count for auto-triggering insight analysis
+  const noteCountRef = useRef(0);
   const {
     notes: supabaseNotes, loading,
     addNote: addSupabaseNote, updateNote: updateSupabaseNote,
