@@ -341,29 +341,46 @@ export function MemoryPersonalization() {
   async function deleteMemory(memoryId: string) {
     if (!userId) return;
 
-    // Optimistic delete
+    // Optimistic delete with undo support
     const previousMemories = [...memories];
     setMemories(prev => prev.filter(m => m.id !== memoryId));
+    haptics.impactMedium();
 
-    try {
-      const { data, error } = await supabase.functions.invoke('manage-memories', {
-        body: {
-          action: 'delete',
-          user_id: userId,
-          memory_id: memoryId,
-        }
-      });
+    let undone = false;
 
-      if (error) throw error;
-      if (data?.success) {
-        toast.success(t('memory.memoryDeleted'));
+    toast(t('memory.memoryDeleted'), {
+      duration: 5000,
+      action: {
+        label: t('memory.undo', 'Undo'),
+        onClick: () => {
+          undone = true;
+          setMemories(previousMemories);
+          haptics.notificationSuccess();
+        },
+      },
+    });
+
+    // Delay actual server delete to allow undo window
+    setTimeout(async () => {
+      if (undone) return;
+
+      try {
+        const { data, error } = await supabase.functions.invoke('manage-memories', {
+          body: {
+            action: 'delete',
+            user_id: userId,
+            memory_id: memoryId,
+          }
+        });
+
+        if (error) throw error;
+      } catch (error) {
+        console.error('Failed to delete memory:', error);
+        toast.error(t('memory.error'));
+        haptics.notificationError();
+        if (!undone) setMemories(previousMemories);
       }
-    } catch (error) {
-      console.error('Failed to delete memory:', error);
-      toast.error(t('memory.error'));
-      // Rollback
-      setMemories(previousMemories);
-    }
+    }, 5500);
   }
 
   function startEditing(memory: Memory) {
