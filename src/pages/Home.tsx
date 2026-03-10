@@ -29,6 +29,7 @@ import { useDefaultPrivacyFilter } from "@/hooks/useDefaultPrivacyFilter";
 import { EmailTriageReviewDialog } from "@/components/EmailTriageReviewDialog";
 import { PartnerInviteCard } from "@/components/PartnerInviteCard";
 import { PersonalizeCard } from "@/components/PersonalizeCard";
+import { SetupFeaturesCard } from "@/components/SetupFeaturesCard";
 import { supabase } from "@/lib/supabaseClient";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useKeyboardShortcuts, APP_SHORTCUTS } from "@/hooks/useKeyboardShortcuts";
@@ -363,6 +364,11 @@ const Home = () => {
           {/* Personalize Olive Card (post-onboarding) */}
           <div className="animate-fade-up stagger-2">
             <PersonalizeCard />
+          </div>
+
+          {/* Setup Features Card (post-onboarding) */}
+          <div className="animate-fade-up stagger-2">
+            <SetupFeaturesCard />
           </div>
 
           {/* Quick Action Cards - Glass Style (only show if no notes) */}

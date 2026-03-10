@@ -336,6 +336,23 @@ const Onboarding = () => {
     goToNextStep();
   };
 
+  const markOnboardingCompleted = async () => {
+    localStorage.setItem("olive_onboarding_completed", "true");
+    localStorage.removeItem(ONBOARDING_STATE_KEY);
+    if (user?.id) {
+      try {
+        await supabase.from("olive_memory_chunks").insert({
+          user_id: user.id,
+          content: "User completed onboarding flow",
+          chunk_type: "preference",
+          importance: 2,
+          source: "onboarding",
+          metadata: { type: "onboarding_completed", completed_at: new Date().toISOString() },
+        });
+      } catch {}
+    }
+  };
+
   const handleDemoSubmit = async () => {
     if (!demoText.trim()) return;
     setIsProcessingDemo(true);
@@ -350,7 +367,7 @@ const Onboarding = () => {
       });
       if (error) throw error;
       toast.success(t("demo.success", { defaultValue: "Your first task is ready! 🎉" }));
-      localStorage.removeItem(ONBOARDING_STATE_KEY);
+      await markOnboardingCompleted();
       navigate(getLocalizedPath("/home"));
     } catch {
       toast.error(t("demo.error", { defaultValue: "Something went wrong. Let's try again." }));
@@ -366,7 +383,7 @@ const Onboarding = () => {
         await createCouple({ title: "My Space", you_name: user?.firstName || "", partner_name: "" });
       } catch {}
     }
-    localStorage.removeItem(ONBOARDING_STATE_KEY);
+    await markOnboardingCompleted();
     navigate(getLocalizedPath("/home"));
   };
 
