@@ -548,6 +548,19 @@ Rules:
     });
 
     tip = response.text?.trim() || "";
+    // Detect truncated responses (ends mid-sentence without punctuation)
+    if (tip && tip.length > 20 && !/[.!?)\n🎉💪✨🌟]$/.test(tip)) {
+      const lastPunctuation = Math.max(
+        tip.lastIndexOf('. '),
+        tip.lastIndexOf('! '),
+        tip.lastIndexOf('? '),
+        tip.lastIndexOf('.\n'),
+        tip.lastIndexOf('!\n'),
+      );
+      if (lastPunctuation > tip.length * 0.4) {
+        tip = tip.substring(0, lastPunctuation + 1);
+      }
+    }
     if (!tip || tip.length < 5) {
       console.error("[Sleep Coach] Gemini returned empty/short response");
       const avgSleep = Math.round(scores.reduce((s, d) => s + (d.sleepScore || 0), 0) / scores.filter(d => d.sleepScore).length);
