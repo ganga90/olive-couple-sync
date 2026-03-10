@@ -198,8 +198,9 @@ function AgentCard({
           {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
-              <button onClick={() => onNavigateDetail(agent.skill_id)} className="font-medium text-sm truncate text-left hover:text-primary transition-colors">
+              <button onClick={() => onNavigateDetail(agent.skill_id)} className="font-medium text-sm truncate text-left hover:text-primary transition-colors flex items-center gap-1 group">
                 {agent.name}
+                <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity flex-shrink-0" />
               </button>
               <AgentStatusBadge agent={agent} />
             </div>
