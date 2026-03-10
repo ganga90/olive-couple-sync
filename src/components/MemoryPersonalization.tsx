@@ -633,6 +633,31 @@ export function MemoryPersonalization() {
           </Card>
         </TabsContent>
       </Tabs>
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteTargetId} onOpenChange={(open) => !open && setDeleteTargetId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('memory.deleteTitle', 'Delete memory?')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('memory.deleteDescription', 'This memory will be removed from Olive\'s context. This action cannot be undone.')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('memory.cancel', 'Cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteTargetId) {
+                  deleteMemory(deleteTargetId);
+                  setDeleteTargetId(null);
+                }
+              }}
+            >
+              {t('memory.confirmDelete', 'Delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
