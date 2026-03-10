@@ -556,7 +556,7 @@ export function MemoryPersonalization() {
                         <SelectItem key={cat.value} value={cat.value}>
                           <span className="flex items-center gap-2">
                             <span>{cat.icon}</span>
-                            <span>{cat.label}</span>
+                            <span>{t(cat.labelKey, cat.value)}</span>
                           </span>
                         </SelectItem>
                       ))}
