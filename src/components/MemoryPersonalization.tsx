@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Trash2, Plus, Edit2, Check, X, Star, Loader2, Sparkles, Search, Filter, Wand2 } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
+import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/providers/LanguageProvider';
 import { supabase } from '@/lib/supabaseClient';
