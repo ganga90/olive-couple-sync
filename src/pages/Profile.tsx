@@ -171,6 +171,7 @@ const Profile = () => {
           title={t('profile:sections.intelligence', "Olive's Intelligence")}
           icon={<Zap className="h-3.5 w-3.5 text-stone-500" />}
           delay={100}
+          sectionId="intelligence"
         >
           <SettingsCard
             icon={<Sparkles className="h-5 w-5 text-[hsl(var(--magic-accent))]" />}
