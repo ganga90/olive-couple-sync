@@ -184,7 +184,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               className="text-xs h-auto py-1 px-2 text-olive hover:text-olive-dark hover:bg-olive/10"
             >
               <MessageCircle className="h-3 w-3 mr-1" />
-              {t('askOlive')}
+              {t('askOliveLabel')}
             </Button>
           </div>
         </div>
