@@ -59,7 +59,7 @@ serve(async (req) => {
       });
     }
 
-    console.log('[manage-memories] Action:', action, 'User:', user_id);
+    console.log('[manage-memories] Action:', action, 'User:', effectiveUserId);
 
     // Helper function to generate embeddings using Lovable AI
     async function generateEmbedding(text: string): Promise<number[] | null> {
@@ -101,7 +101,7 @@ serve(async (req) => {
         const { data: memories, error } = await supabase
           .from('user_memories')
           .select('id, title, content, category, importance, created_at, updated_at')
-          .eq('user_id', user_id)
+          .eq('user_id', effectiveUserId)
           .eq('is_active', true)
           .order('importance', { ascending: false })
           .order('created_at', { ascending: false });
@@ -127,7 +127,7 @@ serve(async (req) => {
         const { data: memory, error } = await supabase
           .from('user_memories')
           .insert([{
-            user_id,
+            user_id: effectiveUserId,
             title,
             content,
             category: category || 'personal',
@@ -168,7 +168,7 @@ serve(async (req) => {
             .from('user_memories')
             .select('title, content')
             .eq('id', memory_id)
-            .eq('user_id', user_id)
+            .eq('user_id', effectiveUserId)
             .single();
 
           if (existing) {
@@ -183,7 +183,7 @@ serve(async (req) => {
           .from('user_memories')
           .update(updates)
           .eq('id', memory_id)
-          .eq('user_id', user_id)
+          .eq('user_id', effectiveUserId)
           .select('id, title, content, category, importance, created_at, updated_at')
           .single();
 
@@ -209,7 +209,7 @@ serve(async (req) => {
           .from('user_memories')
           .update({ is_active: false })
           .eq('id', memory_id)
-          .eq('user_id', user_id);
+          .eq('user_id', effectiveUserId);
 
         if (error) throw error;
 
@@ -228,7 +228,7 @@ serve(async (req) => {
         const { data: memories, error } = await supabase
           .from('user_memories')
           .select('title, content, category, importance')
-          .eq('user_id', user_id)
+          .eq('user_id', effectiveUserId)
           .eq('is_active', true)
           .order('importance', { ascending: false })
           .limit(15);
@@ -282,7 +282,7 @@ serve(async (req) => {
           const { data: memories, error } = await supabase
             .from('user_memories')
             .select('id, title, content, category, importance')
-            .eq('user_id', user_id)
+            .eq('user_id', effectiveUserId)
             .eq('is_active', true)
             .order('importance', { ascending: false })
             .limit(20);
@@ -315,7 +315,7 @@ serve(async (req) => {
         const { data: similarMemories, error: searchError } = await supabase.rpc(
           'search_user_memories',
           {
-            p_user_id: user_id,
+            p_user_id: effectiveUserId,
             p_query_embedding: JSON.stringify(queryEmbedding),
             p_match_threshold: 0.5, // Lower threshold to catch more relevant matches
             p_match_count: 5
@@ -328,7 +328,7 @@ serve(async (req) => {
           const { data: fallbackMemories } = await supabase
             .from('user_memories')
             .select('id, title, content, category, importance')
-            .eq('user_id', user_id)
+            .eq('user_id', effectiveUserId)
             .eq('is_active', true)
             .order('importance', { ascending: false })
             .limit(5);
