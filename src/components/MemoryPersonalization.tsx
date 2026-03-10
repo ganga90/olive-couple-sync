@@ -411,13 +411,22 @@ export function MemoryPersonalization() {
             <div className="space-y-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                {semanticSearching && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-primary" />
+                )}
                 <Input
                   placeholder={t('memory.searchPlaceholder')}
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-11 bg-muted/30 border-0 focus-visible:ring-1"
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="pl-9 pr-9 h-11 bg-muted/30 border-0 focus-visible:ring-1"
                 />
               </div>
+              {semanticResults !== null && searchQuery.trim().length >= 3 && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Sparkles className="h-3 w-3 text-primary" />
+                  {t('memory.semanticResults', 'AI-powered results')} · {filteredMemories.length} {t('memory.found', 'found')}
+                </p>
+              )}
               
               {/* Category Pills */}
               <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
