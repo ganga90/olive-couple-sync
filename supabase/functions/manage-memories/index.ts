@@ -39,7 +39,7 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const { action, user_id, memory_id, title, content, category, importance, query } = await req.json();
+    const { action, user_id, memory_id, title, content, category, importance, query, couple_id, shared } = await req.json();
 
     // Use authenticated user_id if available, fall back to body for internal service calls
     const effectiveUserId = authenticatedUserId || user_id;
@@ -97,14 +97,22 @@ serve(async (req) => {
 
     switch (action) {
       case 'list': {
-        // List all active memories for user
-        const { data: memories, error } = await supabase
+        // List all active memories for user (own + shared via couple)
+        let queryBuilder = supabase
           .from('user_memories')
-          .select('id, title, content, category, importance, created_at, updated_at')
-          .eq('user_id', effectiveUserId)
+          .select('id, title, content, category, importance, created_at, updated_at, couple_id, user_id')
           .eq('is_active', true)
           .order('importance', { ascending: false })
           .order('created_at', { ascending: false });
+
+        if (couple_id) {
+          // Show both personal memories and shared couple memories
+          queryBuilder = queryBuilder.or(`user_id.eq.${effectiveUserId},couple_id.eq.${couple_id}`);
+        } else {
+          queryBuilder = queryBuilder.eq('user_id', effectiveUserId);
+        }
+
+        const { data: memories, error } = await queryBuilder;
 
         if (error) throw error;
 
@@ -124,9 +132,7 @@ serve(async (req) => {
         // Generate embedding for semantic search
         const embedding = await generateEmbedding(`${title}\n${content}`);
 
-        const { data: memory, error } = await supabase
-          .from('user_memories')
-          .insert([{
+        const insertData: Record<string, any> = {
             user_id: effectiveUserId,
             title,
             content,
@@ -134,7 +140,15 @@ serve(async (req) => {
             importance: importance || 3,
             embedding,
             metadata: { source: 'manual' },
-          }])
+        };
+        // If shared flag is true and couple_id provided, attach to couple
+        if (shared && couple_id) {
+          insertData.couple_id = couple_id;
+        }
+
+        const { data: memory, error } = await supabase
+          .from('user_memories')
+          .insert([insertData])
           .select('id, title, content, category, importance, created_at')
           .single();
 

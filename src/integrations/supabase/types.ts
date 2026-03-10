@@ -1850,6 +1850,7 @@ export type Database = {
         Row: {
           category: string | null
           content: string
+          couple_id: string | null
           created_at: string | null
           embedding: string | null
           id: string
@@ -1863,6 +1864,7 @@ export type Database = {
         Insert: {
           category?: string | null
           content: string
+          couple_id?: string | null
           created_at?: string | null
           embedding?: string | null
           id?: string
@@ -1876,6 +1878,7 @@ export type Database = {
         Update: {
           category?: string | null
           content?: string
+          couple_id?: string | null
           created_at?: string | null
           embedding?: string | null
           id?: string
@@ -1886,7 +1889,15 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_memories_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_couples"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {

@@ -154,7 +154,31 @@
     "analyzeError": "Error al analizar las notas",
     "showAll": "Mostrar Todo",
     "showLess": "Mostrar Menos",
-    "more": "más"
+    "more": "más",
+    "deleteTitle": "¿Eliminar recuerdo?",
+    "deleteDescription": "Este recuerdo será eliminado del contexto de Olive. Esta acción no se puede deshacer.",
+    "cancel": "Cancelar",
+    "confirmDelete": "Eliminar",
+    "examplesTitle": "Ejemplos de cosas para recordar:",
+    "examples": {
+      "kids": "Tengo 2 hijos: Emma (8) y Jack (5)",
+      "diet": "Somos vegetarianos y preferimos restaurantes italianos",
+      "partner": "El nombre de mi pareja es Sarah",
+      "preferences": "Prefiero las citas por la mañana",
+      "allergy": "Alérgico a los cacahuetes"
+    },
+    "categories": {
+      "all": "Todos",
+      "personal": "Personal",
+      "preference": "Preferencia",
+      "family": "Familia",
+      "pet": "Mascotas",
+      "health": "Salud",
+      "dietary": "Alimentación",
+      "work": "Trabajo",
+      "inferred": "Aprendido por IA",
+      "other": "Otro"
+    }
   },
   "noteProcessingStyle": "Estilo de Procesamiento de Notas",
   "memoryPersonalization": {

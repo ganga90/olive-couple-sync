@@ -152,7 +152,7 @@ export function InsightDiscoveryCard() {
     <div
       className={cn(
         "relative overflow-hidden rounded-2xl border transition-all duration-300",
-        "bg-gradient-to-r from-primary/5 via-white to-white",
+        "bg-gradient-to-r from-primary/5 via-background to-background",
         "border-primary/10 shadow-lg shadow-primary/5",
         isDismissing && "opacity-0 scale-95 translate-y-2"
       )}
@@ -172,20 +172,20 @@ export function InsightDiscoveryCard() {
         </div>
         
         {/* Content */}
-        <p className="text-base text-stone-800 leading-relaxed mb-4">
+        <p className="text-base text-foreground leading-relaxed mb-4">
           "{currentInsight.suggested_content}"
         </p>
         
         {/* Confidence indicator */}
         {currentInsight.confidence_score && (
           <div className="flex items-center gap-2 mb-4">
-            <div className="h-1 flex-1 bg-stone-100 rounded-full overflow-hidden">
+            <div className="h-1 flex-1 bg-muted rounded-full overflow-hidden">
               <div 
                 className="h-full bg-gradient-to-r from-primary/60 to-primary rounded-full transition-all"
                 style={{ width: `${currentInsight.confidence_score * 100}%` }}
               />
             </div>
-            <span className="text-xs text-stone-400">
+            <span className="text-xs text-muted-foreground">
               {Math.round(currentInsight.confidence_score * 100)}% {t('insights.confidence', 'confidence')}
             </span>
           </div>
@@ -212,7 +212,7 @@ export function InsightDiscoveryCard() {
             variant="ghost"
             onClick={() => rejectInsight(currentInsight)}
             disabled={isProcessing}
-            className="rounded-full px-4 gap-2 text-stone-500 hover:text-stone-700 hover:bg-stone-100"
+            className="rounded-full px-4 gap-2 text-muted-foreground hover:text-foreground hover:bg-muted"
           >
             <X className="h-4 w-4" />
             {t('insights.reject', 'No, incorrect')}

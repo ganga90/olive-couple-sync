@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Trash2, Plus, Edit2, Check, X, Star, Loader2, Sparkles, Search, Filter, Wand2 } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
+import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/providers/LanguageProvider';
 import { supabase } from '@/lib/supabaseClient';
@@ -40,24 +41,27 @@ interface Memory {
 }
 
 const CATEGORIES = [
-  { value: 'all', label: 'All', icon: '📋' },
-  { value: 'personal', label: 'Personal', icon: '👤' },
-  { value: 'preference', label: 'Preference', icon: '⭐' },
-  { value: 'family', label: 'Family', icon: '👨‍👩‍👧' },
-  { value: 'pet', label: 'Pets', icon: '🐾' },
-  { value: 'health', label: 'Health', icon: '💊' },
-  { value: 'dietary', label: 'Dietary', icon: '🥗' },
-  { value: 'work', label: 'Work', icon: '💼' },
-  { value: 'other', label: 'Other', icon: '📝' },
+  { value: 'all', labelKey: 'memory.categories.all', icon: '📋' },
+  { value: 'personal', labelKey: 'memory.categories.personal', icon: '👤' },
+  { value: 'preference', labelKey: 'memory.categories.preference', icon: '⭐' },
+  { value: 'family', labelKey: 'memory.categories.family', icon: '👨‍👩‍👧' },
+  { value: 'pet', labelKey: 'memory.categories.pet', icon: '🐾' },
+  { value: 'health', labelKey: 'memory.categories.health', icon: '💊' },
+  { value: 'dietary', labelKey: 'memory.categories.dietary', icon: '🥗' },
+  { value: 'work', labelKey: 'memory.categories.work', icon: '💼' },
+  { value: 'inferred', labelKey: 'memory.categories.inferred', icon: '🤖' },
+  { value: 'other', labelKey: 'memory.categories.other', icon: '📝' },
 ];
 
+// getCategoryInfo now returns labelKey; caller must call t() on it
 const getCategoryInfo = (value: string) => {
-  return CATEGORIES.find(c => c.value === value) || { value, label: value, icon: '📝' };
+  return CATEGORIES.find(c => c.value === value) || { value, labelKey: `memory.categories.${value}`, icon: '📝' };
 };
 
 export function MemoryPersonalization() {
   const { t } = useTranslation('profile');
   const { user } = useAuth();
+  const { currentCouple } = useSupabaseCouple();
   const navigate = useNavigate();
   const { getLocalizedPath } = useLanguage();
   const userId = user?.id;
@@ -154,7 +158,7 @@ export function MemoryPersonalization() {
     try {
       setLoading(true);
       const { data, error } = await supabase.functions.invoke('manage-memories', {
-        body: { action: 'list', user_id: userId }
+        body: { action: 'list', user_id: userId, couple_id: currentCouple?.id || undefined }
       });
 
       if (error) throw error;
@@ -329,7 +333,7 @@ export function MemoryPersonalization() {
                     )}
                   >
                     <span>{cat.icon}</span>
-                    <span>{cat.label}</span>
+                    <span>{t(cat.labelKey, cat.value)}</span>
                     {categoryCounts[cat.value] > 0 && (
                       <span className={cn(
                         "text-xs px-1.5 rounded-full",
@@ -414,7 +418,7 @@ export function MemoryPersonalization() {
                               ) : (
                                 <Check className="h-4 w-4 mr-1" />
                               )}
-                              Save
+                              {t('memory.saveMemory', 'Save')}
                             </Button>
                           </div>
                         </div>
@@ -435,7 +439,7 @@ export function MemoryPersonalization() {
                                   variant="secondary" 
                                   className="text-xs font-medium"
                                 >
-                                  {categoryInfo.label}
+                                  {t(categoryInfo.labelKey, categoryInfo.value)}
                                 </Badge>
                                 {memory.metadata?.auto_extracted && (
                                   <Badge 
@@ -554,7 +558,7 @@ export function MemoryPersonalization() {
                         <SelectItem key={cat.value} value={cat.value}>
                           <span className="flex items-center gap-2">
                             <span>{cat.icon}</span>
-                            <span>{cat.label}</span>
+                            <span>{t(cat.labelKey, cat.value)}</span>
                           </span>
                         </SelectItem>
                       ))}
@@ -610,15 +614,15 @@ export function MemoryPersonalization() {
           <Card className="bg-muted/30 border-dashed">
             <CardContent className="p-4">
               <p className="text-sm font-medium text-foreground mb-3">
-                💡 Examples of things to remember:
+                💡 {t('memory.examplesTitle', 'Examples of things to remember:')}
               </p>
               <div className="grid gap-2">
                 {[
-                  "I have 2 kids: Emma (8) and Jack (5)",
-                  "We're vegetarian and prefer Italian restaurants",
-                  "My partner's name is Sarah",
-                  "I prefer morning appointments",
-                  "Allergic to peanuts",
+                  t('memory.examples.kids', 'I have 2 kids: Emma (8) and Jack (5)'),
+                  t('memory.examples.diet', "We're vegetarian and prefer Italian restaurants"),
+                  t('memory.examples.partner', "My partner's name is Sarah"),
+                  t('memory.examples.preferences', 'I prefer morning appointments'),
+                  t('memory.examples.allergy', 'Allergic to peanuts'),
                 ].map((example, i) => (
                   <button
                     key={i}

@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useMemo, useCallback } from "react";
+import React, { createContext, useContext, useMemo, useCallback, useRef } from "react";
 import { useSupabaseCouple } from "./SupabaseCoupleProvider";
 import { useSupabaseNotes, SupabaseNote } from "@/hooks/useSupabaseNotes";
 import { useAuth } from "./AuthProvider";
 import { useDefaultPrivacy } from "@/hooks/useDefaultPrivacy";
+import { supabase } from "@/lib/supabaseClient";
 import type { Note } from "@/types/note";
 import type { SpaceMember } from "@/types/space";
 
@@ -128,6 +129,8 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
   const { user } = useAuth();
   const { defaultPrivacy } = useDefaultPrivacy();
 
+  // Track note count for auto-triggering insight analysis
+  const noteCountRef = useRef(0);
   const {
     notes: supabaseNotes, loading,
     addNote: addSupabaseNote, updateNote: updateSupabaseNote,
@@ -159,6 +162,15 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
       couple_id: resolvedCoupleId,
     };
     const result = await addSupabaseNote(supabaseNoteData);
+    if (result && user?.id) {
+      // Auto-trigger insight analysis every 10 notes (fire-and-forget)
+      noteCountRef.current += 1;
+      if (noteCountRef.current % 10 === 0) {
+        supabase.functions.invoke('analyze-notes', {
+          body: { user_id: user.id }
+        }).catch(err => console.warn('[auto-analyze] Background analysis failed:', err));
+      }
+    }
     return result ? convertSupabaseNoteToNote(result, user, currentCouple, memberMap) : null;
   }, [defaultPrivacy, currentCouple, addSupabaseNote, user, memberMap]);
 
