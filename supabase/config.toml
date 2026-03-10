@@ -101,3 +101,6 @@ verify_jwt = false
 
 [functions.ask-olive-stream]
 verify_jwt = false
+
+[functions.auto-calendar-event]
+verify_jwt = false
