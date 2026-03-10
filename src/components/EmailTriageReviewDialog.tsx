@@ -1,13 +1,14 @@
 /**
  * Email Triage Review Dialog
  *
- * When user clicks "Review my Email":
- * - If periodic triage is NOT activated → shows a CTA to activate in Settings
- * - If activated → shows last triage results + "Scan Now" button
- * - "Scan Now" fires the scan in the background, closes dialog, and shows toast on completion
+ * Three states:
+ * 1. Gmail NOT connected → CTA to connect in Settings
+ * 2. Gmail connected (any mode) → Shows results, scan now, link to agent detail
+ *
+ * Works independently of WhatsApp connection status.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -19,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Loader2, Mail, Calendar, CheckCircle2, Settings, Sparkles, Clock, ListTodo, Play,
+  ExternalLink, ArrowRight,
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuth } from '@/providers/AuthProvider';
@@ -60,15 +62,13 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
   const { getLocalizedPath } = useLanguage();
 
   const [loading, setLoading] = useState(true);
+  const [gmailConnected, setGmailConnected] = useState(false);
   const [frequency, setFrequency] = useState<string>('manual');
   const [lastRun, setLastRun] = useState<LastRunResult | null>(null);
   const [recentTasks, setRecentTasks] = useState<RecentTask[]>([]);
   const [scanning, setScanning] = useState(false);
 
-  // Ref to track background scan so it persists across dialog open/close
-  const scanAbortRef = useRef<AbortController | null>(null);
-
-  // ─── Load status from DB (fast, no edge function for prefs) ────
+  // ─── Load status from DB ────
   useEffect(() => {
     if (!open || !user?.id) return;
     setLoading(true);
@@ -78,7 +78,7 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
         const [connRes, runRes, tasksRes] = await Promise.all([
           supabase
             .from('olive_email_connections')
-            .select('triage_frequency')
+            .select('triage_frequency, is_active')
             .eq('user_id', user.id)
             .eq('is_active', true)
             .maybeSingle(),
@@ -100,6 +100,7 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
             .limit(10),
         ]);
 
+        setGmailConnected(!!connRes.data);
         setFrequency(connRes.data?.triage_frequency || 'manual');
         if (runRes.data) setLastRun(runRes.data as LastRunResult);
         setRecentTasks(tasksRes.data || []);
@@ -113,11 +114,14 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
     load();
   }, [open, user?.id]);
 
-  const isActivated = frequency !== 'manual';
-
-  const goToSettings = () => {
+  const goToConnect = () => {
     onOpenChange(false);
-    navigate(getLocalizedPath('/profile'), { state: { scrollTo: 'intelligence' } });
+    navigate(getLocalizedPath('/profile#integrations'));
+  };
+
+  const goToAgentDetail = () => {
+    onOpenChange(false);
+    navigate(getLocalizedPath('/agents/email-triage-agent'));
   };
 
   // ─── Background Scan ──────────────────────────────────────────
@@ -133,11 +137,10 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
     });
 
     try {
-      // Route through olive-agent-runner so WhatsApp notification fires
       const { data, error } = await supabase.functions.invoke('olive-agent-runner', {
-        body: { 
-          action: 'run', 
-          agent_id: 'email-triage-agent', 
+        body: {
+          action: 'run',
+          agent_id: 'email-triage-agent',
           user_id: user.id,
           config_override: { force_run: true },
         },
@@ -172,6 +175,7 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
   };
 
   const frequencyLabels: Record<string, string> = {
+    manual: t('home:emailTriage.frequencyManual', 'Manual only'),
     '6h': t('profile:email.frequency6h', 'Every 6 hours'),
     '12h': t('profile:email.frequency12h', 'Every 12 hours'),
     '24h': t('profile:email.frequency24h', 'Every 24 hours'),
@@ -186,15 +190,12 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
         </div>
       )}
 
-      {!loading && !isActivated && (
-        <ActivateCTA
-          t={t}
-          goToSettings={goToSettings}
-        />
+      {!loading && !gmailConnected && (
+        <ConnectGmailCTA t={t} goToConnect={goToConnect} />
       )}
 
-      {!loading && isActivated && (
-        <ActiveStatus
+      {!loading && gmailConnected && (
+        <TriageStatus
           t={t}
           frequency={frequency}
           frequencyLabels={frequencyLabels}
@@ -202,26 +203,31 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
           recentTasks={recentTasks}
           scanning={scanning}
           onScanNow={handleScanNow}
-          onGoToSettings={goToSettings}
+          onGoToAgentDetail={goToAgentDetail}
+          onGoToSettings={goToConnect}
         />
       )}
     </div>
   );
+
+  const title = (
+    <span className="flex items-center gap-2">
+      <Mail className="h-5 w-5 text-red-600" />
+      {t('home:emailTriage.title', 'Email Review')}
+    </span>
+  );
+
+  const description = gmailConnected
+    ? t('home:emailTriage.activeDescription', 'Your email monitoring status and recent tasks')
+    : t('home:emailTriage.description', 'Review actionable emails and create tasks');
 
   if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent className="max-h-[85vh]">
           <DrawerHeader>
-            <DrawerTitle className="flex items-center gap-2">
-              <Mail className="h-5 w-5 text-red-600" />
-              {t('home:emailTriage.title', 'Email Review')}
-            </DrawerTitle>
-            <DrawerDescription>
-              {isActivated
-                ? t('home:emailTriage.activeDescription', 'Your email monitoring status and recent tasks')
-                : t('home:emailTriage.description', 'Review actionable emails and create tasks')}
-            </DrawerDescription>
+            <DrawerTitle>{title}</DrawerTitle>
+            <DrawerDescription>{description}</DrawerDescription>
           </DrawerHeader>
           <div className="px-4 pb-4">{content}</div>
         </DrawerContent>
@@ -233,15 +239,8 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5 text-red-600" />
-            {t('home:emailTriage.title', 'Email Review')}
-          </DialogTitle>
-          <DialogDescription>
-            {isActivated
-              ? t('home:emailTriage.activeDescription', 'Your email monitoring status and recent tasks')
-              : t('home:emailTriage.description', 'Review actionable emails and create tasks')}
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         {content}
       </DialogContent>
@@ -251,7 +250,7 @@ export function EmailTriageReviewDialog({ open, onOpenChange }: EmailTriageRevie
 
 /* ─── Sub-components ──────────────────────────────────────────── */
 
-function ActivateCTA({ t, goToSettings }: { t: any; goToSettings: () => void }) {
+function ConnectGmailCTA({ t, goToConnect }: { t: any; goToConnect: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-8 gap-4 text-center px-4">
       <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
@@ -259,21 +258,21 @@ function ActivateCTA({ t, goToSettings }: { t: any; goToSettings: () => void }) 
       </div>
       <div className="space-y-2 max-w-[300px]">
         <h3 className="text-base font-semibold text-foreground">
-          {t('home:emailTriage.activateTitle', 'Let Olive check your email')}
+          {t('home:emailTriage.connectTitle', 'Connect your Gmail')}
         </h3>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          {t('home:emailTriage.activateDescription', 'Activate automatic email scanning in settings. Olive will periodically check your inbox, identify actionable emails, and create tasks for you.')}
+          {t('home:emailTriage.connectDescription', 'Connect your Gmail account to let Olive scan your inbox for actionable tasks — manually or on a schedule.')}
         </p>
       </div>
 
       <div className="flex flex-col gap-2 w-full max-w-[260px] mt-2">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Clock className="h-3.5 w-3.5 text-primary flex-shrink-0" />
-          <span>{t('home:emailTriage.featureFrequency', 'Choose frequency: every 6, 12, or 24 hours')}</span>
+          <Play className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+          <span>{t('home:emailTriage.featureManualScan', 'Scan on demand anytime')}</span>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Calendar className="h-3.5 w-3.5 text-primary flex-shrink-0" />
-          <span>{t('home:emailTriage.featureLookback', 'Scan past 1, 3, or 5 days of email')}</span>
+          <Clock className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+          <span>{t('home:emailTriage.featureFrequency', 'Choose frequency: every 6, 12, or 24 hours')}</span>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <ListTodo className="h-3.5 w-3.5 text-primary flex-shrink-0" />
@@ -281,16 +280,16 @@ function ActivateCTA({ t, goToSettings }: { t: any; goToSettings: () => void }) 
         </div>
       </div>
 
-      <Button onClick={goToSettings} className="mt-4 gap-2">
+      <Button onClick={goToConnect} className="mt-4 gap-2">
         <Settings className="h-4 w-4" />
-        {t('home:emailTriage.goToSettings', 'Activate in Settings')}
+        {t('home:emailTriage.connectGmail', 'Connect Gmail in Settings')}
       </Button>
     </div>
   );
 }
 
-function ActiveStatus({
-  t, frequency, frequencyLabels, lastRun, recentTasks, scanning, onScanNow, onGoToSettings,
+function TriageStatus({
+  t, frequency, frequencyLabels, lastRun, recentTasks, scanning, onScanNow, onGoToAgentDetail, onGoToSettings,
 }: {
   t: any;
   frequency: string;
@@ -299,6 +298,7 @@ function ActiveStatus({
   recentTasks: RecentTask[];
   scanning: boolean;
   onScanNow: () => void;
+  onGoToAgentDetail: () => void;
   onGoToSettings: () => void;
 }) {
   return (
@@ -310,7 +310,9 @@ function ActiveStatus({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-foreground">
-            {t('home:emailTriage.activeTitle', 'Email monitoring active')}
+            {frequency === 'manual'
+              ? t('home:emailTriage.manualModeTitle', 'Gmail connected — manual mode')
+              : t('home:emailTriage.activeTitle', 'Email monitoring active')}
           </p>
           <p className="text-xs text-muted-foreground">
             {frequencyLabels[frequency] || frequency}
@@ -329,7 +331,6 @@ function ActiveStatus({
         onClick={onScanNow}
         disabled={scanning}
         className="w-full gap-2"
-        variant="outline"
       >
         {scanning ? (
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -341,7 +342,7 @@ function ActiveStatus({
           : t('home:emailTriage.scanNow', 'Scan Now')}
       </Button>
 
-      {/* Last run result */}
+      {/* Last run result stats */}
       {lastRun?.result?.data && (
         <div className="flex items-center gap-4 text-center">
           <div className="flex-1 p-3 rounded-xl bg-muted/50">
@@ -395,10 +396,19 @@ function ActiveStatus({
         <div className="flex flex-col items-center justify-center py-6 gap-2 text-center">
           <CheckCircle2 className="h-6 w-6 text-muted-foreground/50" />
           <p className="text-sm text-muted-foreground">
-            {t('home:emailTriage.noEmailTasks', 'No email tasks yet. Olive will check your inbox soon.')}
+            {t('home:emailTriage.noEmailTasks', 'No email tasks yet. Hit Scan Now to check your inbox.')}
           </p>
         </div>
       )}
+
+      {/* Deep link to full agent detail page */}
+      <button
+        onClick={onGoToAgentDetail}
+        className="w-full flex items-center justify-center gap-2 text-xs text-primary hover:text-primary/80 py-2 transition-colors"
+      >
+        {t('home:emailTriage.viewFullHistory', 'View full history & settings')}
+        <ArrowRight className="h-3 w-3" />
+      </button>
     </div>
   );
 }
