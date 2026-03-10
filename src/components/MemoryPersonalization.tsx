@@ -310,6 +310,7 @@ export function MemoryPersonalization() {
     const previousMemories = [...memories];
     setMemories(prev => prev.map(m => m.id === memoryId ? { ...m, title, content: editContent } : m));
     setEditingId(null);
+    haptics.impactLight();
 
     try {
       setSaving(true);
