@@ -97,14 +97,22 @@ serve(async (req) => {
 
     switch (action) {
       case 'list': {
-        // List all active memories for user
-        const { data: memories, error } = await supabase
+        // List all active memories for user (own + shared via couple)
+        let queryBuilder = supabase
           .from('user_memories')
-          .select('id, title, content, category, importance, created_at, updated_at')
-          .eq('user_id', effectiveUserId)
+          .select('id, title, content, category, importance, created_at, updated_at, couple_id, user_id')
           .eq('is_active', true)
           .order('importance', { ascending: false })
           .order('created_at', { ascending: false });
+
+        if (couple_id) {
+          // Show both personal memories and shared couple memories
+          queryBuilder = queryBuilder.or(`user_id.eq.${effectiveUserId},couple_id.eq.${couple_id}`);
+        } else {
+          queryBuilder = queryBuilder.eq('user_id', effectiveUserId);
+        }
+
+        const { data: memories, error } = await queryBuilder;
 
         if (error) throw error;
 
