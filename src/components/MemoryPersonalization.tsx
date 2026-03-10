@@ -331,7 +331,7 @@ export function MemoryPersonalization() {
     } catch (error) {
       console.error('Failed to update memory:', error);
       toast.error(t('memory.error'));
-      // Rollback
+      haptics.notificationError();
       setMemories(previousMemories);
     } finally {
       setSaving(false);
