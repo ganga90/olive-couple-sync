@@ -76,6 +76,9 @@ export function MemoryPersonalization() {
   // Search and filter
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [semanticSearching, setSemanticSearching] = useState(false);
+  const [semanticResults, setSemanticResults] = useState<Memory[] | null>(null);
+  const searchDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // New memory form state
   const [newContent, setNewContent] = useState('');
@@ -88,6 +91,73 @@ export function MemoryPersonalization() {
 
   // Delete confirmation state
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+
+  // Semantic search via olive-search edge function
+  const performSemanticSearch = React.useCallback(async (query: string) => {
+    if (!userId || query.trim().length < 3) {
+      setSemanticResults(null);
+      return;
+    }
+    
+    try {
+      setSemanticSearching(true);
+      const { data, error } = await supabase.functions.invoke('olive-search', {
+        body: {
+          action: 'search_memory',
+          user_id: userId,
+          query: query.trim(),
+          limit: 20,
+        }
+      });
+
+      if (error || !data?.success) {
+        // Fall back to local filtering
+        setSemanticResults(null);
+        return;
+      }
+
+      // Map search results back to Memory shape
+      const mapped: Memory[] = (data.results || []).map((r: any) => ({
+        id: r.id,
+        title: r.snippet || r.content?.substring(0, 50) || '',
+        content: r.content,
+        category: r.metadata?.chunk_type || 'other',
+        importance: r.metadata?.importance || 3,
+        created_at: r.metadata?.created_at || new Date().toISOString(),
+        metadata: { auto_extracted: r.metadata?.source === 'auto' },
+      }));
+      
+      setSemanticResults(mapped);
+    } catch {
+      setSemanticResults(null);
+    } finally {
+      setSemanticSearching(false);
+    }
+  }, [userId]);
+
+  // Debounced search handler
+  const handleSearchChange = React.useCallback((value: string) => {
+    setSearchQuery(value);
+    
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    if (value.trim().length >= 3) {
+      searchDebounceRef.current = setTimeout(() => {
+        performSemanticSearch(value);
+      }, 400);
+    } else {
+      setSemanticResults(null);
+    }
+  }, [performSemanticSearch]);
+
+  // Cleanup debounce on unmount
+  React.useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, []);
 
   // Analyze notes function
   async function analyzeNotes() {
@@ -103,7 +173,6 @@ export function MemoryPersonalization() {
       
       if (data?.insight_created) {
         toast.success(data.message || t('memory.patternDetected', 'Pattern detected! Check your home screen.'));
-        // Navigate to home to see the insight card
         navigate(getLocalizedPath('/home'));
       } else {
         toast.info(data?.message || t('memory.noPatterns', 'No strong patterns detected.'));
@@ -116,8 +185,15 @@ export function MemoryPersonalization() {
     }
   }
 
-  // Filtered memories
+  // Filtered memories — use semantic results when available, else local filter
   const filteredMemories = useMemo(() => {
+    if (semanticResults !== null && searchQuery.trim().length >= 3) {
+      // Semantic search active — apply category filter on top
+      return selectedCategory === 'all'
+        ? semanticResults
+        : semanticResults.filter(m => m.category === selectedCategory);
+    }
+
     return memories.filter(memory => {
       const matchesSearch = searchQuery === '' || 
         memory.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -125,7 +201,7 @@ export function MemoryPersonalization() {
       const matchesCategory = selectedCategory === 'all' || memory.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
-  }, [memories, searchQuery, selectedCategory]);
+  }, [memories, searchQuery, selectedCategory, semanticResults]);
 
   // Displayed memories (limited or all)
   const displayedMemories = useMemo(() => {
