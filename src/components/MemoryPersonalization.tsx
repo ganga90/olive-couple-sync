@@ -14,6 +14,16 @@ import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface Memory {
   id: string;
