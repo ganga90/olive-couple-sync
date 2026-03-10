@@ -1,4 +1,5 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
@@ -18,8 +19,11 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   children,
   defaultOpen = false,
   delay = 0,
+  sectionId,
 }) => {
-  const [isOpen, setIsOpen] = React.useState(defaultOpen);
+  const location = useLocation();
+  const hash = location.hash?.replace('#', '');
+  const [isOpen, setIsOpen] = React.useState(defaultOpen || (!!sectionId && hash === sectionId));
   const sectionRef = useRef<HTMLDivElement>(null);
 
   const handleOpenChange = useCallback((open: boolean) => {
