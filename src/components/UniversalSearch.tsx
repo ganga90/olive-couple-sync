@@ -1,21 +1,37 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useAuth } from "@/providers/AuthProvider";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, ListIcon, CheckSquare } from "lucide-react";
+import { Search, ListIcon, CheckSquare, Brain, Loader2, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
+import { useTranslation } from "react-i18next";
+import { supabase } from "@/lib/supabaseClient";
+
+interface MemorySearchResult {
+  id: string;
+  content: string;
+  snippet?: string;
+  score: number;
+  metadata: Record<string, any>;
+}
 
 export const UniversalSearch: React.FC = () => {
+  const { t } = useTranslation("common");
+  const { user } = useAuth();
   const { notes } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouple();
   const { lists } = useSupabaseLists(currentCouple?.id || null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [memoryResults, setMemoryResults] = useState<MemorySearchResult[]>([]);
+  const [memorySearching, setMemorySearching] = useState(false);
   const navigate = useLocalizedNavigate();
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Search both notes and lists
+  // Local search for notes and lists
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) {
       return { notes: [], lists: [] };
@@ -23,7 +39,6 @@ export const UniversalSearch: React.FC = () => {
 
     const query = searchQuery.toLowerCase();
 
-    // Search notes by summary, originalText, category, and tags
     const matchingNotes = notes.filter(note => 
       !note.completed && (
         note.summary.toLowerCase().includes(query) ||
@@ -31,31 +46,75 @@ export const UniversalSearch: React.FC = () => {
         note.category.toLowerCase().includes(query) ||
         note.tags?.some(tag => tag.toLowerCase().includes(query))
       )
-    ).slice(0, 5); // Limit to 5 results
+    ).slice(0, 5);
 
-    // Search lists by name and description
     const matchingLists = lists.filter(list =>
       list.name.toLowerCase().includes(query) ||
       list.description?.toLowerCase().includes(query)
-    ).slice(0, 5); // Limit to 5 results
+    ).slice(0, 5);
 
     return { notes: matchingNotes, lists: matchingLists };
   }, [searchQuery, notes, lists]);
 
-  const hasResults = searchResults.notes.length > 0 || searchResults.lists.length > 0;
+  // Semantic memory search (debounced)
+  const searchMemories = useCallback(async (query: string) => {
+    if (!user?.id || query.trim().length < 3) {
+      setMemoryResults([]);
+      return;
+    }
+
+    try {
+      setMemorySearching(true);
+      const { data, error } = await supabase.functions.invoke('olive-search', {
+        body: {
+          action: 'search_memory',
+          user_id: user.id,
+          query: query.trim(),
+          limit: 5,
+        }
+      });
+
+      if (!error && data?.success) {
+        setMemoryResults(data.results || []);
+      } else {
+        setMemoryResults([]);
+      }
+    } catch {
+      setMemoryResults([]);
+    } finally {
+      setMemorySearching(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (searchQuery.trim().length >= 3) {
+      debounceRef.current = setTimeout(() => searchMemories(searchQuery), 400);
+    } else {
+      setMemoryResults([]);
+    }
+
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchQuery, searchMemories]);
+
+  const hasResults = searchResults.notes.length > 0 || searchResults.lists.length > 0 || memoryResults.length > 0;
 
   return (
-    <Card className="bg-white/50 border-olive/20 shadow-[var(--shadow-raised)]">
+    <Card className="bg-card/50 border-border/50 shadow-sm">
       <CardContent className="p-4 space-y-4">
         {/* Search Input */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[hsl(var(--ai-accent))]" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-primary/60" />
+          {memorySearching && (
+            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-primary" />
+          )}
           <Input
             type="text"
-            placeholder="Search tasks and lists..."
+            placeholder={t("search.placeholder", "Search tasks, lists & memories...")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-11 h-12 text-base border-olive/30 focus:border-[hsl(var(--ai-accent))] focus:ring-[hsl(var(--ai-accent))]/20 shadow-[var(--shadow-inset)]"
+            className="pl-11 pr-9 h-12 text-base border-border/50 focus:border-primary focus:ring-primary/20"
           />
         </div>
 
@@ -65,17 +124,17 @@ export const UniversalSearch: React.FC = () => {
             {/* Lists Results */}
             {searchResults.lists.length > 0 && (
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium text-olive-dark">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                   <ListIcon className="h-4 w-4" />
-                  <span>Lists</span>
+                  <span>{t("search.lists", "Lists")}</span>
                 </div>
                 {searchResults.lists.map(list => (
                   <button
                     key={list.id}
                     onClick={() => navigate(`/lists/${list.id}`)}
-                    className="w-full text-left p-3 rounded-lg border border-olive/10 hover:bg-olive/5 transition-colors"
+                    className="w-full text-left p-3 rounded-lg border border-border/30 hover:bg-muted/50 transition-colors"
                   >
-                    <div className="font-medium text-sm text-olive-dark">{list.name}</div>
+                    <div className="font-medium text-sm text-foreground">{list.name}</div>
                     {list.description && (
                       <div className="text-xs text-muted-foreground mt-1">{list.description}</div>
                     )}
@@ -87,34 +146,25 @@ export const UniversalSearch: React.FC = () => {
             {/* Notes/Tasks Results */}
             {searchResults.notes.length > 0 && (
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium text-olive-dark">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                   <CheckSquare className="h-4 w-4" />
-                  <span>Tasks</span>
+                  <span>{t("search.tasks", "Tasks")}</span>
                 </div>
                 {searchResults.notes.map(note => (
                   <button
                     key={note.id}
                     onClick={() => navigate(`/note/${note.id}`)}
-                    className="w-full text-left p-3 rounded-lg border border-olive/10 hover:bg-olive/5 transition-colors"
+                    className="w-full text-left p-3 rounded-lg border border-border/30 hover:bg-muted/50 transition-colors"
                   >
-                    <div className="font-medium text-sm text-olive-dark mb-1">{note.summary}</div>
+                    <div className="font-medium text-sm text-foreground mb-1">{note.summary}</div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="secondary" className="bg-olive/10 text-olive border-olive/20 text-xs">
+                      <Badge variant="secondary" className="text-xs">
                         {note.category}
                       </Badge>
                       {note.priority && (
-                        <Badge variant="secondary" className={`text-xs ${
-                          note.priority === 'high' ? 'bg-red-100 text-red-800' :
-                          note.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-green-100 text-green-800'
-                        }`}>
+                        <Badge variant="outline" className="text-xs">
                           {note.priority}
                         </Badge>
-                      )}
-                      {note.tags && note.tags.length > 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          {note.tags.slice(0, 2).join(', ')}
-                        </span>
                       )}
                     </div>
                   </button>
@@ -122,10 +172,42 @@ export const UniversalSearch: React.FC = () => {
               </div>
             )}
 
+            {/* Memory Results */}
+            {memoryResults.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Brain className="h-4 w-4 text-primary" />
+                  <span>{t("search.memories", "Memories")}</span>
+                  <Sparkles className="h-3 w-3 text-primary/60" />
+                </div>
+                {memoryResults.map(memory => (
+                  <button
+                    key={memory.id}
+                    onClick={() => navigate('/profile')}
+                    className="w-full text-left p-3 rounded-lg border border-primary/10 bg-primary/5 hover:bg-primary/10 transition-colors"
+                  >
+                    <div className="text-sm text-foreground leading-relaxed">
+                      {memory.snippet || memory.content?.substring(0, 120)}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      {memory.metadata?.chunk_type && (
+                        <Badge variant="secondary" className="text-xs">
+                          {memory.metadata.chunk_type}
+                        </Badge>
+                      )}
+                      <span className="text-xs text-muted-foreground">
+                        {Math.round(memory.score * 100)}% {t("search.match", "match")}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* No Results */}
-            {!hasResults && (
+            {!hasResults && !memorySearching && (
               <div className="text-center py-4 text-muted-foreground">
-                <p className="text-sm">No tasks or lists found for "{searchQuery}"</p>
+                <p className="text-sm">{t("search.noResults", 'No results found for "{{query}}"', { query: searchQuery })}</p>
               </div>
             )}
           </div>
@@ -134,7 +216,7 @@ export const UniversalSearch: React.FC = () => {
         {/* Initial State */}
         {!searchQuery.trim() && (
           <div className="text-center py-2 text-muted-foreground">
-            <p className="text-sm">Type to search your tasks and lists</p>
+            <p className="text-sm">{t("search.hint", "Type to search your tasks, lists & memories")}</p>
           </div>
         )}
       </CardContent>
