@@ -146,6 +146,7 @@
     "memorySaved": "Memory saved",
     "memoryUpdated": "Memory updated",
     "memoryDeleted": "Memory deleted",
+    "undo": "Undo",
     "loadingMemories": "Loading memories...",
     "autoLearned": "Auto-learned",
     "error": "Failed to save memory",
