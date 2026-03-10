@@ -366,6 +366,11 @@ const Home = () => {
             <PersonalizeCard />
           </div>
 
+          {/* Setup Features Card (post-onboarding) */}
+          <div className="animate-fade-up stagger-2">
+            <SetupFeaturesCard />
+          </div>
+
           {/* Quick Action Cards - Glass Style (only show if no notes) */}
           {notes.length === 0 && !calendarConnection?.connected && (
             <div className="space-y-4 animate-fade-up stagger-3">
