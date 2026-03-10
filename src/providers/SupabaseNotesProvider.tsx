@@ -162,6 +162,15 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
       couple_id: resolvedCoupleId,
     };
     const result = await addSupabaseNote(supabaseNoteData);
+    if (result && user?.id) {
+      // Auto-trigger insight analysis every 10 notes (fire-and-forget)
+      noteCountRef.current += 1;
+      if (noteCountRef.current % 10 === 0) {
+        supabase.functions.invoke('analyze-notes', {
+          body: { user_id: user.id }
+        }).catch(err => console.warn('[auto-analyze] Background analysis failed:', err));
+      }
+    }
     return result ? convertSupabaseNoteToNote(result, user, currentCouple, memberMap) : null;
   }, [defaultPrivacy, currentCouple, addSupabaseNote, user, memberMap]);
 
