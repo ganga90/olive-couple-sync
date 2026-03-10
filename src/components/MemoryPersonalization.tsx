@@ -252,16 +252,31 @@ export function MemoryPersonalization() {
   async function addMemory() {
     if (!userId || !newContent.trim()) return;
 
+    const title = newContent.split('\n')[0].substring(0, 50) || newContent.substring(0, 50);
+    const optimisticMemory: Memory = {
+      id: `temp-${Date.now()}`,
+      title,
+      content: newContent,
+      category: newCategory,
+      importance: newImportance,
+      created_at: new Date().toISOString(),
+    };
+
+    // Optimistic: add immediately
+    setMemories(prev => [optimisticMemory, ...prev]);
+    setNewContent('');
+    setNewCategory('personal');
+    setNewImportance(3);
+    setActiveTab('view');
+
     try {
       setSaving(true);
-      const title = newContent.split('\n')[0].substring(0, 50) || newContent.substring(0, 50);
-      
       const { data, error } = await supabase.functions.invoke('manage-memories', {
         body: {
           action: 'add',
           user_id: userId,
           title,
-          content: newContent,
+          content: optimisticMemory.content,
           category: newCategory,
           importance: newImportance,
         }
@@ -270,15 +285,14 @@ export function MemoryPersonalization() {
       if (error) throw error;
       if (data?.success) {
         toast.success(t('memory.memorySaved'));
-        setNewContent('');
-        setNewCategory('personal');
-        setNewImportance(3);
-        setActiveTab('view');
+        // Reload to get real ID
         await loadMemories();
       }
     } catch (error) {
       console.error('Failed to add memory:', error);
       toast.error(t('memory.error'));
+      // Rollback
+      setMemories(prev => prev.filter(m => m.id !== optimisticMemory.id));
     } finally {
       setSaving(false);
     }
@@ -287,10 +301,15 @@ export function MemoryPersonalization() {
   async function updateMemory(memoryId: string) {
     if (!userId || !editContent.trim()) return;
 
+    const title = editContent.split('\n')[0].substring(0, 50) || editContent.substring(0, 50);
+    
+    // Optimistic update
+    const previousMemories = [...memories];
+    setMemories(prev => prev.map(m => m.id === memoryId ? { ...m, title, content: editContent } : m));
+    setEditingId(null);
+
     try {
       setSaving(true);
-      const title = editContent.split('\n')[0].substring(0, 50) || editContent.substring(0, 50);
-      
       const { data, error } = await supabase.functions.invoke('manage-memories', {
         body: {
           action: 'update',
@@ -304,12 +323,12 @@ export function MemoryPersonalization() {
       if (error) throw error;
       if (data?.success) {
         toast.success(t('memory.memoryUpdated'));
-        setEditingId(null);
-        await loadMemories();
       }
     } catch (error) {
       console.error('Failed to update memory:', error);
       toast.error(t('memory.error'));
+      // Rollback
+      setMemories(previousMemories);
     } finally {
       setSaving(false);
     }
@@ -317,6 +336,10 @@ export function MemoryPersonalization() {
 
   async function deleteMemory(memoryId: string) {
     if (!userId) return;
+
+    // Optimistic delete
+    const previousMemories = [...memories];
+    setMemories(prev => prev.filter(m => m.id !== memoryId));
 
     try {
       const { data, error } = await supabase.functions.invoke('manage-memories', {
@@ -330,11 +353,12 @@ export function MemoryPersonalization() {
       if (error) throw error;
       if (data?.success) {
         toast.success(t('memory.memoryDeleted'));
-        await loadMemories();
       }
     } catch (error) {
       console.error('Failed to delete memory:', error);
       toast.error(t('memory.error'));
+      // Rollback
+      setMemories(previousMemories);
     }
   }
 
