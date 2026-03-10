@@ -163,5 +163,14 @@
     "marketingDesc": "Personalized advertisements and content",
     "learnMore": "Learn more in our",
     "privacyPolicy": "Privacy Policy"
+  },
+  "search": {
+    "placeholder": "Search tasks, lists & memories...",
+    "lists": "Lists",
+    "tasks": "Tasks",
+    "memories": "Memories",
+    "match": "match",
+    "noResults": "No results found for \"{{query}}\"",
+    "hint": "Type to search your tasks, lists & memories"
   }
 }

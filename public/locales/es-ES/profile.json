@@ -146,6 +146,7 @@
     "memorySaved": "Recuerdo guardado",
     "memoryUpdated": "Recuerdo actualizado",
     "memoryDeleted": "Recuerdo eliminado",
+    "undo": "Deshacer",
     "loadingMemories": "Cargando recuerdos...",
     "autoLearned": "Aprendido automáticamente",
     "error": "No se pudo guardar el recuerdo",

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, Plus, Edit2, Check, X, Star, Loader2, Sparkles, Search, Filter, Wand2 } from 'lucide-react';
+import { Trash2, Plus, Edit2, Check, X, Star, Loader2, Sparkles, Search, Filter, Wand2, Undo2 } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
 import { useNavigate } from 'react-router-dom';
@@ -15,6 +15,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
+import { useHaptics } from '@/hooks/useHaptics';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -64,6 +65,7 @@ export function MemoryPersonalization() {
   const { currentCouple } = useSupabaseCouple();
   const navigate = useNavigate();
   const { getLocalizedPath } = useLanguage();
+  const haptics = useHaptics();
   const userId = user?.id;
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -268,6 +270,7 @@ export function MemoryPersonalization() {
     setNewCategory('personal');
     setNewImportance(3);
     setActiveTab('view');
+    haptics.notificationSuccess();
 
     try {
       setSaving(true);
@@ -291,7 +294,7 @@ export function MemoryPersonalization() {
     } catch (error) {
       console.error('Failed to add memory:', error);
       toast.error(t('memory.error'));
-      // Rollback
+      haptics.notificationError();
       setMemories(prev => prev.filter(m => m.id !== optimisticMemory.id));
     } finally {
       setSaving(false);
@@ -307,6 +310,7 @@ export function MemoryPersonalization() {
     const previousMemories = [...memories];
     setMemories(prev => prev.map(m => m.id === memoryId ? { ...m, title, content: editContent } : m));
     setEditingId(null);
+    haptics.impactLight();
 
     try {
       setSaving(true);
@@ -327,7 +331,7 @@ export function MemoryPersonalization() {
     } catch (error) {
       console.error('Failed to update memory:', error);
       toast.error(t('memory.error'));
-      // Rollback
+      haptics.notificationError();
       setMemories(previousMemories);
     } finally {
       setSaving(false);
@@ -337,29 +341,46 @@ export function MemoryPersonalization() {
   async function deleteMemory(memoryId: string) {
     if (!userId) return;
 
-    // Optimistic delete
+    // Optimistic delete with undo support
     const previousMemories = [...memories];
     setMemories(prev => prev.filter(m => m.id !== memoryId));
+    haptics.impactMedium();
 
-    try {
-      const { data, error } = await supabase.functions.invoke('manage-memories', {
-        body: {
-          action: 'delete',
-          user_id: userId,
-          memory_id: memoryId,
-        }
-      });
+    let undone = false;
 
-      if (error) throw error;
-      if (data?.success) {
-        toast.success(t('memory.memoryDeleted'));
+    toast(t('memory.memoryDeleted'), {
+      duration: 5000,
+      action: {
+        label: t('memory.undo', 'Undo'),
+        onClick: () => {
+          undone = true;
+          setMemories(previousMemories);
+          haptics.notificationSuccess();
+        },
+      },
+    });
+
+    // Delay actual server delete to allow undo window
+    setTimeout(async () => {
+      if (undone) return;
+
+      try {
+        const { data, error } = await supabase.functions.invoke('manage-memories', {
+          body: {
+            action: 'delete',
+            user_id: userId,
+            memory_id: memoryId,
+          }
+        });
+
+        if (error) throw error;
+      } catch (error) {
+        console.error('Failed to delete memory:', error);
+        toast.error(t('memory.error'));
+        haptics.notificationError();
+        if (!undone) setMemories(previousMemories);
       }
-    } catch (error) {
-      console.error('Failed to delete memory:', error);
-      toast.error(t('memory.error'));
-      // Rollback
-      setMemories(previousMemories);
-    }
+    }, 5500);
   }
 
   function startEditing(memory: Memory) {
