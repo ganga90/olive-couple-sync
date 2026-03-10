@@ -464,6 +464,20 @@ Based on their energy level, suggest the optimal order to tackle these tasks. Ke
     });
 
     energyMessage = response.text?.trim() || "";
+    // Detect truncated responses (ends mid-sentence without punctuation)
+    if (energyMessage && energyMessage.length > 20 && !/[.!?)\n🎉💪✨]$/.test(energyMessage)) {
+      // Trim to last complete sentence
+      const lastPunctuation = Math.max(
+        energyMessage.lastIndexOf('. '),
+        energyMessage.lastIndexOf('! '),
+        energyMessage.lastIndexOf('? '),
+        energyMessage.lastIndexOf('.\n'),
+        energyMessage.lastIndexOf('!\n'),
+      );
+      if (lastPunctuation > energyMessage.length * 0.4) {
+        energyMessage = energyMessage.substring(0, lastPunctuation + 1);
+      }
+    }
     if (!energyMessage || energyMessage.length < 10) {
       const emoji = (latestOura.readinessScore || 0) >= 75 ? "⚡" : (latestOura.readinessScore || 0) >= 50 ? "🔋" : "😴";
       energyMessage = `${emoji} Readiness: ${latestOura.readinessScore}/100, Sleep: ${latestOura.sleepScore || "N/A"}/100. You have ${tasks.length} tasks today. Open Olive to review them.`;
