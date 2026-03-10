@@ -152,7 +152,7 @@ export function InsightDiscoveryCard() {
     <div
       className={cn(
         "relative overflow-hidden rounded-2xl border transition-all duration-300",
-        "bg-gradient-to-r from-primary/5 via-white to-white",
+        "bg-gradient-to-r from-primary/5 via-background to-background",
         "border-primary/10 shadow-lg shadow-primary/5",
         isDismissing && "opacity-0 scale-95 translate-y-2"
       )}
