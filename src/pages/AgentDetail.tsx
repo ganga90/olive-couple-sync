@@ -24,6 +24,40 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  ArrowLeft,
+  Play,
+  Loader2,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  MessageCircle,
+  Zap,
+  History,
+  Settings2,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+  Mail,
+  Calendar,
+} from 'lucide-react';
+import { useLanguage } from '@/providers/LanguageProvider';
+import { supabase } from '@/lib/supabaseClient';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useAuth } from '@/providers/AuthProvider';
+import { useBackgroundAgents, AgentRun, AgentWithStatus } from '@/hooks/useBackgroundAgents';
+import { agentIcons, agentColors } from '@/constants/agentConfig';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { formatDistanceToNow, format } from 'date-fns';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 import {
   ArrowLeft,
   Play,
