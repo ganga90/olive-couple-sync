@@ -2228,6 +2228,13 @@ Process this note:
     console.log('[GenAI SDK] Final result:', result);
 
     // ======================================================================
+    // AUTO-ADD TO GOOGLE CALENDAR: Create events for notes with dates
+    // ======================================================================
+    autoAddToCalendar(supabase, result, user_id).catch(err => {
+      console.warn('[Auto Calendar] Non-blocking error:', err);
+    });
+
+    // ======================================================================
     // AUTO-DETECT EXPENSES: Check if note contains monetary amounts
     // ======================================================================
     const expenseDetected = detectAndCreateExpense(
