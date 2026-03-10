@@ -225,6 +225,7 @@ const Profile = () => {
           title={t('profile:sections.integrations', 'Connected Apps')}
           icon={<Link2 className="h-3.5 w-3.5 text-stone-500" />}
           delay={150}
+          sectionId="integrations"
         >
           <SettingsCard
             icon={<MessageSquare className="h-5 w-5 text-[hsl(var(--success))]" />}
