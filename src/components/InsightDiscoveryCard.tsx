@@ -172,7 +172,7 @@ export function InsightDiscoveryCard() {
         </div>
         
         {/* Content */}
-        <p className="text-base text-stone-800 leading-relaxed mb-4">
+        <p className="text-base text-foreground leading-relaxed mb-4">
           "{currentInsight.suggested_content}"
         </p>
         
