@@ -180,18 +180,39 @@ export const PersonalizeCard = () => {
         memoryParts.push(`Preferred note style: ${styleLabel}`);
       }
 
-      // Save combined preferences to user_memories so they appear in Memory section
+      // Upsert combined preferences to user_memories (prevent duplicates)
       if (memoryParts.length > 0) {
-        promises.push(
-          supabase.from("user_memories").insert({
-            user_id: user.id,
-            title: "Lifestyle Preferences",
-            content: memoryParts.join("\n"),
-            category: "preference",
-            importance: 4,
-            is_active: true,
-          }).then()
-        );
+        // Check if a "Lifestyle Preferences" memory already exists
+        const { data: existing } = await supabase
+          .from("user_memories")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("title", "Lifestyle Preferences")
+          .eq("is_active", true)
+          .limit(1);
+
+        if (existing && existing.length > 0) {
+          // Update existing
+          promises.push(
+            supabase.from("user_memories").update({
+              content: memoryParts.join("\n"),
+              importance: 4,
+              updated_at: new Date().toISOString(),
+            }).eq("id", existing[0].id).then()
+          );
+        } else {
+          // Insert new
+          promises.push(
+            supabase.from("user_memories").insert({
+              user_id: user.id,
+              title: "Lifestyle Preferences",
+              content: memoryParts.join("\n"),
+              category: "preference",
+              importance: 4,
+              is_active: true,
+            }).then()
+          );
+        }
       }
 
       await Promise.all(promises);

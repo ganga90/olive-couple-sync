@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 serve(async (req) => {
@@ -14,21 +14,52 @@ serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Supabase configuration is missing');
     }
 
+    // Authenticate: extract user_id from JWT instead of trusting request body
+    const authHeader = req.headers.get('Authorization');
+    let authenticatedUserId: string | null = null;
+
+    if (authHeader?.startsWith('Bearer ')) {
+      const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(
+        authHeader.replace('Bearer ', '')
+      );
+      if (!claimsError && claimsData?.claims?.sub) {
+        authenticatedUserId = claimsData.claims.sub as string;
+      }
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const { action, user_id, memory_id, title, content, category, importance, query } = await req.json();
 
-    if (!user_id) {
-      throw new Error('Missing required field: user_id');
+    // Use authenticated user_id if available, fall back to body for internal service calls
+    const effectiveUserId = authenticatedUserId || user_id;
+
+    if (!effectiveUserId) {
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized: no user identity' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    console.log('[manage-memories] Action:', action, 'User:', user_id);
+    // If authenticated, prevent accessing other users' data
+    if (authenticatedUserId && user_id && authenticatedUserId !== user_id) {
+      return new Response(JSON.stringify({ success: false, error: 'Forbidden: user_id mismatch' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log('[manage-memories] Action:', action, 'User:', effectiveUserId);
 
     // Helper function to generate embeddings using Lovable AI
     async function generateEmbedding(text: string): Promise<number[] | null> {
@@ -70,7 +101,7 @@ serve(async (req) => {
         const { data: memories, error } = await supabase
           .from('user_memories')
           .select('id, title, content, category, importance, created_at, updated_at')
-          .eq('user_id', user_id)
+          .eq('user_id', effectiveUserId)
           .eq('is_active', true)
           .order('importance', { ascending: false })
           .order('created_at', { ascending: false });
@@ -96,7 +127,7 @@ serve(async (req) => {
         const { data: memory, error } = await supabase
           .from('user_memories')
           .insert([{
-            user_id,
+            user_id: effectiveUserId,
             title,
             content,
             category: category || 'personal',
@@ -137,7 +168,7 @@ serve(async (req) => {
             .from('user_memories')
             .select('title, content')
             .eq('id', memory_id)
-            .eq('user_id', user_id)
+            .eq('user_id', effectiveUserId)
             .single();
 
           if (existing) {
@@ -152,7 +183,7 @@ serve(async (req) => {
           .from('user_memories')
           .update(updates)
           .eq('id', memory_id)
-          .eq('user_id', user_id)
+          .eq('user_id', effectiveUserId)
           .select('id, title, content, category, importance, created_at, updated_at')
           .single();
 
@@ -178,7 +209,7 @@ serve(async (req) => {
           .from('user_memories')
           .update({ is_active: false })
           .eq('id', memory_id)
-          .eq('user_id', user_id);
+          .eq('user_id', effectiveUserId);
 
         if (error) throw error;
 
@@ -197,7 +228,7 @@ serve(async (req) => {
         const { data: memories, error } = await supabase
           .from('user_memories')
           .select('title, content, category, importance')
-          .eq('user_id', user_id)
+          .eq('user_id', effectiveUserId)
           .eq('is_active', true)
           .order('importance', { ascending: false })
           .limit(15);
@@ -251,7 +282,7 @@ serve(async (req) => {
           const { data: memories, error } = await supabase
             .from('user_memories')
             .select('id, title, content, category, importance')
-            .eq('user_id', user_id)
+            .eq('user_id', effectiveUserId)
             .eq('is_active', true)
             .order('importance', { ascending: false })
             .limit(20);
@@ -284,7 +315,7 @@ serve(async (req) => {
         const { data: similarMemories, error: searchError } = await supabase.rpc(
           'search_user_memories',
           {
-            p_user_id: user_id,
+            p_user_id: effectiveUserId,
             p_query_embedding: JSON.stringify(queryEmbedding),
             p_match_threshold: 0.5, // Lower threshold to catch more relevant matches
             p_match_count: 5
@@ -297,7 +328,7 @@ serve(async (req) => {
           const { data: fallbackMemories } = await supabase
             .from('user_memories')
             .select('id, title, content, category, importance')
-            .eq('user_id', user_id)
+            .eq('user_id', effectiveUserId)
             .eq('is_active', true)
             .order('importance', { ascending: false })
             .limit(5);

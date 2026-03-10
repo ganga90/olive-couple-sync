@@ -14,6 +14,16 @@ import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface Memory {
   id: string;
@@ -71,6 +81,9 @@ export function MemoryPersonalization() {
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+
+  // Delete confirmation state
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   // Analyze notes function
   async function analyzeNotes() {
@@ -472,7 +485,7 @@ export function MemoryPersonalization() {
                                   size="icon"
                                   variant="ghost"
                                   className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                  onClick={() => deleteMemory(memory.id)}
+                                  onClick={() => setDeleteTargetId(memory.id)}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
@@ -620,6 +633,31 @@ export function MemoryPersonalization() {
           </Card>
         </TabsContent>
       </Tabs>
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteTargetId} onOpenChange={(open) => !open && setDeleteTargetId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('memory.deleteTitle', 'Delete memory?')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('memory.deleteDescription', 'This memory will be removed from Olive\'s context. This action cannot be undone.')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('memory.cancel', 'Cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteTargetId) {
+                  deleteMemory(deleteTargetId);
+                  setDeleteTargetId(null);
+                }
+              }}
+            >
+              {t('memory.confirmDelete', 'Delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
