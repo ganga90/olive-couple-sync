@@ -154,7 +154,31 @@
     "analyzeError": "Failed to analyze notes",
     "showAll": "Show All",
     "showLess": "Show Less",
-    "more": "more"
+    "more": "more",
+    "deleteTitle": "Delete memory?",
+    "deleteDescription": "This memory will be removed from Olive's context. This action cannot be undone.",
+    "cancel": "Cancel",
+    "confirmDelete": "Delete",
+    "examplesTitle": "Examples of things to remember:",
+    "examples": {
+      "kids": "I have 2 kids: Emma (8) and Jack (5)",
+      "diet": "We're vegetarian and prefer Italian restaurants",
+      "partner": "My partner's name is Sarah",
+      "preferences": "I prefer morning appointments",
+      "allergy": "Allergic to peanuts"
+    },
+    "categories": {
+      "all": "All",
+      "personal": "Personal",
+      "preference": "Preference",
+      "family": "Family",
+      "pet": "Pets",
+      "health": "Health",
+      "dietary": "Dietary",
+      "work": "Work",
+      "inferred": "AI-learned",
+      "other": "Other"
+    }
   },
   "noteProcessingStyle": "Note Processing Style",
   "memoryPersonalization": {
