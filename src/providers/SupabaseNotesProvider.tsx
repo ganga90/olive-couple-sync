@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useCallback } from "react";
+import React, { createContext, useContext, useMemo, useCallback, useRef } from "react";
 import { useSupabaseCouple } from "./SupabaseCoupleProvider";
 import { useSupabaseNotes, SupabaseNote } from "@/hooks/useSupabaseNotes";
 import { useAuth } from "./AuthProvider";
