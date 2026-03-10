@@ -179,7 +179,7 @@ export function InsightDiscoveryCard() {
         {/* Confidence indicator */}
         {currentInsight.confidence_score && (
           <div className="flex items-center gap-2 mb-4">
-            <div className="h-1 flex-1 bg-stone-100 rounded-full overflow-hidden">
+            <div className="h-1 flex-1 bg-muted rounded-full overflow-hidden">
               <div 
                 className="h-full bg-gradient-to-r from-primary/60 to-primary rounded-full transition-all"
                 style={{ width: `${currentInsight.confidence_score * 100}%` }}
