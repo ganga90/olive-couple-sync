@@ -526,11 +526,11 @@ Rules:
 - Analyze the data for patterns: declining scores, inconsistency, low scores, or improvement trends
 - If everything looks great, give a positive reinforcement message celebrating their consistency (start with 🌟)
 - If there's an issue, give ONE specific actionable tip (start with 🛏️)
-- Keep the response under 500 chars for WhatsApp
+- Keep the response under 600 characters total for WhatsApp
 - Be encouraging, not preachy
 - Be specific (e.g., "try a 10pm bedtime" not "sleep earlier")
-- IMPORTANT: Always write your COMPLETE response. Do not stop mid-sentence.`,
-      config: { temperature: 0.3, maxOutputTokens: 600 },
+- End with a complete sentence. IMPORTANT: Always finish every sentence completely. Never stop mid-sentence or mid-word.`,
+      config: { temperature: 0.3, maxOutputTokens: 1200 },
     });
 
     tip = response.text?.trim() || "";
