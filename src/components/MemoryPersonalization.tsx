@@ -331,7 +331,7 @@ export function MemoryPersonalization() {
                     )}
                   >
                     <span>{cat.icon}</span>
-                    <span>{cat.label}</span>
+                    <span>{t(cat.labelKey, cat.value)}</span>
                     {categoryCounts[cat.value] > 0 && (
                       <span className={cn(
                         "text-xs px-1.5 rounded-full",
