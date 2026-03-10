@@ -459,8 +459,8 @@ User's biometrics today:
 Today's tasks:
 ${taskList}
 
-Based on their energy level, suggest the optimal order to tackle these tasks. Keep it brief (3-4 sentences max) for a WhatsApp message. Start with an energy emoji (🔋/⚡/😴) based on readiness score. IMPORTANT: Always write your COMPLETE response.`,
-      config: { temperature: 0.3, maxOutputTokens: 600 },
+Based on their energy level, suggest the optimal order to tackle these tasks. Keep it under 600 characters total for a WhatsApp message. Start with an energy emoji (🔋/⚡/😴) based on readiness score. End with a complete motivational sentence. IMPORTANT: Always finish every sentence completely. Never stop mid-sentence.`,
+      config: { temperature: 0.3, maxOutputTokens: 1200 },
     });
 
     energyMessage = response.text?.trim() || "";
