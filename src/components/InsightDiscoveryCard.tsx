@@ -185,7 +185,7 @@ export function InsightDiscoveryCard() {
                 style={{ width: `${currentInsight.confidence_score * 100}%` }}
               />
             </div>
-            <span className="text-xs text-stone-400">
+            <span className="text-xs text-muted-foreground">
               {Math.round(currentInsight.confidence_score * 100)}% {t('insights.confidence', 'confidence')}
             </span>
           </div>
