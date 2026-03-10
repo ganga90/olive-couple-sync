@@ -49,31 +49,44 @@ export const PersonalizeCard = () => {
   const [style, setStyle] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Check if user already has preferences set (note_style !== 'auto' or memory chunks exist)
+  // Check if user already has preferences set via DB (cross-device)
   useEffect(() => {
     if (!user?.id) return;
 
+    // Fast path: localStorage cache
+    if (localStorage.getItem(COMPLETED_KEY) === "true") {
+      setHasExistingPrefs(true);
+      return;
+    }
+
     const checkPrefs = async () => {
       try {
-        // Check note_style in profile
-        const { data: profile } = await supabase
-          .from("clerk_profiles")
-          .select("note_style")
-          .eq("id", user.id)
-          .single();
+        // Check note_style in profile, preference chunks, and user_memories in parallel
+        const [profileRes, chunksRes, memoriesRes] = await Promise.all([
+          supabase
+            .from("clerk_profiles")
+            .select("note_style")
+            .eq("id", user.id)
+            .single(),
+          supabase
+            .from("olive_memory_chunks")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("chunk_type", "preference")
+            .limit(1),
+          supabase
+            .from("user_memories")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("category", "preference")
+            .limit(1),
+        ]);
 
-        // Check if user has any personalization memory chunks
-        const { data: chunks } = await supabase
-          .from("olive_memory_chunks")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("chunk_type", "preference")
-          .limit(1);
+        const hasStyle = profileRes.data?.note_style && profileRes.data.note_style !== "auto";
+        const hasChunks = chunksRes.data && chunksRes.data.length > 0;
+        const hasMemories = memoriesRes.data && memoriesRes.data.length > 0;
 
-        const hasStyle = profile?.note_style && profile.note_style !== "auto";
-        const hasChunks = chunks && chunks.length > 0;
-
-        if (hasStyle || hasChunks) {
+        if (hasStyle || hasChunks || hasMemories) {
           setHasExistingPrefs(true);
           localStorage.setItem(COMPLETED_KEY, "true");
         } else {
