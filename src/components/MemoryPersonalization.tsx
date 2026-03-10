@@ -40,15 +40,16 @@ interface Memory {
 }
 
 const CATEGORIES = [
-  { value: 'all', label: 'All', icon: '📋' },
-  { value: 'personal', label: 'Personal', icon: '👤' },
-  { value: 'preference', label: 'Preference', icon: '⭐' },
-  { value: 'family', label: 'Family', icon: '👨‍👩‍👧' },
-  { value: 'pet', label: 'Pets', icon: '🐾' },
-  { value: 'health', label: 'Health', icon: '💊' },
-  { value: 'dietary', label: 'Dietary', icon: '🥗' },
-  { value: 'work', label: 'Work', icon: '💼' },
-  { value: 'other', label: 'Other', icon: '📝' },
+  { value: 'all', labelKey: 'memory.categories.all', icon: '📋' },
+  { value: 'personal', labelKey: 'memory.categories.personal', icon: '👤' },
+  { value: 'preference', labelKey: 'memory.categories.preference', icon: '⭐' },
+  { value: 'family', labelKey: 'memory.categories.family', icon: '👨‍👩‍👧' },
+  { value: 'pet', labelKey: 'memory.categories.pet', icon: '🐾' },
+  { value: 'health', labelKey: 'memory.categories.health', icon: '💊' },
+  { value: 'dietary', labelKey: 'memory.categories.dietary', icon: '🥗' },
+  { value: 'work', labelKey: 'memory.categories.work', icon: '💼' },
+  { value: 'inferred', labelKey: 'memory.categories.inferred', icon: '🤖' },
+  { value: 'other', labelKey: 'memory.categories.other', icon: '📝' },
 ];
 
 const getCategoryInfo = (value: string) => {
