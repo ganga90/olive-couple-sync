@@ -39,7 +39,7 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const { action, user_id, memory_id, title, content, category, importance, query } = await req.json();
+    const { action, user_id, memory_id, title, content, category, importance, query, couple_id, shared } = await req.json();
 
     // Use authenticated user_id if available, fall back to body for internal service calls
     const effectiveUserId = authenticatedUserId || user_id;
