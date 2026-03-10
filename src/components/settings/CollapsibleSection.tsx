@@ -1,4 +1,5 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
@@ -9,6 +10,7 @@ interface CollapsibleSectionProps {
   children: React.ReactNode;
   defaultOpen?: boolean;
   delay?: number;
+  sectionId?: string;
 }
 
 export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
@@ -17,9 +19,22 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   children,
   defaultOpen = false,
   delay = 0,
+  sectionId,
 }) => {
-  const [isOpen, setIsOpen] = React.useState(defaultOpen);
+  const location = useLocation();
+  const hash = location.hash?.replace('#', '');
+  const [isOpen, setIsOpen] = React.useState(defaultOpen || (!!sectionId && hash === sectionId));
   const sectionRef = useRef<HTMLDivElement>(null);
+
+  // Deep-link: auto-open and scroll when hash matches sectionId
+  useEffect(() => {
+    if (sectionId && hash === sectionId && !isOpen) {
+      setIsOpen(true);
+      setTimeout(() => {
+        sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+    }
+  }, [hash, sectionId]);
 
   const handleOpenChange = useCallback((open: boolean) => {
     setIsOpen(open);

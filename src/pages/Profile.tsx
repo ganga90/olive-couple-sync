@@ -135,6 +135,7 @@ const Profile = () => {
           title={t('profile:sections.identity', 'My Profile & Household')}
           icon={<Users className="h-3.5 w-3.5 text-stone-500" />}
           delay={50}
+          sectionId="identity"
         >
           <SettingsCard
             icon={<Users className="h-5 w-5 text-primary" />}
@@ -170,6 +171,7 @@ const Profile = () => {
           title={t('profile:sections.intelligence', "Olive's Intelligence")}
           icon={<Zap className="h-3.5 w-3.5 text-stone-500" />}
           delay={100}
+          sectionId="intelligence"
         >
           <SettingsCard
             icon={<Sparkles className="h-5 w-5 text-[hsl(var(--magic-accent))]" />}
@@ -223,6 +225,7 @@ const Profile = () => {
           title={t('profile:sections.integrations', 'Connected Apps')}
           icon={<Link2 className="h-3.5 w-3.5 text-stone-500" />}
           delay={150}
+          sectionId="integrations"
         >
           <SettingsCard
             icon={<MessageSquare className="h-5 w-5 text-[hsl(var(--success))]" />}
@@ -270,6 +273,7 @@ const Profile = () => {
           title={t('profile:sections.system', 'System')}
           icon={<Settings className="h-3.5 w-3.5 text-stone-500" />}
           delay={200}
+          sectionId="system"
         >
           <SettingsCard
             icon={<span className="text-lg">🌍</span>}
