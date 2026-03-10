@@ -140,8 +140,13 @@ export const PersonalizeCard = () => {
         );
       }
 
-      // Save diet and household as memory chunks for Olive context
+      // Build a combined memory content for user_memories
+      const memoryParts: string[] = [];
+
+      // Save diet as memory chunk + user_memories
       if (diet && diet !== "none") {
+        const dietLabel = t(`personalize.diet.${diet}`, { defaultValue: diet });
+        memoryParts.push(`Dietary preference: ${dietLabel}`);
         promises.push(
           supabase.from("olive_memory_chunks").insert({
             user_id: user.id,
@@ -154,7 +159,10 @@ export const PersonalizeCard = () => {
         );
       }
 
+      // Save household as memory chunk + user_memories
       if (household) {
+        const householdLabel = t(`personalize.household.${household}`, { defaultValue: household });
+        memoryParts.push(`Household type: ${householdLabel}`);
         promises.push(
           supabase.from("olive_memory_chunks").insert({
             user_id: user.id,
@@ -163,6 +171,25 @@ export const PersonalizeCard = () => {
             importance: 4,
             source: "personalization",
             metadata: { type: "household", value: household },
+          }).then()
+        );
+      }
+
+      if (style) {
+        const styleLabel = t(`personalize.style.${style}`, { defaultValue: style });
+        memoryParts.push(`Preferred note style: ${styleLabel}`);
+      }
+
+      // Save combined preferences to user_memories so they appear in Memory section
+      if (memoryParts.length > 0) {
+        promises.push(
+          supabase.from("user_memories").insert({
+            user_id: user.id,
+            title: "Lifestyle Preferences",
+            content: memoryParts.join("\n"),
+            category: "preference",
+            importance: 4,
+            is_active: true,
           }).then()
         );
       }
