@@ -132,9 +132,7 @@ serve(async (req) => {
         // Generate embedding for semantic search
         const embedding = await generateEmbedding(`${title}\n${content}`);
 
-        const { data: memory, error } = await supabase
-          .from('user_memories')
-          .insert([{
+        const insertData: Record<string, any> = {
             user_id: effectiveUserId,
             title,
             content,
@@ -142,7 +140,15 @@ serve(async (req) => {
             importance: importance || 3,
             embedding,
             metadata: { source: 'manual' },
-          }])
+        };
+        // If shared flag is true and couple_id provided, attach to couple
+        if (shared && couple_id) {
+          insertData.couple_id = couple_id;
+        }
+
+        const { data: memory, error } = await supabase
+          .from('user_memories')
+          .insert([insertData])
           .select('id, title, content, category, importance, created_at')
           .single();
 

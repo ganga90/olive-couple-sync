@@ -212,7 +212,7 @@ export function InsightDiscoveryCard() {
             variant="ghost"
             onClick={() => rejectInsight(currentInsight)}
             disabled={isProcessing}
-            className="rounded-full px-4 gap-2 text-stone-500 hover:text-stone-700 hover:bg-stone-100"
+            className="rounded-full px-4 gap-2 text-muted-foreground hover:text-foreground hover:bg-muted"
           >
             <X className="h-4 w-4" />
             {t('insights.reject', 'No, incorrect')}

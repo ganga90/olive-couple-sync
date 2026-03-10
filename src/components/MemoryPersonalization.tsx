@@ -52,8 +52,9 @@ const CATEGORIES = [
   { value: 'other', labelKey: 'memory.categories.other', icon: '📝' },
 ];
 
+// getCategoryInfo now returns labelKey; caller must call t() on it
 const getCategoryInfo = (value: string) => {
-  return CATEGORIES.find(c => c.value === value) || { value, label: value, icon: '📝' };
+  return CATEGORIES.find(c => c.value === value) || { value, labelKey: `memory.categories.${value}`, icon: '📝' };
 };
 
 export function MemoryPersonalization() {
