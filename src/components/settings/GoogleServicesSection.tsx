@@ -12,42 +12,6 @@ import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 
-function GoogleTasksStatus() {
-  const { connection } = useCalendarEvents();
-  const { t } = useTranslation('profile');
-
-  if (!connection?.connected) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        {t('googleTasks.connectCalendarFirst', 'Connect your Google account via Calendar first to enable Google Tasks.')}
-      </p>
-    );
-  }
-
-  if (connection.tasks_enabled) {
-    return (
-      <div className="flex items-center gap-2">
-        <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
-          <Check className="h-3 w-3 mr-1" />
-          {t('googleTasks.enabled', 'Enabled')}
-        </Badge>
-        <span className="text-xs text-muted-foreground">{connection.email}</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <p className="text-sm text-muted-foreground">
-        {t('googleTasks.notEnabled', 'Google Tasks permission not granted. Reconnect your Google account to enable it.')}
-      </p>
-      <p className="text-xs text-muted-foreground">
-        {t('googleTasks.reconnectHint', 'Go to Calendar above, disconnect and reconnect to grant Tasks access.')}
-      </p>
-    </div>
-  );
-}
-
 function EmailTriagePreferences() {
   const { t } = useTranslation('profile');
   const { user } = useAuth();
@@ -183,26 +147,32 @@ function EmailTriagePreferences() {
 export function GoogleServicesSection() {
   const { t } = useTranslation('profile');
 
+  const { connection } = useCalendarEvents();
+
   return (
     <div className="space-y-6">
-      {/* Calendar */}
+      {/* Calendar & Tasks (unified) */}
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <Calendar className="h-4 w-4 text-primary" />
-          <span className="text-sm font-semibold text-foreground">{t('googleCalendar.title', 'Google Calendar')}</span>
+          <span className="text-sm font-semibold text-foreground">
+            {t('googleCalendar.title', 'Google Calendar')} & {t('googleTasks.title', 'Google Tasks')}
+          </span>
         </div>
+        {connection?.connected && connection?.tasks_enabled && (
+          <div className="flex items-center gap-2 mb-1">
+            <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
+              <ListTodo className="h-3 w-3 mr-1" />
+              {t('googleTasks.tasksIncluded', 'Tasks included')}
+            </Badge>
+          </div>
+        )}
         <GoogleCalendarConnect />
-      </div>
-
-      <div className="border-t border-border/50" />
-
-      {/* Tasks */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <ListTodo className="h-4 w-4 text-blue-600" />
-          <span className="text-sm font-semibold text-foreground">{t('googleTasks.title', 'Google Tasks')}</span>
-        </div>
-        <GoogleTasksStatus />
+        {connection?.connected && !connection?.tasks_enabled && (
+          <p className="text-xs text-muted-foreground">
+            {t('googleTasks.reconnectHint', 'Disconnect and reconnect to also grant Google Tasks access.')}
+          </p>
+        )}
       </div>
 
       <div className="border-t border-border/50" />
