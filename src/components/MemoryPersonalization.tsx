@@ -158,7 +158,7 @@ export function MemoryPersonalization() {
     try {
       setLoading(true);
       const { data, error } = await supabase.functions.invoke('manage-memories', {
-        body: { action: 'list', user_id: userId }
+        body: { action: 'list', user_id: userId, couple_id: currentCouple?.id || undefined }
       });
 
       if (error) throw error;
