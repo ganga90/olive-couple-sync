@@ -68,6 +68,156 @@ async function saveExtractedLinks(
 }
 
 // ============================================================================
+// AUTO-ADD TO GOOGLE CALENDAR
+// ============================================================================
+
+async function autoAddToCalendar(
+  supabase: SupabaseClient,
+  result: any,
+  userId: string
+): Promise<void> {
+  // Gather all notes (single or multiple)
+  const notes = result.multiple && result.notes ? result.notes : [result];
+  
+  // Filter to notes that have a due_date or reminder_time (calendar-worthy)
+  const calendarWorthy = notes.filter((n: any) => n.due_date || n.reminder_time);
+  if (calendarWorthy.length === 0) return;
+
+  // Check if user has auto_add_to_calendar enabled
+  const { data: connection, error: connError } = await supabase
+    .from('calendar_connections')
+    .select('id, auto_add_to_calendar, is_active, access_token, refresh_token, token_expiry, primary_calendar_id')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (connError || !connection || !connection.auto_add_to_calendar) {
+    if (!connection) console.log('[Auto Calendar] No active calendar connection');
+    else if (!connection.auto_add_to_calendar) console.log('[Auto Calendar] auto_add_to_calendar is disabled');
+    return;
+  }
+
+  console.log('[Auto Calendar] Creating', calendarWorthy.length, 'events for user', userId);
+
+  // Refresh token if needed
+  let accessToken = connection.access_token;
+  const tokenExpiry = new Date(connection.token_expiry).getTime();
+
+  if (tokenExpiry - Date.now() < 5 * 60 * 1000) {
+    const clientId = Deno.env.get('GOOGLE_CALENDAR_CLIENT_ID');
+    const clientSecret = Deno.env.get('GOOGLE_CALENDAR_CLIENT_SECRET');
+
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId!,
+        client_secret: clientSecret!,
+        refresh_token: connection.refresh_token,
+        grant_type: 'refresh_token',
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      console.error('[Auto Calendar] Token refresh failed');
+      await supabase
+        .from('calendar_connections')
+        .update({ is_active: false, error_message: 'Token refresh failed' })
+        .eq('id', connection.id);
+      return;
+    }
+
+    const newTokens = await tokenResponse.json();
+    accessToken = newTokens.access_token;
+
+    await supabase
+      .from('calendar_connections')
+      .update({
+        access_token: accessToken,
+        token_expiry: new Date(Date.now() + newTokens.expires_in * 1000).toISOString(),
+        error_message: null,
+      })
+      .eq('id', connection.id);
+  }
+
+  // Create events for each calendar-worthy note
+  for (const note of calendarWorthy) {
+    try {
+      const startTime = note.due_date || note.reminder_time;
+      const startDate = new Date(startTime);
+      
+      // Determine if this is an all-day event (no time component or midnight)
+      const isAllDay = startTime.length <= 10 || (startDate.getHours() === 0 && startDate.getMinutes() === 0);
+
+      const event: any = {
+        summary: note.summary || 'Olive reminder',
+        description: note.original_text || '',
+      };
+
+      if (isAllDay) {
+        event.start = { date: startDate.toISOString().split('T')[0] };
+        const nextDay = new Date(startDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        event.end = { date: nextDay.toISOString().split('T')[0] };
+      } else {
+        event.start = { dateTime: startDate.toISOString(), timeZone: 'UTC' };
+        const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // 1 hour
+        event.end = { dateTime: endDate.toISOString(), timeZone: 'UTC' };
+      }
+
+      event.reminders = {
+        useDefault: false,
+        overrides: [
+          { method: 'popup', minutes: 30 },
+          { method: 'popup', minutes: 1440 }, // 24 hours
+        ],
+      };
+
+      const createRes = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(connection.primary_calendar_id)}/events`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(event),
+        }
+      );
+
+      if (!createRes.ok) {
+        const errText = await createRes.text();
+        console.error('[Auto Calendar] Failed to create event:', errText);
+        continue;
+      }
+
+      const googleEvent = await createRes.json();
+      console.log('[Auto Calendar] ✅ Created event:', googleEvent.id, '-', note.summary);
+
+      // Save to local DB
+      await supabase
+        .from('calendar_events')
+        .insert({
+          connection_id: connection.id,
+          google_event_id: googleEvent.id,
+          title: note.summary || 'Olive reminder',
+          description: note.original_text || '',
+          start_time: googleEvent.start.dateTime || googleEvent.start.date,
+          end_time: googleEvent.end.dateTime || googleEvent.end.date,
+          all_day: !googleEvent.start.dateTime,
+          event_type: 'from_note',
+          etag: googleEvent.etag,
+        })
+        .then(({ error }) => {
+          if (error) console.warn('[Auto Calendar] Failed to save event locally:', error);
+        });
+    } catch (err) {
+      console.error('[Auto Calendar] Error creating event for:', note.summary, err);
+    }
+  }
+}
+
+// ============================================================================
 // EXPENSE DETECTION & AUTO-CREATION
 // ============================================================================
 
