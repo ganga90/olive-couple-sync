@@ -135,6 +135,7 @@ const Profile = () => {
           title={t('profile:sections.identity', 'My Profile & Household')}
           icon={<Users className="h-3.5 w-3.5 text-stone-500" />}
           delay={50}
+          sectionId="identity"
         >
           <SettingsCard
             icon={<Users className="h-5 w-5 text-primary" />}
