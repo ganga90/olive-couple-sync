@@ -65,6 +65,7 @@ export function MemoryPersonalization() {
   const { currentCouple } = useSupabaseCouple();
   const navigate = useNavigate();
   const { getLocalizedPath } = useLanguage();
+  const haptics = useHaptics();
   const userId = user?.id;
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(true);
