@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
@@ -18,12 +19,14 @@ import { toast } from "sonner";
 import { NoteInput } from "@/components/NoteInput";
 import { FloatingActionButton } from "@/components/FloatingActionButton";
 import { cn } from "@/lib/utils";
-import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
+import { useLocalizedNavigate, useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 
 const ListCategory = () => {
   const { listId = "" } = useParams();
   const routerNavigate = useNavigate();
   const navigate = useLocalizedNavigate();
+  const getLocalizedPath = useLocalizedHref();
+  const { t } = useTranslation(['lists', 'common']);
   const { notes, updateNote, deleteNote } = useSupabaseNotesContext();
   const { currentCouple, you, partner } = useSupabaseCouple();
   const { lists, loading, updateList, deleteList } = useSupabaseLists(currentCouple?.id || null);
@@ -49,7 +52,6 @@ const ListCategory = () => {
   const { activeTasks, completedTasks, progress } = useMemo(() => {
     let filtered = listNotes;
     
-    // Apply owner filter
     if (ownerFilter !== "all" && currentCouple) {
       filtered = filtered.filter(note => {
         const owner = note.task_owner?.toLowerCase();
@@ -65,14 +67,13 @@ const ListCategory = () => {
   }, [listNotes, ownerFilter, currentCouple]);
 
   useSEO({ 
-    title: `${currentList?.name || 'List'} — Olive`, 
-    description: `Browse items in ${currentList?.name || 'this'} list.` 
+    title: `${currentList?.name || t('listDetail.notFound')} — Olive`, 
+    description: currentList?.description || t('subtitle')
   });
 
   const handleEditList = async () => {
     if (!currentList || !editName.trim()) return;
     
-    // Determine the new couple_id based on sharing toggle
     const newCoupleId = editIsShared && currentCouple?.id ? currentCouple.id : null;
     const privacyChanged = (currentList.couple_id !== null) !== editIsShared;
     
@@ -85,8 +86,8 @@ const ListCategory = () => {
     if (result) {
       setEditDialogOpen(false);
       toast.success(privacyChanged 
-        ? `List ${editIsShared ? 'shared with partner' : 'made private'}. All items updated.`
-        : "List updated successfully"
+        ? (editIsShared ? t('listDetail.listShared') : t('listDetail.listMadePrivate'))
+        : t('listDetail.listUpdated')
       );
     }
   };
@@ -94,7 +95,7 @@ const ListCategory = () => {
   const handleDeleteList = async () => {
     if (!currentList) return;
     
-    if (window.confirm(`Are you sure you want to delete "${currentList.name}"? This will not delete the notes, but they will no longer be organized in this list.`)) {
+    if (window.confirm(t('actions.deleteListConfirm', { name: currentList.name }))) {
       const success = await deleteList(currentList.id);
       if (success) {
         navigate('/lists');
@@ -114,23 +115,23 @@ const ListCategory = () => {
   const handleToggleComplete = async (noteId: string, completed: boolean) => {
     try {
       await updateNote(noteId, { completed });
-      toast.success(completed ? "Item marked as complete" : "Item marked as incomplete");
+      toast.success(completed ? t('listDetail.itemComplete') : t('listDetail.itemIncomplete'));
     } catch (error) {
       console.error("Error updating note:", error);
-      toast.error("Failed to update item");
+      toast.error(t('listDetail.failedToUpdate'));
     }
   };
 
   const handleDeleteNote = async (noteId: string, summary: string) => {
-    if (window.confirm(`Are you sure you want to delete "${summary}"?`)) {
+    if (window.confirm(t('listDetail.deleteItemConfirm', { name: summary }))) {
       try {
         const success = await deleteNote(noteId);
         if (success) {
-          toast.success("Item deleted successfully");
+          toast.success(t('listDetail.itemDeleted'));
         }
       } catch (error) {
         console.error("Error deleting note:", error);
-        toast.error("Failed to delete item");
+        toast.error(t('listDetail.failedToDelete'));
       }
     }
   };
@@ -156,7 +157,7 @@ const ListCategory = () => {
           <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
-          <p className="text-sm text-muted-foreground">Loading list...</p>
+          <p className="text-sm text-muted-foreground">{t('listDetail.loading')}</p>
         </div>
       </div>
     );
@@ -170,11 +171,11 @@ const ListCategory = () => {
             <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
               <AlertCircle className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h2 className="text-lg font-semibold mb-2">List not found</h2>
-            <p className="text-sm text-muted-foreground mb-6">This list may have been deleted or moved.</p>
+            <h2 className="text-lg font-semibold mb-2">{t('listDetail.notFound')}</h2>
+            <p className="text-sm text-muted-foreground mb-6">{t('listDetail.notFoundDesc')}</p>
             <Button onClick={() => navigate('/lists')}>
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Lists
+              {t('listDetail.backToLists')}
             </Button>
           </CardContent>
         </Card>
@@ -193,7 +194,7 @@ const ListCategory = () => {
               variant="ghost" 
               size="icon"
               onClick={() => routerNavigate(-1)} 
-              aria-label="Go back"
+              aria-label={t('back', { ns: 'common' })}
               className="flex-shrink-0 mt-0.5 h-10 w-10"
             >
               <ArrowLeft className="h-5 w-5" />
@@ -206,18 +207,18 @@ const ListCategory = () => {
                 </h1>
                 {!currentList.is_manual && (
                   <Badge variant="secondary" className="text-xs bg-accent/20 text-accent flex-shrink-0">
-                    Auto
+                    {t('badges.auto')}
                   </Badge>
                 )}
                 {currentList.couple_id ? (
                   <Badge variant="secondary" className="text-xs bg-primary/10 text-primary flex-shrink-0 gap-1">
                     <Users className="h-3 w-3" />
-                    Shared
+                    {t('badges.shared')}
                   </Badge>
                 ) : (
                   <Badge variant="secondary" className="text-xs bg-muted text-muted-foreground flex-shrink-0 gap-1">
                     <Lock className="h-3 w-3" />
-                    Private
+                    {t('badges.private')}
                   </Badge>
                 )}
               </div>
@@ -226,15 +227,9 @@ const ListCategory = () => {
               )}
             </div>
             
-            {/* Edit/Delete buttons for manual lists */}
             {currentList.is_manual && (
               <div className="flex items-center gap-1 flex-shrink-0">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={openEditDialog}
-                  className="h-10 w-10"
-                >
+                <Button variant="ghost" size="icon" onClick={openEditDialog} className="h-10 w-10">
                   <Pencil className="h-4 w-4" />
                 </Button>
                 <Button
@@ -254,7 +249,7 @@ const ListCategory = () => {
             <div className="mt-4 space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">
-                  {completedTasks.length} of {listNotes.length} completed
+                  {t('listDetail.completedOf', { completed: completedTasks.length, total: listNotes.length })}
                 </span>
                 <span className="font-medium text-primary">{Math.round(progress)}%</span>
               </div>
@@ -262,7 +257,7 @@ const ListCategory = () => {
             </div>
           )}
 
-          {/* Owner Filter - only show for shared lists with couple */}
+          {/* Owner Filter */}
           {currentCouple && currentList.couple_id && you && partner && (
             <div className="flex items-center gap-2 mt-3">
               <User className="h-4 w-4 text-muted-foreground" />
@@ -271,7 +266,7 @@ const ListCategory = () => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All tasks</SelectItem>
+                  <SelectItem value="all">{t('listDetail.allTasks')}</SelectItem>
                   <SelectItem value={you}>{you}</SelectItem>
                   <SelectItem value={partner}>{partner}</SelectItem>
                 </SelectContent>
@@ -287,7 +282,7 @@ const ListCategory = () => {
           style={{ animationDelay: '50ms' }}
         >
           <Plus className="h-5 w-5" />
-          Add a note
+          {t('listDetail.addNote')}
         </Button>
 
         {listNotes.length === 0 ? (
@@ -296,10 +291,8 @@ const ListCategory = () => {
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
                 <Plus className="h-8 w-8 text-primary" />
               </div>
-              <h3 className="font-semibold text-lg mb-2">No items yet</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Add your first item to get started
-              </p>
+              <h3 className="font-semibold text-lg mb-2">{t('listDetail.noItemsYet')}</h3>
+              <p className="text-sm text-muted-foreground mb-4">{t('listDetail.noItemsDesc')}</p>
             </CardContent>
           </Card>
         ) : (
@@ -317,29 +310,22 @@ const ListCategory = () => {
                 >
                   <CardContent className="p-0">
                     <div className="flex items-stretch">
-                      {/* Checkbox Area */}
                       <button
                         onClick={() => handleToggleComplete(note.id, !note.completed)}
-                        className={cn(
-                          "w-14 flex-shrink-0 flex items-center justify-center transition-colors",
-                          "hover:bg-success/10 border-r border-border/50"
-                        )}
+                        className="w-14 flex-shrink-0 flex items-center justify-center transition-colors hover:bg-[hsl(var(--success))]/10 border-r border-border/50"
                       >
-                        <Circle className="h-6 w-6 text-muted-foreground/50 hover:text-success transition-colors" />
+                        <Circle className="h-6 w-6 text-muted-foreground/50 hover:text-[hsl(var(--success))] transition-colors" />
                       </button>
 
-                      {/* Note content - clickable to view details */}
                       <Link 
-                        to={`/notes/${note.id}`} 
+                        to={getLocalizedPath(`/notes/${note.id}`)}
                         className="flex-1 p-4 min-w-0 hover:bg-muted/30 transition-colors"
                       >
                         <div className="font-medium text-foreground mb-2 line-clamp-2">
                           {note.summary}
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="secondary" className="text-xs">
-                            {note.category}
-                          </Badge>
+                          <Badge variant="secondary" className="text-xs">{note.category}</Badge>
                           {note.priority && (
                             <Badge className={cn("text-xs border", getPriorityColor(note.priority))}>
                               {note.priority}
@@ -354,12 +340,10 @@ const ListCategory = () => {
                               {(() => {
                                 try {
                                   const date = new Date(note.dueDate);
-                                  return isNaN(date.getTime()) ? "Invalid" : date.toLocaleDateString();
-                                } catch {
-                                  return "Invalid";
-                                }
+                                  return isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
+                                } catch { return "—"; }
                               })()}
-                              {isOverdue(note.dueDate) && " (overdue)"}
+                              {isOverdue(note.dueDate) && ` (${t('stats.overdue')})`}
                             </span>
                           )}
                           {note.task_owner && (
@@ -371,7 +355,6 @@ const ListCategory = () => {
                         </div>
                       </Link>
 
-                      {/* Delete button */}
                       <button
                         onClick={() => handleDeleteNote(note.id, note.summary)}
                         className="w-12 flex-shrink-0 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors border-l border-border/50"
@@ -391,12 +374,11 @@ const ListCategory = () => {
                   onClick={() => setShowCompleted(!showCompleted)}
                   className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
                 >
-                  {showCompleted ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                  {showCompleted ? 'Hide' : 'Show'} completed ({completedTasks.length})
+                  {showCompleted ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  {showCompleted 
+                    ? t('listDetail.hideCompleted', { count: completedTasks.length })
+                    : t('listDetail.showCompleted', { count: completedTasks.length })
+                  }
                 </button>
                 
                 {showCompleted && (
@@ -409,17 +391,15 @@ const ListCategory = () => {
                       >
                         <CardContent className="p-0">
                           <div className="flex items-stretch">
-                            {/* Checkbox Area */}
                             <button
                               onClick={() => handleToggleComplete(note.id, false)}
                               className="w-14 flex-shrink-0 flex items-center justify-center hover:bg-muted transition-colors border-r border-border/50"
                             >
-                              <CheckCircle2 className="h-6 w-6 text-success" />
+                              <CheckCircle2 className="h-6 w-6 text-[hsl(var(--success))]" />
                             </button>
 
-                            {/* Note content */}
                             <Link 
-                              to={`/notes/${note.id}`} 
+                              to={getLocalizedPath(`/notes/${note.id}`)}
                               className="flex-1 p-4 min-w-0 hover:bg-muted/50 transition-colors"
                             >
                               <div className="font-medium text-muted-foreground line-through mb-2 line-clamp-2">
@@ -432,7 +412,6 @@ const ListCategory = () => {
                               </div>
                             </Link>
 
-                            {/* Delete button */}
                             <button
                               onClick={() => handleDeleteNote(note.id, note.summary)}
                               className="w-12 flex-shrink-0 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors border-l border-border/50"
@@ -454,13 +433,11 @@ const ListCategory = () => {
         <Dialog open={addNoteDialogOpen} onOpenChange={setAddNoteDialogOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Add Note to {currentList.name}</DialogTitle>
+              <DialogTitle>{t('listDetail.addNoteTitle', { name: currentList.name })}</DialogTitle>
             </DialogHeader>
             <NoteInput 
               listId={listId} 
-              onNoteAdded={() => {
-                setAddNoteDialogOpen(false);
-              }} 
+              onNoteAdded={() => setAddNoteDialogOpen(false)} 
             />
           </DialogContent>
         </Dialog>
@@ -469,11 +446,11 @@ const ListCategory = () => {
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Edit List</DialogTitle>
+              <DialogTitle>{t('listDetail.editList')}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-name">List Name *</Label>
+                <Label htmlFor="edit-name">{t('listDetail.listName')} *</Label>
                 <Input
                   id="edit-name"
                   value={editName}
@@ -482,7 +459,7 @@ const ListCategory = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-description">Description</Label>
+                <Label htmlFor="edit-description">{t('listDetail.description')}</Label>
                 <Textarea
                   id="edit-description"
                   value={editDescription}
@@ -491,10 +468,9 @@ const ListCategory = () => {
                 />
               </div>
               
-              {/* Privacy Toggle - only show if user is in a couple */}
               {currentCouple && (
                 <div className="space-y-2">
-                  <Label>Visibility</Label>
+                  <Label>{t('listDetail.visibility')}</Label>
                   <div className="flex gap-2">
                     <Button
                       type="button"
@@ -504,7 +480,7 @@ const ListCategory = () => {
                       className="flex-1 gap-2"
                     >
                       <Lock className="h-4 w-4" />
-                      Private
+                      {t('badges.private')}
                     </Button>
                     <Button
                       type="button"
@@ -514,29 +490,23 @@ const ListCategory = () => {
                       className="flex-1 gap-2"
                     >
                       <Users className="h-4 w-4" />
-                      Shared
+                      {t('badges.shared')}
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {editIsShared 
-                      ? "Both you and your partner can see and edit this list and all its items."
-                      : "Only you can see this list and all its items."}
+                      ? t('listDetail.visibilitySharedDesc')
+                      : t('listDetail.visibilityPrivateDesc')}
                   </p>
                 </div>
               )}
               
               <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setEditDialogOpen(false)}
-                >
-                  Cancel
+                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                  {t('common:buttons.cancel', t('createDialog.cancel'))}
                 </Button>
-                <Button
-                  onClick={handleEditList}
-                  disabled={!editName.trim()}
-                >
-                  Save Changes
+                <Button onClick={handleEditList} disabled={!editName.trim()}>
+                  {t('listDetail.saveChanges')}
                 </Button>
               </div>
             </div>
