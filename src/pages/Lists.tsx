@@ -379,7 +379,7 @@ const Lists = () => {
                <h3 className="font-serif font-semibold text-lg text-foreground mb-2">
                 {t('search.noResults')}
               </h3>
-              <p className="text-sm text-stone-500 max-w-xs mx-auto">
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
                 {t('search.tryDifferent')}
               </p>
             </div>
