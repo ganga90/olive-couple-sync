@@ -903,7 +903,7 @@ const NoteDetails = () => {
             <DialogFooter>
               <Button onClick={onSend} disabled={isAssistantLoading || !input.trim()}>
                 {isAssistantLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Send
+                {t('actions.send')}
               </Button>
             </DialogFooter>
           </div>
