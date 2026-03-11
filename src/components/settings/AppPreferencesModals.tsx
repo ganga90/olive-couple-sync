@@ -25,7 +25,7 @@ interface PreferenceRowProps {
 const PreferenceRow = ({ icon, iconBg, title, subtitle, onClick }: PreferenceRowProps) => (
   <button 
     onClick={onClick}
-    className="flex items-center gap-4 w-full p-4 rounded-xl hover:bg-stone-50 transition-all duration-300 text-left group"
+    className="flex items-center gap-4 w-full p-4 rounded-xl hover:bg-accent/50 transition-all duration-300 text-left group"
   >
     <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", iconBg)}>
       {icon}
