@@ -522,7 +522,7 @@ const Lists = () => {
                           >
                             <Trash2 className="h-4 w-4 text-[hsl(var(--priority-high))]" />
                           </button>
-                          <ChevronRight className="h-5 w-5 text-stone-300 group-hover:text-stone-500 group-hover:translate-x-0.5 transition-all duration-200" />
+                          <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground group-hover:translate-x-0.5 transition-all duration-200" />
                         </div>
                       </div>
                     </div>
