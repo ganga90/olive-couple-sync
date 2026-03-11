@@ -760,7 +760,7 @@ const NoteDetails = () => {
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Mail className="h-4 w-4 text-primary" />
-                  <span className="text-xs font-medium text-primary uppercase tracking-wide">Email Source</span>
+                  <span className="text-xs font-medium text-primary uppercase tracking-wide">{t('meta.emailSource')}</span>
                 </div>
                 {(() => {
                   const match = note.originalText.match(/^\[Email from\s+<?([^>\]]+)>?\]\s*(.+)$/);
