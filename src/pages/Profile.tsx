@@ -195,21 +195,12 @@ const Profile = () => {
           </SettingsCard>
 
           <SettingsCard
-            icon={<Puzzle className="h-5 w-5 text-purple-500" />}
-            iconBg="bg-purple-500/10"
-            title={t('profile:skills.title', 'Olive Skills')}
-            subtitle={t('profile:skills.subtitle', 'Enable specialized capabilities')}
+            icon={<Zap className="h-5 w-5 text-primary" />}
+            iconBg="bg-primary/10"
+            title={t('profile:automation.title', 'Automation')}
+            subtitle={t('profile:automation.subtitle', 'Skills & background agents')}
           >
-            <OliveSkillsManager />
-          </SettingsCard>
-
-          <SettingsCard
-            icon={<Bot className="h-5 w-5 text-indigo-500" />}
-            iconBg="bg-indigo-500/10"
-            title={t('profile:agents.title', 'Background Agents')}
-            subtitle={t('profile:agents.subtitle', 'Agents that work for you automatically')}
-          >
-            <BackgroundAgentsManager />
+            <OliveAutomationHub />
           </SettingsCard>
         </CollapsibleSection>
 
