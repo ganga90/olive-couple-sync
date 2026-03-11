@@ -34,7 +34,7 @@ const PreferenceRow = ({ icon, iconBg, title, subtitle, onClick }: PreferenceRow
       <p className="font-medium text-foreground">{title}</p>
       <p className="text-xs text-muted-foreground">{subtitle}</p>
     </div>
-    <ChevronRight className="h-5 w-5 text-stone-300 group-hover:text-stone-500 group-hover:translate-x-0.5 transition-all duration-200 flex-shrink-0" />
+    <ChevronRight className="h-5 w-5 text-muted-foreground/40 group-hover:text-muted-foreground group-hover:translate-x-0.5 transition-all duration-200 flex-shrink-0" />
   </button>
 );
 
