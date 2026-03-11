@@ -290,7 +290,7 @@ const Lists = () => {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('searchPlaceholderShort', t('searchPlaceholder'))}
-                className="pl-11 bg-white/80 backdrop-blur-xl border-white/40 focus:border-primary rounded-2xl h-12 shadow-[0_4px_20px_rgb(0,0,0,0.03)] placeholder:text-stone-400"
+                className="pl-11 bg-background/80 backdrop-blur-xl border-border/40 focus:border-primary rounded-2xl h-12 shadow-[0_4px_20px_rgb(0,0,0,0.03)] placeholder:text-muted-foreground"
               />
             </div>
             
