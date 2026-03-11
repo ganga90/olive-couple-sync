@@ -39,10 +39,44 @@
     "thisWeek": "this week"
   },
   "badges": {
-    "ai": "AI"
+    "ai": "AI",
+    "shared": "Shared",
+    "private": "Private",
+    "auto": "Auto"
   },
   "actions": {
-    "deleteConfirm": "Delete \"{{name}}\"? This action cannot be undone."
+    "deleteConfirm": "Delete \"{{name}}\"? This action cannot be undone.",
+    "deleteListConfirm": "Are you sure you want to delete \"{{name}}\"? Notes will not be deleted but will no longer be organized in this list."
+  },
+  "listDetail": {
+    "loading": "Loading list...",
+    "notFound": "List not found",
+    "notFoundDesc": "This list may have been deleted or moved.",
+    "backToLists": "Back to Lists",
+    "addNote": "Add a note",
+    "addNoteTitle": "Add Note to {{name}}",
+    "noItemsYet": "No items yet",
+    "noItemsDesc": "Add your first item to get started",
+    "completedOf": "{{completed}} of {{total}} completed",
+    "showCompleted": "Show completed ({{count}})",
+    "hideCompleted": "Hide completed ({{count}})",
+    "itemComplete": "Item marked as complete",
+    "itemIncomplete": "Item marked as incomplete",
+    "itemDeleted": "Item deleted successfully",
+    "deleteItemConfirm": "Are you sure you want to delete \"{{name}}\"?",
+    "failedToUpdate": "Failed to update item",
+    "failedToDelete": "Failed to delete item",
+    "allTasks": "All tasks",
+    "editList": "Edit List",
+    "listName": "List Name",
+    "description": "Description",
+    "visibility": "Visibility",
+    "visibilitySharedDesc": "All members can see and edit this list and all its items.",
+    "visibilityPrivateDesc": "Only you can see this list and all its items.",
+    "saveChanges": "Save Changes",
+    "listUpdated": "List updated successfully",
+    "listShared": "List shared with space. All items updated.",
+    "listMadePrivate": "List made private. All items updated."
   },
   "createDialog": {
     "newList": "New List",
@@ -57,7 +91,7 @@
     "visibility": "Visibility",
     "private": "Private",
     "shared": "Shared",
-    "sharedDesc": "Both you and your partner can see and edit this list.",
+    "sharedDesc": "All members can see and edit this list.",
     "privateDesc": "Only you can see this list."
   },
   "contextRail": {

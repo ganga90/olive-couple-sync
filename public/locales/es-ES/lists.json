@@ -39,10 +39,44 @@
     "thisWeek": "esta semana"
   },
   "badges": {
-    "ai": "IA"
+    "ai": "IA",
+    "shared": "Compartida",
+    "private": "Privada",
+    "auto": "Auto"
   },
   "actions": {
-    "deleteConfirm": "¿Eliminar \"{{name}}\"? Esta acción no se puede deshacer."
+    "deleteConfirm": "¿Eliminar \"{{name}}\"? Esta acción no se puede deshacer.",
+    "deleteListConfirm": "¿Estás seguro de querer eliminar \"{{name}}\"? Las notas no se eliminarán pero ya no estarán organizadas en esta lista."
+  },
+  "listDetail": {
+    "loading": "Cargando lista...",
+    "notFound": "Lista no encontrada",
+    "notFoundDesc": "Esta lista puede haber sido eliminada o movida.",
+    "backToLists": "Volver a Listas",
+    "addNote": "Agregar una nota",
+    "addNoteTitle": "Agregar Nota a {{name}}",
+    "noItemsYet": "Aún no hay elementos",
+    "noItemsDesc": "Agrega tu primer elemento para empezar",
+    "completedOf": "{{completed}} de {{total}} completados",
+    "showCompleted": "Mostrar completados ({{count}})",
+    "hideCompleted": "Ocultar completados ({{count}})",
+    "itemComplete": "Elemento completado",
+    "itemIncomplete": "Elemento reabierto",
+    "itemDeleted": "Elemento eliminado",
+    "deleteItemConfirm": "¿Estás seguro de querer eliminar \"{{name}}\"?",
+    "failedToUpdate": "Error al actualizar el elemento",
+    "failedToDelete": "Error al eliminar el elemento",
+    "allTasks": "Todas las tareas",
+    "editList": "Editar Lista",
+    "listName": "Nombre de Lista",
+    "description": "Descripción",
+    "visibility": "Visibilidad",
+    "visibilitySharedDesc": "Todos los miembros pueden ver y editar esta lista y sus elementos.",
+    "visibilityPrivateDesc": "Solo tú puedes ver esta lista y sus elementos.",
+    "saveChanges": "Guardar Cambios",
+    "listUpdated": "Lista actualizada",
+    "listShared": "Lista compartida con el espacio. Todos los elementos actualizados.",
+    "listMadePrivate": "Lista hecha privada. Todos los elementos actualizados."
   },
   "createDialog": {
     "newList": "Nueva Lista",
@@ -57,7 +91,7 @@
     "visibility": "Visibilidad",
     "private": "Privada",
     "shared": "Compartida",
-    "sharedDesc": "Tú y tu pareja pueden ver y editar esta lista.",
+    "sharedDesc": "Todos los miembros pueden ver y editar esta lista.",
     "privateDesc": "Solo tú puedes ver esta lista."
   },
   "contextRail": {
