@@ -100,7 +100,7 @@ const CircularProgress = ({ progress, size = 56, strokeWidth = 4, overdue = fals
         stroke="currentColor"
         strokeWidth={strokeWidth}
         fill="none"
-        className="text-stone-100"
+        className="text-muted/60"
       />
       {/* Progress circle */}
       <circle
