@@ -133,5 +133,35 @@
       "taskDeleted": "Tarea eliminada",
       "actionCompleted": "Acción completada"
     }
+  },
+  "meta": {
+    "moveTo": "Mover a",
+    "assignTo": "Asignar a",
+    "unassigned": "Sin asignar",
+    "setPriority": "Establecer prioridad",
+    "noReminder": "Sin recordatorio",
+    "addDetails": "+ Agregar detalles o sub-tareas",
+    "detailsPlaceholder": "Escribe detalles o sub-tareas, uno por línea",
+    "tagsPlaceholder": "Escribe etiquetas separadas por comas",
+    "original": "Original",
+    "emailSource": "Fuente de Email",
+    "from": "De",
+    "subject": "Asunto"
+  },
+  "actions": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "send": "Enviar",
+    "thinking": "Pensando...",
+    "movedTo": "¡Movido a {{name}}!",
+    "ownerUpdated": "¡Responsable actualizado!",
+    "ownerCleared": "¡Responsable eliminado!",
+    "dueDateUpdated": "¡Fecha límite actualizada!",
+    "dueDateCleared": "¡Fecha límite eliminada!",
+    "deleteConfirm": "¿Eliminar esta nota? No se puede deshacer."
+  },
+  "assistant": {
+    "title": "Asistente Olive",
+    "placeholder": "Pregunta lo que quieras sobre esta nota..."
   }
 }

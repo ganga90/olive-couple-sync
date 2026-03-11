@@ -133,5 +133,35 @@
       "taskDeleted": "Attività eliminata",
       "actionCompleted": "Azione completata"
     }
+  },
+  "meta": {
+    "moveTo": "Sposta in",
+    "assignTo": "Assegna a",
+    "unassigned": "Non assegnato",
+    "setPriority": "Imposta priorità",
+    "noReminder": "Nessun promemoria",
+    "addDetails": "+ Aggiungi dettagli o sotto-attività",
+    "detailsPlaceholder": "Inserisci dettagli o sotto-attività, uno per riga",
+    "tagsPlaceholder": "Inserisci tag separati da virgola",
+    "original": "Originale",
+    "emailSource": "Fonte Email",
+    "from": "Da",
+    "subject": "Oggetto"
+  },
+  "actions": {
+    "save": "Salva",
+    "cancel": "Annulla",
+    "send": "Invia",
+    "thinking": "Sto pensando...",
+    "movedTo": "Spostato in {{name}}!",
+    "ownerUpdated": "Responsabile aggiornato!",
+    "ownerCleared": "Responsabile rimosso!",
+    "dueDateUpdated": "Data di scadenza aggiornata!",
+    "dueDateCleared": "Data di scadenza rimossa!",
+    "deleteConfirm": "Eliminare questa nota? Non può essere annullata."
+  },
+  "assistant": {
+    "title": "Assistente Olive",
+    "placeholder": "Chiedi qualsiasi cosa su questa nota..."
   }
 }

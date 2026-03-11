@@ -133,5 +133,35 @@
       "taskDeleted": "Task deleted",
       "actionCompleted": "Action completed"
     }
+  },
+  "meta": {
+    "moveTo": "Move to",
+    "assignTo": "Assign to",
+    "unassigned": "Unassigned",
+    "setPriority": "Set priority",
+    "noReminder": "No reminder",
+    "addDetails": "+ Add details or subtasks",
+    "detailsPlaceholder": "Enter details or subtasks, one per line",
+    "tagsPlaceholder": "Enter tags separated by commas",
+    "original": "Original",
+    "emailSource": "Email Source",
+    "from": "From",
+    "subject": "Subject"
+  },
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "send": "Send",
+    "thinking": "Thinking...",
+    "movedTo": "Moved to {{name}}!",
+    "ownerUpdated": "Owner updated!",
+    "ownerCleared": "Owner cleared!",
+    "dueDateUpdated": "Due date updated!",
+    "dueDateCleared": "Due date cleared!",
+    "deleteConfirm": "Delete this note? This cannot be undone."
+  },
+  "assistant": {
+    "title": "Olive Assistant",
+    "placeholder": "Ask anything about this note..."
   }
 }
