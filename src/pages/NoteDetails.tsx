@@ -490,7 +490,7 @@ const NoteDetails = () => {
 
                 {/* Reminder Chip */}
                 <button 
-                  className="meta-chip whitespace-nowrap hover:bg-stone-100 transition-colors"
+                  className="meta-chip whitespace-nowrap hover:bg-accent/50 transition-colors"
                   onClick={() => setShowReminderDialog(true)}
                 >
                   🔔 {note.reminder_time ? format(new Date(note.reminder_time), "MMM d, h:mm a") : "No reminder"}
