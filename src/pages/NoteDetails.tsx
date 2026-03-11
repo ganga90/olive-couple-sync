@@ -667,7 +667,7 @@ const NoteDetails = () => {
                               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                 {parsed.label}
                               </span>
-                              <p className="text-sm text-stone-700 mt-0.5">
+                              <p className="text-sm text-foreground mt-0.5">
                                 {parsed.isLink ? (
                                   <a 
                                     href={parsed.value} 
