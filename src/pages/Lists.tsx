@@ -300,7 +300,7 @@ const Lists = () => {
                 size="icon"
                 onClick={() => analyze("all")}
                 disabled={isAnalyzing}
-                className="h-12 w-12 rounded-2xl bg-white/80 backdrop-blur-xl border-white/40 shadow-[0_4px_20px_rgb(0,0,0,0.03)]"
+                className="h-12 w-12 rounded-2xl bg-background/80 backdrop-blur-xl border-border/40 shadow-[0_4px_20px_rgb(0,0,0,0.03)]"
               >
                 {isAnalyzing ? (
                   <Loader2 className="h-5 w-5 animate-spin text-primary" />
