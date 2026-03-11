@@ -260,15 +260,23 @@ async function runStaleTaskStrategist(ctx: AgentContext): Promise<AgentResult> {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - stalenessdays);
 
-  const { data: staleTasks } = await ctx.supabase
+  // Query both personal AND shared couple tasks
+  let query = ctx.supabase
     .from("clerk_notes")
     .select("id, summary, category, priority, created_at, list_id")
-    .eq("author_id", ctx.userId)
     .eq("completed", false)
     .is("due_date", null)
     .lt("created_at", cutoff.toISOString())
     .order("created_at", { ascending: true })
     .limit(15);
+
+  if (ctx.coupleId) {
+    query = query.or(`author_id.eq.${ctx.userId},couple_id.eq.${ctx.coupleId}`);
+  } else {
+    query = query.eq("author_id", ctx.userId);
+  }
+
+  const { data: staleTasks } = await query;
 
   if (!staleTasks || staleTasks.length === 0) {
     return { success: true, message: "No stale tasks found", notifyUser: false };
@@ -344,15 +352,22 @@ async function runSmartBillReminder(ctx: AgentContext): Promise<AgentResult> {
   const lookAheadDate = new Date();
   lookAheadDate.setDate(now.getDate() + maxLookahead);
 
-  // Find notes with due dates that are bill/payment/finance related
-  const { data: bills } = await ctx.supabase
+  // Find notes with due dates that are bill/payment/finance related (personal + couple)
+  let billQuery = ctx.supabase
     .from("clerk_notes")
     .select("id, summary, due_date, category, priority, tags")
-    .eq("author_id", ctx.userId)
     .eq("completed", false)
     .not("due_date", "is", null)
     .lte("due_date", lookAheadDate.toISOString())
     .order("due_date", { ascending: true });
+
+  if (ctx.coupleId) {
+    billQuery = billQuery.or(`author_id.eq.${ctx.userId},couple_id.eq.${ctx.coupleId}`);
+  } else {
+    billQuery = billQuery.eq("author_id", ctx.userId);
+  }
+
+  const { data: bills } = await billQuery;
 
   if (!bills || bills.length === 0) {
     return { success: true, message: "No upcoming bills", notifyUser: false };
@@ -430,15 +445,22 @@ async function runEnergyTaskSuggester(ctx: AgentContext): Promise<AgentResult> {
   const todayEnd = new Date();
   todayEnd.setHours(23, 59, 59, 999);
 
-  const { data: tasks } = await ctx.supabase
+  let taskQuery = ctx.supabase
     .from("clerk_notes")
     .select("id, summary, priority, category")
-    .eq("author_id", ctx.userId)
     .eq("completed", false)
     .gte("due_date", todayStart.toISOString())
     .lte("due_date", todayEnd.toISOString())
     .order("priority", { ascending: true })
     .limit(10);
+
+  if (ctx.coupleId) {
+    taskQuery = taskQuery.or(`author_id.eq.${ctx.userId},couple_id.eq.${ctx.coupleId}`);
+  } else {
+    taskQuery = taskQuery.eq("author_id", ctx.userId);
+  }
+
+  const { data: tasks } = await taskQuery;
 
   if (!tasks || tasks.length === 0) {
     return { success: true, message: "No tasks scheduled for today", notifyUser: false };
@@ -600,13 +622,20 @@ async function runBirthdayGiftAgent(ctx: AgentContext): Promise<AgentResult> {
   // Scan clerk_notes for date-related events (birthdays, anniversaries)
   const dateKeywords = ["birthday", "anniversary", "bday", "compleanno", "cumpleaños", "aniversario"];
 
-  const { data: dateNotes } = await ctx.supabase
+  let dateQuery = ctx.supabase
     .from("clerk_notes")
     .select("id, summary, due_date, tags, category, author_id")
-    .or(`author_id.eq.${ctx.userId},couple_id.eq.${ctx.coupleId || "00000000-0000-0000-0000-000000000000"}`)
     .eq("completed", false)
     .not("due_date", "is", null)
     .order("due_date", { ascending: true });
+
+  if (ctx.coupleId) {
+    dateQuery = dateQuery.or(`author_id.eq.${ctx.userId},couple_id.eq.${ctx.coupleId}`);
+  } else {
+    dateQuery = dateQuery.eq("author_id", ctx.userId);
+  }
+
+  const { data: dateNotes } = await dateQuery;
 
   // Also check calendar events if connected
   let calendarDates: Array<{ title: string; start_time: string }> = [];
@@ -773,17 +802,18 @@ async function runWeeklyCoupleSyncAgent(ctx: AgentContext): Promise<AgentResult>
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
 
   // Fetch both partners' activity
+  // Filter by couple_id to only include shared tasks (not private individual tasks)
   const { data: completed } = await ctx.supabase
     .from("clerk_notes")
     .select("author_id, summary")
-    .in("author_id", partnerIds)
+    .eq("couple_id", ctx.coupleId)
     .eq("completed", true)
     .gte("updated_at", weekAgo);
 
   const { data: pending } = await ctx.supabase
     .from("clerk_notes")
     .select("author_id, summary, priority, due_date")
-    .in("author_id", partnerIds)
+    .eq("couple_id", ctx.coupleId)
     .eq("completed", false)
     .limit(20);
 
