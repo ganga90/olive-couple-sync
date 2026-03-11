@@ -352,15 +352,22 @@ async function runSmartBillReminder(ctx: AgentContext): Promise<AgentResult> {
   const lookAheadDate = new Date();
   lookAheadDate.setDate(now.getDate() + maxLookahead);
 
-  // Find notes with due dates that are bill/payment/finance related
-  const { data: bills } = await ctx.supabase
+  // Find notes with due dates that are bill/payment/finance related (personal + couple)
+  let billQuery = ctx.supabase
     .from("clerk_notes")
     .select("id, summary, due_date, category, priority, tags")
-    .eq("author_id", ctx.userId)
     .eq("completed", false)
     .not("due_date", "is", null)
     .lte("due_date", lookAheadDate.toISOString())
     .order("due_date", { ascending: true });
+
+  if (ctx.coupleId) {
+    billQuery = billQuery.or(`author_id.eq.${ctx.userId},couple_id.eq.${ctx.coupleId}`);
+  } else {
+    billQuery = billQuery.eq("author_id", ctx.userId);
+  }
+
+  const { data: bills } = await billQuery;
 
   if (!bills || bills.length === 0) {
     return { success: true, message: "No upcoming bills", notifyUser: false };
