@@ -498,7 +498,7 @@ const Lists = () => {
                             {stats.dueThisWeek > 0 && !hasOverdue && (
                               <span className="text-[hsl(var(--priority-medium))] flex items-center gap-1">
                                 <Clock className="h-3 w-3" />
-                                {stats.dueThisWeek} this week
+                                {stats.dueThisWeek} {t('stats.thisWeek')}
                               </span>
                             )}
                             {stats.total > 0 && (
