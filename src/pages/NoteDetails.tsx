@@ -683,7 +683,7 @@ const NoteDetails = () => {
                               </p>
                             </div>
                           ) : (
-                            <p className="text-sm text-stone-700">
+                            <p className="text-sm text-foreground">
                               {parsed.isLink ? (
                                 <a 
                                   href={parsed.value} 
