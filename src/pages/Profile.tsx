@@ -43,8 +43,8 @@ const SettingsCard = ({ icon, iconBg, title, subtitle, children, delay = 0 }: Se
         {icon}
       </div>
       <div className="flex-1 min-w-0 pt-1">
-        <h3 className="font-serif font-semibold text-[#2A3C24] text-lg">{title}</h3>
-        {subtitle && <p className="text-xs text-stone-500 mt-0.5">{subtitle}</p>}
+        <h3 className="font-serif font-semibold text-foreground text-lg">{title}</h3>
+        {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
       </div>
     </div>
     <div className="pl-16">
@@ -63,16 +63,16 @@ interface SettingsRowProps {
 const SettingsRow = ({ icon, title, subtitle, onClick }: SettingsRowProps) => (
   <button 
     onClick={onClick}
-    className="flex items-center gap-4 w-full p-4 rounded-2xl hover:bg-stone-50 transition-all duration-300 text-left group"
+    className="flex items-center gap-4 w-full p-4 rounded-2xl hover:bg-accent/50 transition-all duration-300 text-left group"
   >
-    <div className="icon-squircle w-11 h-11 bg-stone-100/80">
+    <div className="icon-squircle w-11 h-11 bg-muted/80">
       {icon}
     </div>
     <div className="flex-1 min-w-0">
-      <p className="font-medium text-[#2A3C24]">{title}</p>
-      <p className="text-xs text-stone-500">{subtitle}</p>
+      <p className="font-medium text-foreground">{title}</p>
+      <p className="text-xs text-muted-foreground">{subtitle}</p>
     </div>
-    <ChevronRight className="h-5 w-5 text-stone-300 group-hover:text-stone-500 group-hover:translate-x-0.5 transition-all duration-200" />
+    <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground group-hover:translate-x-0.5 transition-all duration-200" />
   </button>
 );
 
@@ -96,8 +96,8 @@ const Profile = () => {
         <div className="icon-squircle w-24 h-24 mb-6">
           <User className="h-12 w-12 text-primary" />
         </div>
-        <h2 className="text-3xl font-serif font-bold text-[#2A3C24] mb-3">{t('profile:title')}</h2>
-        <p className="text-stone-500 mb-8 max-w-xs">{t('profile:signInToManage')}</p>
+        <h2 className="text-3xl font-serif font-bold text-foreground mb-3">{t('profile:title')}</h2>
+        <p className="text-muted-foreground mb-8 max-w-xs">{t('profile:signInToManage')}</p>
         <Button 
           onClick={() => navigate(getLocalizedPath('/sign-in'))} 
           size="lg"
@@ -120,20 +120,18 @@ const Profile = () => {
             </div>
             <div className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-[hsl(var(--success))] border-2 border-white shadow-md" />
           </div>
-          <h1 className="text-2xl font-serif font-bold text-[#2A3C24] mb-1">
+          <h1 className="text-2xl font-serif font-bold text-foreground mb-1">
             {user?.firstName || user?.fullName || 'Profile'}
           </h1>
-          <p className="text-sm text-stone-500">
+          <p className="text-sm text-muted-foreground">
             {user?.primaryEmailAddress?.emailAddress}
           </p>
         </div>
 
-        {/* ============================================ */}
         {/* SECTION 1: Identity & Family */}
-        {/* ============================================ */}
         <CollapsibleSection 
           title={t('profile:sections.identity', 'My Profile & Household')}
-          icon={<Users className="h-3.5 w-3.5 text-stone-500" />}
+          icon={<Users className="h-3.5 w-3.5 text-muted-foreground" />}
           delay={50}
           sectionId="identity"
         >
@@ -146,7 +144,7 @@ const Profile = () => {
           </SettingsCard>
 
           <SettingsCard
-            icon={<Lock className="h-5 w-5 text-stone-500" />}
+            icon={<Lock className="h-5 w-5 text-muted-foreground" />}
             iconBg="bg-muted"
             title={t('profile:defaultPrivacy.title', 'Default Privacy')}
             subtitle={t('profile:defaultPrivacy.subtitle', 'For new tasks & lists')}
@@ -164,12 +162,10 @@ const Profile = () => {
           </SettingsCard>
         </CollapsibleSection>
 
-        {/* ============================================ */}
         {/* SECTION 2: Brain & Intelligence */}
-        {/* ============================================ */}
         <CollapsibleSection 
           title={t('profile:sections.intelligence', "Olive's Intelligence")}
-          icon={<Zap className="h-3.5 w-3.5 text-stone-500" />}
+          icon={<Zap className="h-3.5 w-3.5 text-muted-foreground" />}
           delay={100}
           sectionId="intelligence"
         >
@@ -218,12 +214,10 @@ const Profile = () => {
           </SettingsCard>
         </CollapsibleSection>
 
-        {/* ============================================ */}
         {/* SECTION 3: Integrations */}
-        {/* ============================================ */}
         <CollapsibleSection 
           title={t('profile:sections.integrations', 'Connected Apps')}
-          icon={<Link2 className="h-3.5 w-3.5 text-stone-500" />}
+          icon={<Link2 className="h-3.5 w-3.5 text-muted-foreground" />}
           delay={150}
           sectionId="integrations"
         >
@@ -266,12 +260,10 @@ const Profile = () => {
           </SettingsCard>
         </CollapsibleSection>
 
-        {/* ============================================ */}
         {/* SECTION 4: System & Legal */}
-        {/* ============================================ */}
         <CollapsibleSection 
           title={t('profile:sections.system', 'System')}
-          icon={<Settings className="h-3.5 w-3.5 text-stone-500" />}
+          icon={<Settings className="h-3.5 w-3.5 text-muted-foreground" />}
           delay={200}
           sectionId="system"
         >
@@ -294,8 +286,8 @@ const Profile = () => {
           </SettingsCard>
 
           <SettingsCard
-            icon={<Settings className="h-5 w-5 text-stone-500" />}
-            iconBg="bg-stone-100"
+            icon={<Settings className="h-5 w-5 text-muted-foreground" />}
+            iconBg="bg-muted"
             title={t('profile:appPreferences.title', 'App Preferences')}
             subtitle={t('profile:appPreferences.subtitle', 'Notifications, privacy & more')}
           >
@@ -304,23 +296,23 @@ const Profile = () => {
 
           <div className="card-glass overflow-hidden">
             <div className="px-5 pt-5 pb-2">
-              <h3 className="font-serif font-semibold text-[#2A3C24] text-lg">{t('profile:legal.title', 'Legal & Support')}</h3>
+              <h3 className="font-serif font-semibold text-foreground text-lg">{t('profile:legal.title', 'Legal & Support')}</h3>
             </div>
             <div className="px-2 pb-2">
               <SettingsRow
-                icon={<FileText className="h-5 w-5 text-stone-500" />}
+                icon={<FileText className="h-5 w-5 text-muted-foreground" />}
                 title={t('profile:legal.terms', 'Terms of Service')}
                 subtitle={t('profile:legal.termsSubtitle', 'Read our terms and conditions')}
                 onClick={() => navigate(getLocalizedPath('/legal/terms'))}
               />
               <SettingsRow
-                icon={<Shield className="h-5 w-5 text-stone-500" />}
+                icon={<Shield className="h-5 w-5 text-muted-foreground" />}
                 title={t('profile:legal.privacy', 'Privacy Policy')}
                 subtitle={t('profile:legal.privacySubtitle', 'How we handle your data')}
                 onClick={() => navigate(getLocalizedPath('/legal/privacy'))}
               />
               <SettingsRow
-                icon={<Scale className="h-5 w-5 text-stone-500" />}
+                icon={<Scale className="h-5 w-5 text-muted-foreground" />}
                 title={t('profile:legal.licenses', 'Third-Party Licenses')}
                 subtitle={t('profile:legal.licensesSubtitle', 'Open source attributions')}
               />
@@ -342,7 +334,7 @@ const Profile = () => {
 
         {/* Version Info */}
         <div className="text-center pb-4">
-          <p className="text-xs text-stone-400">{t('profile:version')}</p>
+          <p className="text-xs text-muted-foreground/60">{t('profile:version')}</p>
         </div>
       </div>
     </div>
