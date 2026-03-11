@@ -664,7 +664,7 @@ const NoteDetails = () => {
                         <div className="flex-1 min-w-0">
                           {parsed.label ? (
                             <div>
-                              <span className="text-xs font-medium text-stone-400 uppercase tracking-wider">
+                              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                 {parsed.label}
                               </span>
                               <p className="text-sm text-stone-700 mt-0.5">
