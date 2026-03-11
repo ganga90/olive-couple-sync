@@ -285,7 +285,7 @@ const Lists = () => {
           <div className="flex items-center gap-3 animate-fade-up" style={{ animationDelay: '50ms' }}>
             {/* Search - Floating Paper Style */}
             <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
