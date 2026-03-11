@@ -342,7 +342,7 @@ const Lists = () => {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm text-[#2A3C24] truncate">{task.summary}</p>
+                          <p className="font-medium text-sm text-foreground truncate">{task.summary}</p>
                           <div className="flex items-center gap-2 mt-1">
                             {taskList && (
                               <Badge variant="secondary" className="text-[10px] px-2 py-0 h-5 bg-primary/10 text-primary border-0 rounded-full">
