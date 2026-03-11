@@ -100,7 +100,7 @@ const CircularProgress = ({ progress, size = 56, strokeWidth = 4, overdue = fals
         stroke="currentColor"
         strokeWidth={strokeWidth}
         fill="none"
-        className="text-stone-100"
+        className="text-muted/60"
       />
       {/* Progress circle */}
       <circle
@@ -257,8 +257,8 @@ const Lists = () => {
         <div className="icon-squircle w-20 h-20 mb-6">
           <ListIcon className="h-10 w-10 text-primary" />
         </div>
-        <h1 className="text-3xl font-serif font-bold text-[#2A3C24] mb-3">{t('title')}</h1>
-        <p className="text-stone-500 mb-8 max-w-xs">{t('signInPrompt')}</p>
+        <h1 className="text-3xl font-serif font-bold text-foreground mb-3">{t('title')}</h1>
+        <p className="text-muted-foreground mb-8 max-w-xs">{t('signInPrompt')}</p>
         <Button variant="accent" size="lg" className="rounded-full px-8" onClick={() => navigate(getLocalizedPath("/sign-in"))}>
           {t('buttons.signIn', { ns: 'common' })}
         </Button>
@@ -272,8 +272,8 @@ const Lists = () => {
         <div className="px-4 pt-6 pb-24 md:pb-6 space-y-5 max-w-2xl mx-auto relative z-10">
           {/* Header - Editorial Style */}
           <div className="animate-fade-up">
-            <h1 className="text-4xl font-serif font-bold text-[#2A3C24] mb-1">{t('title')}</h1>
-            <p className="text-stone-500 text-sm">{t('subtitle')}</p>
+            <h1 className="text-4xl font-serif font-bold text-foreground mb-1">{t('title')}</h1>
+            <p className="text-muted-foreground text-sm">{t('subtitle')}</p>
           </div>
 
           {/* Quick Access Section - Top 4 most used lists */}
@@ -285,12 +285,12 @@ const Lists = () => {
           <div className="flex items-center gap-3 animate-fade-up" style={{ animationDelay: '50ms' }}>
             {/* Search - Floating Paper Style */}
             <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('searchPlaceholderShort', t('searchPlaceholder'))}
-                className="pl-11 bg-white/80 backdrop-blur-xl border-white/40 focus:border-primary rounded-2xl h-12 shadow-[0_4px_20px_rgb(0,0,0,0.03)] placeholder:text-stone-400"
+                className="pl-11 bg-background/80 backdrop-blur-xl border-border/40 focus:border-primary rounded-2xl h-12 shadow-[0_4px_20px_rgb(0,0,0,0.03)] placeholder:text-muted-foreground"
               />
             </div>
             
@@ -300,7 +300,7 @@ const Lists = () => {
                 size="icon"
                 onClick={() => analyze("all")}
                 disabled={isAnalyzing}
-                className="h-12 w-12 rounded-2xl bg-white/80 backdrop-blur-xl border-white/40 shadow-[0_4px_20px_rgb(0,0,0,0.03)]"
+                className="h-12 w-12 rounded-2xl bg-background/80 backdrop-blur-xl border-border/40 shadow-[0_4px_20px_rgb(0,0,0,0.03)]"
               >
                 {isAnalyzing ? (
                   <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -327,7 +327,7 @@ const Lists = () => {
           {/* Task Search Results */}
           {query.trim() && matchingTasks.length > 0 && (
             <div className="space-y-2 animate-fade-up">
-              <div className="flex items-center gap-2 text-sm font-medium text-stone-600 px-1">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground px-1">
                 <CheckSquare className="h-4 w-4" />
                 <span>{t('search.tasksFound')} ({matchingTasks.length})</span>
               </div>
@@ -338,11 +338,11 @@ const Lists = () => {
                     <Link
                       key={task.id}
                       to={getLocalizedPath(`/notes/${task.id}`)}
-                      className="block p-3 rounded-xl hover:bg-stone-50 transition-colors"
+                      className="block p-3 rounded-xl hover:bg-accent/50 transition-colors"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm text-[#2A3C24] truncate">{task.summary}</p>
+                          <p className="font-medium text-sm text-foreground truncate">{task.summary}</p>
                           <div className="flex items-center gap-2 mt-1">
                             {taskList && (
                               <Badge variant="secondary" className="text-[10px] px-2 py-0 h-5 bg-primary/10 text-primary border-0 rounded-full">
@@ -361,7 +361,7 @@ const Lists = () => {
                             )}
                           </div>
                         </div>
-                        <ChevronRight className="h-4 w-4 text-stone-300 flex-shrink-0" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
                       </div>
                     </Link>
                   );
@@ -376,10 +376,10 @@ const Lists = () => {
               <div className="icon-squircle w-16 h-16 mx-auto mb-5">
                 <Search className="h-8 w-8 text-stone-400" />
               </div>
-              <h3 className="font-serif font-semibold text-lg text-[#2A3C24] mb-2">
+               <h3 className="font-serif font-semibold text-lg text-foreground mb-2">
                 {t('search.noResults')}
               </h3>
-              <p className="text-sm text-stone-500 max-w-xs mx-auto">
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
                 {t('search.tryDifferent')}
               </p>
             </div>
@@ -405,10 +405,10 @@ const Lists = () => {
               <div className="icon-squircle w-16 h-16 mx-auto mb-5">
                 <ListIcon className="h-8 w-8 text-stone-400" />
               </div>
-              <h3 className="font-serif font-semibold text-lg text-[#2A3C24] mb-2">
+              <h3 className="font-serif font-semibold text-lg text-foreground mb-2">
                 {filterBy !== "all" ? t('empty.noListsFound') : t('empty.noListsYet')}
               </h3>
-              <p className="text-sm text-stone-500 mb-6 max-w-xs mx-auto">
+              <p className="text-sm text-muted-foreground mb-6 max-w-xs mx-auto">
                 {filterBy !== "all" ? t('empty.tryDifferentSearch') : t('empty.createFirstList')}
               </p>
               {filterBy === "all" && <CreateListDialog onListCreated={refetch} />}
@@ -465,7 +465,7 @@ const Lists = () => {
                         {/* Content */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <h3 className="font-serif font-semibold text-[#2A3C24] text-lg truncate">
+                            <h3 className="font-serif font-semibold text-foreground text-lg truncate">
                               {list.name}
                             </h3>
                             {!list.is_manual && (
@@ -476,33 +476,33 @@ const Lists = () => {
                             {list.couple_id ? (
                               <Badge variant="secondary" className="text-[10px] px-2 py-0.5 h-5 bg-primary/10 text-primary border-0 rounded-full gap-0.5">
                                 <Users className="h-3 w-3" />
-                                Shared
+                                {t('badges.shared')}
                               </Badge>
                             ) : (
-                              <Badge variant="secondary" className="text-[10px] px-2 py-0.5 h-5 bg-stone-100 text-stone-500 border-0 rounded-full gap-0.5">
+                              <Badge variant="secondary" className="text-[10px] px-2 py-0.5 h-5 bg-muted text-muted-foreground border-0 rounded-full gap-0.5">
                                 <Lock className="h-3 w-3" />
-                                Private
+                                {t('badges.private')}
                               </Badge>
                             )}
                           </div>
                           
                           {/* Stats row */}
-                          <div className="flex items-center gap-3 text-xs text-stone-500">
-                            <span className="font-medium">{stats.active} active</span>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span className="font-medium">{stats.active} {t('stats.active')}</span>
                             {hasOverdue && (
                               <span className="text-[hsl(var(--priority-high))] flex items-center gap-1 font-medium">
                                 <AlertCircle className="h-3 w-3" />
-                                {stats.overdue} overdue
+                                {stats.overdue} {t('stats.overdue')}
                               </span>
                             )}
                             {stats.dueThisWeek > 0 && !hasOverdue && (
                               <span className="text-[hsl(var(--priority-medium))] flex items-center gap-1">
                                 <Clock className="h-3 w-3" />
-                                {stats.dueThisWeek} this week
+                                {stats.dueThisWeek} {t('stats.thisWeek')}
                               </span>
                             )}
                             {stats.total > 0 && (
-                              <span className="text-stone-400 ml-auto">
+                              <span className="text-muted-foreground/60 ml-auto">
                                 {stats.completed}/{stats.total}
                               </span>
                             )}
@@ -522,7 +522,7 @@ const Lists = () => {
                           >
                             <Trash2 className="h-4 w-4 text-[hsl(var(--priority-high))]" />
                           </button>
-                          <ChevronRight className="h-5 w-5 text-stone-300 group-hover:text-stone-500 group-hover:translate-x-0.5 transition-all duration-200" />
+                          <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-muted-foreground group-hover:translate-x-0.5 transition-all duration-200" />
                         </div>
                       </div>
                     </div>

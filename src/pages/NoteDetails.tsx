@@ -135,8 +135,9 @@ const NoteDetails = () => {
   }
 
   const onDelete = async () => {
+    if (!window.confirm(t('actions.deleteConfirm'))) return;
     await deleteNote(note.id);
-    toast.success("Note deleted");
+    toast.success(t('toast.noteDeleted'));
     navigate(-1);
   };
 
@@ -386,7 +387,7 @@ const NoteDetails = () => {
                   </PopoverTrigger>
                   <PopoverContent className="w-48 p-2" align="start">
                     <div className="space-y-1">
-                      <p className="text-xs font-medium text-stone-400 px-2 py-1 uppercase tracking-wider">Move to</p>
+                      <p className="text-xs font-medium text-muted-foreground px-2 py-1 uppercase tracking-wider">{t('meta.moveTo')}</p>
                       {lists.map((list) => (
                         <Button
                           key={list.id}
@@ -395,7 +396,7 @@ const NoteDetails = () => {
                           className="w-full justify-start rounded-lg"
                           onClick={async () => {
                             await updateNote(note.id, { list_id: list.id });
-                            toast.success(`Moved to ${list.name}!`);
+                            toast.success(t('actions.movedTo', { name: list.name }));
                           }}
                         >
 
@@ -419,23 +420,23 @@ const NoteDetails = () => {
                 {/* Owner Chip */}
                 <Popover>
                   <PopoverTrigger asChild>
-                    <button className="meta-chip whitespace-nowrap hover:bg-stone-100 transition-colors">
-                      👤 {note.task_owner || "Unassigned"}
+                   <button className="meta-chip whitespace-nowrap hover:bg-accent/50 transition-colors">
+                      👤 {note.task_owner || t('meta.unassigned')}
                     </button>
                   </PopoverTrigger>
                   <PopoverContent className="w-48 p-2" align="start">
                     <div className="space-y-1">
-                      <p className="text-xs font-medium text-stone-400 px-2 py-1 uppercase tracking-wider">Assign to</p>
+                      <p className="text-xs font-medium text-muted-foreground px-2 py-1 uppercase tracking-wider">{t('meta.assignTo')}</p>
                       <Button
                         variant={!note.task_owner ? "secondary" : "ghost"}
                         size="sm"
                         className="w-full justify-start rounded-lg"
                         onClick={async () => {
                           await updateNote(note.id, { task_owner: null });
-                          toast.success("Owner cleared!");
+                          toast.success(t('actions.ownerCleared'));
                         }}
                       >
-                        Unassigned
+                        {t('meta.unassigned')}
                       </Button>
                       {availableOwners.map((owner) => (
                         <Button
@@ -445,7 +446,7 @@ const NoteDetails = () => {
                           className="w-full justify-start rounded-lg"
                           onClick={async () => {
                             await updateNote(note.id, { task_owner: owner.name });
-                            toast.success("Owner updated!");
+                            toast.success(t('actions.ownerUpdated'));
                           }}
                         >
                           {owner.name} {owner.isCurrentUser ? "(You)" : ""}
@@ -458,13 +459,13 @@ const NoteDetails = () => {
                 {/* Priority Chip */}
                 <Popover>
                   <PopoverTrigger asChild>
-                    <button className={cn("meta-chip whitespace-nowrap hover:bg-stone-100 transition-colors", priorityConfig.text)}>
+                    <button className={cn("meta-chip whitespace-nowrap hover:bg-accent/50 transition-colors", priorityConfig.text)}>
                       {note.priority === 'high' ? '🔥' : note.priority === 'medium' ? '⚡' : '🟢'} {priorityConfig.label}
                     </button>
                   </PopoverTrigger>
                   <PopoverContent className="w-48 p-2" align="start">
                     <div className="space-y-1">
-                      <p className="text-xs font-medium text-stone-400 px-2 py-1 uppercase tracking-wider">Set priority</p>
+                      <p className="text-xs font-medium text-muted-foreground px-2 py-1 uppercase tracking-wider">{t('meta.setPriority')}</p>
                       {([
                         { value: 'high', label: 'High', emoji: '🔥' },
                         { value: 'medium', label: 'Medium', emoji: '⚡' },
@@ -489,10 +490,10 @@ const NoteDetails = () => {
 
                 {/* Reminder Chip */}
                 <button 
-                  className="meta-chip whitespace-nowrap hover:bg-stone-100 transition-colors"
+                  className="meta-chip whitespace-nowrap hover:bg-accent/50 transition-colors"
                   onClick={() => setShowReminderDialog(true)}
                 >
-                  🔔 {note.reminder_time ? format(new Date(note.reminder_time), "MMM d, h:mm a") : "No reminder"}
+                  🔔 {note.reminder_time ? format(new Date(note.reminder_time), "MMM d, h:mm a") : t('meta.noReminder')}
                 </button>
 
                 {/* Privacy Chip - Simplified */}
@@ -612,7 +613,7 @@ const NoteDetails = () => {
             <div className="card-glass p-5 animate-fade-up" style={{ animationDelay: '200ms' }}>
               <div className="flex items-center gap-2 mb-3">
                 <Tag className="h-4 w-4 text-primary" />
-                <span className="text-sm font-semibold text-stone-700">Tags</span>
+                <span className="text-sm font-semibold text-foreground">{t('tags')}</span>
               </div>
               {isEditing ? (
                 <input
@@ -639,7 +640,7 @@ const NoteDetails = () => {
             <div className="card-glass p-5 animate-fade-up" style={{ animationDelay: '250ms' }}>
               <div className="flex items-center gap-2 mb-4">
                 <CheckCircle2 className="h-4 w-4 text-primary" />
-                <span className="text-sm font-semibold text-stone-700">Details</span>
+                <span className="text-sm font-semibold text-foreground">{t('details')}</span>
               </div>
               {isEditing ? (
                 <Textarea
@@ -663,10 +664,10 @@ const NoteDetails = () => {
                         <div className="flex-1 min-w-0">
                           {parsed.label ? (
                             <div>
-                              <span className="text-xs font-medium text-stone-400 uppercase tracking-wider">
+                              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                 {parsed.label}
                               </span>
-                              <p className="text-sm text-stone-700 mt-0.5">
+                              <p className="text-sm text-foreground mt-0.5">
                                 {parsed.isLink ? (
                                   <a 
                                     href={parsed.value} 
@@ -682,7 +683,7 @@ const NoteDetails = () => {
                               </p>
                             </div>
                           ) : (
-                            <p className="text-sm text-stone-700">
+                            <p className="text-sm text-foreground">
                               {parsed.isLink ? (
                                 <a 
                                   href={parsed.value} 
@@ -712,14 +713,14 @@ const NoteDetails = () => {
               <div className="card-glass p-5 animate-fade-up">
                 <div className="flex items-center gap-2 mb-3">
                   <CheckCircle2 className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-semibold text-stone-700">Details</span>
+                  <span className="text-sm font-semibold text-foreground">{t('details')}</span>
                 </div>
                 <Textarea
                   autoFocus
                   value={newItems}
                   onChange={(e) => setNewItems(e.target.value)}
-                  className="min-h-[100px] text-sm border-stone-200 bg-white mb-3"
-                  placeholder="Enter details or subtasks, one per line"
+                  className="min-h-[100px] text-sm border-border bg-background mb-3"
+                  placeholder={t('meta.detailsPlaceholder')}
                 />
                 <div className="flex gap-2 justify-end">
                   <Button variant="ghost" size="sm" onClick={() => { setIsAddingItems(false); setNewItems(""); }}>
@@ -741,9 +742,9 @@ const NoteDetails = () => {
             ) : (
               <button 
                 onClick={() => setIsAddingItems(true)}
-                className="w-full py-3 text-sm text-stone-400 hover:text-stone-600 transition-colors flex items-center justify-center gap-2"
+                className="w-full py-3 text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center gap-2"
               >
-                <span>+ Add details or subtasks</span>
+                <span>{t('meta.addDetails')}</span>
               </button>
             )
           )}
@@ -759,7 +760,7 @@ const NoteDetails = () => {
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Mail className="h-4 w-4 text-primary" />
-                  <span className="text-xs font-medium text-primary uppercase tracking-wide">Email Source</span>
+                  <span className="text-xs font-medium text-primary uppercase tracking-wide">{t('meta.emailSource')}</span>
                 </div>
                 {(() => {
                   const match = note.originalText.match(/^\[Email from\s+<?([^>\]]+)>?\]\s*(.+)$/);
@@ -787,7 +788,7 @@ const NoteDetails = () => {
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Clock className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Original</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t('meta.original')}</span>
               </div>
               <p className="text-sm text-muted-foreground italic leading-relaxed">
                 "{renderTextWithLinks(note.originalText)}"
@@ -818,7 +819,7 @@ const NoteDetails = () => {
             <DialogTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <OliveLogo size={20} />
-                <span>Olive Assistant</span>
+                <span>{t('assistant.title')}</span>
               </div>
               <Button variant="ghost" size="icon" onClick={handleNewConversation} className="h-8 w-8">
                 <RotateCcw className="h-4 w-4" />
@@ -879,7 +880,7 @@ const NoteDetails = () => {
               <div className="text-left">
                 <div className="inline-flex items-center gap-2 rounded-xl bg-card border border-border/50 px-3 py-2">
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  <span className="text-sm text-muted-foreground">Thinking...</span>
+                  <span className="text-sm text-muted-foreground">{t('actions.thinking')}</span>
                 </div>
               </div>
             )}
@@ -889,7 +890,7 @@ const NoteDetails = () => {
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask anything about this note..."
+              placeholder={t('assistant.placeholder')}
               rows={2}
               className="resize-none"
               onKeyDown={(e) => {
@@ -902,7 +903,7 @@ const NoteDetails = () => {
             <DialogFooter>
               <Button onClick={onSend} disabled={isAssistantLoading || !input.trim()}>
                 {isAssistantLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Send
+                {t('actions.send')}
               </Button>
             </DialogFooter>
           </div>
