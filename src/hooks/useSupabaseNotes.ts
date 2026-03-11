@@ -43,7 +43,7 @@ async function decryptSensitiveNotes(notes: SupabaseNote[], userId: string): Pro
     sensitiveNotes.map(async (note) => {
       try {
         const { data, error } = await supabase.functions.invoke('decrypt-note', {
-          body: { note_id: note.id, user_id: userId }
+          body: { note_id: note.id }
         });
         if (error || !data) return null;
         return { noteId: note.id, original_text: data.original_text, summary: data.summary };

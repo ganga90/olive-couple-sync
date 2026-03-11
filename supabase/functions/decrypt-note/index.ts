@@ -4,7 +4,7 @@
  * Securely decrypts sensitive note fields server-side.
  * The encryption key never leaves the Edge Function runtime.
  * 
- * Validates user ownership before decrypting.
+ * Validates JWT authentication and user ownership before decrypting.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -22,11 +22,37 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { note_id, user_id } = await req.json();
-
-    if (!note_id || !user_id) {
+    // ── Authenticate via JWT ──
+    const authHeader = req.headers.get('authorization') || '';
+    if (!authHeader.startsWith('Bearer ')) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: note_id, user_id' }),
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: claimsError } = await supabaseAuth.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims?.sub) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const verifiedUserId = claimsData.claims.sub as string;
+
+    const { note_id } = await req.json();
+
+    if (!note_id) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: note_id' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -57,15 +83,15 @@ serve(async (req: Request) => {
       );
     }
 
-    // Validate ownership: user must be author OR couple member
-    let authorized = note.author_id === user_id;
+    // Validate ownership using the VERIFIED user ID (not from request body)
+    let authorized = note.author_id === verifiedUserId;
     
     if (!authorized && note.couple_id) {
       const { data: membership } = await supabase
         .from('clerk_couple_members')
         .select('id')
         .eq('couple_id', note.couple_id)
-        .eq('user_id', user_id)
+        .eq('user_id', verifiedUserId)
         .maybeSingle();
       
       authorized = !!membership;
@@ -92,7 +118,7 @@ serve(async (req: Request) => {
     }
 
     // Decrypt using the note author's key (encryption is per-author)
-    const decryptUserId = note.author_id || user_id;
+    const decryptUserId = note.author_id || verifiedUserId;
     
     const decryptedText = await decrypt(note.encrypted_original_text, decryptUserId);
     const decryptedSummary = note.encrypted_summary 
@@ -101,7 +127,7 @@ serve(async (req: Request) => {
 
     // Audit log for compliance
     await supabase.from('decryption_audit_log').insert({
-      user_id,
+      user_id: verifiedUserId,
       note_id,
       function_name: 'decrypt-note',
     });
@@ -119,7 +145,7 @@ serve(async (req: Request) => {
   } catch (error: any) {
     console.error('[decrypt-note] Error:', error);
     return new Response(
-      JSON.stringify({ error: error.message || 'Decryption failed' }),
+      JSON.stringify({ error: 'Decryption failed' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
