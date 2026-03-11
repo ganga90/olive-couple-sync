@@ -465,7 +465,7 @@ const Lists = () => {
                         {/* Content */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <h3 className="font-serif font-semibold text-[#2A3C24] text-lg truncate">
+                            <h3 className="font-serif font-semibold text-foreground text-lg truncate">
                               {list.name}
                             </h3>
                             {!list.is_manual && (
