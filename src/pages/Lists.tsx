@@ -361,7 +361,7 @@ const Lists = () => {
                             )}
                           </div>
                         </div>
-                        <ChevronRight className="h-4 w-4 text-stone-300 flex-shrink-0" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
                       </div>
                     </Link>
                   );
