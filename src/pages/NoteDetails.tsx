@@ -459,7 +459,7 @@ const NoteDetails = () => {
                 {/* Priority Chip */}
                 <Popover>
                   <PopoverTrigger asChild>
-                    <button className={cn("meta-chip whitespace-nowrap hover:bg-stone-100 transition-colors", priorityConfig.text)}>
+                    <button className={cn("meta-chip whitespace-nowrap hover:bg-accent/50 transition-colors", priorityConfig.text)}>
                       {note.priority === 'high' ? '🔥' : note.priority === 'medium' ? '⚡' : '🟢'} {priorityConfig.label}
                     </button>
                   </PopoverTrigger>
