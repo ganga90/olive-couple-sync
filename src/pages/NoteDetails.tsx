@@ -890,7 +890,7 @@ const NoteDetails = () => {
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask anything about this note..."
+              placeholder={t('assistant.placeholder')}
               rows={2}
               className="resize-none"
               onKeyDown={(e) => {
