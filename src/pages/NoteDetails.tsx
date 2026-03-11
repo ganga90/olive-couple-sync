@@ -742,9 +742,9 @@ const NoteDetails = () => {
             ) : (
               <button 
                 onClick={() => setIsAddingItems(true)}
-                className="w-full py-3 text-sm text-stone-400 hover:text-stone-600 transition-colors flex items-center justify-center gap-2"
+                className="w-full py-3 text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center gap-2"
               >
-                <span>+ Add details or subtasks</span>
+                <span>{t('meta.addDetails')}</span>
               </button>
             )
           )}
