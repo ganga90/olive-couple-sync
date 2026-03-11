@@ -178,22 +178,38 @@ function EmailTasksSection({ userId }: { userId: string }) {
   const { t } = useTranslation('profile');
   const [tasks, setTasks] = useState<Array<{ id: string; summary: string; category: string; priority: string | null; due_date: string | null; created_at: string }>>([]);
   const [loading, setLoading] = useState(true);
+  const [completingId, setCompletingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
+  const loadTasks = async () => {
+    const { data } = await supabase
+      .from('clerk_notes')
+      .select('id, summary, category, priority, due_date, created_at')
+      .eq('author_id', userId)
+      .eq('source', 'email')
+      .eq('completed', false)
+      .order('created_at', { ascending: false })
+      .limit(15);
+    setTasks(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadTasks(); }, [userId]);
+
+  const handleComplete = async (taskId: string) => {
+    setCompletingId(taskId);
+    try {
+      await supabase
         .from('clerk_notes')
-        .select('id, summary, category, priority, due_date, created_at')
-        .eq('author_id', userId)
-        .eq('source', 'email')
-        .eq('completed', false)
-        .order('created_at', { ascending: false })
-        .limit(15);
-      setTasks(data || []);
-      setLoading(false);
-    };
-    load();
-  }, [userId]);
+        .update({ completed: true, updated_at: new Date().toISOString() })
+        .eq('id', taskId);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      toast.success(t('agentDetail.taskCompleted', 'Task completed'));
+    } catch {
+      toast.error(t('agentDetail.taskCompleteFailed', 'Failed to complete task'));
+    } finally {
+      setCompletingId(null);
+    }
+  };
 
   if (loading) return null;
   if (tasks.length === 0) return null;
@@ -210,8 +226,18 @@ function EmailTasksSection({ userId }: { userId: string }) {
         <ScrollArea className="max-h-[300px]">
           <div className="space-y-2">
             {tasks.map((task) => (
-              <div key={task.id} className="flex items-start gap-3 p-2.5 rounded-lg bg-accent/30 text-sm">
-                <CheckCircle2 className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+              <div key={task.id} className="flex items-start gap-3 p-2.5 rounded-lg bg-accent/30 text-sm group">
+                <button
+                  onClick={() => handleComplete(task.id)}
+                  disabled={completingId === task.id}
+                  className="mt-0.5 flex-shrink-0 min-h-[24px] min-w-[24px] flex items-center justify-center"
+                >
+                  {completingId === task.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                  )}
+                </button>
                 <div className="flex-1 min-w-0 space-y-0.5">
                   <p className="font-medium truncate">{task.summary}</p>
                   <div className="flex items-center gap-2 flex-wrap">
