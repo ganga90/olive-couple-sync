@@ -327,7 +327,7 @@ const Lists = () => {
           {/* Task Search Results */}
           {query.trim() && matchingTasks.length > 0 && (
             <div className="space-y-2 animate-fade-up">
-              <div className="flex items-center gap-2 text-sm font-medium text-stone-600 px-1">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground px-1">
                 <CheckSquare className="h-4 w-4" />
                 <span>{t('search.tasksFound')} ({matchingTasks.length})</span>
               </div>
