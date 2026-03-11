@@ -260,15 +260,23 @@ async function runStaleTaskStrategist(ctx: AgentContext): Promise<AgentResult> {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - stalenessdays);
 
-  const { data: staleTasks } = await ctx.supabase
+  // Query both personal AND shared couple tasks
+  let query = ctx.supabase
     .from("clerk_notes")
     .select("id, summary, category, priority, created_at, list_id")
-    .eq("author_id", ctx.userId)
     .eq("completed", false)
     .is("due_date", null)
     .lt("created_at", cutoff.toISOString())
     .order("created_at", { ascending: true })
     .limit(15);
+
+  if (ctx.coupleId) {
+    query = query.or(`author_id.eq.${ctx.userId},couple_id.eq.${ctx.coupleId}`);
+  } else {
+    query = query.eq("author_id", ctx.userId);
+  }
+
+  const { data: staleTasks } = await query;
 
   if (!staleTasks || staleTasks.length === 0) {
     return { success: true, message: "No stale tasks found", notifyUser: false };
