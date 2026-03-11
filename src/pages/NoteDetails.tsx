@@ -493,7 +493,7 @@ const NoteDetails = () => {
                   className="meta-chip whitespace-nowrap hover:bg-accent/50 transition-colors"
                   onClick={() => setShowReminderDialog(true)}
                 >
-                  🔔 {note.reminder_time ? format(new Date(note.reminder_time), "MMM d, h:mm a") : "No reminder"}
+                  🔔 {note.reminder_time ? format(new Date(note.reminder_time), "MMM d, h:mm a") : t('meta.noReminder')}
                 </button>
 
                 {/* Privacy Chip - Simplified */}
