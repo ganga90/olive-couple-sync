@@ -719,8 +719,8 @@ const NoteDetails = () => {
                   autoFocus
                   value={newItems}
                   onChange={(e) => setNewItems(e.target.value)}
-                  className="min-h-[100px] text-sm border-stone-200 bg-white mb-3"
-                  placeholder="Enter details or subtasks, one per line"
+                  className="min-h-[100px] text-sm border-border bg-background mb-3"
+                  placeholder={t('meta.detailsPlaceholder')}
                 />
                 <div className="flex gap-2 justify-end">
                   <Button variant="ghost" size="sm" onClick={() => { setIsAddingItems(false); setNewItems(""); }}>
