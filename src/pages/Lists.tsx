@@ -502,7 +502,7 @@ const Lists = () => {
                               </span>
                             )}
                             {stats.total > 0 && (
-                              <span className="text-stone-400 ml-auto">
+                              <span className="text-muted-foreground/60 ml-auto">
                                 {stats.completed}/{stats.total}
                               </span>
                             )}
