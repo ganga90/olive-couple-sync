@@ -622,13 +622,20 @@ async function runBirthdayGiftAgent(ctx: AgentContext): Promise<AgentResult> {
   // Scan clerk_notes for date-related events (birthdays, anniversaries)
   const dateKeywords = ["birthday", "anniversary", "bday", "compleanno", "cumpleaños", "aniversario"];
 
-  const { data: dateNotes } = await ctx.supabase
+  let dateQuery = ctx.supabase
     .from("clerk_notes")
     .select("id, summary, due_date, tags, category, author_id")
-    .or(`author_id.eq.${ctx.userId},couple_id.eq.${ctx.coupleId || "00000000-0000-0000-0000-000000000000"}`)
     .eq("completed", false)
     .not("due_date", "is", null)
     .order("due_date", { ascending: true });
+
+  if (ctx.coupleId) {
+    dateQuery = dateQuery.or(`author_id.eq.${ctx.userId},couple_id.eq.${ctx.coupleId}`);
+  } else {
+    dateQuery = dateQuery.eq("author_id", ctx.userId);
+  }
+
+  const { data: dateNotes } = await dateQuery;
 
   // Also check calendar events if connected
   let calendarDates: Array<{ title: string; start_time: string }> = [];
