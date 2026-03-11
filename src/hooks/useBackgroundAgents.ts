@@ -407,7 +407,8 @@ export function useAgentInsights() {
 
     const fetchInsights = async () => {
       try {
-        const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        // Use 7-day window so weekly agents (couple sync, birthday) also appear
+        const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
         const { data, error } = await supabase
           .from('olive_agent_runs')

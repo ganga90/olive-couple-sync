@@ -802,17 +802,18 @@ async function runWeeklyCoupleSyncAgent(ctx: AgentContext): Promise<AgentResult>
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
 
   // Fetch both partners' activity
+  // Filter by couple_id to only include shared tasks (not private individual tasks)
   const { data: completed } = await ctx.supabase
     .from("clerk_notes")
     .select("author_id, summary")
-    .in("author_id", partnerIds)
+    .eq("couple_id", ctx.coupleId)
     .eq("completed", true)
     .gte("updated_at", weekAgo);
 
   const { data: pending } = await ctx.supabase
     .from("clerk_notes")
     .select("author_id, summary, priority, due_date")
-    .in("author_id", partnerIds)
+    .eq("couple_id", ctx.coupleId)
     .eq("completed", false)
     .limit(20);
 
