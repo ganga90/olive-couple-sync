@@ -396,7 +396,7 @@ const NoteDetails = () => {
                           className="w-full justify-start rounded-lg"
                           onClick={async () => {
                             await updateNote(note.id, { list_id: list.id });
-                            toast.success(`Moved to ${list.name}!`);
+                            toast.success(t('actions.movedTo', { name: list.name }));
                           }}
                         >
 
