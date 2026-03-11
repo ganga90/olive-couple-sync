@@ -433,10 +433,10 @@ const NoteDetails = () => {
                         className="w-full justify-start rounded-lg"
                         onClick={async () => {
                           await updateNote(note.id, { task_owner: null });
-                          toast.success("Owner cleared!");
+                          toast.success(t('actions.ownerCleared'));
                         }}
                       >
-                        Unassigned
+                        {t('meta.unassigned')}
                       </Button>
                       {availableOwners.map((owner) => (
                         <Button
