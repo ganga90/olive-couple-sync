@@ -492,7 +492,7 @@ const Lists = () => {
                             {hasOverdue && (
                               <span className="text-[hsl(var(--priority-high))] flex items-center gap-1 font-medium">
                                 <AlertCircle className="h-3 w-3" />
-                                {stats.overdue} overdue
+                                {stats.overdue} {t('stats.overdue')}
                               </span>
                             )}
                             {stats.dueThisWeek > 0 && !hasOverdue && (
