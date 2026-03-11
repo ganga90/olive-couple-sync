@@ -880,7 +880,7 @@ const NoteDetails = () => {
               <div className="text-left">
                 <div className="inline-flex items-center gap-2 rounded-xl bg-card border border-border/50 px-3 py-2">
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  <span className="text-sm text-muted-foreground">Thinking...</span>
+                  <span className="text-sm text-muted-foreground">{t('actions.thinking')}</span>
                 </div>
               </div>
             )}
