@@ -426,7 +426,7 @@ const NoteDetails = () => {
                   </PopoverTrigger>
                   <PopoverContent className="w-48 p-2" align="start">
                     <div className="space-y-1">
-                      <p className="text-xs font-medium text-stone-400 px-2 py-1 uppercase tracking-wider">Assign to</p>
+                      <p className="text-xs font-medium text-muted-foreground px-2 py-1 uppercase tracking-wider">{t('meta.assignTo')}</p>
                       <Button
                         variant={!note.task_owner ? "secondary" : "ghost"}
                         size="sm"
