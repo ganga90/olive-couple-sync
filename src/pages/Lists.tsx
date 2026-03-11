@@ -487,8 +487,8 @@ const Lists = () => {
                           </div>
                           
                           {/* Stats row */}
-                          <div className="flex items-center gap-3 text-xs text-stone-500">
-                            <span className="font-medium">{stats.active} active</span>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span className="font-medium">{stats.active} {t('stats.active')}</span>
                             {hasOverdue && (
                               <span className="text-[hsl(var(--priority-high))] flex items-center gap-1 font-medium">
                                 <AlertCircle className="h-3 w-3" />
