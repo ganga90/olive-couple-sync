@@ -7,12 +7,21 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-function verifyAdmin(req: Request) {
+async function getVerifiedUserId(req: Request): Promise<string | null> {
   const authHeader = req.headers.get("authorization") || "";
+  if (!authHeader.startsWith("Bearer ")) return null;
+
+  // Use Supabase Auth to verify the JWT signature properly
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!,
+    { global: { headers: { Authorization: authHeader } } }
+  );
+
   const token = authHeader.replace("Bearer ", "");
-  if (!token) return null;
-  const payload = JSON.parse(atob(token.split(".")[1]));
-  return payload.sub || null;
+  const { data, error } = await supabase.auth.getClaims(token);
+  if (error || !data?.claims?.sub) return null;
+  return data.claims.sub as string;
 }
 
 serve(async (req: Request) => {
@@ -21,7 +30,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const userId = verifyAdmin(req);
+    const userId = await getVerifiedUserId(req);
     if (!userId) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
@@ -128,79 +137,47 @@ async function getAnalytics(sb: any) {
     ouraConnectionsRes,
     emailConnectionsRes,
     auditLogRes,
-    // DAU: distinct authors who created a note today
     notesTodayRes,
-    // WAU: distinct authors who created a note in last 7 days
     notesWeekRes,
-    // MAU: distinct authors who created a note in last 30 days
     notesMonthRes,
-    // Retention: users who signed up 7+ days ago and were active in last 7d
     usersOlderThan7dRes,
-    // Retention: users who signed up 30+ days ago
     usersOlderThan30dRes,
-    // All user signup dates for cohort analysis
     allUserSignupsRes,
-    // WhatsApp source notes (broader: source contains 'whatsapp')
     whatsappSourceNotesRes,
   ] = await Promise.all([
-    // User metrics — count unique profiles
     sb.from("clerk_profiles").select("id", { count: "exact", head: true }),
     sb.from("clerk_profiles").select("id", { count: "exact", head: true }).gte("created_at", thirtyDaysAgo),
-    // Note metrics
     sb.from("clerk_notes").select("id", { count: "exact", head: true }),
     sb.from("clerk_notes").select("id", { count: "exact", head: true }).gte("created_at", sevenDaysAgo),
     sb.from("clerk_notes").select("id", { count: "exact", head: true }).eq("completed", true),
     sb.from("clerk_notes").select("id", { count: "exact", head: true }).eq("is_sensitive", true),
-    // Category breakdown
     sb.from("clerk_notes").select("category"),
-    // Source breakdown — fetch all to count properly
     sb.from("clerk_notes").select("source"),
-    // Priority breakdown
     sb.from("clerk_notes").select("priority"),
-    // Notes created per day (last 30 days)
     sb.from("clerk_notes").select("created_at").gte("created_at", thirtyDaysAgo).order("created_at", { ascending: true }),
-    // Couples
     sb.from("clerk_couples").select("id", { count: "exact", head: true }),
-    // Lists
     sb.from("clerk_lists").select("id", { count: "exact", head: true }),
-    // Calendar
     sb.from("calendar_connections").select("id", { count: "exact", head: true }).eq("is_active", true),
     sb.from("calendar_events").select("id", { count: "exact", head: true }),
-    // AI Router
     sb.from("olive_router_log").select("id", { count: "exact", head: true }),
     sb.from("olive_router_log").select("classified_intent, confidence"),
-    // Agent runs
     sb.from("olive_agent_runs").select("id", { count: "exact", head: true }),
     sb.from("olive_agent_runs").select("id", { count: "exact", head: true }).eq("status", "completed"),
-    // Memory
     sb.from("olive_memory_files").select("id", { count: "exact", head: true }),
     sb.from("olive_memory_chunks").select("id", { count: "exact", head: true }),
-    // Notifications
     sb.from("notifications").select("id", { count: "exact", head: true }),
-    // Feedback
     sb.from("beta_feedback").select("id", { count: "exact", head: true }).neq("category", "beta_request"),
     sb.from("beta_feedback").select("id", { count: "exact", head: true }).eq("category", "beta_request"),
-    // Privacy distribution
     sb.from("clerk_profiles").select("default_privacy"),
-    // Oura
     sb.from("oura_connections").select("id", { count: "exact", head: true }).eq("is_active", true),
-    // Email
     sb.from("olive_email_connections").select("id", { count: "exact", head: true }).eq("is_active", true),
-    // Audit log
     sb.from("decryption_audit_log").select("id", { count: "exact", head: true }),
-    // DAU — distinct note authors today
     sb.from("clerk_notes").select("author_id").gte("created_at", todayStart),
-    // WAU — distinct note authors last 7 days
     sb.from("clerk_notes").select("author_id").gte("created_at", sevenDaysAgo),
-    // MAU — distinct note authors last 30 days
     sb.from("clerk_notes").select("author_id").gte("created_at", thirtyDaysAgo),
-    // Users who signed up 7+ days ago (for D7 retention)
     sb.from("clerk_profiles").select("id").lt("created_at", sevenDaysAgo),
-    // Users who signed up 30+ days ago (for D30 retention)
     sb.from("clerk_profiles").select("id").lt("created_at", thirtyDaysAgo),
-    // All user signups with created_at for cohort
     sb.from("clerk_profiles").select("id, created_at"),
-    // WhatsApp notes — match source field
     sb.from("clerk_notes").select("id", { count: "exact", head: true }).eq("source", "whatsapp"),
   ]);
 
