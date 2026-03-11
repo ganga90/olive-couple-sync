@@ -29,11 +29,9 @@ serve(async (req) => {
       const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY, {
         global: { headers: { Authorization: authHeader } },
       });
-      const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(
-        authHeader.replace('Bearer ', '')
-      );
-      if (!claimsError && claimsData?.claims?.sub) {
-        authenticatedUserId = claimsData.claims.sub as string;
+      const { data: { user }, error: userError } = await authClient.auth.getUser();
+      if (!userError && user?.id) {
+        authenticatedUserId = user.id;
       }
     }
 
