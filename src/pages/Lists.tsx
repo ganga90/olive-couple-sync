@@ -476,12 +476,12 @@ const Lists = () => {
                             {list.couple_id ? (
                               <Badge variant="secondary" className="text-[10px] px-2 py-0.5 h-5 bg-primary/10 text-primary border-0 rounded-full gap-0.5">
                                 <Users className="h-3 w-3" />
-                                Shared
+                                {t('badges.shared')}
                               </Badge>
                             ) : (
-                              <Badge variant="secondary" className="text-[10px] px-2 py-0.5 h-5 bg-stone-100 text-stone-500 border-0 rounded-full gap-0.5">
+                              <Badge variant="secondary" className="text-[10px] px-2 py-0.5 h-5 bg-muted text-muted-foreground border-0 rounded-full gap-0.5">
                                 <Lock className="h-3 w-3" />
-                                Private
+                                {t('badges.private')}
                               </Badge>
                             )}
                           </div>
