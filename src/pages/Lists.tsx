@@ -272,8 +272,8 @@ const Lists = () => {
         <div className="px-4 pt-6 pb-24 md:pb-6 space-y-5 max-w-2xl mx-auto relative z-10">
           {/* Header - Editorial Style */}
           <div className="animate-fade-up">
-            <h1 className="text-4xl font-serif font-bold text-[#2A3C24] mb-1">{t('title')}</h1>
-            <p className="text-stone-500 text-sm">{t('subtitle')}</p>
+            <h1 className="text-4xl font-serif font-bold text-foreground mb-1">{t('title')}</h1>
+            <p className="text-muted-foreground text-sm">{t('subtitle')}</p>
           </div>
 
           {/* Quick Access Section - Top 4 most used lists */}
