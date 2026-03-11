@@ -445,15 +445,22 @@ async function runEnergyTaskSuggester(ctx: AgentContext): Promise<AgentResult> {
   const todayEnd = new Date();
   todayEnd.setHours(23, 59, 59, 999);
 
-  const { data: tasks } = await ctx.supabase
+  let taskQuery = ctx.supabase
     .from("clerk_notes")
     .select("id, summary, priority, category")
-    .eq("author_id", ctx.userId)
     .eq("completed", false)
     .gte("due_date", todayStart.toISOString())
     .lte("due_date", todayEnd.toISOString())
     .order("priority", { ascending: true })
     .limit(10);
+
+  if (ctx.coupleId) {
+    taskQuery = taskQuery.or(`author_id.eq.${ctx.userId},couple_id.eq.${ctx.coupleId}`);
+  } else {
+    taskQuery = taskQuery.eq("author_id", ctx.userId);
+  }
+
+  const { data: tasks } = await taskQuery;
 
   if (!tasks || tasks.length === 0) {
     return { success: true, message: "No tasks scheduled for today", notifyUser: false };
