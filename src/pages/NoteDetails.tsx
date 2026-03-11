@@ -613,7 +613,7 @@ const NoteDetails = () => {
             <div className="card-glass p-5 animate-fade-up" style={{ animationDelay: '200ms' }}>
               <div className="flex items-center gap-2 mb-3">
                 <Tag className="h-4 w-4 text-primary" />
-                <span className="text-sm font-semibold text-stone-700">Tags</span>
+                <span className="text-sm font-semibold text-foreground">{t('tags')}</span>
               </div>
               {isEditing ? (
                 <input
