@@ -387,7 +387,7 @@ const NoteDetails = () => {
                   </PopoverTrigger>
                   <PopoverContent className="w-48 p-2" align="start">
                     <div className="space-y-1">
-                      <p className="text-xs font-medium text-stone-400 px-2 py-1 uppercase tracking-wider">Move to</p>
+                      <p className="text-xs font-medium text-muted-foreground px-2 py-1 uppercase tracking-wider">{t('meta.moveTo')}</p>
                       {lists.map((list) => (
                         <Button
                           key={list.id}
