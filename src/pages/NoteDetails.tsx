@@ -819,7 +819,7 @@ const NoteDetails = () => {
             <DialogTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <OliveLogo size={20} />
-                <span>Olive Assistant</span>
+                <span>{t('assistant.title')}</span>
               </div>
               <Button variant="ghost" size="icon" onClick={handleNewConversation} className="h-8 w-8">
                 <RotateCcw className="h-4 w-4" />
