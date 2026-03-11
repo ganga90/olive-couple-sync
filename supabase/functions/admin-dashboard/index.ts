@@ -11,17 +11,15 @@ async function getVerifiedUserId(req: Request): Promise<string | null> {
   const authHeader = req.headers.get("authorization") || "";
   if (!authHeader.startsWith("Bearer ")) return null;
 
-  // Use Supabase Auth to verify the JWT signature properly
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_ANON_KEY")!,
     { global: { headers: { Authorization: authHeader } } }
   );
 
-  const token = authHeader.replace("Bearer ", "");
-  const { data, error } = await supabase.auth.getClaims(token);
-  if (error || !data?.claims?.sub) return null;
-  return data.claims.sub as string;
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user?.id) return null;
+  return user.id;
 }
 
 serve(async (req: Request) => {
