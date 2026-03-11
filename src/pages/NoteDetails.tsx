@@ -446,7 +446,7 @@ const NoteDetails = () => {
                           className="w-full justify-start rounded-lg"
                           onClick={async () => {
                             await updateNote(note.id, { task_owner: owner.name });
-                            toast.success("Owner updated!");
+                            toast.success(t('actions.ownerUpdated'));
                           }}
                         >
                           {owner.name} {owner.isCurrentUser ? "(You)" : ""}
