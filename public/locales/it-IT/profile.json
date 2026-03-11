@@ -379,6 +379,7 @@
     }
   },
   "agents": {
+    "tabTitle": "Agenti",
     "title": "Agenti in Background",
     "subtitle": "Agenti che lavorano per te automaticamente in background.",
     "activated": "Agente attivato",

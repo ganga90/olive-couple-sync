@@ -424,6 +424,7 @@
     "lastSynced": "Last synced:"
   },
   "agents": {
+    "tabTitle": "Agents",
     "title": "Background Agents",
     "subtitle": "Agents that work for you automatically in the background.",
     "activated": "Agent activated",

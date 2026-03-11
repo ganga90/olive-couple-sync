@@ -379,6 +379,7 @@
     }
   },
   "agents": {
+    "tabTitle": "Agentes",
     "title": "Agentes de Fondo",
     "subtitle": "Agentes que trabajan para ti automáticamente en segundo plano.",
     "activated": "Agente activado",
