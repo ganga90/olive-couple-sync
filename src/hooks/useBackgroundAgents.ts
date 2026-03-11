@@ -336,6 +336,7 @@ export function useBackgroundAgents() {
           agent_id: skillId,
           user_id: user.id,
           couple_id: membership?.couple_id,
+          config_override: { force_run: true }, // Manual triggers bypass frequency throttles
         },
       });
 
