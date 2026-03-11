@@ -420,8 +420,8 @@ const NoteDetails = () => {
                 {/* Owner Chip */}
                 <Popover>
                   <PopoverTrigger asChild>
-                    <button className="meta-chip whitespace-nowrap hover:bg-stone-100 transition-colors">
-                      👤 {note.task_owner || "Unassigned"}
+                   <button className="meta-chip whitespace-nowrap hover:bg-accent/50 transition-colors">
+                      👤 {note.task_owner || t('meta.unassigned')}
                     </button>
                   </PopoverTrigger>
                   <PopoverContent className="w-48 p-2" align="start">
