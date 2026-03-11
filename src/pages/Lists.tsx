@@ -376,7 +376,7 @@ const Lists = () => {
               <div className="icon-squircle w-16 h-16 mx-auto mb-5">
                 <Search className="h-8 w-8 text-stone-400" />
               </div>
-              <h3 className="font-serif font-semibold text-lg text-[#2A3C24] mb-2">
+               <h3 className="font-serif font-semibold text-lg text-foreground mb-2">
                 {t('search.noResults')}
               </h3>
               <p className="text-sm text-stone-500 max-w-xs mx-auto">
