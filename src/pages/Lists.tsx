@@ -257,8 +257,8 @@ const Lists = () => {
         <div className="icon-squircle w-20 h-20 mb-6">
           <ListIcon className="h-10 w-10 text-primary" />
         </div>
-        <h1 className="text-3xl font-serif font-bold text-[#2A3C24] mb-3">{t('title')}</h1>
-        <p className="text-stone-500 mb-8 max-w-xs">{t('signInPrompt')}</p>
+        <h1 className="text-3xl font-serif font-bold text-foreground mb-3">{t('title')}</h1>
+        <p className="text-muted-foreground mb-8 max-w-xs">{t('signInPrompt')}</p>
         <Button variant="accent" size="lg" className="rounded-full px-8" onClick={() => navigate(getLocalizedPath("/sign-in"))}>
           {t('buttons.signIn', { ns: 'common' })}
         </Button>
