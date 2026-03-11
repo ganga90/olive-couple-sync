@@ -135,8 +135,9 @@ const NoteDetails = () => {
   }
 
   const onDelete = async () => {
+    if (!window.confirm(t('actions.deleteConfirm'))) return;
     await deleteNote(note.id);
-    toast.success("Note deleted");
+    toast.success(t('toast.noteDeleted'));
     navigate(-1);
   };
 
