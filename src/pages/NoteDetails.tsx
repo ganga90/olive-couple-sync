@@ -640,7 +640,7 @@ const NoteDetails = () => {
             <div className="card-glass p-5 animate-fade-up" style={{ animationDelay: '250ms' }}>
               <div className="flex items-center gap-2 mb-4">
                 <CheckCircle2 className="h-4 w-4 text-primary" />
-                <span className="text-sm font-semibold text-stone-700">Details</span>
+                <span className="text-sm font-semibold text-foreground">{t('details')}</span>
               </div>
               {isEditing ? (
                 <Textarea
