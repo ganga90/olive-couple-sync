@@ -355,7 +355,12 @@
     "error": "Impossibile salvare le preferenze",
     "signInRequired": "Accedi per configurare le preferenze di Olive"
   },
+  "automation": {
+    "title": "Automazione",
+    "subtitle": "Abilità e agenti in background"
+  },
   "skills": {
+    "tabTitle": "Abilità",
     "title": "Abilità di Olive",
     "subtitle": "Attiva capacità specializzate per Olive. Ogni abilità aggiunge nuovi trigger e comandi.",
     "enabled": "Abilità attivata",
@@ -374,6 +379,7 @@
     }
   },
   "agents": {
+    "tabTitle": "Agenti",
     "title": "Agenti in Background",
     "subtitle": "Agenti che lavorano per te automaticamente in background.",
     "activated": "Agente attivato",

@@ -355,7 +355,12 @@
     "error": "Failed to save preferences",
     "signInRequired": "Sign in to configure Olive preferences"
   },
+  "automation": {
+    "title": "Automation",
+    "subtitle": "Skills & background agents"
+  },
   "skills": {
+    "tabTitle": "Skills",
     "title": "Olive Skills",
     "subtitle": "Enable specialized capabilities for Olive. Each skill adds new triggers and commands.",
     "enabled": "Skill enabled",
@@ -419,6 +424,7 @@
     "lastSynced": "Last synced:"
   },
   "agents": {
+    "tabTitle": "Agents",
     "title": "Background Agents",
     "subtitle": "Agents that work for you automatically in the background.",
     "activated": "Agent activated",

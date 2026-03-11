@@ -355,7 +355,12 @@
     "error": "Error al guardar preferencias",
     "signInRequired": "Inicia sesión para configurar las preferencias de Olive"
   },
+  "automation": {
+    "title": "Automatización",
+    "subtitle": "Habilidades y agentes de fondo"
+  },
   "skills": {
+    "tabTitle": "Habilidades",
     "title": "Habilidades de Olive",
     "subtitle": "Activa capacidades especializadas para Olive. Cada habilidad añade nuevos disparadores y comandos.",
     "enabled": "Habilidad activada",
@@ -374,6 +379,7 @@
     }
   },
   "agents": {
+    "tabTitle": "Agentes",
     "title": "Agentes de Fondo",
     "subtitle": "Agentes que trabajan para ti automáticamente en segundo plano.",
     "activated": "Agente activado",
