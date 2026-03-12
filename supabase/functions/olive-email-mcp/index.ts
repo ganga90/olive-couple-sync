@@ -13,6 +13,7 @@
  * - Primary inbox only — skips Promotions, Social, Updates, Spam
  * - PII filtering on task summaries before storage
  * - User can disconnect anytime, revoking all tokens
+ * - Fetch timeouts on all Gmail API calls (25s list, 15s per message)
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";

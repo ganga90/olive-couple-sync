@@ -56,8 +56,12 @@ export function EmailConnect() {
     }
   }, [searchParams, setSearchParams, t]);
 
+  // Re-check when userId changes or when returning to the page (focus)
   useEffect(() => {
     if (userId) checkConnection();
+    const onFocus = () => { if (userId) checkConnection(); };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [userId]);
 
   async function checkConnection() {
