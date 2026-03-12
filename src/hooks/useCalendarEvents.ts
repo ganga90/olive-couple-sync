@@ -164,6 +164,7 @@ export function useCalendarEvents() {
           end_time: note.end_time,
           all_day: note.all_day ?? false,
           location: note.location,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }
       });
 
