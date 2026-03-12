@@ -930,10 +930,22 @@ async function downloadAndUploadMetaMedia(
     
     console.log('[Meta Media] Downloading from:', mediaDownloadUrl, 'type:', mimeType);
     
-    // Step 2: Download the actual media file
-    const mediaResponse = await fetch(mediaDownloadUrl, {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
+    // Step 2: Download the actual media file (with 30s timeout)
+    const downloadController = new AbortController();
+    const downloadTimeout = setTimeout(() => downloadController.abort(), 30000);
+    
+    let mediaResponse: Response;
+    try {
+      mediaResponse = await fetch(mediaDownloadUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+        signal: downloadController.signal,
+      });
+    } catch (fetchErr) {
+      clearTimeout(downloadTimeout);
+      console.error('[Meta Media] Download timed out or failed:', fetchErr);
+      return null;
+    }
+    clearTimeout(downloadTimeout);
     
     if (!mediaResponse.ok) {
       console.error('[Meta Media] Failed to download media:', mediaResponse.status);
@@ -1952,23 +1964,32 @@ serve(async (req) => {
         const audioMediaItem = mediaItems.find(m => m.mimeType.startsWith('audio/'));
         if (!audioMediaItem) throw new Error('No audio media item found in mediaItems');
 
-        // Step 2: Download raw audio bytes from Meta (WhatsApp Media API)
-        const metaInfoRes = await fetch(`https://graph.facebook.com/v21.0/${audioMediaItem.id}`, {
-          headers: { 'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}` }
-        });
-        if (!metaInfoRes.ok) {
-          const errBody = await metaInfoRes.text().catch(() => '');
-          throw new Error(`Meta media info failed: ${metaInfoRes.status} ${errBody}`);
+        // Step 2: Re-use already-downloaded bytes from downloadAndUploadMetaMedia
+        // The media was already downloaded and uploaded to Supabase Storage above.
+        // We download from Supabase Storage (signed URL) to avoid a second Meta API call.
+        const audioSignedUrl = mediaUrls.find((_, i) => mediaTypes[i]?.startsWith('audio/'));
+        
+        let audioBlob: Blob;
+        if (audioSignedUrl) {
+          console.log('[STT] Re-using audio from Supabase Storage (avoiding double Meta download)');
+          const storageRes = await fetch(audioSignedUrl);
+          if (!storageRes.ok) throw new Error(`Supabase storage fetch failed: ${storageRes.status}`);
+          audioBlob = await storageRes.blob();
+        } else {
+          // Fallback: download from Meta if storage URL not available
+          console.log('[STT] Fallback: downloading audio from Meta directly');
+          const metaInfoRes = await fetch(`https://graph.facebook.com/v21.0/${audioMediaItem.id}`, {
+            headers: { 'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}` }
+          });
+          if (!metaInfoRes.ok) throw new Error(`Meta media info failed: ${metaInfoRes.status}`);
+          const metaInfo = await metaInfoRes.json();
+          const audioRes = await fetch(metaInfo.url, {
+            headers: { 'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}` }
+          });
+          if (!audioRes.ok) throw new Error(`Meta audio download failed: ${audioRes.status}`);
+          audioBlob = await audioRes.blob();
         }
-        const metaInfo = await metaInfoRes.json();
-
-        const audioRes = await fetch(metaInfo.url, {
-          headers: { 'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}` }
-        });
-        if (!audioRes.ok) throw new Error(`Meta audio download failed: ${audioRes.status}`);
-
-        const audioBlob = await audioRes.blob();
-        console.log('[STT] Downloaded audio:', audioBlob.size, 'bytes, type:', audioBlob.type || audioMediaItem.mimeType);
+        console.log('[STT] Audio ready:', audioBlob.size, 'bytes, type:', audioBlob.type || audioMediaItem.mimeType);
 
         if (audioBlob.size === 0) throw new Error('Audio blob is empty (0 bytes)');
 

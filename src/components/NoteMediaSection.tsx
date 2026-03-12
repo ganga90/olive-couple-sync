@@ -24,10 +24,10 @@ export const NoteMediaSection = ({ mediaUrls, location }: NoteMediaSectionProps)
     if (lowerUrl.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i)) {
       return { type: 'image', icon: Image, color: 'text-blue-500 bg-blue-500/10' };
     }
-    if (lowerUrl.match(/\.(mp3|wav|ogg|m4a|aac|flac)(\?|$)/i)) {
+    if (lowerUrl.match(/\.(mp3|wav|ogg|oga|m4a|aac|flac|webm|opus)(\?|$)/i)) {
       return { type: 'audio', icon: Music, color: 'text-purple-500 bg-purple-500/10' };
     }
-    if (lowerUrl.match(/\.(mp4|mov|avi|wmv|webm|mkv)(\?|$)/i)) {
+    if (lowerUrl.match(/\.(mp4|mov|avi|wmv|mkv)(\?|$)/i)) {
       return { type: 'video', icon: Video, color: 'text-red-500 bg-red-500/10' };
     }
     if (lowerUrl.match(/\.pdf(\?|$)/i)) {
