@@ -124,14 +124,19 @@ interface GmailMessage {
  * Dedup is handled via state (tracking processed message IDs) instead.
  */
 async function fetchUnreadEmails(accessToken: string, processedIds: Set<string>): Promise<GmailMessage[]> {
-  // List message IDs
+  // List message IDs with 25s timeout
   const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
   listUrl.searchParams.set("q", "is:unread category:primary");
   listUrl.searchParams.set("maxResults", "20");
 
+  const listController = new AbortController();
+  const listTimeout = setTimeout(() => listController.abort(), 25000);
+
   const listRes = await fetch(listUrl.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },
+    signal: listController.signal,
   });
+  clearTimeout(listTimeout);
 
   if (!listRes.ok) {
     const error = await listRes.text();
