@@ -13,6 +13,7 @@
  * - Primary inbox only — skips Promotions, Social, Updates, Spam
  * - PII filtering on task summaries before storage
  * - User can disconnect anytime, revoking all tokens
+ * - Fetch timeouts on all Gmail API calls (25s list, 15s per message)
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -21,7 +22,7 @@ import { GoogleGenAI } from "https://esm.sh/@google/genai@1.0.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -124,14 +125,19 @@ interface GmailMessage {
  * Dedup is handled via state (tracking processed message IDs) instead.
  */
 async function fetchUnreadEmails(accessToken: string, processedIds: Set<string>): Promise<GmailMessage[]> {
-  // List message IDs
+  // List message IDs with 25s timeout
   const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
   listUrl.searchParams.set("q", "is:unread category:primary");
   listUrl.searchParams.set("maxResults", "20");
 
+  const listController = new AbortController();
+  const listTimeout = setTimeout(() => listController.abort(), 25000);
+
   const listRes = await fetch(listUrl.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },
+    signal: listController.signal,
   });
+  clearTimeout(listTimeout);
 
   if (!listRes.ok) {
     const error = await listRes.text();
@@ -152,10 +158,14 @@ async function fetchUnreadEmails(accessToken: string, processedIds: Set<string>)
 
   for (const msgId of messageIds) {
     try {
+      const msgController = new AbortController();
+      const msgTimeout = setTimeout(() => msgController.abort(), 15000);
+
       const msgRes = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
+        { headers: { Authorization: `Bearer ${accessToken}` }, signal: msgController.signal }
       );
+      clearTimeout(msgTimeout);
 
       if (!msgRes.ok) continue;
 
@@ -372,11 +382,12 @@ Respond ONLY with a valid JSON array (no markdown, no code blocks). Keep each en
     const originalText = `[Email from ${stripPII(email.from)}] ${email.subject}`;
 
     // Insert task — original_text and summary are both required
+    // Add 📧 prefix consistently (same as manual confirm flow)
     const noteData: Record<string, unknown> = {
       author_id: userId,
       couple_id: coupleId,
       original_text: originalText,
-      summary: cleanSummary,
+      summary: `📧 ${cleanSummary}`,
       category: triage.category || "general",
       priority: triage.priority || "medium",
       source: "email",
