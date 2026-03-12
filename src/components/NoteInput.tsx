@@ -207,7 +207,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     setMediaFiles(prev => prev.filter((_, i) => i !== index));
     setMediaPreviews(prev => {
       const preview = prev[index];
-      if (preview && preview !== 'audio' && preview !== 'pdf') {
+      if (preview && preview !== 'audio' && preview !== 'pdf' && preview !== 'video') {
         URL.revokeObjectURL(preview);
       }
       return prev.filter((_, i) => i !== index);
