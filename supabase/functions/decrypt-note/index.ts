@@ -31,21 +31,24 @@ serve(async (req: Request) => {
       );
     }
 
-    const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    let verifiedUserId: string | null = null;
+    try {
+      const token = authHeader.replace('Bearer ', '');
+      const payloadB64 = token.split('.')[1];
+      if (payloadB64) {
+        const payload = JSON.parse(atob(payloadB64));
+        if (payload.sub && typeof payload.sub === 'string' && (!payload.exp || payload.exp * 1000 >= Date.now())) {
+          verifiedUserId = payload.sub;
+        }
+      }
+    } catch { /* invalid token */ }
 
-    const { data: { user }, error: userError } = await supabaseAuth.auth.getUser();
-    if (userError || !user?.id) {
+    if (!verifiedUserId) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    const verifiedUserId = user.id;
 
     const { note_id } = await req.json();
 
