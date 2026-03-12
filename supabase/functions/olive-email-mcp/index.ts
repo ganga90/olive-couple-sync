@@ -157,10 +157,14 @@ async function fetchUnreadEmails(accessToken: string, processedIds: Set<string>)
 
   for (const msgId of messageIds) {
     try {
+      const msgController = new AbortController();
+      const msgTimeout = setTimeout(() => msgController.abort(), 15000);
+
       const msgRes = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
+        { headers: { Authorization: `Bearer ${accessToken}` }, signal: msgController.signal }
       );
+      clearTimeout(msgTimeout);
 
       if (!msgRes.ok) continue;
 
