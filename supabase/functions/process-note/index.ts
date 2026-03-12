@@ -701,8 +701,8 @@ async function transcribeAudioWithElevenLabs(audioUrl: string): Promise<string> 
     // Prepare form data for ElevenLabs
     const formData = new FormData();
     formData.append('file', audioBlob, 'audio.webm');
-    formData.append('model_id', 'scribe_v1');
-    formData.append('language_code', 'eng');
+    formData.append('model_id', 'scribe_v2');
+    // Don't hardcode language — let ElevenLabs auto-detect for multilingual support
     
     console.log('[ElevenLabs] Sending to transcription API...');
     

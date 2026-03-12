@@ -2158,57 +2158,105 @@ serve(async (req) => {
         return reply('Sorry, I had trouble processing that image. Please try again or add a caption describing what you want to save.');
       }
 
-      // Insert the processed note
+      // ====================================================================
+      // Handle both single and multiple notes from process-note
+      // ====================================================================
+      const userMediaLang = (mediaProfile.language_preference || 'en').replace(/-.*/, ''); // 'it-IT' → 'it'
+      
       try {
-        const noteData = {
-          author_id: mediaUserId,
-          couple_id: mediaEffectiveCoupleId,
-          original_text: processData.summary || 'Media attachment',
-          summary: processData.summary || 'Media attachment',
-          category: processData.category || 'task',
-          due_date: processData.due_date || null,
-          reminder_time: processData.reminder_time || null,
-          recurrence_frequency: processData.recurrence_frequency || null,
-          recurrence_interval: processData.recurrence_interval || null,
-          priority: processData.priority || 'medium',
-          tags: processData.tags || [],
-          items: processData.items || [],
-          task_owner: processData.task_owner || null,
-          list_id: processData.list_id || null,
-          media_urls: mediaUrls,
-          completed: false,
-        };
+        const isMultiple = processData.multiple === true && Array.isArray(processData.notes) && processData.notes.length > 0;
+        const notesToInsert = isMultiple ? processData.notes : [processData];
 
-        const { data: insertedNote, error: insertError } = await supabase
-          .from('clerk_notes')
-          .insert(noteData)
-          .select('id, summary, list_id')
-          .single();
+        const insertedNotes: Array<{ id: string; summary: string; list_id: string | null }> = [];
 
-        if (insertError) throw insertError;
+        for (const note of notesToInsert) {
+          const noteSummary = note.summary || processData.summary || 'Media attachment';
+          const noteData = {
+            author_id: mediaUserId,
+            couple_id: mediaEffectiveCoupleId,
+            original_text: note.original_text || noteSummary,
+            summary: noteSummary,
+            category: note.category || processData.category || 'task',
+            due_date: note.due_date || null,
+            reminder_time: note.reminder_time || null,
+            recurrence_frequency: note.recurrence_frequency || null,
+            recurrence_interval: note.recurrence_interval || null,
+            priority: note.priority || 'medium',
+            tags: note.tags || [],
+            items: note.items || [],
+            task_owner: note.task_owner || null,
+            list_id: note.list_id || processData.list_id || null,
+            media_urls: mediaUrls,
+            completed: false,
+          };
 
+          const { data: insertedNote, error: insertError } = await supabase
+            .from('clerk_notes')
+            .insert(noteData)
+            .select('id, summary, list_id')
+            .single();
+
+          if (insertError) {
+            console.error('[WhatsApp] Insert error for media note:', insertError);
+            continue; // Skip failed inserts, try the rest
+          }
+          insertedNotes.push(insertedNote);
+        }
+
+        if (insertedNotes.length === 0) {
+          throw new Error('All note insertions failed');
+        }
+
+        // Resolve list name from the first note
         let listName = 'Tasks';
-        if (insertedNote.list_id) {
+        const firstListId = insertedNotes[0].list_id;
+        if (firstListId) {
           const { data: listData } = await supabase
             .from('clerk_lists')
             .select('name')
-            .eq('id', insertedNote.list_id)
+            .eq('id', firstListId)
             .single();
           listName = listData?.name || 'Tasks';
         }
 
-        const confirmMsg = `✅ Saved: ${insertedNote.summary}\n📂 Added to: ${listName}\n\n🔗 Manage: https://witholive.app`;
-        
-        // Store as referenced entity so follow-up commands ("move that task") work
-        await saveReferencedEntity(
-          { id: insertedNote.id, summary: insertedNote.summary, list_id: insertedNote.list_id || undefined },
-          confirmMsg
-        );
-        
+        // Build multilingual confirmation message
+        let confirmMsg: string;
+        if (insertedNotes.length === 1) {
+          confirmMsg = `✅ ${
+            userMediaLang === 'it' ? 'Salvato' : userMediaLang === 'es' ? 'Guardado' : 'Saved'
+          }: ${insertedNotes[0].summary}\n📂 ${
+            userMediaLang === 'it' ? 'Aggiunto a' : userMediaLang === 'es' ? 'Añadido a' : 'Added to'
+          }: ${listName}\n\n🔗 Manage: https://witholive.app`;
+        } else {
+          const itemList = insertedNotes.map((n, i) => `  ${i + 1}. ${n.summary}`).join('\n');
+          confirmMsg = `✅ ${
+            userMediaLang === 'it' ? `Salvati ${insertedNotes.length} elementi` 
+            : userMediaLang === 'es' ? `Guardados ${insertedNotes.length} elementos` 
+            : `Saved ${insertedNotes.length} items`
+          }:\n${itemList}\n📂 ${
+            userMediaLang === 'it' ? 'Aggiunti a' : userMediaLang === 'es' ? 'Añadidos a' : 'Added to'
+          }: ${listName}\n\n🔗 Manage: https://witholive.app`;
+        }
+
+        // Store last note as referenced entity (safe — session may not exist yet)
+        try {
+          const lastNote = insertedNotes[insertedNotes.length - 1];
+          await saveReferencedEntity(
+            { id: lastNote.id, summary: lastNote.summary, list_id: lastNote.list_id || undefined },
+            confirmMsg
+          );
+        } catch (refErr) {
+          console.warn('[WhatsApp] Could not save referenced entity (session not initialized):', (refErr as Error).message);
+        }
+
         return reply(confirmMsg);
       } catch (insertErr) {
         console.error('Database insertion error for media note:', insertErr);
-        return reply('I analyzed your image but had trouble saving it. Please try again.');
+        return reply(
+          userMediaLang === 'it' ? 'Ho analizzato la tua immagine ma non sono riuscito a salvarla. Riprova.'
+          : userMediaLang === 'es' ? 'Analicé tu imagen pero tuve problemas al guardarla. Inténtalo de nuevo.'
+          : 'I analyzed your image but had trouble saving it. Please try again.'
+        );
       }
     }
 
