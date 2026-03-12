@@ -940,8 +940,12 @@ async function runEmailTriageAgent(ctx: AgentContext): Promise<AgentResult> {
   notificationMsg += `Scanned ${emailsProcessed} email${emailsProcessed > 1 ? "s" : ""} from your primary inbox.\n\n`;
   
   if (tasksCreated > 0) {
+    // Extract just the bullet-point action items from the summary (skip the header/footer lines)
+    const summaryLines = (data.summary || "").split("\n").filter((l: string) => l.trim().startsWith("•"));
+    const actionList = summaryLines.length > 0 ? summaryLines.join("\n") : "";
+    
     notificationMsg += `✅ Found ${tasksCreated} action item${tasksCreated > 1 ? "s" : ""}:\n\n`;
-    notificationMsg += `${data.summary || ""}\n\n`;
+    if (actionList) notificationMsg += `${actionList}\n\n`;
     notificationMsg += `Tasks have been added to your Olive inbox. Open the app to review.`;
   } else {
     notificationMsg += `All clear — no action items found. You're on top of it! 🎉`;
