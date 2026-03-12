@@ -848,7 +848,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileSelect}
-                accept="image/*,audio/*,application/pdf"
+                accept="image/*,audio/*,video/*,application/pdf"
                 multiple
                 className="hidden"
               />
