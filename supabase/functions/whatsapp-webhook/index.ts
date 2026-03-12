@@ -6225,6 +6225,7 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
       user_id: userId,
       couple_id: effectiveCoupleId,
       timezone: profile.timezone || 'America/New_York',
+      source: 'whatsapp',
       force_priority: isUrgent ? 'high' : undefined
     };
     
