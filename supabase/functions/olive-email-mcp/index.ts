@@ -381,11 +381,12 @@ Respond ONLY with a valid JSON array (no markdown, no code blocks). Keep each en
     const originalText = `[Email from ${stripPII(email.from)}] ${email.subject}`;
 
     // Insert task — original_text and summary are both required
+    // Add 📧 prefix consistently (same as manual confirm flow)
     const noteData: Record<string, unknown> = {
       author_id: userId,
       couple_id: coupleId,
       original_text: originalText,
-      summary: cleanSummary,
+      summary: `📧 ${cleanSummary}`,
       category: triage.category || "general",
       priority: triage.priority || "medium",
       source: "email",
