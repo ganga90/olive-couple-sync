@@ -383,7 +383,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     }
   };
 
-  const clearMediaFiles = useCallback(() => {
+  const clearMediaFiles = () => {
     mediaPreviews.forEach(preview => {
       if (preview && preview !== 'audio' && preview !== 'pdf' && preview !== 'video') {
         URL.revokeObjectURL(preview);
@@ -391,18 +391,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     });
     setMediaFiles([]);
     setMediaPreviews([]);
-  }, [mediaPreviews]);
-
-  // Cleanup object URLs on unmount to prevent memory leaks
-  React.useEffect(() => {
-    return () => {
-      mediaPreviews.forEach(preview => {
-        if (preview && preview !== 'audio' && preview !== 'pdf' && preview !== 'video') {
-          URL.revokeObjectURL(preview);
-        }
-      });
-    };
-  }, [mediaPreviews]);
+  };
 
   const handleCloseRecap = () => {
     setProcessedNote(null);
