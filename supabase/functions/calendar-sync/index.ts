@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 serve(async (req) => {
@@ -22,10 +22,10 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get user's calendar connection
+    // Get user's calendar connection (only needed columns — no SELECT *)
     const { data: connection, error: connError } = await supabase
       .from("calendar_connections")
-      .select("*")
+      .select("id, google_email, calendar_name, sync_enabled, last_sync_time, access_token, refresh_token, token_expiry, primary_calendar_id, is_active")
       .eq("user_id", user_id)
       .eq("is_active", true)
       .maybeSingle();
@@ -47,7 +47,6 @@ serve(async (req) => {
     let accessToken = connection.access_token;
 
     if (tokenExpiry - now < 5 * 60 * 1000) {
-      // Token expires in less than 5 minutes, refresh it
       console.log('[calendar-sync] Refreshing token...');
       
       const clientId = Deno.env.get("GOOGLE_CALENDAR_CLIENT_ID");
@@ -76,7 +75,6 @@ serve(async (req) => {
       const newTokens = await tokenResponse.json();
       accessToken = newTokens.access_token;
 
-      // Update token in database
       await supabase
         .from("calendar_connections")
         .update({
@@ -114,7 +112,12 @@ serve(async (req) => {
         console.warn('[calendar-sync] Token revoke failed (may already be revoked)');
       }
 
-      // Delete connection
+      // Delete associated events first, then connection
+      await supabase
+        .from("calendar_events")
+        .delete()
+        .eq("connection_id", connection.id);
+
       await supabase
         .from("calendar_connections")
         .delete()
@@ -127,10 +130,9 @@ serve(async (req) => {
     }
 
     if (action === 'fetch_events') {
-      // Fetch events from Google Calendar
       const now = new Date();
-      const timeMin = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days ago
-      const timeMax = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString(); // 90 days ahead
+      const timeMin = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const timeMax = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString();
 
       const eventsUrl = new URL(
         `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(connection.primary_calendar_id)}/events`
@@ -156,7 +158,21 @@ serve(async (req) => {
 
       console.log('[calendar-sync] Fetched', events.length, 'events from Google Calendar');
 
-      // Sync events to database
+      // Sync events to database — delete stale events first to prevent ghost entries
+      // Get existing google_event_ids
+      const googleEventIds = events.map((e: any) => e.id).filter(Boolean);
+      
+      // Remove events that no longer exist in Google (cancelled/deleted)
+      if (googleEventIds.length > 0) {
+        await supabase
+          .from("calendar_events")
+          .delete()
+          .eq("connection_id", connection.id)
+          .eq("event_type", "from_calendar")
+          .not("google_event_id", "in", `(${googleEventIds.map((id: string) => `"${id}"`).join(",")})`);
+      }
+
+      // Upsert current events
       for (const event of events) {
         if (!event.start || !event.end) continue;
 

@@ -76,14 +76,15 @@ export function useCalendarEvents() {
     }
   }, [userId]);
 
-  // Fetch calendar events from local DB
+  // Fetch calendar events from local DB (filtered by user's connection)
   const fetchEvents = useCallback(async () => {
-    if (!userId) return;
+    if (!userId || !connection?.id) return;
     
     try {
       const { data, error } = await supabase
         .from('calendar_events')
         .select('*')
+        .eq('connection_id', connection.id)
         .order('start_time', { ascending: true });
       
       if (error) throw error;
@@ -92,7 +93,7 @@ export function useCalendarEvents() {
     } catch (error) {
       console.error('Failed to fetch calendar events:', error);
     }
-  }, [userId]);
+  }, [userId, connection?.id]);
 
   // Sync events from Google Calendar
   const syncEvents = useCallback(async () => {

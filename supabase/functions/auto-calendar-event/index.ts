@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 serve(async (req) => {
@@ -49,7 +49,18 @@ serve(async (req) => {
       );
     }
 
-    console.log('[auto-calendar-event] Creating', calendarWorthy.length, 'events for user', user_id);
+    // Get user's timezone from profile
+    let userTimezone = 'UTC';
+    try {
+      const { data: profile } = await supabase
+        .from('clerk_profiles')
+        .select('timezone')
+        .eq('id', user_id)
+        .single();
+      userTimezone = profile?.timezone || 'UTC';
+    } catch { /* use UTC */ }
+
+    console.log('[auto-calendar-event] Creating', calendarWorthy.length, 'events for user', user_id, 'tz:', userTimezone);
 
     // Refresh token if needed
     let accessToken = connection.access_token;
@@ -96,12 +107,29 @@ serve(async (req) => {
     }
 
     let createdCount = 0;
+    let skippedCount = 0;
 
     for (const note of calendarWorthy) {
       try {
         const startTime = note.due_date || note.reminder_time;
         const startDate = new Date(startTime);
-        const isAllDay = startTime.length <= 10 || (startDate.getHours() === 0 && startDate.getMinutes() === 0);
+        const isAllDay = startTime.length <= 10 || (startDate.getHours() === 12 && startDate.getMinutes() === 0);
+
+        // DUPLICATE PREVENTION: Check if a calendar event already exists for this note
+        if (note.id) {
+          const { data: existing } = await supabase
+            .from('calendar_events')
+            .select('id')
+            .eq('connection_id', connection.id)
+            .eq('note_id', note.id)
+            .limit(1);
+
+          if (existing && existing.length > 0) {
+            console.log('[auto-calendar-event] ⏭️ Skipped (already exists):', note.summary);
+            skippedCount++;
+            continue;
+          }
+        }
 
         const event: any = {
           summary: note.summary || 'Olive reminder',
@@ -114,9 +142,9 @@ serve(async (req) => {
           nextDay.setDate(nextDay.getDate() + 1);
           event.end = { date: nextDay.toISOString().split('T')[0] };
         } else {
-          event.start = { dateTime: startDate.toISOString(), timeZone: 'UTC' };
+          event.start = { dateTime: startDate.toISOString(), timeZone: userTimezone };
           const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-          event.end = { dateTime: endDate.toISOString(), timeZone: 'UTC' };
+          event.end = { dateTime: endDate.toISOString(), timeZone: userTimezone };
         }
 
         event.reminders = {
@@ -160,7 +188,9 @@ serve(async (req) => {
             end_time: googleEvent.end.dateTime || googleEvent.end.date,
             all_day: !googleEvent.start.dateTime,
             event_type: 'from_note',
+            note_id: note.id || null,
             etag: googleEvent.etag,
+            timezone: userTimezone,
           });
       } catch (err) {
         console.error('[auto-calendar-event] Error for:', note.summary, err);
@@ -168,7 +198,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, created: createdCount }),
+      JSON.stringify({ success: true, created: createdCount, skipped: skippedCount }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

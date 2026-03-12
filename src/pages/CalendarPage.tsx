@@ -123,6 +123,18 @@ const CalendarPage = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Today button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setCurrentDate(new Date());
+                setSelectedDate(new Date());
+              }}
+              className="text-xs text-muted-foreground rounded-full px-3"
+            >
+              {t('actions.today', 'Today')}
+            </Button>
             {connection?.connected && (
               <Button
                 variant="ghost"

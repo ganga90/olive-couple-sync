@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 serve(async (req) => {
@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { user_id, note_id, title, description, start_time, end_time, all_day, location } = await req.json();
+    const { user_id, note_id, title, description, start_time, end_time, all_day, location, timezone } = await req.json();
 
     if (!user_id || !title || !start_time) {
       throw new Error('Missing required fields: user_id, title, start_time');
@@ -25,7 +25,7 @@ serve(async (req) => {
     // Get user's calendar connection
     const { data: connection, error: connError } = await supabase
       .from("calendar_connections")
-      .select("*")
+      .select("id, access_token, refresh_token, token_expiry, primary_calendar_id")
       .eq("user_id", user_id)
       .eq("is_active", true)
       .maybeSingle();
@@ -72,6 +72,9 @@ serve(async (req) => {
         .eq("id", connection.id);
     }
 
+    // Resolve user timezone
+    const userTimezone = timezone || 'UTC';
+
     // Build Google Calendar event
     const event: any = {
       summary: title,
@@ -82,7 +85,7 @@ serve(async (req) => {
       event.location = location;
     }
 
-    // Parse dates
+    // Parse dates — use user's timezone instead of forcing UTC
     const startDate = new Date(start_time);
     
     if (all_day) {
@@ -95,12 +98,12 @@ serve(async (req) => {
         event.end = { date: nextDay.toISOString().split('T')[0] };
       }
     } else {
-      event.start = { dateTime: startDate.toISOString(), timeZone: 'UTC' };
+      event.start = { dateTime: startDate.toISOString(), timeZone: userTimezone };
       if (end_time) {
-        event.end = { dateTime: new Date(end_time).toISOString(), timeZone: 'UTC' };
+        event.end = { dateTime: new Date(end_time).toISOString(), timeZone: userTimezone };
       } else {
         const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // 1 hour default
-        event.end = { dateTime: endDate.toISOString(), timeZone: 'UTC' };
+        event.end = { dateTime: endDate.toISOString(), timeZone: userTimezone };
       }
     }
 
@@ -109,11 +112,11 @@ serve(async (req) => {
       useDefault: false,
       overrides: [
         { method: "popup", minutes: 30 },
-        { method: "email", minutes: 1440 }, // 24 hours
+        { method: "popup", minutes: 1440 }, // 24 hours
       ],
     };
 
-    console.log('[calendar-create-event] Creating event:', event.summary);
+    console.log('[calendar-create-event] Creating event:', event.summary, 'tz:', userTimezone);
 
     // Create event in Google Calendar
     const createResponse = await fetch(
@@ -152,6 +155,7 @@ serve(async (req) => {
         event_type: note_id ? 'from_note' : 'manual',
         note_id,
         etag: googleEvent.etag,
+        timezone: userTimezone,
       })
       .select()
       .single();
