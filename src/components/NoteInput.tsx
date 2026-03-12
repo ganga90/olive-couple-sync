@@ -68,22 +68,30 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     const newFiles: File[] = [];
     const newPreviews: string[] = [];
 
-    // Supported file types: images, audio, PDFs
-    const supportedTypes = ['image/', 'audio/', 'application/pdf'];
+    // Supported file types: images, audio, video, PDFs
+    const supportedTypes = ['image/', 'audio/', 'video/', 'application/pdf'];
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
 
     for (let i = 0; i < files.length && mediaFiles.length + newFiles.length < 5; i++) {
       const file = files[i];
       const isSupported = supportedTypes.some(type => file.type.startsWith(type));
 
-      if (isSupported) {
-        newFiles.push(file);
-        if (file.type.startsWith('image/')) {
-          newPreviews.push(URL.createObjectURL(file));
-        } else if (file.type === 'application/pdf') {
-          newPreviews.push('pdf');
-        } else {
-          newPreviews.push('audio');
-        }
+      if (!isSupported) continue;
+
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(t('brainDump.fileTooLarge') || `File "${file.name}" exceeds 50MB limit`);
+        continue;
+      }
+
+      newFiles.push(file);
+      if (file.type.startsWith('image/')) {
+        newPreviews.push(URL.createObjectURL(file));
+      } else if (file.type === 'application/pdf') {
+        newPreviews.push('pdf');
+      } else if (file.type.startsWith('video/')) {
+        newPreviews.push('video');
+      } else {
+        newPreviews.push('audio');
       }
     }
 
@@ -157,22 +165,30 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     const newFiles: File[] = [];
     const newPreviews: string[] = [];
 
-    // Supported file types: images, audio, PDFs
-    const supportedTypes = ['image/', 'audio/', 'application/pdf'];
+    // Supported file types: images, audio, video, PDFs
+    const supportedTypes = ['image/', 'audio/', 'video/', 'application/pdf'];
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
 
     for (let i = 0; i < files.length && mediaFiles.length + newFiles.length < 5; i++) {
       const file = files[i];
       const isSupported = supportedTypes.some(type => file.type.startsWith(type));
 
-      if (isSupported) {
-        newFiles.push(file);
-        if (file.type.startsWith('image/')) {
-          newPreviews.push(URL.createObjectURL(file));
-        } else if (file.type === 'application/pdf') {
-          newPreviews.push('pdf');
-        } else {
-          newPreviews.push('audio');
-        }
+      if (!isSupported) continue;
+
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(t('brainDump.fileTooLarge') || `File "${file.name}" exceeds 50MB limit`);
+        continue;
+      }
+
+      newFiles.push(file);
+      if (file.type.startsWith('image/')) {
+        newPreviews.push(URL.createObjectURL(file));
+      } else if (file.type === 'application/pdf') {
+        newPreviews.push('pdf');
+      } else if (file.type.startsWith('video/')) {
+        newPreviews.push('video');
+      } else {
+        newPreviews.push('audio');
       }
     }
 
@@ -191,7 +207,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     setMediaFiles(prev => prev.filter((_, i) => i !== index));
     setMediaPreviews(prev => {
       const preview = prev[index];
-      if (preview && preview !== 'audio' && preview !== 'pdf') {
+      if (preview && preview !== 'audio' && preview !== 'pdf' && preview !== 'video') {
         URL.revokeObjectURL(preview);
       }
       return prev.filter((_, i) => i !== index);
@@ -369,7 +385,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
 
   const clearMediaFiles = () => {
     mediaPreviews.forEach(preview => {
-      if (preview && preview !== 'audio' && preview !== 'pdf') {
+      if (preview && preview !== 'audio' && preview !== 'pdf' && preview !== 'video') {
         URL.revokeObjectURL(preview);
       }
     });
@@ -597,7 +613,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileSelect}
-                  accept="image/*,audio/*,application/pdf"
+                  accept="image/*,audio/*,video/*,application/pdf"
                   multiple
                   className="hidden"
                 />
@@ -668,6 +684,13 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                     {preview === 'audio' ? (
                       <div className="w-16 h-16 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
                         <Mic className="w-6 h-6 text-primary" />
+                      </div>
+                    ) : preview === 'video' ? (
+                      <div className="w-16 h-16 rounded-xl bg-red-500/10 flex items-center justify-center border border-red-500/20">
+                        <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
                       </div>
                     ) : preview === 'pdf' ? (
                       <div className="w-16 h-16 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
@@ -771,6 +794,13 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                     <div className="w-16 h-16 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
                       <Mic className="w-6 h-6 text-primary" />
                     </div>
+                  ) : preview === 'video' ? (
+                    <div className="w-16 h-16 rounded-xl bg-red-500/10 flex items-center justify-center border border-red-500/20">
+                      <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
                   ) : preview === 'pdf' ? (
                     <div className="w-16 h-16 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
                       <svg className="w-6 h-6 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -832,7 +862,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileSelect}
-                accept="image/*,audio/*,application/pdf"
+                accept="image/*,audio/*,video/*,application/pdf"
                 multiple
                 className="hidden"
               />
