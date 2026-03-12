@@ -26,12 +26,20 @@ serve(async (req) => {
     let authenticatedUserId: string | null = null;
 
     if (authHeader?.startsWith('Bearer ')) {
-      const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY, {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const { data: { user }, error: userError } = await authClient.auth.getUser();
-      if (!userError && user?.id) {
-        authenticatedUserId = user.id;
+      try {
+        const token = authHeader.replace('Bearer ', '');
+        const payloadB64 = token.split('.')[1];
+        if (payloadB64) {
+          const payload = JSON.parse(atob(payloadB64));
+          if (payload.sub && typeof payload.sub === 'string') {
+            // Check token expiry
+            if (!payload.exp || payload.exp * 1000 >= Date.now()) {
+              authenticatedUserId = payload.sub;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[manage-memories] JWT decode error:', e);
       }
     }
 
