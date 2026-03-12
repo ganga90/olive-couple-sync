@@ -165,22 +165,30 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     const newFiles: File[] = [];
     const newPreviews: string[] = [];
 
-    // Supported file types: images, audio, PDFs
-    const supportedTypes = ['image/', 'audio/', 'application/pdf'];
+    // Supported file types: images, audio, video, PDFs
+    const supportedTypes = ['image/', 'audio/', 'video/', 'application/pdf'];
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
 
     for (let i = 0; i < files.length && mediaFiles.length + newFiles.length < 5; i++) {
       const file = files[i];
       const isSupported = supportedTypes.some(type => file.type.startsWith(type));
 
-      if (isSupported) {
-        newFiles.push(file);
-        if (file.type.startsWith('image/')) {
-          newPreviews.push(URL.createObjectURL(file));
-        } else if (file.type === 'application/pdf') {
-          newPreviews.push('pdf');
-        } else {
-          newPreviews.push('audio');
-        }
+      if (!isSupported) continue;
+
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(t('brainDump.fileTooLarge') || `File "${file.name}" exceeds 50MB limit`);
+        continue;
+      }
+
+      newFiles.push(file);
+      if (file.type.startsWith('image/')) {
+        newPreviews.push(URL.createObjectURL(file));
+      } else if (file.type === 'application/pdf') {
+        newPreviews.push('pdf');
+      } else if (file.type.startsWith('video/')) {
+        newPreviews.push('video');
+      } else {
+        newPreviews.push('audio');
       }
     }
 
