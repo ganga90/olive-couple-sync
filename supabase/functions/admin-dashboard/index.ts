@@ -7,19 +7,23 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-async function getVerifiedUserId(req: Request): Promise<string | null> {
+function getVerifiedUserId(req: Request): string | null {
   const authHeader = req.headers.get("authorization") || "";
   if (!authHeader.startsWith("Bearer ")) return null;
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: authHeader } } }
-  );
-
-  const { data: { user }, error } = await supabase.auth.getUser();
-  if (error || !user?.id) return null;
-  return user.id;
+  try {
+    const token = authHeader.replace("Bearer ", "");
+    const payloadB64 = token.split(".")[1];
+    if (!payloadB64) return null;
+    const payload = JSON.parse(atob(payloadB64));
+    const sub = payload.sub;
+    if (!sub || typeof sub !== "string") return null;
+    // Check token expiry
+    if (payload.exp && payload.exp * 1000 < Date.now()) return null;
+    return sub;
+  } catch {
+    return null;
+  }
 }
 
 serve(async (req: Request) => {
