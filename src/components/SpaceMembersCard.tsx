@@ -91,6 +91,16 @@ export const SpaceMembersCard = () => {
 
   const handleUnlinkSpace = async () => {
     if (!currentCouple || !user) return;
+
+    // Prevent owner from leaving if there are other members without another owner
+    if (isOwner && memberCount > 1) {
+      const otherOwners = members.filter(m => m.user_id !== user.id && m.role === 'owner');
+      if (otherOwners.length === 0) {
+        toast.error(t('partnerInfo.mustTransferOwnership', 'You must transfer ownership to another member before leaving.'));
+        return;
+      }
+    }
+
     setUnlinkLoading(true);
     try {
       const supabase = getSupabase();
@@ -106,6 +116,14 @@ export const SpaceMembersCard = () => {
         .delete()
         .eq("couple_id", currentCouple.id)
         .eq("user_id", user.id);
+
+      // If owner is the last member, delete the space entirely
+      if (memberCount <= 1) {
+        await supabase
+          .from("clerk_couples")
+          .delete()
+          .eq("id", currentCouple.id);
+      }
 
       localStorage.removeItem('olive_current_couple');
       toast.success(t('partnerInfo.leftSpace', 'Successfully left the space!'));
