@@ -23,20 +23,8 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
   const [inviteUrl, setInviteUrl] = useState("");
   const [inviteMessage, setInviteMessage] = useState("");
   const [copied, setCopied] = useState(false);
-  const [authDebug, setAuthDebug] = useState<string>("");
   const { createCouple } = useSupabaseCouple();
   const { user } = useAuth();
-  
-
-  // Debug auth state - removed problematic health check
-  useEffect(() => {
-    const debugAuth = async () => {
-      if (user) {
-        setAuthDebug('Auth working correctly');
-      }
-    };
-    debugAuth();
-  }, [user]);
 
   const handleSetupOnly = async () => {
     setLoading(true);
