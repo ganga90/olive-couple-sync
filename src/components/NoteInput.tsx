@@ -438,6 +438,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         is_sensitive: processedNote.is_sensitive || false,
         encrypted_original_text: processedNote.encrypted_original_text || null,
         encrypted_summary: processedNote.encrypted_summary || null,
+        reminder_time: processedNote.reminderTime || null,
+        recurrence_frequency: processedNote.recurrenceFrequency || null,
+        recurrence_interval: processedNote.recurrenceInterval || null,
       };
 
 
