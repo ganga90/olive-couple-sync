@@ -266,6 +266,10 @@ export const SpaceMembersCard = () => {
                   {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </div>
+              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {t('partnerInfo.expiresIn7Days', 'This link expires in 7 days')}
+              </p>
               <Button onClick={() => { setInviteUrl(""); setInviteMessage(""); setShowInviteForm(false); }} size="sm" variant="ghost" className="w-full">
                 {t('partnerInfo.done', 'Done')}
               </Button>
