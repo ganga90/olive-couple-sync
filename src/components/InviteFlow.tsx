@@ -148,12 +148,6 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
           </p>
         </div>
 
-        {authDebug && (
-          <div className="flex items-center gap-2 p-3 bg-warning/10 border border-warning/30 rounded-lg">
-            <AlertTriangle className="h-4 w-4 text-warning" />
-            <span className="text-xs text-warning">{authDebug}</span>
-          </div>
-        )}
 
         <div className="space-y-3">
           <Button 
