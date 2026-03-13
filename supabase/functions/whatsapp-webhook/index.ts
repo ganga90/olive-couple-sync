@@ -5834,30 +5834,24 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
         return reply(t('partner_no_space', userLang));
       }
 
-      // 2. Get couple data + resolve partner
-      const { data: coupleData } = await supabase
-        .from('clerk_couples')
-        .select('you_name, partner_name, created_by')
-        .eq('id', coupleId)
-        .single();
+      // 2. Resolve all members via RPC for proper multi-member support
+      const { data: spaceMembers } = await supabase.rpc('get_space_members', {
+        p_couple_id: coupleId,
+      });
 
-      if (!coupleData) {
+      if (!spaceMembers || spaceMembers.length === 0) {
         return reply('I couldn\'t find your shared space. Make sure it\'s set up correctly!');
       }
 
-      // Get ALL other members in the couple
-      const { data: otherMembers } = await supabase
-        .from('clerk_couple_members')
-        .select('user_id')
-        .eq('couple_id', coupleId)
-        .neq('user_id', userId);
+      const currentMember = spaceMembers.find((m: any) => m.user_id === userId);
+      const otherMembers = spaceMembers.filter((m: any) => m.user_id !== userId);
 
-      if (!otherMembers || otherMembers.length === 0) {
+      if (otherMembers.length === 0) {
         return reply('I couldn\'t find your partner in the shared space. Make sure they\'ve accepted your invite!');
       }
 
       // Look up profiles for ALL other members and pick the one with a phone number
-      const otherUserIds = otherMembers.map(m => m.user_id);
+      const otherUserIds = otherMembers.map((m: any) => m.user_id);
       console.log('[PARTNER_MESSAGE] Other members found:', otherUserIds.length, 'IDs:', otherUserIds.join(', '));
 
       const { data: candidateProfiles } = await supabase
@@ -5882,9 +5876,10 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
       }
 
       const partnerId = partnerProfile.id;
-      const isCreator = coupleData.created_by === userId;
-      const partnerName = isCreator ? (coupleData.partner_name || partnerProfile.display_name || 'Partner') : (coupleData.you_name || partnerProfile.display_name || 'Partner');
-      const senderName = isCreator ? (coupleData.you_name || 'Your partner') : (coupleData.partner_name || 'Your partner');
+      // Use member display_name from the RPC for accurate name resolution
+      const partnerMemberRecord = otherMembers.find((m: any) => m.user_id === partnerId);
+      const partnerName = partnerMemberRecord?.display_name || partnerProfile.display_name || 'Partner';
+      const senderName = currentMember?.display_name || 'Your partner';
 
       console.log('[PARTNER_MESSAGE] Resolved: sender=' + senderName + ', partner=' + partnerName + ', partnerId=' + partnerId?.substring(0, 15));
 
