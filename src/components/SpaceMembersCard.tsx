@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/providers/AuthProvider";
-import { User2, Share2, Plus, Check, Copy, Trash2, AlertTriangle, Crown, Users, UserMinus } from "lucide-react";
+import { User2, Share2, Plus, Check, Copy, Trash2, AlertTriangle, Crown, Users, UserMinus, Clock } from "lucide-react";
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 import { useLanguage } from "@/providers/LanguageProvider";
 import { useTranslation } from "react-i18next";
