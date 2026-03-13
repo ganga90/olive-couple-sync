@@ -614,11 +614,19 @@ serve(async (req) => {
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
+    // Body must be parsed exactly once — clone the request first
+    const bodyText = await req.text();
+    let body: Record<string, any> = {};
+    try {
+      body = JSON.parse(bodyText);
+    } catch {
+      body = {};
+    }
+
     let userId: string;
 
     if (authError || !user) {
       // Try to get user ID from request body for service-to-service calls
-      const body = await req.json();
       if (body.user_id) {
         userId = body.user_id;
       } else {
@@ -626,14 +634,6 @@ serve(async (req) => {
       }
     } else {
       userId = user.id;
-    }
-
-    // Re-parse body if needed
-    let body;
-    try {
-      body = await req.json();
-    } catch {
-      body = {};
     }
 
     const { action, ...params } = body;
