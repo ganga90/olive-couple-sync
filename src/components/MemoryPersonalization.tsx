@@ -604,7 +604,7 @@ export function MemoryPersonalization() {
                             
                             <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/50">
                               <span className="text-xs text-muted-foreground">
-                                {new Date(memory.created_at).toLocaleDateString()}
+                                {new Date(memory.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                               </span>
                               <div className="flex gap-1">
                                 <Button

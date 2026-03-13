@@ -10,7 +10,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 // Types
@@ -290,19 +290,27 @@ const actions: Record<string, ActionHandler> = {
 
         // Also append to profile if it's a preference
         if (file_type === 'profile' && fact.importance >= 4) {
-          await supabase.rpc('get_or_create_memory_file', {
-            p_user_id: userId,
-            p_file_type: 'profile',
-          });
-
-          await supabase
+          // Safe append: read current content, append, then write back
+          const { data: profileFile } = await supabase
             .from('olive_memory_files')
-            .update({
-              content: supabase.raw(`content || E'\n- ' || '${fact.content.replace(/'/g, "''")}'`),
-              updated_at: new Date().toISOString(),
-            })
+            .select('content')
             .eq('user_id', userId)
-            .eq('file_type', 'profile');
+            .eq('file_type', 'profile')
+            .is('file_date', null)
+            .single();
+
+          if (profileFile) {
+            const updatedContent = (profileFile.content || '') + '\n- ' + fact.content;
+            await supabase
+              .from('olive_memory_files')
+              .update({
+                content: updatedContent,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('user_id', userId)
+              .eq('file_type', 'profile')
+              .is('file_date', null);
+          }
         }
       } catch (e) {
         console.error('Failed to store fact:', e);
@@ -614,11 +622,19 @@ serve(async (req) => {
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
+    // Body must be parsed exactly once — clone the request first
+    const bodyText = await req.text();
+    let body: Record<string, any> = {};
+    try {
+      body = JSON.parse(bodyText);
+    } catch {
+      body = {};
+    }
+
     let userId: string;
 
     if (authError || !user) {
       // Try to get user ID from request body for service-to-service calls
-      const body = await req.json();
       if (body.user_id) {
         userId = body.user_id;
       } else {
@@ -626,14 +642,6 @@ serve(async (req) => {
       }
     } else {
       userId = user.id;
-    }
-
-    // Re-parse body if needed
-    let body;
-    try {
-      body = await req.json();
-    } catch {
-      body = {};
     }
 
     const { action, ...params } = body;
