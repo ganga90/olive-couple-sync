@@ -224,12 +224,39 @@ serve(async (req) => {
           throw new Error('Missing required field: memory_id');
         }
 
+        // Verify ownership: user must own the memory OR be a member of its couple
+        const { data: memoryRow, error: fetchErr } = await supabase
+          .from('user_memories')
+          .select('id, user_id, couple_id')
+          .eq('id', memory_id)
+          .single();
+
+        if (fetchErr || !memoryRow) {
+          throw new Error('Memory not found');
+        }
+
+        const isOwner = memoryRow.user_id === effectiveUserId;
+        let isSpaceMember = false;
+        if (!isOwner && memoryRow.couple_id) {
+          const { data: memberCheck } = await supabase.rpc('is_couple_member_safe', {
+            couple_uuid: memoryRow.couple_id,
+            p_user_id: effectiveUserId,
+          });
+          isSpaceMember = !!memberCheck;
+        }
+
+        if (!isOwner && !isSpaceMember) {
+          return new Response(JSON.stringify({ success: false, error: 'Not authorized to delete this memory' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
         // Soft delete by marking as inactive
         const { error } = await supabase
           .from('user_memories')
           .update({ is_active: false })
-          .eq('id', memory_id)
-          .eq('user_id', effectiveUserId);
+          .eq('id', memory_id);
 
         if (error) throw error;
 

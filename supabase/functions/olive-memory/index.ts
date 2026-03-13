@@ -290,19 +290,27 @@ const actions: Record<string, ActionHandler> = {
 
         // Also append to profile if it's a preference
         if (file_type === 'profile' && fact.importance >= 4) {
-          await supabase.rpc('get_or_create_memory_file', {
-            p_user_id: userId,
-            p_file_type: 'profile',
-          });
-
-          await supabase
+          // Safe append: read current content, append, then write back
+          const { data: profileFile } = await supabase
             .from('olive_memory_files')
-            .update({
-              content: supabase.raw(`content || E'\n- ' || '${fact.content.replace(/'/g, "''")}'`),
-              updated_at: new Date().toISOString(),
-            })
+            .select('content')
             .eq('user_id', userId)
-            .eq('file_type', 'profile');
+            .eq('file_type', 'profile')
+            .is('file_date', null)
+            .single();
+
+          if (profileFile) {
+            const updatedContent = (profileFile.content || '') + '\n- ' + fact.content;
+            await supabase
+              .from('olive_memory_files')
+              .update({
+                content: updatedContent,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('user_id', userId)
+              .eq('file_type', 'profile')
+              .is('file_date', null);
+          }
         }
       } catch (e) {
         console.error('Failed to store fact:', e);
