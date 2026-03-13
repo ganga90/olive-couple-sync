@@ -261,6 +261,14 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 - "Revisar impuestos en 2 horas" → CREATE (Spanish brain dump)
 - "Controllare le tasse tra 2 ore" → CREATE (Italian brain dump)
 
+## URL/LINK EXAMPLES (CRITICAL — URLs = save/bookmark, NOT web_search):
+- "Olive improvements Perplexity APIs https://docs.perplexity.ai/docs/getting-started/overview" → CREATE (saving a link with descriptive text)
+- "https://example.com/recipe" → CREATE (saving a bare link)
+- "Check this out https://youtube.com/watch?v=abc" → CREATE (brain dump with link)
+- "Great article on AI https://blog.example.com/ai-trends" → CREATE (bookmarking)
+- "https://airbnb.com/rooms/12345 for our trip" → CREATE (saving a link for travel)
+- "Search for reviews about https://restaurant.com" → web_search (explicit search request WITH a URL — rare exception)
+
 ## FOLLOW-UP EXAMPLES (conversation continuity — CRITICAL):
 - [After Olive listed restaurants] "Do they offer reservations?" → web_search (follow-up wanting external info)
 - [After Olive listed restaurants] "Search for a table at Kebo" → web_search (wanting to book/find external info)
