@@ -34,7 +34,8 @@ export const FloatingNoteButton: React.FC = () => {
         body: { 
           text: text.trim(),
           user_id: user.id,
-          couple_id: currentCouple?.id || null
+          couple_id: currentCouple?.id || null,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }
       });
 

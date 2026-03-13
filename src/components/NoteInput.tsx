@@ -305,6 +305,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
           style: noteStyle,
           is_sensitive: isSensitive || undefined,
           partner_names: memberNames,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }
       });
 
