@@ -616,7 +616,13 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'CHAT', chatType: 'greeting', cleanMessage: normalized };
   }
 
-  // 4. Everything else → CREATE (default). The AI classifier should have caught
+  // 4. URL detection — messages containing links are brain-dumps to save, NOT web searches
+  if (/https?:\/\/\S+/i.test(normalized)) {
+    console.log('[Intent Fallback] URL detected → CREATE (link save)');
+    return { intent: 'CREATE', cleanMessage: normalized };
+  }
+
+  // 5. Everything else → CREATE (default). The AI classifier should have caught
   //    all natural language intents before reaching this fallback.
   console.log('[Intent Fallback] No shortcut matched → CREATE (default)');
   return { intent: 'CREATE' };
