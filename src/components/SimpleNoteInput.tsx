@@ -34,7 +34,7 @@ export const SimpleNoteInput: React.FC<SimpleNoteInputProps> = ({ onNoteAdded })
 
   const { user } = useAuth();
   const { currentCouple } = useSupabaseCouple();
-  const { refetch: refetchNotes } = useSupabaseNotesContext();
+  const { addNote, refetch: refetchNotes } = useSupabaseNotesContext();
 
   const processNoteWithAI = async (noteText: string): Promise<ProcessedNote> => {
     const userId = user?.id;
