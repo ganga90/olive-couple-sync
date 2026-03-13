@@ -1327,7 +1327,7 @@ serve(async (req) => {
       throw new Error('Supabase configuration is missing');
     }
 
-    const { text, user_id, couple_id, timezone, media, mediaTypes, style, partner_names, is_sensitive, source } = await req.json();
+    const { text, user_id, couple_id, timezone, media, mediaTypes, style, partner_names, is_sensitive, source, list_id: explicit_list_id } = await req.json();
     
     // Validate required fields - allow empty text if media is present
     if (!user_id) {
@@ -2181,10 +2181,13 @@ Process this note:
             : 'Saved note';
         }
 
-        // Now find/create list with all context: category, tags, AI's target_list, and the summary for content matching
-        const listId = note.category 
-          ? await findOrCreateList(note.category, note.tags || [], note.target_list, summary) 
-          : null;
+        // Use explicit list_id from request if provided (e.g., adding note from within a specific list)
+        // Otherwise, use AI routing to find/create the appropriate list
+        const listId = explicit_list_id 
+          ? explicit_list_id
+          : (note.category 
+            ? await findOrCreateList(note.category, note.tags || [], note.target_list, summary) 
+            : null);
         
         return {
           summary,

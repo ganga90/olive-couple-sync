@@ -34,7 +34,7 @@ export const SimpleNoteInput: React.FC<SimpleNoteInputProps> = ({ onNoteAdded })
 
   const { user } = useAuth();
   const { currentCouple } = useSupabaseCouple();
-  const { refetch: refetchNotes } = useSupabaseNotesContext();
+  const { addNote, refetch: refetchNotes } = useSupabaseNotesContext();
 
   const processNoteWithAI = async (noteText: string): Promise<ProcessedNote> => {
     const userId = user?.id;
@@ -58,28 +58,25 @@ export const SimpleNoteInput: React.FC<SimpleNoteInputProps> = ({ onNoteAdded })
 
     if (error) throw error;
 
-    // Insert the note into the database
-    const noteData = {
-      author_id: userId,
-      couple_id: currentCouple?.id || null,
+    // Save through the provider (handles expense linking, RLS, etc.)
+    const noteData: any = {
       original_text: noteText,
       summary: data.summary || noteText,
       category: data.category || 'task',
+      couple_id: currentCouple?.id || null,
+      completed: false,
       priority: data.priority || 'medium',
       tags: data.tags || [],
       items: data.items || [],
       due_date: data.due_date || null,
       reminder_time: data.reminder_time || null,
       is_sensitive: isSensitive,
-      completed: false,
-      source: 'web',
+      list_id: data.list_id || null,
+      task_owner: data.task_owner || null,
     };
 
-    const { error: insertError } = await supabase
-      .from('clerk_notes')
-      .insert(noteData);
-
-    if (insertError) throw insertError;
+    const result = await addNote(noteData);
+    if (!result) throw new Error('Failed to save note');
 
     return {
       summary: data.summary || noteText,
