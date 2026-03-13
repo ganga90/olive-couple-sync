@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/providers/AuthProvider";
-import { Share2, User2, Copy, Check, AlertTriangle } from "lucide-react";
+import { Share2, User2, Copy, Check } from "lucide-react";
 
 interface InviteFlowProps {
   you: string;
@@ -23,20 +23,8 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
   const [inviteUrl, setInviteUrl] = useState("");
   const [inviteMessage, setInviteMessage] = useState("");
   const [copied, setCopied] = useState(false);
-  const [authDebug, setAuthDebug] = useState<string>("");
   const { createCouple } = useSupabaseCouple();
   const { user } = useAuth();
-  
-
-  // Debug auth state - removed problematic health check
-  useEffect(() => {
-    const debugAuth = async () => {
-      if (user) {
-        setAuthDebug('Auth working correctly');
-      }
-    };
-    debugAuth();
-  }, [user]);
 
   const handleSetupOnly = async () => {
     setLoading(true);
@@ -160,12 +148,6 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
           </p>
         </div>
 
-        {authDebug && (
-          <div className="flex items-center gap-2 p-3 bg-warning/10 border border-warning/30 rounded-lg">
-            <AlertTriangle className="h-4 w-4 text-warning" />
-            <span className="text-xs text-warning">{authDebug}</span>
-          </div>
-        )}
 
         <div className="space-y-3">
           <Button 

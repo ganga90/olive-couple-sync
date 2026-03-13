@@ -102,8 +102,10 @@ export const useSupabaseCouples = () => {
 
       setCouples(userCouples);
 
-      // Determine current couple
-      let activeCoupleId = currentCouple?.id;
+      // Determine current couple - read from localStorage to avoid stale closure
+      const storedCouple = localStorage.getItem('olive_current_couple');
+      const storedCoupleId = storedCouple ? JSON.parse(storedCouple)?.id : null;
+      let activeCoupleId = storedCoupleId;
       let activeCouple = userCouples.find(c => c.id === activeCoupleId) || userCouples[0] || null;
 
       if (activeCouple) {
