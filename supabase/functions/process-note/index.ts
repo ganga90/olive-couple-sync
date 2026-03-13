@@ -2181,10 +2181,13 @@ Process this note:
             : 'Saved note';
         }
 
-        // Now find/create list with all context: category, tags, AI's target_list, and the summary for content matching
-        const listId = note.category 
-          ? await findOrCreateList(note.category, note.tags || [], note.target_list, summary) 
-          : null;
+        // Use explicit list_id from request if provided (e.g., adding note from within a specific list)
+        // Otherwise, use AI routing to find/create the appropriate list
+        const listId = explicit_list_id 
+          ? explicit_list_id
+          : (note.category 
+            ? await findOrCreateList(note.category, note.tags || [], note.target_list, summary) 
+            : null);
         
         return {
           summary,
