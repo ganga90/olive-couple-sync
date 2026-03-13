@@ -5101,31 +5101,25 @@ Format a helpful, concise WhatsApp response with the key information and links:`
       
       if (coupleId) {
         try {
-          const { data: coupleData } = await supabase
-            .from('clerk_couples')
-            .select('you_name, partner_name, created_by')
-            .eq('id', coupleId)
-            .single();
-          
-          if (coupleData) {
-            const isCreator = coupleData.created_by === userId;
-            partnerName = isCreator ? (coupleData.partner_name || 'Partner') : (coupleData.you_name || 'Partner');
+          // Use get_space_members RPC for multi-member resolution
+          const { data: spaceMembers } = await supabase.rpc('get_space_members', {
+            p_couple_id: coupleId,
+          });
+
+          if (spaceMembers && spaceMembers.length > 0) {
+            const otherMembers = spaceMembers.filter((m: any) => m.user_id !== userId);
+            partnerName = otherMembers.map((m: any) => m.display_name).join(', ') || 'Partner';
+
+            // Get recent activity from ALL other members
+            const otherUserIds = otherMembers.map((m: any) => m.user_id);
             
-            const { data: partnerMember } = await supabase
-              .from('clerk_couple_members')
-              .select('user_id')
-              .eq('couple_id', coupleId)
-              .neq('user_id', userId)
-              .limit(1)
-              .single();
-            
-            if (partnerMember?.user_id) {
+            if (otherUserIds.length > 0) {
               const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
               
               const { data: partnerRecentTasks } = await supabase
                 .from('clerk_notes')
-                .select('summary, created_at, priority')
-                .eq('author_id', partnerMember.user_id)
+                .select('summary, created_at, priority, author_id')
+                .in('author_id', otherUserIds)
                 .eq('couple_id', coupleId)
                 .gte('created_at', twoDaysAgo.toISOString())
                 .order('created_at', { ascending: false })
@@ -5135,7 +5129,7 @@ Format a helpful, concise WhatsApp response with the key information and links:`
                 .from('clerk_notes')
                 .select('summary, due_date, priority')
                 .eq('couple_id', coupleId)
-                .eq('author_id', partnerMember.user_id)
+                .in('author_id', otherUserIds)
                 .eq('task_owner', userId)
                 .eq('completed', false)
                 .limit(3);
@@ -5145,7 +5139,7 @@ Format a helpful, concise WhatsApp response with the key information and links:`
                 .select('summary, due_date, priority, completed')
                 .eq('couple_id', coupleId)
                 .eq('author_id', userId)
-                .eq('task_owner', partnerMember.user_id)
+                .in('task_owner', otherUserIds)
                 .eq('completed', false)
                 .limit(3);
               
@@ -5155,10 +5149,10 @@ Format a helpful, concise WhatsApp response with the key information and links:`
               
               if (partnerRecentSummaries.length > 0 || assignedToMe.length > 0 || myAssignments.length > 0) {
                 partnerContext = `
-## Partner Activity (${partnerName}):
+## Member Activity (${partnerName}):
 ${partnerRecentSummaries.length > 0 ? `- Recently added: ${partnerRecentSummaries.join(', ')}` : ''}
 ${assignedToMe.length > 0 ? `- Assigned to you: ${assignedToMe.join(', ')}` : ''}
-${myAssignments.length > 0 ? `- You assigned to ${partnerName}: ${myAssignments.join(', ')}` : ''}
+${myAssignments.length > 0 ? `- You assigned to them: ${myAssignments.join(', ')}` : ''}
 `;
               }
             }
