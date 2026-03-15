@@ -1194,7 +1194,7 @@ serve(async (req) => {
                 const { data: listNotes } = await supabase
                   .from('clerk_notes')
                   .select('id, summary, priority, due_date, completed')
-                  .eq('list_id', (matchedList as any).id || '')
+                  .eq('list_id', matchedList.id)
                   .eq('completed', false)
                   .order('created_at', { ascending: false })
                   .limit(20);
