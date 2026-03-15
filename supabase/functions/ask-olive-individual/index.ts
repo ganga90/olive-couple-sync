@@ -1207,10 +1207,30 @@ serve(async (req) => {
           create_list: actionResult.details?.already_exists
             ? `found that a list named "${actionResult.details?.list_name}" already exists — no duplicate was created`
             : `created a new list called "${actionResult.details?.list_name}"`,
-          list_recap: `retrieved a detailed recap of the "${actionResult.details?.list_name}" list (${actionResult.details?.active || 0} active, ${actionResult.details?.completed || 0} completed, ${actionResult.details?.urgent || 0} urgent items)`,
+          list_recap: (() => {
+            const d = actionResult.details;
+            let recapCtx = `retrieved a detailed recap of the "${d?.list_name}" list (${d?.active || 0} active, ${d?.completed || 0} completed, ${d?.urgent || 0} urgent items)`;
+            // Include actual item details so the AI can generate a rich recap
+            if (d?.items && Array.isArray(d.items) && d.items.length > 0) {
+              recapCtx += '.\n\nLIST ITEMS FOR YOUR RECAP RESPONSE:\n';
+              d.items.forEach((item: any, i: number) => {
+                const priority = item.priority === 'high' ? ' 🔥' : '';
+                const due = item.due_date ? ` (Due: ${new Date(item.due_date).toLocaleDateString()})` : '';
+                recapCtx += `${i + 1}. ${item.summary}${priority}${due}\n`;
+                if (item.original_text && item.original_text !== item.summary) {
+                  recapCtx += `   Details: ${item.original_text}\n`;
+                }
+                if (item.sub_items && item.sub_items.length > 0) {
+                  item.sub_items.forEach((sub: string) => { recapCtx += `   • ${sub}\n`; });
+                }
+              });
+              recapCtx += `\nGenerate a detailed, organized recap with overview, action items, and insights. Use markdown formatting.`;
+            }
+            return recapCtx;
+          })(),
         };
         const verb = actionVerbs[actionResult.type] || actionResult.type;
-        fullContext += `\n\nACTION PERFORMED: You just ${verb}${actionResult.type !== 'partner_message' ? ` the task "${actionResult.task_summary}"` : ''}. Acknowledge this naturally in your response and confirm what you did. Be concise and friendly.`;
+        fullContext += `\n\nACTION PERFORMED: You just ${verb}${actionResult.type !== 'partner_message' && actionResult.type !== 'list_recap' ? ` the task "${actionResult.task_summary}"` : ''}. Acknowledge this naturally in your response and confirm what you did. Be concise and friendly.`;
       }
 
       console.log('[Ask Olive Individual] Built global chat context, length:', fullContext.length);
