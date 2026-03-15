@@ -1316,9 +1316,24 @@ serve(async (req) => {
             }
             return recapCtx;
           })(),
+          create: `saved a new item "${actionResult.task_summary}" to ${actionResult.details?.list_name || 'Tasks'}${actionResult.details?.is_urgent ? ' with high priority 🔥' : ''}`,
+          search: (() => {
+            const d = actionResult.details;
+            let ctx = `found ${d?.count || 0} items in "${d?.label || 'Tasks'}"`;
+            if (d?.items && Array.isArray(d.items) && d.items.length > 0) {
+              ctx += ':\n';
+              d.items.forEach((item: any, i: number) => {
+                const p = item.priority === 'high' ? ' 🔥' : '';
+                const due = item.due_date ? ` (Due: ${new Date(item.due_date).toLocaleDateString()})` : '';
+                ctx += `${i + 1}. ${item.summary}${p}${due}\n`;
+              });
+              ctx += 'Present this list clearly with markdown formatting.';
+            }
+            return ctx;
+          })(),
         };
         const verb = actionVerbs[actionResult.type] || actionResult.type;
-        fullContext += `\n\nACTION PERFORMED: You just ${verb}${actionResult.type !== 'partner_message' && actionResult.type !== 'list_recap' ? ` the task "${actionResult.task_summary}"` : ''}. Acknowledge this naturally in your response and confirm what you did. Be concise and friendly.`;
+        fullContext += `\n\nACTION PERFORMED: You just ${verb}${!['partner_message', 'list_recap', 'search'].includes(actionResult.type) ? ` the task "${actionResult.task_summary}"` : ''}. Acknowledge this naturally in your response and confirm what you did. Be concise and friendly.`;
       }
 
       console.log('[Ask Olive Individual] Built global chat context, length:', fullContext.length);
