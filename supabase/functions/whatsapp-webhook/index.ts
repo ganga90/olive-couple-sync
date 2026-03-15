@@ -3027,7 +3027,7 @@ serve(async (req) => {
     const conversationHistory = sessionContext.conversation_history || [];
 
     // Fetch context for AI router (parallel lightweight queries)
-    const [taskListResult, memoriesResult, skillsResult] = await Promise.all([
+    const [taskListResult, memoriesResult, skillsResult, listsResult] = await Promise.all([
       // 30 most recent active tasks (id + summary + due_date + priority)
       supabase
         .from('clerk_notes')
@@ -3059,11 +3059,18 @@ serve(async (req) => {
             .in('skill_id', skillIds)
             .eq('is_active', true);
         }),
+      // User's list names for classifier disambiguation
+      supabase
+        .from('clerk_lists')
+        .select('name')
+        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+        .limit(20),
     ]);
 
     const activeTasks = taskListResult.data || [];
     const userMemories = memoriesResult.data || [];
     const activatedSkills = skillsResult.data || [];
+    const userLists = listsResult.data || [];
 
     // Build outbound context strings for AI
     const outboundContextStrings = recentOutbound.map(m => m.content).filter(Boolean);
