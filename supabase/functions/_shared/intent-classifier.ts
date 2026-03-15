@@ -239,6 +239,26 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
    The KEY TEST: Does the conversation history show Olive recently answered a question or showed search results? If yes, and the user's message continues that thread → web_search or contextual_ask, NOT create.
 15. **Clarifications and corrections are ALWAYS continuations.** Messages like "I meant X", "no, the Y one", "not that one", "the restaurant", "I was asking about Z" are ALWAYS follow-ups to the previous turn. Route them the same way as the previous Olive response (web_search → web_search, contextual_ask → contextual_ask). NEVER classify these as "create".
 
+## LIST MANAGEMENT EXAMPLES (CRITICAL — distinguish from search/create):
+- "Create a list about wedding planning" → create_list (list_name="Wedding Planning")
+- "Make a list for our trip to Rome" → create_list (list_name="Trip to Rome")
+- "Start a grocery list" → create_list (list_name="Groceries")
+- "New list: Home Renovation" → create_list (list_name="Home Renovation")
+- "Create a list of books to read: Atomic Habits, Deep Work" → create_list (list_name="Books to Read", items in partner_message_content)
+- "Crea una lista per la spesa" → create_list (list_name="Spesa")
+- "Crea una lista sobre viajes" → create_list (list_name="Viajes")
+- "Show my groceries list" → search (dashboard view of existing list)
+- "What's in my travel list?" → search or contextual_ask (querying existing data)
+- "Recap my work list" → list_recap (detailed analytical review)
+- "Review my groceries" → list_recap (detailed review with insights)
+- "Summarize my travel list" → list_recap (AI-generated summary)
+- "Give me a breakdown of my home improvement list" → list_recap
+- "What's the status of my books list?" → list_recap (status review)
+- "Riassumi la mia lista della spesa" → list_recap
+- "Resume mi lista de viajes" → list_recap
+- "Buy groceries" → CREATE (new task, NOT create_list)
+- "Add milk to groceries" → CREATE (new task routed to groceries list)
+
 ## DISAMBIGUATION EXAMPLES (to prevent common mistakes):
 - "Review taxes in 2 hours" → CREATE (brain dump with deadline, NOT a search)
 - "Check flights to Rome" → CREATE (new task to check flights)
