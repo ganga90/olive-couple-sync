@@ -628,7 +628,9 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
 
   // 2b. "Create a list" — deterministic interceptor for explicit list creation
   const createListMatch = lower.match(/^(?:create|make|start|new)\s+(?:a\s+)?list\s+(?:about|for|of|called|named|:)\s*(.+)$/i)
-    || lower.match(/^(?:crea|crear|inizia|nueva?|nuova?)\s+(?:una?\s+)?list[ae]?\s+(?:sobre|per|di|de|chiamata|llamada|:)\s*(.+)$/i);
+    || lower.match(/^(?:create|make|start|new)\s+(?:a\s+)?list\s+(.+)$/i)
+    || lower.match(/^(?:crea|crear|inizia|nueva?|nuova?)\s+(?:una?\s+)?list[ae]?\s+(?:sobre|per|di|de|chiamata|llamada|:)\s*(.+)$/i)
+    || lower.match(/^(?:crea|crear|inizia|nueva?|nuova?)\s+(?:una?\s+)?list[ae]?\s+(.+)$/i);
   if (createListMatch) {
     const listName = createListMatch[1].trim();
     console.log('[Intent Fallback] Create list detected:', listName);
@@ -6269,13 +6271,13 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
 
       if (existingMatch) {
         // List already exists — inform the user
-        const { data: itemCount } = await supabase
+        const { data: existingItems } = await supabase
           .from('clerk_notes')
-          .select('id', { count: 'exact', head: true })
+          .select('id')
           .eq('list_id', existingMatch.id)
           .eq('completed', false);
 
-        const count = itemCount ? (itemCount as any).length || 0 : 0;
+        const count = existingItems?.length || 0;
         return reply(`📋 A list named "${existingMatch.name}" already exists with ${count} active item${count !== 1 ? 's' : ''}.\n\nSend items to add to it, or say "show my ${existingMatch.name} list" to view it.`);
       }
 

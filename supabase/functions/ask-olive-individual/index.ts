@@ -980,7 +980,7 @@ serve(async (req) => {
             }),
           supabase
             .from('clerk_lists')
-            .select('name')
+            .select('id, name')
             .or(`author_id.eq.${actualUserId}${actualCoupleId ? `,couple_id.eq.${actualCoupleId}` : ''}`)
             .limit(20),
         ]);
@@ -1113,15 +1113,18 @@ serve(async (req) => {
                   const completed = items?.filter((i: any) => i.completed) || [];
                   const urgent = active.filter((i: any) => i.priority === 'high');
 
+                  const overdue = active.filter((i: any) => i.due_date && new Date(i.due_date) < new Date());
+
                   actionResult = {
                     type: 'list_recap', success: true, task_summary: matchedList.name,
                     details: {
                       list_name: matchedList.name, total: items?.length || 0,
-                      active: active.length, completed: completed.length, urgent: urgent.length,
+                      active: active.length, completed: completed.length, urgent: urgent.length, overdue: overdue.length,
                       items: active.slice(0, 15).map((i: any) => ({
                         summary: i.summary, priority: i.priority, due_date: i.due_date,
                         sub_items: i.items, original_text: i.original_text?.substring(0, 300),
                       })),
+                      completed_items: completed.slice(0, 5).map((i: any) => ({ summary: i.summary })),
                     },
                   };
 
@@ -1194,7 +1197,7 @@ serve(async (req) => {
                 const { data: listNotes } = await supabase
                   .from('clerk_notes')
                   .select('id, summary, priority, due_date, completed')
-                  .eq('list_id', (matchedList as any).id || '')
+                  .eq('list_id', matchedList.id)
                   .eq('completed', false)
                   .order('created_at', { ascending: false })
                   .limit(20);
@@ -1296,10 +1299,10 @@ serve(async (req) => {
             : `created a new list called "${actionResult.details?.list_name}"`,
           list_recap: (() => {
             const d = actionResult.details;
-            let recapCtx = `retrieved a detailed recap of the "${d?.list_name}" list (${d?.active || 0} active, ${d?.completed || 0} completed, ${d?.urgent || 0} urgent items)`;
+            let recapCtx = `retrieved a detailed recap of the "${d?.list_name}" list (${d?.active || 0} active, ${d?.completed || 0} completed, ${d?.urgent || 0} urgent, ${d?.overdue || 0} overdue items)`;
             // Include actual item details so the AI can generate a rich recap
             if (d?.items && Array.isArray(d.items) && d.items.length > 0) {
-              recapCtx += '.\n\nLIST ITEMS FOR YOUR RECAP RESPONSE:\n';
+              recapCtx += '.\n\nACTIVE ITEMS:\n';
               d.items.forEach((item: any, i: number) => {
                 const priority = item.priority === 'high' ? ' 🔥' : '';
                 const due = item.due_date ? ` (Due: ${new Date(item.due_date).toLocaleDateString()})` : '';
@@ -1311,8 +1314,14 @@ serve(async (req) => {
                   item.sub_items.forEach((sub: string) => { recapCtx += `   • ${sub}\n`; });
                 }
               });
-              recapCtx += `\nGenerate a detailed, organized recap with overview, action items, and insights. Use markdown formatting.`;
             }
+            if (d?.completed_items && Array.isArray(d.completed_items) && d.completed_items.length > 0) {
+              recapCtx += '\nCOMPLETED ITEMS:\n';
+              d.completed_items.forEach((item: any, i: number) => {
+                recapCtx += `✅ ${item.summary}\n`;
+              });
+            }
+            recapCtx += `\nGenerate a detailed, organized recap with overview, action items, and insights. Use markdown formatting.`;
             return recapCtx;
           })(),
           create: `saved a new item "${actionResult.task_summary}" to ${actionResult.details?.list_name || 'Tasks'}${actionResult.details?.is_urgent ? ' with high priority 🔥' : ''}`,
