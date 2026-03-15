@@ -980,7 +980,7 @@ serve(async (req) => {
             }),
           supabase
             .from('clerk_lists')
-            .select('name')
+            .select('id, name')
             .or(`author_id.eq.${actualUserId}${actualCoupleId ? `,couple_id.eq.${actualCoupleId}` : ''}`)
             .limit(20),
         ]);

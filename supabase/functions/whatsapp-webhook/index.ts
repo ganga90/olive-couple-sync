@@ -628,7 +628,9 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
 
   // 2b. "Create a list" — deterministic interceptor for explicit list creation
   const createListMatch = lower.match(/^(?:create|make|start|new)\s+(?:a\s+)?list\s+(?:about|for|of|called|named|:)\s*(.+)$/i)
-    || lower.match(/^(?:crea|crear|inizia|nueva?|nuova?)\s+(?:una?\s+)?list[ae]?\s+(?:sobre|per|di|de|chiamata|llamada|:)\s*(.+)$/i);
+    || lower.match(/^(?:create|make|start|new)\s+(?:a\s+)?list\s+(.+)$/i)
+    || lower.match(/^(?:crea|crear|inizia|nueva?|nuova?)\s+(?:una?\s+)?list[ae]?\s+(?:sobre|per|di|de|chiamata|llamada|:)\s*(.+)$/i)
+    || lower.match(/^(?:crea|crear|inizia|nueva?|nuova?)\s+(?:una?\s+)?list[ae]?\s+(.+)$/i);
   if (createListMatch) {
     const listName = createListMatch[1].trim();
     console.log('[Intent Fallback] Create list detected:', listName);
