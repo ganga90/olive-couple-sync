@@ -3084,6 +3084,7 @@ serve(async (req) => {
       activeTasks,
       userMemories,
       activatedSkills,
+      userLists,
       userLanguage: userLang,
     });
     const aiResult = classificationResult.intent;
