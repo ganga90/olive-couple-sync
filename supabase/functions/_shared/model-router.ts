@@ -33,6 +33,7 @@ const DB_ONLY_INTENTS = [
   "remind",
   "merge",
   "create",
+  "create_list",
 ];
 
 /** Chat types that require deeper reasoning → Pro model */
@@ -115,6 +116,11 @@ export function routeIntent(
   // ── Search — standard for result formatting ─────────────
   if (intent === "search") {
     return { responseTier: "standard", reason: "search" };
+  }
+
+  // ── List recap — standard for analytical summary ────────
+  if (intent === "list_recap") {
+    return { responseTier: "standard", reason: "list_recap" };
   }
 
   // ── Web search — lite for query formatting ─────────────
