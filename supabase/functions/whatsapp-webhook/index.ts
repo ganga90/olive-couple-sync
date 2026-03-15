@@ -626,6 +626,15 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
     return { intent: 'CHAT', chatType: 'help', cleanMessage: normalized };
   }
 
+  // 2b. "Create a list" — deterministic interceptor for explicit list creation
+  const createListMatch = lower.match(/^(?:create|make|start|new)\s+(?:a\s+)?list\s+(?:about|for|of|called|named|:)\s*(.+)$/i)
+    || lower.match(/^(?:crea|crear|inizia|nueva?|nuova?)\s+(?:una?\s+)?list[ae]?\s+(?:sobre|per|di|de|chiamata|llamada|:)\s*(.+)$/i);
+  if (createListMatch) {
+    const listName = createListMatch[1].trim();
+    console.log('[Intent Fallback] Create list detected:', listName);
+    return { intent: 'CREATE_LIST' as any, cleanMessage: listName, _listName: listName } as any;
+  }
+
   // 3. Bare greetings (no AI call needed)
   if (/^(hi|hello|hey)\s*[!.]?$/i.test(lower)) {
     return { intent: 'CHAT', chatType: 'greeting', cleanMessage: normalized };
