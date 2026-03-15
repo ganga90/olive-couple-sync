@@ -6230,6 +6230,292 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
     }
 
     // ========================================================================
+    // CREATE LIST HANDLER - Create a new organizational list from WhatsApp
+    // ========================================================================
+    if (intent === 'CREATE_LIST') {
+      const listName = (intentResult as any)._listName || cleanMessage || '';
+      const initialItemsRaw = (intentResult as any)._initialItems || '';
+      console.log('[CREATE_LIST] Creating list:', listName, '| initial items:', initialItemsRaw?.substring(0, 80));
+
+      if (!listName || listName.trim().length < 2) {
+        return reply('📋 What should I name the list? Try: "Create a list about [topic]"');
+      }
+
+      // Check if a list with this name already exists (case-insensitive)
+      const { data: existingLists } = await supabase
+        .from('clerk_lists')
+        .select('id, name')
+        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
+
+      const normalizedNewName = listName.toLowerCase().trim();
+      const existingMatch = existingLists?.find(l => l.name.toLowerCase().trim() === normalizedNewName);
+
+      if (existingMatch) {
+        // List already exists — inform the user
+        const { data: itemCount } = await supabase
+          .from('clerk_notes')
+          .select('id', { count: 'exact', head: true })
+          .eq('list_id', existingMatch.id)
+          .eq('completed', false);
+
+        const count = itemCount ? (itemCount as any).length || 0 : 0;
+        return reply(`📋 A list named "${existingMatch.name}" already exists with ${count} active item${count !== 1 ? 's' : ''}.\n\nSend items to add to it, or say "show my ${existingMatch.name} list" to view it.`);
+      }
+
+      // Format list name to Title Case
+      const formattedName = listName.trim()
+        .split(/\s+/)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+
+      // Create the list
+      const { data: newList, error: createError } = await supabase
+        .from('clerk_lists')
+        .insert({
+          name: formattedName,
+          author_id: userId,
+          couple_id: effectiveCoupleId,
+          is_manual: true,
+          description: `Created via WhatsApp`,
+        })
+        .select('id, name')
+        .single();
+
+      if (createError || !newList) {
+        console.error('[CREATE_LIST] Insert error:', createError);
+        return reply('Sorry, I couldn\'t create that list. Please try again.');
+      }
+
+      console.log('[CREATE_LIST] Created list:', newList.name, newList.id);
+
+      // If initial items were provided, create notes for each
+      let itemsCreated = 0;
+      if (initialItemsRaw && initialItemsRaw.trim().length > 0) {
+        // Split by commas, semicolons, or newlines
+        const items = initialItemsRaw
+          .split(/[,;\n]+/)
+          .map((s: string) => s.trim())
+          .filter((s: string) => s.length > 1);
+
+        if (items.length > 0) {
+          const notesToInsert = items.map((item: string) => ({
+            author_id: userId,
+            couple_id: effectiveCoupleId,
+            original_text: item,
+            summary: item,
+            category: formattedName.toLowerCase().replace(/\s+/g, '_'),
+            list_id: newList.id,
+            priority: 'medium',
+            completed: false,
+            tags: [],
+            items: [],
+          }));
+
+          const { error: itemsError } = await supabase
+            .from('clerk_notes')
+            .insert(notesToInsert);
+
+          if (!itemsError) {
+            itemsCreated = items.length;
+          } else {
+            console.error('[CREATE_LIST] Items insert error:', itemsError);
+          }
+        }
+      }
+
+      let response = `📋 Created list: *${newList.name}*\n`;
+      if (itemsCreated > 0) {
+        response += `✅ Added ${itemsCreated} item${itemsCreated > 1 ? 's' : ''}\n`;
+      }
+      response += `\n💡 Now just send items and they'll be automatically sorted here!\n`;
+      response += `📂 Say "show my ${newList.name} list" to view it\n`;
+      response += `🔗 Manage: https://witholive.app`;
+
+      await saveReferencedEntity(null, response);
+      return reply(response);
+    }
+
+    // ========================================================================
+    // LIST RECAP HANDLER - AI-generated detailed review of a specific list
+    // ========================================================================
+    if (intent === 'LIST_RECAP') {
+      const targetListName = (intentResult as any)._listName || cleanMessage || effectiveMessage || '';
+      console.log('[LIST_RECAP] Generating recap for list:', targetListName);
+
+      // Fetch all user lists for matching
+      const { data: allLists } = await supabase
+        .from('clerk_lists')
+        .select('id, name, description, created_at')
+        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
+
+      if (!allLists || allLists.length === 0) {
+        return reply('📋 You don\'t have any lists yet! Try "create a list about [topic]" to get started.');
+      }
+
+      // Smart list matching (same logic as SEARCH)
+      function normalizeForRecap(name: string): string {
+        return name.toLowerCase().replace(/\b(the|a|an|my|our)\b/g, '').replace(/\s+/g, ' ').trim();
+      }
+      function singularizeForRecap(word: string): string {
+        if (word.endsWith('ies')) return word.slice(0, -3) + 'y';
+        if (word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
+        return word;
+      }
+
+      const searchNormalized = normalizeForRecap(targetListName);
+      const searchSingular = singularizeForRecap(searchNormalized);
+      let matchedList: { id: string; name: string; description: string | null; created_at: string } | null = null;
+
+      for (const list of allLists) {
+        const nln = normalizeForRecap(list.name);
+        const nlnS = singularizeForRecap(nln);
+        if (nln === searchNormalized || nlnS === searchSingular || nln.includes(searchNormalized) || searchNormalized.includes(nln) || nlnS.includes(searchSingular) || searchSingular.includes(nlnS)) {
+          matchedList = list;
+          break;
+        }
+      }
+
+      if (!matchedList) {
+        // Suggest available lists
+        const listNames = allLists.slice(0, 8).map(l => `• ${l.name}`).join('\n');
+        return reply(`📋 I couldn't find a list matching "${targetListName}".\n\nYour lists:\n${listNames}\n\nTry: "recap my [list name]"`);
+      }
+
+      // Fetch ALL items in this list (including completed)
+      const { data: listItems } = await supabase
+        .from('clerk_notes')
+        .select('id, summary, original_text, category, priority, due_date, reminder_time, completed, created_at, items, tags, task_owner')
+        .eq('list_id', matchedList.id)
+        .order('completed', { ascending: true })
+        .order('priority', { ascending: true })
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (!listItems || listItems.length === 0) {
+        return reply(`📋 *${matchedList.name}* is empty!\n\nSend items to add to it, or say "create a list about [topic]" to start a new one.`);
+      }
+
+      const activeItems = listItems.filter(i => !i.completed);
+      const completedItems = listItems.filter(i => i.completed);
+      const urgentItems = activeItems.filter(i => i.priority === 'high');
+      const overdueItems = activeItems.filter(i => i.due_date && new Date(i.due_date) < new Date());
+      const withDueDate = activeItems.filter(i => i.due_date);
+
+      // Build rich context for AI recap
+      let itemsContext = '';
+      listItems.forEach((item, i) => {
+        const status = item.completed ? '✅' : '⬜';
+        const priority = item.priority === 'high' ? ' 🔥' : '';
+        const dueInfo = item.due_date ? ` | Due: ${formatFriendlyDate(item.due_date)}` : '';
+        const reminderInfo = item.reminder_time ? ` | ⏰ ${formatFriendlyDate(item.reminder_time)}` : '';
+        const owner = item.task_owner ? ` | Assigned: ${item.task_owner}` : '';
+        itemsContext += `${i + 1}. ${status} ${item.summary}${priority}${dueInfo}${reminderInfo}${owner}\n`;
+        if (item.original_text && item.original_text !== item.summary) {
+          itemsContext += `   Details: ${item.original_text.substring(0, 300)}\n`;
+        }
+        if (item.items && item.items.length > 0) {
+          item.items.forEach((sub: string) => {
+            itemsContext += `   • ${sub}\n`;
+          });
+        }
+      });
+
+      // Generate AI recap
+      const recapPrompt = `You are Olive, generating a detailed recap/review of the user's "${matchedList.name}" list.
+
+## LIST DATA:
+- List: ${matchedList.name}
+- Description: ${matchedList.description || 'None'}
+- Total items: ${listItems.length} (${activeItems.length} active, ${completedItems.length} completed)
+- Urgent items: ${urgentItems.length}
+- Overdue items: ${overdueItems.length}
+- Items with due dates: ${withDueDate.length}
+- Created: ${new Date(matchedList.created_at).toLocaleDateString()}
+
+## ALL ITEMS:
+${itemsContext}
+
+## YOUR TASK:
+Generate a DETAILED, organized recap that includes:
+1. **Overview** — Quick status summary (total, active, completed, urgent)
+2. **Active Items** — List each active item with full details, due dates, and priorities
+3. **Action Needed** — Highlight overdue or urgent items that need attention NOW
+4. **Completed** — Brief mention of what's been done (count and optionally names)
+5. **Insights** — Any patterns or suggestions (e.g., "3 items are overdue", "most items have no due date set")
+
+FORMAT for WhatsApp (max 1500 chars):
+- Use *bold* for headers
+- Use emojis for visual clarity
+- Be concise but thorough
+- Group items logically
+- End with an actionable suggestion`;
+
+      // Inject language instruction
+      const recapLangName = LANG_NAMES[userLang] || LANG_NAMES[userLang.split('-')[0]] || 'English';
+      const fullRecapPrompt = recapLangName !== 'English'
+        ? recapPrompt + `\n\nIMPORTANT: Respond entirely in ${recapLangName}.`
+        : recapPrompt;
+
+      try {
+        const recapResponse = await callAI(fullRecapPrompt, `Recap my ${matchedList.name} list`, 0.7, 'standard');
+
+        // Save context for follow-ups
+        const displayedItems = activeItems.slice(0, 10);
+        if (displayedItems.length > 0) {
+          await saveReferencedEntity(displayedItems[0], recapResponse, displayedItems.map(t => ({ id: t.id, summary: t.summary })));
+        } else {
+          await saveReferencedEntity(null, recapResponse);
+        }
+
+        return reply(recapResponse.slice(0, 1500));
+      } catch (aiError) {
+        console.error('[LIST_RECAP] AI error, using fallback:', aiError);
+
+        // Fallback: structured text recap
+        let fallback = `📋 *${matchedList.name}* Recap\n\n`;
+        fallback += `📊 ${activeItems.length} active | ${completedItems.length} done`;
+        if (urgentItems.length > 0) fallback += ` | ${urgentItems.length} urgent 🔥`;
+        if (overdueItems.length > 0) fallback += ` | ${overdueItems.length} overdue ⚠️`;
+        fallback += '\n\n';
+
+        if (urgentItems.length > 0) {
+          fallback += `🔥 *Urgent:*\n`;
+          urgentItems.slice(0, 5).forEach((item, i) => {
+            fallback += `${i + 1}. ${item.summary}\n`;
+          });
+          fallback += '\n';
+        }
+
+        if (overdueItems.length > 0) {
+          fallback += `⚠️ *Overdue:*\n`;
+          overdueItems.slice(0, 5).forEach((item, i) => {
+            const days = Math.floor((Date.now() - new Date(item.due_date!).getTime()) / 86400000);
+            fallback += `${i + 1}. ${item.summary} (${days}d overdue)\n`;
+          });
+          fallback += '\n';
+        }
+
+        const regularItems = activeItems.filter(i => i.priority !== 'high' && !(i.due_date && new Date(i.due_date) < new Date()));
+        if (regularItems.length > 0) {
+          fallback += `📝 *Active:*\n`;
+          regularItems.slice(0, 8).forEach((item, i) => {
+            const due = item.due_date ? ` (${formatFriendlyDate(item.due_date, false)})` : '';
+            fallback += `${i + 1}. ${item.summary}${due}\n`;
+          });
+          if (regularItems.length > 8) fallback += `...and ${regularItems.length - 8} more\n`;
+        }
+
+        fallback += `\n🔗 Manage: https://witholive.app`;
+
+        const displayedFallback = activeItems.slice(0, 10);
+        if (displayedFallback.length > 0) {
+          await saveReferencedEntity(displayedFallback[0], fallback, displayedFallback.map(t => ({ id: t.id, summary: t.summary })));
+        }
+        return reply(fallback);
+      }
+    }
+
+    // ========================================================================
     // CREATE INTENT (Default) - Capture First
     // ========================================================================
     
