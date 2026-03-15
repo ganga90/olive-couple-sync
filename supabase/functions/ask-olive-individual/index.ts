@@ -1041,6 +1041,94 @@ serve(async (req) => {
               }).catch(err => console.warn('[WebSession] Non-blocking save error:', err));
             }
           }
+
+          // Handle create_list intent
+          if (aiResult.intent === 'create_list') {
+            const listName = aiResult.parameters?.list_name || aiResult.target_task_name || '';
+            if (listName && listName.trim().length >= 2) {
+              try {
+                // Check for existing list
+                const { data: existingLists } = await supabase
+                  .from('clerk_lists')
+                  .select('id, name')
+                  .or(`author_id.eq.${actualUserId}${actualCoupleId ? `,couple_id.eq.${actualCoupleId}` : ''}`);
+
+                const normalizedName = listName.toLowerCase().trim();
+                const existingMatch = existingLists?.find((l: any) => l.name.toLowerCase().trim() === normalizedName);
+
+                if (existingMatch) {
+                  actionResult = { type: 'create_list', success: true, task_summary: existingMatch.name, details: { already_exists: true, list_name: existingMatch.name } };
+                } else {
+                  const formattedName = listName.trim().split(/\s+/).map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+                  const effectiveCoupleId = actualCoupleId || null;
+                  const { data: newList, error: createErr } = await supabase
+                    .from('clerk_lists')
+                    .insert({ name: formattedName, author_id: actualUserId, couple_id: effectiveCoupleId, is_manual: true, description: 'Created via Olive chat' })
+                    .select('id, name')
+                    .single();
+
+                  if (newList) {
+                    actionResult = { type: 'create_list', success: true, task_summary: newList.name, details: { list_id: newList.id, list_name: newList.name, already_exists: false } };
+                  }
+                }
+              } catch (listErr) {
+                console.error('[create_list] Error:', listErr);
+              }
+            }
+          }
+
+          // Handle list_recap intent
+          if (aiResult.intent === 'list_recap') {
+            const targetListName = aiResult.parameters?.list_name || aiResult.target_task_name || '';
+            if (targetListName && supabase) {
+              try {
+                const { data: allLists } = await supabase
+                  .from('clerk_lists')
+                  .select('id, name')
+                  .or(`author_id.eq.${actualUserId}${actualCoupleId ? `,couple_id.eq.${actualCoupleId}` : ''}`);
+
+                const searchNorm = targetListName.toLowerCase().trim();
+                const matchedList = allLists?.find((l: any) => {
+                  const n = l.name.toLowerCase().trim();
+                  return n === searchNorm || n.includes(searchNorm) || searchNorm.includes(n);
+                });
+
+                if (matchedList) {
+                  const { data: items } = await supabase
+                    .from('clerk_notes')
+                    .select('id, summary, priority, due_date, completed, items, original_text')
+                    .eq('list_id', matchedList.id)
+                    .order('completed', { ascending: true })
+                    .order('created_at', { ascending: false })
+                    .limit(50);
+
+                  const active = items?.filter((i: any) => !i.completed) || [];
+                  const completed = items?.filter((i: any) => i.completed) || [];
+                  const urgent = active.filter((i: any) => i.priority === 'high');
+
+                  actionResult = {
+                    type: 'list_recap', success: true, task_summary: matchedList.name,
+                    details: {
+                      list_name: matchedList.name, total: items?.length || 0,
+                      active: active.length, completed: completed.length, urgent: urgent.length,
+                      items: active.slice(0, 15).map((i: any) => ({
+                        summary: i.summary, priority: i.priority, due_date: i.due_date,
+                        sub_items: i.items, original_text: i.original_text?.substring(0, 300),
+                      })),
+                    },
+                  };
+
+                  // Save displayed items for ordinal resolution
+                  if (active.length > 0) {
+                    saveWebReferencedEntity(supabase, actualUserId, active[0], active.slice(0, 10))
+                      .catch(err => console.warn('[WebSession] list_recap save error:', err));
+                  }
+                }
+              } catch (recapErr) {
+                console.error('[list_recap] Error:', recapErr);
+              }
+            }
+          }
         }
 
         // For search/contextual_ask intents, save the displayed task list for ordinal resolution
@@ -1109,6 +1197,10 @@ serve(async (req) => {
             : actionResult.details?.error === 'no_couple'
             ? 'couldn\'t send the message because you\'re not in a shared space'
             : `couldn't reach ${actionResult.details?.partner_name || 'your partner'} right now`,
+          create_list: actionResult.details?.already_exists
+            ? `found that a list named "${actionResult.details?.list_name}" already exists — no duplicate was created`
+            : `created a new list called "${actionResult.details?.list_name}"`,
+          list_recap: `retrieved a detailed recap of the "${actionResult.details?.list_name}" list (${actionResult.details?.active || 0} active, ${actionResult.details?.completed || 0} completed, ${actionResult.details?.urgent || 0} urgent items)`,
         };
         const verb = actionVerbs[actionResult.type] || actionResult.type;
         fullContext += `\n\nACTION PERFORMED: You just ${verb}${actionResult.type !== 'partner_message' ? ` the task "${actionResult.task_summary}"` : ''}. Acknowledge this naturally in your response and confirm what you did. Be concise and friendly.`;

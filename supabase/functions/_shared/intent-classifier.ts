@@ -78,6 +78,8 @@ const INTENT_SCHEMA = {
         "web_search",
         "merge",
         "partner_message",
+        "create_list",
+        "list_recap",
       ],
     },
     target_task_id: { type: Type.STRING, nullable: true },
@@ -202,6 +204,8 @@ If a shortcut prefix is present, strip it from the content for processing. Set c
 - "contextual_ask": (ALREADY DEFINED ABOVE — see intents list). IMPORTANT: If the message describes a NEW item/event/appointment (especially with a date, time, or location), it is NOT contextual_ask — it is "create". Only use contextual_ask when the user is clearly querying/asking about data they already saved.
 - "web_search": User wants EXTERNAL information from the web — booking links, reviews, directions, prices, availability, or any information NOT already in their saved data. Examples: "can you give me the link to book it?", "search for more information on X", "find me reviews for Y", "what's the address of Z?", "how do I get there?", "is it open now?", "find me a link", "look it up online", "search the web for X". IMPORTANT: If the user asks about something they already saved BUT wants ADDITIONAL external info (booking link, website, directions), classify as "web_search" NOT "contextual_ask". The key signal is that they want info from the INTERNET, not from their saved items.
 - "merge": User wants to merge duplicate tasks (exactly "merge")
+- "create_list": User EXPLICITLY asks to CREATE A NEW LIST — they must use words like "create a list", "make a list", "start a list", "new list" + a topic/name. Examples: "create a list about wedding planning", "make a list for our trip to Rome", "start a grocery list", "new list: Home Renovation". This is NOT for creating a task — it's specifically for creating a new organizational LIST/FOLDER. The list_name parameter should contain the desired list name extracted from the message. If the user also provides initial items (e.g., "create a list of books: Atomic Habits, Deep Work"), include them in the partner_message_content parameter (repurposed for initial items). Set confidence to 0.9+.
+- "list_recap": User wants a DETAILED RECAP or REVIEW of a specific list — they want to see every item with full details, status, due dates, and an overall summary. Trigger words: "recap", "review", "summarize", "detail", "breakdown", "overview" combined with a list name. Examples: "recap my groceries list", "give me a detailed review of my travel list", "summarize my work list", "what's the status of my home improvement list?", "review everything in my books list". This is DIFFERENT from "search" (which shows a simple numbered list) — list_recap provides an AI-generated analytical summary with insights. Set list_name parameter to the target list name.
 - "partner_message": User wants to send a message TO their partner via Olive (e.g., "remind Marco to buy lemons", "tell Almu to pick up the kids", "ask partner to call the dentist", "let Marcus know dinner is ready", "dile a Marco que compre limones", "ricorda a Marco di comprare i limoni"). The user is asking YOU to relay a message or task to their partner. Set partner_message_content to the message/task for the partner, and partner_action to the type (remind/tell/ask/notify).
 
 ## CRITICAL RULES:
@@ -236,6 +240,26 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
    - NEVER "create" for follow-up questions/clarifications. A follow-up question is NOT a brain dump.
    The KEY TEST: Does the conversation history show Olive recently answered a question or showed search results? If yes, and the user's message continues that thread → web_search or contextual_ask, NOT create.
 15. **Clarifications and corrections are ALWAYS continuations.** Messages like "I meant X", "no, the Y one", "not that one", "the restaurant", "I was asking about Z" are ALWAYS follow-ups to the previous turn. Route them the same way as the previous Olive response (web_search → web_search, contextual_ask → contextual_ask). NEVER classify these as "create".
+
+## LIST MANAGEMENT EXAMPLES (CRITICAL — distinguish from search/create):
+- "Create a list about wedding planning" → create_list (list_name="Wedding Planning")
+- "Make a list for our trip to Rome" → create_list (list_name="Trip to Rome")
+- "Start a grocery list" → create_list (list_name="Groceries")
+- "New list: Home Renovation" → create_list (list_name="Home Renovation")
+- "Create a list of books to read: Atomic Habits, Deep Work" → create_list (list_name="Books to Read", items in partner_message_content)
+- "Crea una lista per la spesa" → create_list (list_name="Spesa")
+- "Crea una lista sobre viajes" → create_list (list_name="Viajes")
+- "Show my groceries list" → search (dashboard view of existing list)
+- "What's in my travel list?" → search or contextual_ask (querying existing data)
+- "Recap my work list" → list_recap (detailed analytical review)
+- "Review my groceries" → list_recap (detailed review with insights)
+- "Summarize my travel list" → list_recap (AI-generated summary)
+- "Give me a breakdown of my home improvement list" → list_recap
+- "What's the status of my books list?" → list_recap (status review)
+- "Riassumi la mia lista della spesa" → list_recap
+- "Resume mi lista de viajes" → list_recap
+- "Buy groceries" → CREATE (new task, NOT create_list)
+- "Add milk to groceries" → CREATE (new task routed to groceries list)
 
 ## DISAMBIGUATION EXAMPLES (to prevent common mistakes):
 - "Review taxes in 2 hours" → CREATE (brain dump with deadline, NOT a search)
