@@ -78,6 +78,8 @@ const INTENT_SCHEMA = {
         "web_search",
         "merge",
         "partner_message",
+        "create_list",
+        "list_recap",
       ],
     },
     target_task_id: { type: Type.STRING, nullable: true },
