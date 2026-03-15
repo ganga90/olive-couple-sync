@@ -572,6 +572,21 @@ function mapAIResultToIntentResult(
         _partnerAction: params.partner_action || 'tell',
       };
 
+    case 'create_list':
+      return {
+        intent: 'CREATE_LIST',
+        cleanMessage: params.list_name || ai.target_task_name || undefined,
+        _listName: params.list_name || undefined,
+        _initialItems: params.partner_message_content || undefined, // repurposed for initial items
+      };
+
+    case 'list_recap':
+      return {
+        intent: 'LIST_RECAP',
+        cleanMessage: ai.target_task_name || undefined,
+        _listName: params.list_name || undefined,
+      };
+
     case 'create':
     default:
       return {
