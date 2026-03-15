@@ -1113,15 +1113,18 @@ serve(async (req) => {
                   const completed = items?.filter((i: any) => i.completed) || [];
                   const urgent = active.filter((i: any) => i.priority === 'high');
 
+                  const overdue = active.filter((i: any) => i.due_date && new Date(i.due_date) < new Date());
+
                   actionResult = {
                     type: 'list_recap', success: true, task_summary: matchedList.name,
                     details: {
                       list_name: matchedList.name, total: items?.length || 0,
-                      active: active.length, completed: completed.length, urgent: urgent.length,
+                      active: active.length, completed: completed.length, urgent: urgent.length, overdue: overdue.length,
                       items: active.slice(0, 15).map((i: any) => ({
                         summary: i.summary, priority: i.priority, due_date: i.due_date,
                         sub_items: i.items, original_text: i.original_text?.substring(0, 300),
                       })),
+                      completed_items: completed.slice(0, 5).map((i: any) => ({ summary: i.summary })),
                     },
                   };
 
