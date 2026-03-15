@@ -33,6 +33,7 @@ const DB_ONLY_INTENTS = [
   "remind",
   "merge",
   "create",
+  "create_list",
 ];
 
 /** Chat types that require deeper reasoning → Pro model */
