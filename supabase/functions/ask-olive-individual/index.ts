@@ -1135,7 +1135,6 @@ serve(async (req) => {
                 console.error('[list_recap] Error:', recapErr);
               }
             }
-          }
         }
 
           // Handle create intent — save note via process-note
