@@ -949,7 +949,7 @@ serve(async (req) => {
         const conversationHist = context?.conversation_history || [];
 
         // Fetch context for AI router (parallel lightweight queries)
-        const [tasksRes, memoriesRes, skillsRes] = await Promise.all([
+        const [tasksRes, memoriesRes, skillsRes, listsRes] = await Promise.all([
           supabase
             .from('clerk_notes')
             .select('id, summary, due_date, priority')
@@ -978,11 +978,17 @@ serve(async (req) => {
                 .in('skill_id', skillIds)
                 .eq('is_active', true);
             }),
+          supabase
+            .from('clerk_lists')
+            .select('name')
+            .or(`author_id.eq.${actualUserId}${actualCoupleId ? `,couple_id.eq.${actualCoupleId}` : ''}`)
+            .limit(20),
         ]);
 
         const activeTasks = tasksRes.data || [];
         const userMems = memoriesRes.data || [];
         const activeSkills = skillsRes.data || [];
+        const userLists = listsRes.data || [];
 
         // Classify intent using shared classifier
         const { classifyIntent: sharedClassifyIntent } = await import("../_shared/intent-classifier.ts");
