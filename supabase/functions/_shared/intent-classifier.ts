@@ -175,6 +175,12 @@ function buildClassificationPrompt(input: ClassificationInput): string {
     .map((m) => `- Olive said: "${m}"`)
     .join("\n");
 
+  // Build user's list names (for disambiguation between create/search/list_recap)
+  const listNamesCtx = (input.userLists || [])
+    .slice(0, 20)
+    .map((l) => `- ${l.name}`)
+    .join("\n");
+
   return `You are the intent classifier for Olive, an AI personal assistant that helps people manage their lives. You are the "brain" that decides what action to take. Classify the user's message into exactly ONE intent. Return structured JSON.
 
 You are NOT a rigid command parser. You understand natural, conversational language — the user talks to you like a friend or personal assistant. Interpret the MEANING behind their words, not just keywords.
