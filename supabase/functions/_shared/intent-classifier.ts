@@ -26,6 +26,7 @@ export interface ClassificationInput {
   }>;
   userMemories: Array<{ title: string; content: string; category: string }>;
   activatedSkills: Array<{ skill_id: string; name: string }>;
+  userLists?: Array<{ name: string }>; // User's existing list names for disambiguation
   userLanguage?: string; // defaults to "en"
 }
 
