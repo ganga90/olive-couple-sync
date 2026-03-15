@@ -1197,6 +1197,10 @@ serve(async (req) => {
             : actionResult.details?.error === 'no_couple'
             ? 'couldn\'t send the message because you\'re not in a shared space'
             : `couldn't reach ${actionResult.details?.partner_name || 'your partner'} right now`,
+          create_list: actionResult.details?.already_exists
+            ? `found that a list named "${actionResult.details?.list_name}" already exists — no duplicate was created`
+            : `created a new list called "${actionResult.details?.list_name}"`,
+          list_recap: `retrieved a detailed recap of the "${actionResult.details?.list_name}" list (${actionResult.details?.active || 0} active, ${actionResult.details?.completed || 0} completed, ${actionResult.details?.urgent || 0} urgent items)`,
         };
         const verb = actionVerbs[actionResult.type] || actionResult.type;
         fullContext += `\n\nACTION PERFORMED: You just ${verb}${actionResult.type !== 'partner_message' ? ` the task "${actionResult.task_summary}"` : ''}. Acknowledge this naturally in your response and confirm what you did. Be concise and friendly.`;
