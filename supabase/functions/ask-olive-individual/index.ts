@@ -1138,8 +1138,96 @@ serve(async (req) => {
           }
         }
 
+          // Handle create intent — save note via process-note
+          if (aiResult.intent === 'create' && aiResult.confidence >= 0.6) {
+            console.log(`[Ask Olive Individual] CREATE intent detected, saving note...`);
+            try {
+              const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
+                body: {
+                  text: actualMessage,
+                  user_id: actualUserId,
+                  couple_id: actualCoupleId,
+                  source: 'web_chat',
+                  force_priority: aiResult.parameters?.is_urgent ? 'high' : undefined,
+                },
+              });
+
+              if (!processError && processData) {
+                const summary = processData.summary || processData.note?.summary || actualMessage;
+                const noteId = processData.id || processData.note?.id;
+                const listId = processData.list_id || processData.note?.list_id;
+
+                // Resolve list name
+                let listName = 'Tasks';
+                if (listId) {
+                  const { data: listRow } = await supabase.from('clerk_lists').select('name').eq('id', listId).single();
+                  if (listRow?.name) listName = listRow.name;
+                }
+
+                actionResult = {
+                  type: 'create', success: true, task_id: noteId, task_summary: summary,
+                  details: { list_name: listName, list_id: listId, is_urgent: aiResult.parameters?.is_urgent },
+                };
+
+                if (noteId) {
+                  saveWebReferencedEntity(supabase, actualUserId, { id: noteId, summary })
+                    .catch(err => console.warn('[WebSession] create save error:', err));
+                }
+              }
+            } catch (createErr) {
+              console.error('[Ask Olive Individual] CREATE error:', createErr);
+            }
+          }
+
+          // Handle search intent — provide task list context for AI
+          if (aiResult.intent === 'search') {
+            const queryType = aiResult.parameters?.query_type || 'general';
+            const listName = aiResult.parameters?.list_name;
+            console.log(`[Ask Olive Individual] SEARCH intent: queryType=${queryType}, listName=${listName}`);
+
+            // Build filtered task context so the AI can present a proper list
+            let searchItems: any[] = activeTasks;
+            let searchLabel = 'Your Tasks';
+
+            if (listName) {
+              const matchedList = userLists.find((l: any) => l.name.toLowerCase().includes(listName.toLowerCase()));
+              if (matchedList) {
+                const { data: listNotes } = await supabase
+                  .from('clerk_notes')
+                  .select('id, summary, priority, due_date, completed')
+                  .eq('list_id', (matchedList as any).id || '')
+                  .eq('completed', false)
+                  .order('created_at', { ascending: false })
+                  .limit(20);
+                if (listNotes) { searchItems = listNotes; searchLabel = matchedList.name; }
+              }
+            } else if (queryType === 'urgent') {
+              searchItems = activeTasks.filter((t: any) => t.priority === 'high');
+              searchLabel = 'Urgent Tasks';
+            } else if (queryType === 'overdue') {
+              searchItems = activeTasks.filter((t: any) => t.due_date && new Date(t.due_date) < new Date());
+              searchLabel = 'Overdue Tasks';
+            }
+
+            actionResult = {
+              type: 'search', success: true, task_summary: searchLabel,
+              details: {
+                label: searchLabel, count: searchItems.length, query_type: queryType,
+                items: searchItems.slice(0, 15).map((t: any) => ({
+                  summary: t.summary, priority: t.priority, due_date: t.due_date,
+                })),
+              },
+            };
+
+            if (searchItems.length > 0) {
+              saveWebReferencedEntity(supabase, actualUserId, searchItems[0], searchItems.slice(0, 10))
+                .catch(err => console.warn('[WebSession] search save error:', err));
+            }
+          }
+        }
+
         // For search/contextual_ask intents, save the displayed task list for ordinal resolution
-        if (aiResult && (aiResult.intent === 'search' || aiResult.intent === 'contextual_ask') && activeTasks.length > 0) {
+        if (aiResult && (aiResult.intent === 'contextual_ask') && activeTasks.length > 0) {
           const displayedTasks = activeTasks.slice(0, 10);
           saveWebReferencedEntity(supabase, actualUserId, displayedTasks[0], displayedTasks)
             .catch(err => console.warn('[WebSession] Non-blocking list save error:', err));
