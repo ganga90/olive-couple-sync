@@ -118,6 +118,11 @@ export function routeIntent(
     return { responseTier: "standard", reason: "search" };
   }
 
+  // ── List recap — standard for analytical summary ────────
+  if (intent === "list_recap") {
+    return { responseTier: "standard", reason: "list_recap" };
+  }
+
   // ── Web search — lite for query formatting ─────────────
   if (intent === "web_search") {
     return { responseTier: "lite", reason: "web_search" };
