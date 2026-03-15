@@ -323,7 +323,10 @@ ${taskList || "No active tasks."}
 ${memoryList || "No memories stored."}
 
 ## USER'S ACTIVATED SKILLS:
-${skillsList || "No skills activated."}`;
+${skillsList || "No skills activated."}
+
+## USER'S EXISTING LISTS (use to disambiguate list names in create/search/list_recap/move):
+${listNamesCtx || "No lists yet."}`;
 }
 
 // ─── Main Classification Function ─────────────────────────────
