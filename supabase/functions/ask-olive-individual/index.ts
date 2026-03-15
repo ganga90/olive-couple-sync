@@ -998,6 +998,7 @@ serve(async (req) => {
           activeTasks,
           userMemories: userMems,
           activatedSkills: activeSkills,
+          userLists,
         });
         const aiResult = classificationResult.intent;
         const classificationLatencyMs = classificationResult.latencyMs;
