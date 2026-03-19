@@ -155,7 +155,7 @@ const MyDay = () => {
 
   const userId = user?.id;
   const { privacyFilter, setPrivacyFilter } = useDefaultPrivacyFilter();
-  const hasSharedNotes = useMemo(() => notes.some(n => n.isShared), [notes]);
+  const hasSharedNotes = useMemo(() => !!currentCouple || notes.some(n => n.isShared), [notes, currentCouple]);
 
   // Email triage state
   const [emailTriageOpen, setEmailTriageOpen] = useState(false);

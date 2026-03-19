@@ -130,7 +130,7 @@ const Lists = () => {
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("recentlyUsed");
   const [filterBy, setFilterBy] = useState<FilterOption>("all");
-  const { defaultPrivacy, loading: privacyLoading } = useDefaultPrivacy();
+  // defaultPrivacy is for creation, not view filtering
   const { notes, refetch: refetchNotes } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouple();
   const { lists, loading, deleteList, refetch } = useSupabaseLists(currentCouple?.id || null);
