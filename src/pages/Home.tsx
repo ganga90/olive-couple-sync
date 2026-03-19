@@ -96,7 +96,8 @@ const Home = () => {
   }, [user?.id]);
 
   // Determine whether there are any shared notes (to conditionally show shared pill)
-  const hasSharedNotes = useMemo(() => notes.some(n => n.isShared), [notes]);
+  // Always show "Shared" pill when user is in a couple, even if no shared notes exist yet
+  const hasSharedNotes = useMemo(() => !!currentCouple || notes.some(n => n.isShared), [notes, currentCouple]);
   
   // Organize Agent
   const {

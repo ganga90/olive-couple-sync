@@ -148,12 +148,8 @@ const Lists = () => {
   
   useSEO({ title: `${t('title')} — Olive`, description: t('empty.createFirstList') });
 
-  // Initialize filter from user's default privacy setting
-  useEffect(() => {
-    if (!privacyLoading && filterBy === "all") {
-      setFilterBy(defaultPrivacy as FilterOption);
-    }
-  }, [privacyLoading, defaultPrivacy]);
+  // View filter defaults to "all" — user's defaultPrivacy controls
+  // what privacy new items get, not the view filter.
 
   // Check for shared and AI lists
   const hasSharedLists = useMemo(() => lists.some(list => list.couple_id), [lists]);
