@@ -44,7 +44,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isAfter, parseISO, addDays } from "date-fns";
-import { useDefaultPrivacy } from "@/hooks/useDefaultPrivacy";
+
 
 const getCategoryIcon = (category: string) => {
   const iconMap: Record<string, any> = {
