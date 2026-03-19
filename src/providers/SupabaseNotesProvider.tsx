@@ -175,22 +175,8 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [defaultPrivacy, currentCouple, addSupabaseNote, user, memberMap]);
 
   const updateNote = useCallback(async (id: string, updates: Partial<Note>) => {
-    const supabaseUpdates: any = {};
-    if (updates.originalText !== undefined) supabaseUpdates.original_text = updates.originalText;
-    if (updates.summary !== undefined) supabaseUpdates.summary = updates.summary;
-    if (updates.category !== undefined) supabaseUpdates.category = updates.category.toLowerCase().replace(/\s+/g, '_');
-    if (updates.dueDate !== undefined) supabaseUpdates.due_date = updates.dueDate;
-    if (updates.completed !== undefined) supabaseUpdates.completed = updates.completed;
-    if (updates.priority !== undefined) supabaseUpdates.priority = updates.priority;
-    if (updates.tags !== undefined) supabaseUpdates.tags = updates.tags;
-    if (updates.items !== undefined) supabaseUpdates.items = updates.items;
-    if (updates.task_owner !== undefined) supabaseUpdates.task_owner = updates.task_owner;
-    if (updates.list_id !== undefined) supabaseUpdates.list_id = updates.list_id;
-    if (updates.reminder_time !== undefined) supabaseUpdates.reminder_time = updates.reminder_time;
-    if (updates.recurrence_frequency !== undefined) supabaseUpdates.recurrence_frequency = updates.recurrence_frequency;
-    if (updates.recurrence_interval !== undefined) supabaseUpdates.recurrence_interval = updates.recurrence_interval;
-    if (updates.last_reminded_at !== undefined) supabaseUpdates.last_reminded_at = updates.last_reminded_at;
-
+    // The hook's updateNote handles field mapping internally,
+    // so we pass the updates directly.
     const result = await updateSupabaseNote(id, updates);
     return result ? convertSupabaseNoteToNote(result, user, currentCouple, memberMap) : null;
   }, [updateSupabaseNote, user, currentCouple, memberMap]);
