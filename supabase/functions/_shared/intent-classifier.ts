@@ -303,7 +303,21 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 - "https://airbnb.com/rooms/12345 for our trip" → CREATE (saving a link for travel)
 - "Search for reviews about https://restaurant.com" → web_search (explicit search request WITH a URL — rare exception)
 
-## FOLLOW-UP EXAMPLES (conversation continuity — CRITICAL):
+## EXPENSE EXAMPLES (CRITICAL — any message with a currency amount + merchant = expense):
+- "Amazon $57.85" → expense (amount=57.85, expense_description="Amazon")
+- "$57.85 Amazon" → expense (amount=57.85, expense_description="Amazon")
+- "Starbucks $5.75" → expense (amount=5.75, expense_description="Starbucks")
+- "€30 groceries" → expense (amount=30, expense_description="groceries")
+- "coffee £4.50" → expense (amount=4.50, expense_description="coffee")
+- "Uber 12" → expense (amount=12, expense_description="Uber") — even without currency symbol, a known merchant + number = expense
+- "spent $45 on dinner" → expense (amount=45, expense_description="dinner")
+- "paid 25 at Walmart" → expense (amount=25, expense_description="Walmart")
+- "lunch at Chipotle $15" → expense (amount=15, expense_description="lunch at Chipotle")
+- "gasolina €40" → expense (amount=40, expense_description="gasolina")
+- "pranzo €12" → expense (amount=12, expense_description="pranzo")
+- "Buy groceries" → CREATE (no amount = task, NOT expense)
+- "Amazon package arrived" → CREATE (no amount = task, NOT expense)
+
 - [After Olive listed restaurants] "Do they offer reservations?" → web_search (follow-up wanting external info)
 - [After Olive listed restaurants] "Search for a table at Kebo" → web_search (wanting to book/find external info)
 - [After Olive showed search results] "I meant the restaurant Kebo" → web_search (clarification, continue same thread)
