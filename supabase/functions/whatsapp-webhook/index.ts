@@ -4653,13 +4653,13 @@ Description: "${parsedExpense.description}"`;
     }
 
     // ========================================================================
-    // EXPENSE HANDLER - Quick expense logging via $ prefix
+    // EXPENSE HANDLER - AI-classified expense (natural language)
     // ========================================================================
     if (intent === 'EXPENSE') {
-      console.log('[WhatsApp] Processing EXPENSE:', effectiveMessage?.substring(0, 80));
-      const expenseText = effectiveMessage || '';
+      console.log('[WhatsApp] Processing EXPENSE (AI-classified):', effectiveMessage?.substring(0, 80));
+      const expenseText = effectiveMessage || messageBody || '';
 
-      // If media attached with $ prefix, route to process-receipt
+      // If media attached, route to process-receipt
       if (mediaUrls.length > 0) {
         console.log('[Expense] Media attached — routing to process-receipt');
         try {
@@ -4694,61 +4694,59 @@ Description: "${parsedExpense.description}"`;
         }
       }
 
-      // Parse text-based expense: "$45.50 lunch at Chipotle"
-      const expenseMatch = expenseText.match(/^(\d+\.?\d*)\s+(.+)$/);
-      if (!expenseMatch) {
+      // Use robust multi-format parser
+      const parsedExpense = parseExpenseText(expenseText);
+      if (!parsedExpense) {
         return reply(t('expense_need_amount', userLang));
       }
 
-      const amount = parseFloat(expenseMatch[1]);
-      const description = expenseMatch[2].trim();
-
       // Use AI to categorize the expense
-      let merchant = description;
+      let merchant = parsedExpense.description;
       let category = 'other';
       try {
         const categorizationPrompt = `Extract the merchant name and expense category from this description.
 Respond with ONLY valid JSON: {"merchant": "name", "category": "one_of_these"}
 Categories: food, transport, shopping, entertainment, utilities, health, groceries, travel, personal, education, subscriptions, other
 
-Description: "${description}"`;
-        const aiResult = await callAI(categorizationPrompt, description, 0.3, "lite");
-        const parsed = JSON.parse(aiResult.replace(/```json?|```/g, '').trim());
+Description: "${parsedExpense.description}"`;
+        const categResult = await callAI(categorizationPrompt, parsedExpense.description, 0.3, "lite");
+        const parsed = JSON.parse(categResult.replace(/```json?|```/g, '').trim());
         if (parsed.merchant) merchant = parsed.merchant;
         if (parsed.category) category = parsed.category;
       } catch (e) {
         console.log('[Expense] AI categorization failed, using defaults:', e);
-        // Simple heuristic: check for "at" to extract merchant
-        const atMatch = description.match(/(?:at|from|@)\s+(.+)$/i);
+        const atMatch = parsedExpense.description.match(/(?:at|from|@)\s+(.+)$/i);
         if (atMatch) {
           merchant = atMatch[1].trim();
         }
       }
 
-      // Insert transaction
+      // Insert into expenses table (correct schema)
       try {
-        const { data: txData, error: txError } = await supabase
-          .from('transactions')
+        const { error: txError } = await supabase
+          .from('expenses')
           .insert({
             user_id: userId,
-            couple_id: effectiveCoupleId,
-            amount,
-            merchant,
+            couple_id: effectiveCoupleId || null,
+            amount: parsedExpense.amount,
+            name: merchant,
             category,
-            transaction_date: new Date().toISOString(),
-            confidence: 0.8,
-            metadata: { source: 'whatsapp_shortcut', raw_text: expenseText },
-          })
-          .select()
-          .single();
+            currency: parsedExpense.currency,
+            paid_by: userId,
+            split_type: 'individual',
+            expense_date: new Date().toISOString().split('T')[0],
+            is_shared: false,
+            original_text: messageBody || expenseText,
+          });
 
         if (txError) {
           console.error('[Expense] Insert error:', txError);
           return reply(t('error_generic', userLang));
         }
 
+        const currencySymbol = parsedExpense.currency === 'EUR' ? '€' : parsedExpense.currency === 'GBP' ? '£' : '$';
         let response = t('expense_logged', userLang, {
-          amount: `$${amount.toFixed(2)}`,
+          amount: `${currencySymbol}${parsedExpense.amount.toFixed(2)}`,
           merchant,
           category,
         });
@@ -4758,22 +4756,22 @@ Description: "${description}"`;
           const { data: budgetCheck } = await supabase.rpc('check_budget_status', {
             p_user_id: userId,
             p_category: category,
-            p_amount: amount,
+            p_amount: parsedExpense.amount,
           });
           if (budgetCheck && budgetCheck.length > 0) {
             const budget = budgetCheck[0];
             if (budget.status === 'over_limit') {
               response += '\n' + t('expense_over_budget', userLang, {
                 category,
-                spent: `$${Number(budget.new_total).toFixed(2)}`,
-                limit: `$${Number(budget.limit_amount).toFixed(2)}`,
+                spent: `${currencySymbol}${Number(budget.new_total).toFixed(2)}`,
+                limit: `${currencySymbol}${Number(budget.limit_amount).toFixed(2)}`,
               });
             } else if (budget.status === 'warning') {
               response += '\n' + t('expense_budget_warning', userLang, {
                 category,
                 percentage: String(Math.round(budget.percentage)),
-                spent: `$${Number(budget.new_total).toFixed(2)}`,
-                limit: `$${Number(budget.limit_amount).toFixed(2)}`,
+                spent: `${currencySymbol}${Number(budget.new_total).toFixed(2)}`,
+                limit: `${currencySymbol}${Number(budget.limit_amount).toFixed(2)}`,
               });
             }
           }
