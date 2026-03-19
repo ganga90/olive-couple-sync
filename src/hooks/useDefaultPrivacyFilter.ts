@@ -1,26 +1,17 @@
-import { useState, useEffect } from "react";
-import { useDefaultPrivacy } from "@/hooks/useDefaultPrivacy";
+import { useState } from "react";
 import type { PrivacyFilter } from "@/components/PrivacyFilterPills";
 
 /**
- * Returns a privacy filter state that initializes to the user's
- * default privacy setting from their profile.
+ * Returns a privacy filter state for VIEW purposes.
  * 
- * - If default_privacy = "private" → filter starts as "private"
- * - If default_privacy = "shared"  → filter starts as "shared"
- * - Falls back to "all" while loading
+ * The VIEW filter always defaults to "all" so users see everything
+ * (both private and shared items) on page load.
+ * 
+ * Note: The user's `default_privacy` setting controls the privacy
+ * of NEWLY CREATED items, NOT the default view filter.
  */
 export const useDefaultPrivacyFilter = () => {
-  const { defaultPrivacy, loading } = useDefaultPrivacy();
   const [privacyFilter, setPrivacyFilter] = useState<PrivacyFilter>("all");
-  const [initialized, setInitialized] = useState(false);
 
-  useEffect(() => {
-    if (!loading && !initialized) {
-      setPrivacyFilter(defaultPrivacy as PrivacyFilter);
-      setInitialized(true);
-    }
-  }, [loading, defaultPrivacy, initialized]);
-
-  return { privacyFilter, setPrivacyFilter, initialized };
+  return { privacyFilter, setPrivacyFilter, initialized: true };
 };
