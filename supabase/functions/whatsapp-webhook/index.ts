@@ -3013,7 +3013,97 @@ serve(async (req) => {
           return reply(t('error_generic', userLang));
         }
       } else if (intent === 'EXPENSE') {
-        // Fall through to normal flow
+        // Handle expense inline — do NOT fall through to AI classifier
+        console.log(`[Shortcut→EXPENSE] Processing: "${effectiveMessage?.substring(0, 80)}"`);
+        
+        // If media attached with $ prefix, route to process-receipt
+        if (mediaUrls.length > 0) {
+          console.log('[Shortcut→EXPENSE] Media attached — routing to process-receipt');
+          try {
+            const { data: receiptResult } = await supabase.functions.invoke('process-receipt', {
+              body: {
+                image_url: mediaUrls[0],
+                user_id: userId,
+                couple_id: effectiveCoupleId,
+                caption: effectiveMessage || undefined,
+              },
+            });
+            if (receiptResult?.transaction) {
+              const tx = receiptResult.transaction;
+              let response = t('expense_logged', userLang, {
+                amount: `$${Number(tx.amount).toFixed(2)}`,
+                merchant: tx.merchant || 'Unknown',
+                category: tx.category || 'Other',
+              });
+              return reply(response);
+            }
+            return reply(receiptResult?.message || t('error_generic', userLang));
+          } catch (e) {
+            console.error('[Shortcut→EXPENSE] Receipt processing error:', e);
+            return reply(t('error_generic', userLang));
+          }
+        }
+
+        // Parse expense text with robust multi-format parser
+        const parsedExpense = parseExpenseText(effectiveMessage || '');
+        if (!parsedExpense) {
+          return reply(t('expense_need_amount', userLang));
+        }
+
+        // Use AI to categorize
+        let merchant = parsedExpense.description;
+        let category = 'other';
+        try {
+          const categorizationPrompt = `Extract the merchant name and expense category from this description.
+Respond with ONLY valid JSON: {"merchant": "name", "category": "one_of_these"}
+Categories: food, transport, shopping, entertainment, utilities, health, groceries, travel, personal, education, subscriptions, other
+
+Description: "${parsedExpense.description}"`;
+          const categResult = await callAI(categorizationPrompt, parsedExpense.description, 0.3, "lite");
+          const parsed = JSON.parse(categResult.replace(/```json?|```/g, '').trim());
+          if (parsed.merchant) merchant = parsed.merchant;
+          if (parsed.category) category = parsed.category;
+        } catch (e) {
+          console.log('[Shortcut→EXPENSE] AI categorization fallback:', e);
+          const atMatch = parsedExpense.description.match(/(?:at|from|@)\s+(.+)$/i);
+          if (atMatch) merchant = atMatch[1].trim();
+        }
+
+        // Insert into expenses table
+        try {
+          const { error: txError } = await supabase
+            .from('expenses')
+            .insert({
+              user_id: userId,
+              couple_id: effectiveCoupleId || null,
+              amount: parsedExpense.amount,
+              name: merchant,
+              category,
+              currency: parsedExpense.currency,
+              paid_by: userId,
+              split_type: 'individual',
+              expense_date: new Date().toISOString().split('T')[0],
+              is_shared: false,
+              original_text: messageBody || effectiveMessage,
+            });
+
+          if (txError) {
+            console.error('[Shortcut→EXPENSE] Insert error:', txError);
+            return reply(t('error_generic', userLang));
+          }
+
+          const currencySymbol = parsedExpense.currency === 'EUR' ? '€' : parsedExpense.currency === 'GBP' ? '£' : '$';
+          let response = t('expense_logged', userLang, {
+            amount: `${currencySymbol}${parsedExpense.amount.toFixed(2)}`,
+            merchant,
+            category,
+          });
+          response += '\n\n🔗 Manage: https://witholive.app';
+          return reply(response);
+        } catch (e) {
+          console.error('[Shortcut→EXPENSE] Error:', e);
+          return reply(t('error_generic', userLang));
+        }
       } else if (intent === 'CHAT') {
         // Fall through to normal flow
       }
