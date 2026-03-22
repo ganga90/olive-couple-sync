@@ -1773,7 +1773,6 @@ Process this note:
     let processedResponse_inner: any;
 
     try {
-      // Use Google GenAI SDK with structured output
       const response = await genai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: userPrompt,
@@ -1789,15 +1788,14 @@ Process this note:
       console.log('[GenAI SDK] Raw response:', responseText);
 
       try {
-        processedResponse = JSON.parse(responseText);
-        console.log('[GenAI SDK] Parsed response:', processedResponse);
+        processedResponse_inner = JSON.parse(responseText);
+        console.log('[GenAI SDK] Parsed response:', processedResponse_inner);
       } catch (parseError) {
         console.error('[GenAI SDK] Parse error, using fallback:', parseError);
-        // Use media description as fallback summary if available
         const fallbackSummary = mediaDescriptions.length > 0 
           ? deriveSummaryFromMedia(mediaDescriptions)
           : (safeText.length > 100 ? safeText.substring(0, 97) + "..." : safeText || 'Saved note');
-        processedResponse = {
+        processedResponse_inner = {
           multiple: false,
           notes: [{
             summary: fallbackSummary,
@@ -1820,11 +1818,10 @@ Process this note:
         (genAiError as any)?.status === 429
       ) {
         console.warn('[GenAI SDK] Quota exceeded, falling back to simple note creation');
-        // Use media description as fallback summary if available
         const fallbackSummary = mediaDescriptions.length > 0 
           ? deriveSummaryFromMedia(mediaDescriptions)
           : (safeText.length > 100 ? safeText.substring(0, 97) + "..." : safeText || 'Saved note');
-        processedResponse = {
+        processedResponse_inner = {
           multiple: false,
           notes: [{
             summary: fallbackSummary,
@@ -1839,6 +1836,9 @@ Process this note:
         throw genAiError;
       }
     }
+    
+    processedResponse = processedResponse_inner;
+    } // end of else block for standard AI processing path
 
     // Category synonym map — used ONLY for matching AI categories to existing list names
     // This is NOT used for classification — the AI handles that via the prompt
