@@ -568,14 +568,21 @@ IMPORTANT: When calculating times, use the user's timezone (${userTimezone}), no
 - "tomorrow at 10am" means 10am in ${userTimezone}, convert to UTC ISO format for storage
 ${mediaContext}
 
-SPLIT CRITERIA: Create multiple notes when input contains lists of items or distinct tasks.
-Examples: 
-- "buy milk and call doctor" → 2 notes (different actions)
-- "buy milk, eggs, bread" → 3 notes (separate items)
-- "groceries: milk, eggs, bread" → 3 notes (separate items)
-- "fix the sink" → 1 note (single task)
+SPLIT CRITERIA — CRITICAL: You MUST create SEPARATE notes when input contains:
+- **Numbered lists**: "1. Buy milk 2. Call doctor 3. Book restaurant" → 3 notes
+- **Bullet points or dashes**: "- buy milk\n- call doctor" → 2 notes  
+- **Comma-separated distinct tasks**: "buy milk, call doctor, book restaurant" → 3 notes
+- **"and" joining distinct tasks**: "buy milk and call doctor" → 2 notes (different actions)
+- **Each grocery item**: "groceries: milk, eggs, bread" → 3 separate notes (one per item)
+- **Multi-line tasks**: Each line with a distinct task → separate note per line
 
-CRITICAL: For grocery lists or item lists, ALWAYS create separate notes for EACH item.
+DO NOT MERGE distinct tasks into one note with items array. Each task gets its OWN note.
+The items array is for SUB-DETAILS of a SINGLE task (e.g., phone, address, time), NOT for separate tasks.
+
+SINGLE NOTE cases (do NOT split):
+- "fix the sink" → 1 note (single task)
+- "doctor appointment at 3pm tomorrow" → 1 note (single task with details)
+- "Sofa measures: 118 width, 60 long" → 1 note (measurements are details, not separate tasks)
 
 CORE FIELD RULES:
 1. summary: Concise title (max 100 chars) - EXTRACT THE MAIN ENTITY NAME
