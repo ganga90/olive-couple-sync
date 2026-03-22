@@ -306,9 +306,11 @@ const memoryExtractionSchema = {
 // Detect input style from text characteristics
 function detectInputStyle(text: string): 'succinct' | 'conversational' {
   const wordCount = text.split(/\s+/).length;
-  const hasGreetings = /^(hey|hi|hello|yo|so|ok|okay|well)/i.test(text.trim());
-  const hasFillerWords = /(i think|maybe|probably|might|was thinking|need to|have to|gotta|gonna)/i.test(text);
-  const hasConversationalMarkers = /(and also|by the way|oh and|btw|also|actually)/i.test(text);
+  // CRITICAL: Use word-boundary (\b) to prevent matching partial words
+  // e.g., "Sofa" must NOT match "so", "Oklahoma" must NOT match "ok"
+  const hasGreetings = /^(hey|hi|hello|yo|so|ok|okay|well)\b/i.test(text.trim());
+  const hasFillerWords = /\b(i think|maybe|probably|might|was thinking|need to|have to|gotta|gonna)\b/i.test(text);
+  const hasConversationalMarkers = /\b(and also|by the way|oh and|btw|also|actually)\b/i.test(text);
   const sentenceCount = (text.match(/[.!?]+/g) || []).length;
   const hasComplexSentences = sentenceCount > 1 || wordCount > 20;
   
@@ -326,12 +328,14 @@ function detectInputStyle(text: string): 'succinct' | 'conversational' {
 // Preprocess conversational text to extract key information (keeps token usage low)
 function extractKeyInfoFromConversational(text: string): string {
   // Remove common filler phrases while preserving key information
+  // CRITICAL: Use word-boundary (\b) to prevent stripping partial words
+  // e.g., "Sofa" must NOT have "So" stripped, "Hello world" → "world" is OK
   let cleaned = text
-    .replace(/^(hey|hi|hello|yo|so|ok|okay|well)[,\s]*/i, '')
-    .replace(/i (think|guess|suppose|believe)\s+/gi, '')
-    .replace(/(maybe|probably|might)\s+/gi, '')
-    .replace(/was (thinking|wondering)\s+(about\s+)?/gi, '')
-    .replace(/need to|have to|gotta|gonna/gi, 'should')
+    .replace(/^(hey|hi|hello|yo|so|ok|okay|well)\b[,\s]*/i, '')
+    .replace(/\bi (think|guess|suppose|believe)\s+/gi, '')
+    .replace(/\b(maybe|probably|might)\s+/gi, '')
+    .replace(/\bwas (thinking|wondering)\s+(about\s+)?/gi, '')
+    .replace(/\b(need to|have to|gotta|gonna)\b/gi, 'should')
     .replace(/\s+/g, ' ')
     .trim();
   
@@ -564,14 +568,21 @@ IMPORTANT: When calculating times, use the user's timezone (${userTimezone}), no
 - "tomorrow at 10am" means 10am in ${userTimezone}, convert to UTC ISO format for storage
 ${mediaContext}
 
-SPLIT CRITERIA: Create multiple notes when input contains lists of items or distinct tasks.
-Examples: 
-- "buy milk and call doctor" → 2 notes (different actions)
-- "buy milk, eggs, bread" → 3 notes (separate items)
-- "groceries: milk, eggs, bread" → 3 notes (separate items)
-- "fix the sink" → 1 note (single task)
+SPLIT CRITERIA — CRITICAL: You MUST create SEPARATE notes when input contains:
+- **Numbered lists**: "1. Buy milk 2. Call doctor 3. Book restaurant" → 3 notes
+- **Bullet points or dashes**: "- buy milk\n- call doctor" → 2 notes  
+- **Comma-separated distinct tasks**: "buy milk, call doctor, book restaurant" → 3 notes
+- **"and" joining distinct tasks**: "buy milk and call doctor" → 2 notes (different actions)
+- **Each grocery item**: "groceries: milk, eggs, bread" → 3 separate notes (one per item)
+- **Multi-line tasks**: Each line with a distinct task → separate note per line
 
-CRITICAL: For grocery lists or item lists, ALWAYS create separate notes for EACH item.
+DO NOT MERGE distinct tasks into one note with items array. Each task gets its OWN note.
+The items array is for SUB-DETAILS of a SINGLE task (e.g., phone, address, time), NOT for separate tasks.
+
+SINGLE NOTE cases (do NOT split):
+- "fix the sink" → 1 note (single task)
+- "doctor appointment at 3pm tomorrow" → 1 note (single task with details)
+- "Sofa measures: 118 width, 60 long" → 1 note (measurements are details, not separate tasks)
 
 CORE FIELD RULES:
 1. summary: Concise title (max 100 chars) - EXTRACT THE MAIN ENTITY NAME
@@ -676,7 +687,63 @@ Return multiple:true with notes array if multiple items detected.
 Return multiple:false with single note fields if just one task.`;
 };
 
-// Transcribe audio using ElevenLabs Speech-to-Text
+// ============================================================================
+// DETERMINISTIC MULTI-ITEM DETECTION
+// ============================================================================
+
+/**
+ * Detects clearly structured multi-item input (numbered lists, bullet points,
+ * newline-separated tasks) and returns individual items for separate processing.
+ * Returns null if the input doesn't contain a clear multi-item structure.
+ */
+function detectMultiItemInput(text: string): string[] | null {
+  if (!text || text.length < 10) return null;
+  
+  const trimmed = text.trim();
+  
+  // Pattern 1: Numbered lists — "1. Buy milk 2. Call doctor 3. Book restaurant"
+  // Also handles "1) Buy milk 2) Call doctor"
+  const numberedPattern = /(?:^|\n)\s*\d+[\.\)]\s+/;
+  if (numberedPattern.test(trimmed)) {
+    const items = trimmed
+      .split(/(?:^|\n)\s*\d+[\.\)]\s+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    if (items.length >= 2) {
+      console.log('[MultiItemDetect] Numbered list detected:', items.length, 'items');
+      return items;
+    }
+  }
+  
+  // Pattern 2: Bullet points — "- Buy milk\n- Call doctor" or "• Buy milk\n• Call doctor"
+  const bulletPattern = /(?:^|\n)\s*[-•*]\s+/;
+  if (bulletPattern.test(trimmed)) {
+    const items = trimmed
+      .split(/(?:^|\n)\s*[-•*]\s+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    if (items.length >= 2) {
+      console.log('[MultiItemDetect] Bullet list detected:', items.length, 'items');
+      return items;
+    }
+  }
+  
+  // Pattern 3: Newline-separated distinct tasks (each line is a separate task)
+  // Only trigger if 3+ lines, each reasonably short (to avoid splitting paragraphs)
+  const lines = trimmed.split(/\n+/).map(s => s.trim()).filter(s => s.length > 0);
+  if (lines.length >= 3 && lines.every(l => l.length < 120)) {
+    // Verify they look like distinct tasks, not a paragraph
+    const avgLen = lines.reduce((sum, l) => sum + l.length, 0) / lines.length;
+    if (avgLen < 80) {
+      console.log('[MultiItemDetect] Multi-line tasks detected:', lines.length, 'items');
+      return lines;
+    }
+  }
+  
+  return null;
+}
+
+
 async function transcribeAudioWithElevenLabs(audioUrl: string): Promise<string> {
   const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
   
@@ -1711,13 +1778,58 @@ Process this note:
       userPrompt = `${systemPrompt}${listsContext}\n\nProcess this note:\n"${enhancedText}"`;
     }
 
+    let processedResponse: any;
+    //
+    // DETERMINISTIC PRE-SPLIT: Detect clearly structured multi-item input
+    // before sending to AI, to guarantee splitting for numbered/bulleted lists
+    // ======================================================================
+    const preDetectedItems = detectMultiItemInput(enhancedText);
+    if (preDetectedItems && preDetectedItems.length > 1 && !hasMedia) {
+      console.log('[process-note] Pre-split detected', preDetectedItems.length, 'items from structured input');
+      // Process each item separately through the AI for proper categorization
+      const allProcessedNotes: any[] = [];
+      
+      for (const item of preDetectedItems) {
+        const itemPrompt = `${systemPrompt}${listsContext}\n\nProcess this single note (this is ONE item from a multi-item brain dump — return multiple:false with a single note):\n"${item}"`;
+        
+        try {
+          const itemResponse = await genai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: itemPrompt,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: multiNoteSchema,
+              temperature: 0.1,
+              maxOutputTokens: 600
+            }
+          });
+          
+          const itemParsed = JSON.parse(itemResponse.text || '{}');
+          const note = itemParsed.notes?.[0] || itemParsed;
+          allProcessedNotes.push(note);
+        } catch (itemErr) {
+          console.warn('[process-note] Pre-split item processing failed for:', item, itemErr);
+          // Fallback: create a simple note
+          allProcessedNotes.push({
+            summary: item.length > 100 ? item.substring(0, 97) + '...' : item,
+            category: 'task',
+            priority: 'medium',
+            tags: [],
+            items: []
+          });
+        }
+      }
+      
+      // Skip the main AI call — we already have results
+      processedResponse = { multiple: true, notes: allProcessedNotes };
+    } else {
+    // Standard AI processing path (single item or AI-detected multi)
     console.log('[GenAI SDK] Processing note with structured output...');
     console.log('[GenAI SDK] Style:', detectedStyle, 'Has media:', hasMedia, 'Media descriptions count:', mediaDescriptions.length, 'Is vague text:', isVagueText);
 
-    let processedResponse: any;
+    let processedResponse_inner: any;
 
     try {
-      // Use Google GenAI SDK with structured output
       const response = await genai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: userPrompt,
@@ -1725,7 +1837,7 @@ Process this note:
           responseMimeType: "application/json",
           responseSchema: multiNoteSchema,
           temperature: 0.1,
-          maxOutputTokens: 1200
+          maxOutputTokens: 2400
         }
       });
 
@@ -1733,15 +1845,14 @@ Process this note:
       console.log('[GenAI SDK] Raw response:', responseText);
 
       try {
-        processedResponse = JSON.parse(responseText);
-        console.log('[GenAI SDK] Parsed response:', processedResponse);
+        processedResponse_inner = JSON.parse(responseText);
+        console.log('[GenAI SDK] Parsed response:', processedResponse_inner);
       } catch (parseError) {
         console.error('[GenAI SDK] Parse error, using fallback:', parseError);
-        // Use media description as fallback summary if available
         const fallbackSummary = mediaDescriptions.length > 0 
           ? deriveSummaryFromMedia(mediaDescriptions)
           : (safeText.length > 100 ? safeText.substring(0, 97) + "..." : safeText || 'Saved note');
-        processedResponse = {
+        processedResponse_inner = {
           multiple: false,
           notes: [{
             summary: fallbackSummary,
@@ -1764,11 +1875,10 @@ Process this note:
         (genAiError as any)?.status === 429
       ) {
         console.warn('[GenAI SDK] Quota exceeded, falling back to simple note creation');
-        // Use media description as fallback summary if available
         const fallbackSummary = mediaDescriptions.length > 0 
           ? deriveSummaryFromMedia(mediaDescriptions)
           : (safeText.length > 100 ? safeText.substring(0, 97) + "..." : safeText || 'Saved note');
-        processedResponse = {
+        processedResponse_inner = {
           multiple: false,
           notes: [{
             summary: fallbackSummary,
@@ -1783,6 +1893,9 @@ Process this note:
         throw genAiError;
       }
     }
+    
+    processedResponse = processedResponse_inner;
+    } // end of else block for standard AI processing path
 
     // Category synonym map — used ONLY for matching AI categories to existing list names
     // This is NOT used for classification — the AI handles that via the prompt
