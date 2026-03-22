@@ -328,12 +328,14 @@ function detectInputStyle(text: string): 'succinct' | 'conversational' {
 // Preprocess conversational text to extract key information (keeps token usage low)
 function extractKeyInfoFromConversational(text: string): string {
   // Remove common filler phrases while preserving key information
+  // CRITICAL: Use word-boundary (\b) to prevent stripping partial words
+  // e.g., "Sofa" must NOT have "So" stripped, "Hello world" → "world" is OK
   let cleaned = text
-    .replace(/^(hey|hi|hello|yo|so|ok|okay|well)[,\s]*/i, '')
-    .replace(/i (think|guess|suppose|believe)\s+/gi, '')
-    .replace(/(maybe|probably|might)\s+/gi, '')
-    .replace(/was (thinking|wondering)\s+(about\s+)?/gi, '')
-    .replace(/need to|have to|gotta|gonna/gi, 'should')
+    .replace(/^(hey|hi|hello|yo|so|ok|okay|well)\b[,\s]*/i, '')
+    .replace(/\bi (think|guess|suppose|believe)\s+/gi, '')
+    .replace(/\b(maybe|probably|might)\s+/gi, '')
+    .replace(/\bwas (thinking|wondering)\s+(about\s+)?/gi, '')
+    .replace(/\b(need to|have to|gotta|gonna)\b/gi, 'should')
     .replace(/\s+/g, ' ')
     .trim();
   
