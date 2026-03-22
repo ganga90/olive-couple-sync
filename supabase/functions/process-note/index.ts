@@ -306,9 +306,11 @@ const memoryExtractionSchema = {
 // Detect input style from text characteristics
 function detectInputStyle(text: string): 'succinct' | 'conversational' {
   const wordCount = text.split(/\s+/).length;
-  const hasGreetings = /^(hey|hi|hello|yo|so|ok|okay|well)/i.test(text.trim());
-  const hasFillerWords = /(i think|maybe|probably|might|was thinking|need to|have to|gotta|gonna)/i.test(text);
-  const hasConversationalMarkers = /(and also|by the way|oh and|btw|also|actually)/i.test(text);
+  // CRITICAL: Use word-boundary (\b) to prevent matching partial words
+  // e.g., "Sofa" must NOT match "so", "Oklahoma" must NOT match "ok"
+  const hasGreetings = /^(hey|hi|hello|yo|so|ok|okay|well)\b/i.test(text.trim());
+  const hasFillerWords = /\b(i think|maybe|probably|might|was thinking|need to|have to|gotta|gonna)\b/i.test(text);
+  const hasConversationalMarkers = /\b(and also|by the way|oh and|btw|also|actually)\b/i.test(text);
   const sentenceCount = (text.match(/[.!?]+/g) || []).length;
   const hasComplexSentences = sentenceCount > 1 || wordCount > 20;
   
