@@ -1722,10 +1722,55 @@ Process this note:
       userPrompt = `${systemPrompt}${listsContext}\n\nProcess this note:\n"${enhancedText}"`;
     }
 
+    // ======================================================================
+    // DETERMINISTIC PRE-SPLIT: Detect clearly structured multi-item input
+    // before sending to AI, to guarantee splitting for numbered/bulleted lists
+    // ======================================================================
+    const preDetectedItems = detectMultiItemInput(enhancedText);
+    if (preDetectedItems && preDetectedItems.length > 1 && !hasMedia) {
+      console.log('[process-note] Pre-split detected', preDetectedItems.length, 'items from structured input');
+      // Process each item separately through the AI for proper categorization
+      const allProcessedNotes: any[] = [];
+      
+      for (const item of preDetectedItems) {
+        const itemPrompt = `${systemPrompt}${listsContext}\n\nProcess this single note (this is ONE item from a multi-item brain dump — return multiple:false with a single note):\n"${item}"`;
+        
+        try {
+          const itemResponse = await genai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: itemPrompt,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: multiNoteSchema,
+              temperature: 0.1,
+              maxOutputTokens: 600
+            }
+          });
+          
+          const itemParsed = JSON.parse(itemResponse.text || '{}');
+          const note = itemParsed.notes?.[0] || itemParsed;
+          allProcessedNotes.push(note);
+        } catch (itemErr) {
+          console.warn('[process-note] Pre-split item processing failed for:', item, itemErr);
+          // Fallback: create a simple note
+          allProcessedNotes.push({
+            summary: item.length > 100 ? item.substring(0, 97) + '...' : item,
+            category: 'task',
+            priority: 'medium',
+            tags: [],
+            items: []
+          });
+        }
+      }
+      
+      // Skip the main AI call — we already have results
+      processedResponse = { multiple: true, notes: allProcessedNotes };
+    } else {
+    // Standard AI processing path (single item or AI-detected multi)
     console.log('[GenAI SDK] Processing note with structured output...');
     console.log('[GenAI SDK] Style:', detectedStyle, 'Has media:', hasMedia, 'Media descriptions count:', mediaDescriptions.length, 'Is vague text:', isVagueText);
 
-    let processedResponse: any;
+    let processedResponse_inner: any;
 
     try {
       // Use Google GenAI SDK with structured output
