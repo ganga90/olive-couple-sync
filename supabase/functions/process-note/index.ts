@@ -687,7 +687,63 @@ Return multiple:true with notes array if multiple items detected.
 Return multiple:false with single note fields if just one task.`;
 };
 
-// Transcribe audio using ElevenLabs Speech-to-Text
+// ============================================================================
+// DETERMINISTIC MULTI-ITEM DETECTION
+// ============================================================================
+
+/**
+ * Detects clearly structured multi-item input (numbered lists, bullet points,
+ * newline-separated tasks) and returns individual items for separate processing.
+ * Returns null if the input doesn't contain a clear multi-item structure.
+ */
+function detectMultiItemInput(text: string): string[] | null {
+  if (!text || text.length < 10) return null;
+  
+  const trimmed = text.trim();
+  
+  // Pattern 1: Numbered lists — "1. Buy milk 2. Call doctor 3. Book restaurant"
+  // Also handles "1) Buy milk 2) Call doctor"
+  const numberedPattern = /(?:^|\n)\s*\d+[\.\)]\s+/;
+  if (numberedPattern.test(trimmed)) {
+    const items = trimmed
+      .split(/(?:^|\n)\s*\d+[\.\)]\s+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    if (items.length >= 2) {
+      console.log('[MultiItemDetect] Numbered list detected:', items.length, 'items');
+      return items;
+    }
+  }
+  
+  // Pattern 2: Bullet points — "- Buy milk\n- Call doctor" or "• Buy milk\n• Call doctor"
+  const bulletPattern = /(?:^|\n)\s*[-•*]\s+/;
+  if (bulletPattern.test(trimmed)) {
+    const items = trimmed
+      .split(/(?:^|\n)\s*[-•*]\s+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    if (items.length >= 2) {
+      console.log('[MultiItemDetect] Bullet list detected:', items.length, 'items');
+      return items;
+    }
+  }
+  
+  // Pattern 3: Newline-separated distinct tasks (each line is a separate task)
+  // Only trigger if 3+ lines, each reasonably short (to avoid splitting paragraphs)
+  const lines = trimmed.split(/\n+/).map(s => s.trim()).filter(s => s.length > 0);
+  if (lines.length >= 3 && lines.every(l => l.length < 120)) {
+    // Verify they look like distinct tasks, not a paragraph
+    const avgLen = lines.reduce((sum, l) => sum + l.length, 0) / lines.length;
+    if (avgLen < 80) {
+      console.log('[MultiItemDetect] Multi-line tasks detected:', lines.length, 'items');
+      return lines;
+    }
+  }
+  
+  return null;
+}
+
+
 async function transcribeAudioWithElevenLabs(audioUrl: string): Promise<string> {
   const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
   
