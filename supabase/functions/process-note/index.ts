@@ -1736,7 +1736,7 @@ Process this note:
           responseMimeType: "application/json",
           responseSchema: multiNoteSchema,
           temperature: 0.1,
-          maxOutputTokens: 1200
+          maxOutputTokens: 2400
         }
       });
 
