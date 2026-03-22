@@ -1778,7 +1778,8 @@ Process this note:
       userPrompt = `${systemPrompt}${listsContext}\n\nProcess this note:\n"${enhancedText}"`;
     }
 
-    // ======================================================================
+    let processedResponse: any;
+    //
     // DETERMINISTIC PRE-SPLIT: Detect clearly structured multi-item input
     // before sending to AI, to guarantee splitting for numbered/bulleted lists
     // ======================================================================
