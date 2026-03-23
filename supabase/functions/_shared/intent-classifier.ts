@@ -279,11 +279,33 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 - "Add milk to groceries" → CREATE (new task routed to groceries list)
 
 ## DISAMBIGUATION EXAMPLES (to prevent common mistakes):
+
+### NOUN-PHRASE BRAIN DUMPS (no verb, no question mark → ALWAYS CREATE):
+- "Health Info Urologist" → CREATE (brain dump — saving a note/label about health info)
+- "Sofa Measures" → CREATE (brain dump — jotting down a topic to track)
+- "Car Insurance Renewal" → CREATE (brain dump — noting something to do)
+- "Dentist Appointment Notes" → CREATE (brain dump — saving a topic)
+- "Wedding Venue Options" → CREATE (brain dump — listing a concept)
+- "Baby Name Ideas" → CREATE (brain dump — saving a topic to explore)
+- "Recipe Chicken Parmesan" → CREATE (brain dump — saving a recipe note)
+- "Vet records Milka" → CREATE (brain dump — saving info about pet)
+- "Plumber contact info" → CREATE (brain dump — saving reference info)
+- "Info urológico" → CREATE (Spanish brain dump)
+- "Misure divano" → CREATE (Italian brain dump)
+- "Ideas regalo cumpleaños" → CREATE (Spanish brain dump)
+
+### IMPERATIVE / TIME-BASED (verb or time → ALWAYS CREATE):
 - "Review taxes in 2 hours" → CREATE (brain dump with deadline, NOT a search)
 - "Check flights to Rome" → CREATE (new task to check flights)
 - "Pack lunch for tomorrow" → CREATE (new task with time)
 - "Call mom at 3pm" → CREATE (new task with time)
 - "Prepare presentation by Friday" → CREATE (new task with deadline)
+- "Fix the leaky faucet this weekend" → CREATE
+- "Schedule haircut for Saturday" → CREATE
+- "Revisar impuestos en 2 horas" → CREATE (Spanish brain dump)
+- "Controllare le tasse tra 2 ore" → CREATE (Italian brain dump)
+
+### QUESTIONS → contextual_ask (NEVER create):
 - "When is the dentist?" → contextual_ask (question about existing data)
 - "Which restaurants I have in my list?" → contextual_ask (question about saved content)
 - "What books are on my reading list?" → contextual_ask (question about saved content)
@@ -291,16 +313,16 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 - "Any date ideas?" → contextual_ask (asking for suggestions from saved data)
 - "¿Qué restaurantes tengo guardados?" → contextual_ask (Spanish question about saved data)
 - "Quali ristoranti ho nella mia lista?" → contextual_ask (Italian question about saved data)
+
+### DASHBOARD REQUESTS → search:
 - "Show my tasks" → search (dashboard request)
 - "What's urgent?" → search (dashboard filter)
 - "What's due today?" → search (dashboard filter)
 - "Groceries" → search (single-word list name, show dashboard)
 - "Show my groceries list" → search (explicit list view request)
+
+### ACTIONS ON EXISTING TASKS:
 - "Done with taxes" → complete (action on existing task)
-- "Fix the leaky faucet this weekend" → CREATE
-- "Schedule haircut for Saturday" → CREATE
-- "Revisar impuestos en 2 horas" → CREATE (Spanish brain dump)
-- "Controllare le tasse tra 2 ore" → CREATE (Italian brain dump)
 
 ## URL/LINK EXAMPLES (CRITICAL — URLs = save/bookmark, NOT web_search):
 - "Olive improvements Perplexity APIs https://docs.perplexity.ai/docs/getting-started/overview" → CREATE (saving a link with descriptive text)
