@@ -1106,6 +1106,54 @@ Max 500 words.`;
   }
 }
 
+// Analyze image using pre-downloaded base64 data (avoids re-downloading)
+async function analyzeImageWithGeminiFromBase64(genai: GoogleGenAI, base64Image: string, mimeType: string): Promise<string> {
+  try {
+    console.log('[Gemini Vision] Analyzing image from base64, type:', mimeType);
+    
+    const extractionPrompt = `Analyze this image and extract ALL useful information with MAXIMUM detail. Be thorough and specific.
+
+**HANDWRITTEN TEXT / STICKY NOTES / WHITEBOARDS / MEETING NOTES — TOP PRIORITY:**
+- Perform careful OCR on ALL handwritten text, even if messy or partial
+- Preserve the EXACT words written, do not paraphrase
+- Format: Start with "HANDWRITTEN:" followed by the full transcribed content
+
+**BUSINESS/LOCATION PAGES**: Extract name, phone, website, address, hours, rating, reviews, price level, cuisine, amenities.
+**PRODUCTS**: Use exact brand + model name. NEVER prefix with "PRODUCTS:".
+**TRAVEL DOCUMENTS**: Start with "TRAVEL:" prefix. Extract carrier, flight number, route, dates, passenger.
+**RECEIPTS**: Store name, items, amounts, date.
+**PROMO CODES**: Code, discount, expiration, conditions.
+**EVENTS**: Name, venue, date, time, tickets, price.
+
+CRITICAL: Extract EVERY piece of visible information. Be specific and complete.
+Max 500 words.`;
+
+    const response = await genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: extractionPrompt },
+            { inlineData: { mimeType, data: base64Image } }
+          ]
+        }
+      ],
+      config: {
+        temperature: 0.1,
+        maxOutputTokens: 800
+      }
+    });
+    
+    const description = response.text || '';
+    console.log('[Gemini Vision] Base64 analysis result:', description.substring(0, 200));
+    return description;
+  } catch (error) {
+    console.error('[Gemini Vision] Error analyzing base64 image:', error);
+    return '';
+  }
+}
+
 // Analyze video using Gemini's native multimodal video understanding
 async function analyzeVideoWithGemini(genai: GoogleGenAI, videoUrl: string): Promise<string> {
   try {
