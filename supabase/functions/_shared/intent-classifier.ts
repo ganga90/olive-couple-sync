@@ -225,13 +225,15 @@ ${hasMedia ? '⚠️ **THIS MESSAGE HAS A MEDIA ATTACHMENT (image, document, or 
 ### RULE 0: BRAIN DUMP DEFAULT — CREATE UNLESS PROVEN OTHERWISE
 The PRIMARY use case of this app is brain-dumping: users send quick thoughts, tasks, ideas, and the system saves them. When in doubt, classify as "create". A message like "Review taxes in 2 hours" or "Check flights to Rome" or "Pack lunch for tomorrow" is ALWAYS a new task creation — the user is telling Olive what they need to do, NOT asking about existing tasks.
 
+**THE NOUN-PHRASE BRAIN DUMP RULE (CRITICAL):** Short descriptive phrases like "Health Info Urologist", "Sofa Measures", "Car Insurance Renewal", "Dentist Appointment Notes", "Wedding Venue Options", "Baby Name Ideas", "Recipe Chicken Parmesan" are ALWAYS "create". These are brain dumps — the user is jotting down a topic/note for Olive to save. They are NOT searches, NOT contextual_ask, NOT chat. The ONLY exception is if the phrase EXACTLY matches an existing list name (see Rule 14). A noun phrase that does NOT match a list name and does NOT end with "?" is ALWAYS a brain dump → CREATE. Think of it like writing on a Post-it note — if it reads like a Post-it label, it's CREATE.
+
 **THE URL/LINK RULE (highest priority):** If the message contains a URL (http:// or https://), it is ALMOST ALWAYS "create" — the user is bookmarking/saving a link with optional context. Examples: "Olive improvements Perplexity APIs https://docs.perplexity.ai/..." = CREATE (saving a link with a note). "Check this out https://example.com" = CREATE. "https://recipe.com/pasta" = CREATE. The ONLY exception is if the user explicitly asks Olive to search or look something up AND includes a URL as context (e.g., "search for reviews about https://..."). But a plain URL or URL + descriptive text = ALWAYS create.
 
 **THE VERB TRAP:** Verbs like "review", "check", "pack", "prepare", "plan", "organize", "call", "schedule", "book", "research", "look into", "figure out", "set up" at the START of a message are INSTRUCTIONS to create a new task. They are NOT search queries. "Review taxes" = CREATE a task to review taxes. "Check the dentist appointment" = could be contextual_ask ONLY if it's phrased as a question ("when is the dentist?"). But "Check dentist appointment on Thursday" with a time = definitely CREATE.
 
 **TIME EXPRESSIONS = STRONG CREATE SIGNAL:** Messages containing relative time expressions like "in 2 hours", "in 30 minutes", "tomorrow", "tonight", "this weekend", "next week", "at 3pm", "by Friday" are almost ALWAYS new tasks being brain-dumped. The user is saying WHEN they need to do something, which means they're creating a task with a deadline. Do NOT search for existing tasks — create a new one. Set due_date_expression to the time component.
 
-**KEY TEST:** Ask yourself: "Is the user TELLING Olive about something new to track, or ASKING about something already saved?" If telling → create. If asking → contextual_ask or search.
+**KEY TEST:** Ask yourself: "Is the user TELLING Olive about something new to track, or ASKING about something already saved?" If telling → create. If asking → contextual_ask or search. A message that reads like a title, label, or sticky note → ALWAYS create.
 
 1. **Conversational context is king.** Use CONVERSATION HISTORY to resolve "it", "that", "this", "the last one", pronouns in any language. If someone says "cancel it" after discussing a task, the target is that task. If someone says "then schedule it" or "then create it" or "schedule that", they want to CREATE a task based on what they just said in the previous message — classify as "create" with confidence 0.9.
 2. **CRITICAL: Follow-up ACTIONS on recently discussed items are NEVER "create".** If the conversation history shows Olive just confirmed saving/creating a task (e.g., "✅ Saved: X"), and the user's next message asks to MODIFY that item (change reminder, change due date, move, delete, set priority, reschedule, postpone), this is ALWAYS the corresponding action intent ("remind", "set_due", "move", "delete", "set_priority") — NEVER "create". The words "change", "update", "modify", "reschedule", "postpone", "move", "set" combined with "that", "it", "this", "for that", "for it" are STRONG signals of a MODIFICATION intent. Set target_task_name to "that" or the pronoun used — the system resolves it via session context.
@@ -242,11 +244,11 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 7. **Relative references.** "Last task", "the latest one", "previous task", "l'ultima attività", "última tarea" → preserve the EXACT phrase in target_task_name. The system resolves it. These are action intents, never "create".
 8. **Questions about data = contextual_ask, NOT search.** "When is X?", "What did I save about Y?", "Do I have any Z?", "Which restaurants I have?", "What's in my travel list?" → contextual_ask. The word "search" is reserved for DASHBOARD commands like "show my tasks" or "what's urgent". If the user is asking a QUESTION (interrogative) about specific content → contextual_ask. If they want a dashboard/summary view → search.
 9. **New items with details = create.** If the message contains a date, time, location, or appointment-like details AND does NOT use modification verbs (change, update, postpone, reschedule, move), it is always "create". Example: "Oliva vet visit at Banfield on 20-Mar at 5pm" → CREATE.
-10. **Ambiguity → lean towards CREATE for imperative/statement forms, contextual_ask for question forms.** If someone says "groceries" with no verb → probably search (dashboard). If someone says "Review taxes in 2 hours" → definitely CREATE (imperative + time). If someone says "which restaurants?" or "what books do I have?" → contextual_ask (question about content). Only use "search" for explicit dashboard requests.
+10. **Ambiguity resolution hierarchy:** (a) If the message ends with "?" → contextual_ask or search, NEVER create. (b) If the message is a SINGLE WORD or short phrase that EXACTLY matches an existing list name → search. (c) If the message is a noun phrase (no verb, no question mark) that does NOT match a list name → CREATE (brain dump). (d) If the message has a verb at the start → CREATE (imperative task). (e) Only use "search" for explicit dashboard requests like "show my tasks", "what's urgent?", "what's due today?".
 11. **Language:** The user speaks ${userLanguage}. Understand their message natively in that language.
 12. **Confidence:** 0.9+ clear, 0.7-0.9 moderate, 0.5-0.7 uncertain, <0.5 very ambiguous.
 13. For chat_type, use: briefing, weekly_summary, daily_focus, productivity_tips, progress_check, motivation, planning, greeting, general.
-14. **SINGLE-WORD LIST MATCH:** If the user's message is a SINGLE WORD (or a very short phrase with no verb) that exactly matches one of their EXISTING LISTS (see USER'S EXISTING LISTS below), classify as "search" — they want to see that list. Examples: user has a list "Groceries" and sends "groceries" → search. User has "Books" list and sends "books" → search. But "buy groceries" → create (has a verb).
+14. **SINGLE-WORD LIST MATCH:** If the user's message is a SINGLE WORD (or a very short phrase with no verb) that exactly matches one of their EXISTING LISTS (see USER'S EXISTING LISTS below), classify as "search" — they want to see that list. Examples: user has a list "Groceries" and sends "groceries" → search. User has "Books" list and sends "books" → search. But "buy groceries" → create (has a verb). If it does NOT match any list → it's a brain dump → CREATE.
 15. **"ADD X TO Y" PATTERN:** "Add milk to groceries", "put this in my work list", "aggiungi latte alla spesa" → ALWAYS "create" (NOT create_list). The system routes the item to the correct list automatically. "create_list" is ONLY for when the user wants to make a BRAND NEW list that doesn't exist yet.
 16. **REMIND-CREATE HYBRID:** "Remind me to buy milk tomorrow" or "Remind me about the meeting at 5pm" — if the subject IS a new task (buy milk, call doctor, etc.), classify as "remind" with target_task_name set to the task description (e.g., "buy milk") and due_date_expression to the time (e.g., "tomorrow"). The system will auto-create the task AND set the reminder. Do NOT classify as "create" — use "remind" so the reminder is set automatically.
 17. **CONVERSATION CONTINUITY — NEVER break the thread.** If the conversation history shows Olive just answered a contextual_ask or web_search (e.g., listed restaurants, gave booking info, showed search results), and the user sends a follow-up message about the SAME topic (e.g., "do they offer reservations?", "what about the second one?", "can you find me a link?", "I meant the restaurant one"), this MUST be classified as:
@@ -277,11 +279,33 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 - "Add milk to groceries" → CREATE (new task routed to groceries list)
 
 ## DISAMBIGUATION EXAMPLES (to prevent common mistakes):
+
+### NOUN-PHRASE BRAIN DUMPS (no verb, no question mark → ALWAYS CREATE):
+- "Health Info Urologist" → CREATE (brain dump — saving a note/label about health info)
+- "Sofa Measures" → CREATE (brain dump — jotting down a topic to track)
+- "Car Insurance Renewal" → CREATE (brain dump — noting something to do)
+- "Dentist Appointment Notes" → CREATE (brain dump — saving a topic)
+- "Wedding Venue Options" → CREATE (brain dump — listing a concept)
+- "Baby Name Ideas" → CREATE (brain dump — saving a topic to explore)
+- "Recipe Chicken Parmesan" → CREATE (brain dump — saving a recipe note)
+- "Vet records Milka" → CREATE (brain dump — saving info about pet)
+- "Plumber contact info" → CREATE (brain dump — saving reference info)
+- "Info urológico" → CREATE (Spanish brain dump)
+- "Misure divano" → CREATE (Italian brain dump)
+- "Ideas regalo cumpleaños" → CREATE (Spanish brain dump)
+
+### IMPERATIVE / TIME-BASED (verb or time → ALWAYS CREATE):
 - "Review taxes in 2 hours" → CREATE (brain dump with deadline, NOT a search)
 - "Check flights to Rome" → CREATE (new task to check flights)
 - "Pack lunch for tomorrow" → CREATE (new task with time)
 - "Call mom at 3pm" → CREATE (new task with time)
 - "Prepare presentation by Friday" → CREATE (new task with deadline)
+- "Fix the leaky faucet this weekend" → CREATE
+- "Schedule haircut for Saturday" → CREATE
+- "Revisar impuestos en 2 horas" → CREATE (Spanish brain dump)
+- "Controllare le tasse tra 2 ore" → CREATE (Italian brain dump)
+
+### QUESTIONS → contextual_ask (NEVER create):
 - "When is the dentist?" → contextual_ask (question about existing data)
 - "Which restaurants I have in my list?" → contextual_ask (question about saved content)
 - "What books are on my reading list?" → contextual_ask (question about saved content)
@@ -289,16 +313,16 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 - "Any date ideas?" → contextual_ask (asking for suggestions from saved data)
 - "¿Qué restaurantes tengo guardados?" → contextual_ask (Spanish question about saved data)
 - "Quali ristoranti ho nella mia lista?" → contextual_ask (Italian question about saved data)
+
+### DASHBOARD REQUESTS → search:
 - "Show my tasks" → search (dashboard request)
 - "What's urgent?" → search (dashboard filter)
 - "What's due today?" → search (dashboard filter)
 - "Groceries" → search (single-word list name, show dashboard)
 - "Show my groceries list" → search (explicit list view request)
+
+### ACTIONS ON EXISTING TASKS:
 - "Done with taxes" → complete (action on existing task)
-- "Fix the leaky faucet this weekend" → CREATE
-- "Schedule haircut for Saturday" → CREATE
-- "Revisar impuestos en 2 horas" → CREATE (Spanish brain dump)
-- "Controllare le tasse tra 2 ore" → CREATE (Italian brain dump)
 
 ## URL/LINK EXAMPLES (CRITICAL — URLs = save/bookmark, NOT web_search):
 - "Olive improvements Perplexity APIs https://docs.perplexity.ai/docs/getting-started/overview" → CREATE (saving a link with descriptive text)
