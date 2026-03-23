@@ -1558,27 +1558,53 @@ serve(async (req) => {
       console.log('[process-note] Media descriptions:', mediaDescriptions);
     }
 
-    // Fetch RELEVANT user memories using semantic search
+    // ======================================================================
+    // PARALLEL CONTEXT FETCHING: memory, lists, and recent patterns at once
+    // ======================================================================
     let memoryContext = '';
-    try {
-      // Build a search query from text and media descriptions
-      const searchQuery = [
-        safeText,
-        ...mediaDescriptions.map(d => d.replace(/^\[.*?\]\s*/, '').substring(0, 200))
-      ].filter(Boolean).join(' ');
-      
-      console.log('[process-note] Searching relevant memories for query:', searchQuery.substring(0, 100));
-      
-      const { data: memoryData } = await supabase.functions.invoke('manage-memories', {
-        body: { action: 'search_relevant', user_id, query: searchQuery }
-      });
-      
-      if (memoryData?.success && memoryData.context) {
-        memoryContext = memoryData.context;
-        console.log('[process-note] Retrieved', memoryData.count, 'relevant user memories via semantic search');
-      } else {
-        console.log('[process-note] No relevant memories found, using fallback');
-        // Fallback to get_context if search fails
+    let existingLists: any[] | null = null;
+    let recentNotePatterns: Record<string, string> = {};
+
+    const searchQuery = [
+      safeText,
+      ...mediaDescriptions.map(d => d.replace(/^\[.*?\]\s*/, '').substring(0, 200))
+    ].filter(Boolean).join(' ');
+
+    // Build lists query
+    let listsQueryBuilder = couple_id
+      ? supabase.from('clerk_lists').select('id, name, description, is_manual')
+          .or(`and(author_id.eq.${user_id},couple_id.is.null),couple_id.eq.${couple_id}`)
+      : supabase.from('clerk_lists').select('id, name, description, is_manual')
+          .eq('author_id', user_id).is('couple_id', null);
+
+    // Run all three in parallel
+    const [memoryResult, listsResult, patternsResult] = await Promise.all([
+      // 1. Memory search
+      supabase.functions.invoke('manage-memories', {
+        body: { action: 'search_relevant', user_id, query: searchQuery.substring(0, 300) }
+      }).catch((err: any) => { console.warn('[process-note] Memory fetch error:', err); return { data: null }; }),
+
+      // 2. Lists fetch
+      listsQueryBuilder.then((res: any) => res).catch((err: any) => { 
+        console.warn('[process-note] Lists fetch error:', err); return { data: null, error: err }; 
+      }),
+
+      // 3. Recent note patterns
+      supabase.from('clerk_notes').select('summary, category, list_id')
+        .eq('author_id', user_id).eq('completed', false)
+        .not('list_id', 'is', null)
+        .order('created_at', { ascending: false }).limit(30)
+        .then((res: any) => res)
+        .catch((err: any) => { console.warn('[process-note] Patterns fetch error:', err); return { data: null }; })
+    ]);
+
+    // Process memory result
+    if (memoryResult?.data?.success && memoryResult.data.context) {
+      memoryContext = memoryResult.data.context;
+      console.log('[process-note] Retrieved', memoryResult.data.count, 'relevant memories');
+    } else {
+      // Fallback to get_context
+      try {
         const { data: fallbackData } = await supabase.functions.invoke('manage-memories', {
           body: { action: 'get_context', user_id }
         });
@@ -1586,64 +1612,31 @@ serve(async (req) => {
           memoryContext = fallbackData.context;
           console.log('[process-note] Fallback: Retrieved', fallbackData.count, 'memories');
         }
+      } catch (memErr) {
+        console.warn('[process-note] Memory fallback error:', memErr);
       }
-    } catch (memErr) {
-      console.warn('[process-note] Could not fetch user memories:', memErr);
     }
 
-    // Fetch existing lists for context
-    let existingListsQuery = supabase
-      .from('clerk_lists')
-      .select('id, name, description, is_manual')
-      .eq('author_id', user_id);
-
-    if (couple_id) {
-      existingListsQuery = supabase
-        .from('clerk_lists')
-        .select('id, name, description, is_manual')
-        .or(`and(author_id.eq.${user_id},couple_id.is.null),couple_id.eq.${couple_id}`);
-    } else {
-      existingListsQuery = existingListsQuery.is('couple_id', null);
+    // Process lists result
+    existingLists = listsResult?.data || [];
+    if (listsResult?.error) {
+      console.error('Error fetching lists:', listsResult.error);
     }
 
-    const { data: existingLists, error: listsError } = await existingListsQuery;
-    
-    if (listsError) {
-      console.error('Error fetching existing lists:', listsError);
-    }
-
-    // Fetch recent note categories to learn user routing patterns
-    let recentNotePatterns: Record<string, string> = {}; // keyword -> list_name
-    try {
-      const recentQuery = supabase
-        .from('clerk_notes')
-        .select('summary, category, list_id')
-        .eq('author_id', user_id)
-        .eq('completed', false)
-        .not('list_id', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(30);
-      
-      const { data: recentNotes } = await recentQuery;
-      
-      if (recentNotes && existingLists) {
-        // Build a map of content patterns → list names
-        for (const note of recentNotes) {
-          const matchedList = existingLists.find((l: any) => l.id === note.list_id);
-          if (matchedList) {
-            // Store category → list name mapping for pattern learning
-            const catKey = note.category?.toLowerCase();
-            if (catKey && !recentNotePatterns[catKey]) {
-              recentNotePatterns[catKey] = matchedList.name;
-            }
+    // Process patterns result
+    if (patternsResult?.data && existingLists) {
+      for (const note of patternsResult.data) {
+        const matchedList = existingLists.find((l: any) => l.id === note.list_id);
+        if (matchedList) {
+          const catKey = note.category?.toLowerCase();
+          if (catKey && !recentNotePatterns[catKey]) {
+            recentNotePatterns[catKey] = matchedList.name;
           }
         }
-        if (Object.keys(recentNotePatterns).length > 0) {
-          console.log('[process-note] Learned routing patterns:', recentNotePatterns);
-        }
       }
-    } catch (err) {
-      console.warn('[process-note] Could not fetch recent note patterns:', err);
+      if (Object.keys(recentNotePatterns).length > 0) {
+        console.log('[process-note] Learned routing patterns:', recentNotePatterns);
+      }
     }
 
     // Prepare context - include list descriptions for richer AI matching
