@@ -1842,18 +1842,6 @@ Process this note:
       });
       
       const allProcessedNotes = await Promise.all(itemPromises);
-        } catch (itemErr) {
-          console.warn('[process-note] Pre-split item processing failed for:', item, itemErr);
-          // Fallback: create a simple note
-          allProcessedNotes.push({
-            summary: item.length > 100 ? item.substring(0, 97) + '...' : item,
-            category: 'task',
-            priority: 'medium',
-            tags: [],
-            items: []
-          });
-        }
-      }
       
       // Skip the main AI call — we already have results
       processedResponse = { multiple: true, notes: allProcessedNotes };
