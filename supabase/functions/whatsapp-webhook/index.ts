@@ -5765,6 +5765,7 @@ ${memoryContext}
 ${patternContext}
 ${partnerContext}
 ${skillContext}
+${dynamicMemoryFileContext}
 ${chatAgentInsightsContext ? `## Recent Agent Insights (Background AI analysis):\n${chatAgentInsightsContext}\n` : ''}
 ## Current Priorities:
 - Urgent tasks: ${topUrgentTasks.join(', ') || 'None'}
