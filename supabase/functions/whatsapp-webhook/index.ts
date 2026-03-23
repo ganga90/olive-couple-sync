@@ -3272,6 +3272,16 @@ Description: "${parsedExpense.description}"`;
     }
 
     // ========================================================================
+    // POST-CLASSIFICATION SAFETY NET #0: Media+caption override
+    // If media is attached and intent is NOT create/expense, force CREATE.
+    // Users sending images/docs with captions are ALWAYS saving something.
+    // ========================================================================
+    if (mediaUrls.length > 0 && messageBody && !['CREATE', 'EXPENSE'].includes(intentResult.intent)) {
+      console.log(`[SafetyNet#0] ⚡ Overriding ${intentResult.intent} → CREATE (media+caption always = save)`);
+      intentResult = { ...intentResult, intent: 'CREATE' };
+    }
+
+    // ========================================================================
     // POST-CLASSIFICATION SAFETY NET: Catch misclassified follow-up actions
     // If the AI classified as CREATE but the message is clearly a follow-up
     // action (change/update/move/delete/remind + pronoun), override to TASK_ACTION
