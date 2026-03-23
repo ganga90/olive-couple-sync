@@ -1255,16 +1255,22 @@ serve(async (req) => {
         fullContext += `\n${memoryContext}\n`;
       }
 
-      // Inject dynamic memory files (profile + daily logs + household)
+      // Inject dynamic memory files (profile + daily logs + household) + agent insights (parallel)
       if (actualUserId && supabase) {
         try {
-          const { fetchDynamicMemoryContext } = await import("../_shared/orchestrator.ts");
-          const dynamicCtx = await fetchDynamicMemoryContext(supabase, actualUserId, actualCoupleId);
+          const { fetchDynamicMemoryContext, fetchAgentInsightsContext } = await import("../_shared/orchestrator.ts");
+          const [dynamicCtx, agentCtx] = await Promise.all([
+            fetchDynamicMemoryContext(supabase, actualUserId, actualCoupleId),
+            fetchAgentInsightsContext(supabase, actualUserId),
+          ]);
           if (dynamicCtx) {
             fullContext += `\n${dynamicCtx}\n`;
           }
+          if (agentCtx) {
+            fullContext += `\n${agentCtx}\n`;
+          }
         } catch (dynErr) {
-          console.warn('[Ask Olive Individual] Dynamic memory fetch error (non-blocking):', dynErr);
+          console.warn('[Ask Olive Individual] Dynamic memory/agent fetch error (non-blocking):', dynErr);
         }
       }
 
