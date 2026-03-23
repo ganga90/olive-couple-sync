@@ -5721,18 +5721,22 @@ IMPORTANT: Use the above skill knowledge to enhance your response with domain-sp
       }
       
       // ================================================================
-      // RECENT AGENT INSIGHTS (for CHAT handler) — uses shared orchestrator
+      // DYNAMIC CONTEXT: Agent Insights + Memory Files (parallel fetch)
       // ================================================================
       let chatAgentInsightsContext = '';
+      let dynamicMemoryFileContext = '';
       try {
-        const { fetchAgentInsightsContext } = await import("../_shared/orchestrator.ts");
-        const fullContext = await fetchAgentInsightsContext(supabase, userId);
-        // Strip the header for inline use in baseContext (header added in template literal)
-        chatAgentInsightsContext = fullContext
+        const { fetchAgentInsightsContext, fetchDynamicMemoryContext } = await import("../_shared/orchestrator.ts");
+        const [fullAgentCtx, memFileCtx] = await Promise.all([
+          fetchAgentInsightsContext(supabase, userId),
+          fetchDynamicMemoryContext(supabase, userId, coupleId),
+        ]);
+        chatAgentInsightsContext = fullAgentCtx
           .replace(/^## Recent Agent Insights.*\n/m, '')
           .trim();
-      } catch (agentErr) {
-        console.warn('[WhatsApp Chat] Agent insights fetch error (non-blocking):', agentErr);
+        dynamicMemoryFileContext = memFileCtx;
+      } catch (ctxErr) {
+        console.warn('[WhatsApp Chat] Dynamic context fetch error (non-blocking):', ctxErr);
       }
 
       // ================================================================
