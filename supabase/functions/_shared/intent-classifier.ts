@@ -143,6 +143,7 @@ const INTENT_SCHEMA = {
 
 function buildClassificationPrompt(input: ClassificationInput): string {
   const userLanguage = input.userLanguage || "en";
+  const hasMedia = input.hasMedia || false;
 
   // Build conversation context (last 10 exchanges = 20 messages)
   const recentConvo = input.conversationHistory
