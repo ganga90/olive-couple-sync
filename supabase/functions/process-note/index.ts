@@ -1529,35 +1529,6 @@ serve(async (req) => {
           receiptProcessingResult = mr.receiptResult;
         }
       }
-          }
-        } else if (mediaType === 'pdf') {
-          const description = await analyzePdfWithGemini(genai, mediaUrl);
-          if (description) {
-            mediaDescriptions.push(`[PDF Document] ${description}`);
-          }
-        } else if (mediaType === 'audio') {
-          const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
-          if (transcription) {
-            mediaDescriptions.push(`[Audio transcription] ${transcription}`);
-          }
-        } else if (mediaType === 'video') {
-          // For videos, use Gemini's native multimodal video understanding
-          // This analyzes both visual content AND audio simultaneously
-          const videoAnalysis = await analyzeVideoWithGemini(genai, mediaUrl);
-          if (videoAnalysis) {
-            mediaDescriptions.push(`[Video] ${videoAnalysis}`);
-          } else {
-            // Fallback: try audio-only transcription if visual analysis fails
-            console.log('[process-note] Video visual analysis failed, trying audio-only fallback');
-            const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
-            if (transcription) {
-              mediaDescriptions.push(`[Video audio transcription] ${transcription}`);
-            } else {
-              mediaDescriptions.push(`[Video] Video attachment (analysis unavailable)`);
-            }
-          }
-        }
-      }
 
       console.log('[process-note] Media descriptions:', mediaDescriptions);
     }
