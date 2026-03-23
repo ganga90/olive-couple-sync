@@ -3240,6 +3240,7 @@ Description: "${parsedExpense.description}"`;
       activatedSkills,
       userLists,
       userLanguage: userLang,
+      hasMedia: mediaUrls.length > 0,
     });
     const aiResult = classificationResult.intent;
     const classificationLatencyMs = classificationResult.latencyMs;
@@ -3268,6 +3269,16 @@ Description: "${parsedExpense.description}"`;
         console.log('[AI Router] AI classification failed, falling back to shortcuts');
       }
       intentResult = determineIntent(messageBody || '', mediaUrls.length > 0);
+    }
+
+    // ========================================================================
+    // POST-CLASSIFICATION SAFETY NET #0: Media+caption override
+    // If media is attached and intent is NOT create/expense, force CREATE.
+    // Users sending images/docs with captions are ALWAYS saving something.
+    // ========================================================================
+    if (mediaUrls.length > 0 && messageBody && !['CREATE', 'EXPENSE'].includes(intentResult.intent)) {
+      console.log(`[SafetyNet#0] ⚡ Overriding ${intentResult.intent} → CREATE (media+caption always = save)`);
+      intentResult = { ...intentResult, intent: 'CREATE' };
     }
 
     // ========================================================================

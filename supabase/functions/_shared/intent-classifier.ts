@@ -28,6 +28,7 @@ export interface ClassificationInput {
   activatedSkills: Array<{ skill_id: string; name: string }>;
   userLists?: Array<{ name: string }>; // User's existing list names for disambiguation
   userLanguage?: string; // defaults to "en"
+  hasMedia?: boolean; // Whether media (image, document, PDF) is attached
 }
 
 export interface ClassifiedIntent {
@@ -142,6 +143,7 @@ const INTENT_SCHEMA = {
 
 function buildClassificationPrompt(input: ClassificationInput): string {
   const userLanguage = input.userLanguage || "en";
+  const hasMedia = input.hasMedia || false;
 
   // Build conversation context (last 10 exchanges = 20 messages)
   const recentConvo = input.conversationHistory
@@ -214,6 +216,9 @@ If a shortcut prefix is present, strip it from the content for processing. Set c
 - "create_list": User EXPLICITLY asks to CREATE A NEW LIST — they must use words like "create a list", "make a list", "start a list", "new list" + a topic/name. Examples: "create a list about wedding planning", "make a list for our trip to Rome", "start a grocery list", "new list: Home Renovation". This is NOT for creating a task — it's specifically for creating a new organizational LIST/FOLDER. The list_name parameter should contain the desired list name extracted from the message. If the user also provides initial items (e.g., "create a list of books: Atomic Habits, Deep Work"), include them in the partner_message_content parameter (repurposed for initial items). Set confidence to 0.9+.
 - "list_recap": User wants a DETAILED RECAP or REVIEW of a specific list — they want to see every item with full details, status, due dates, and an overall summary. Trigger words: "recap", "review", "summarize", "detail", "breakdown", "overview" combined with a list name. Examples: "recap my groceries list", "give me a detailed review of my travel list", "summarize my work list", "what's the status of my home improvement list?", "review everything in my books list". This is DIFFERENT from "search" (which shows a simple numbered list) — list_recap provides an AI-generated analytical summary with insights. Set list_name parameter to the target list name.
 - "partner_message": User wants to send a message TO their partner via Olive (e.g., "remind Marco to buy lemons", "tell Almu to pick up the kids", "ask partner to call the dentist", "let Marcus know dinner is ready", "dile a Marco que compre limones", "ricorda a Marco di comprare i limoni"). The user is asking YOU to relay a message or task to their partner. Set partner_message_content to the message/task for the partner, and partner_action to the type (remind/tell/ask/notify).
+
+## MEDIA ATTACHMENT:
+${hasMedia ? '⚠️ **THIS MESSAGE HAS A MEDIA ATTACHMENT (image, document, or file).** Messages with media are ALMOST ALWAYS "create" — the user is saving a photo, document, receipt, or visual note. The caption text describes what the media is about. Examples: [image] + "Health info urologist" = CREATE (saving health document). [image] + "Sofa measures" = CREATE (saving measurements). [image] + "Receipt from dinner" = CREATE or expense. The ONLY exceptions: "$25 receipt" with image = expense. An image with NO caption was already handled separately. ALWAYS classify media+caption as "create" unless the caption is clearly an expense with $ amount.' : 'No media attached.'}
 
 ## CRITICAL RULES:
 
