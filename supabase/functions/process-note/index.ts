@@ -1458,73 +1458,77 @@ serve(async (req) => {
     let receiptProcessingResult: { success: boolean; transaction?: any; alert?: boolean; message?: string } | null = null;
 
     if (mediaUrls.length > 0) {
-      console.log('[process-note] Processing', mediaUrls.length, 'media files, content types:', contentTypes);
+      console.log('[process-note] Processing', mediaUrls.length, 'media files in PARALLEL');
 
-      for (let i = 0; i < mediaUrls.length; i++) {
-        const mediaUrl = mediaUrls[i];
-        // Use content type from WhatsApp if available, fallback to URL detection
+      // Process all media files in parallel
+      const mediaProcessors = mediaUrls.map(async (mediaUrl, i) => {
         const contentType = contentTypes[i] || undefined;
         const mediaType = getMediaType(mediaUrl, contentType);
-        console.log('[process-note] Media type:', mediaType, 'Content-Type:', contentType, 'URL:', mediaUrl);
+        console.log('[process-note] Media type:', mediaType, 'URL:', mediaUrl.substring(0, 80));
+        const results: string[] = [];
+        let localReceiptResult: typeof receiptProcessingResult = null;
 
         if (mediaType === 'image') {
-          // Download image for receipt detection
           try {
+            // Download image ONCE, reuse buffer for both receipt detection and vision analysis
             const imageResponse = await fetch(mediaUrl);
-            if (imageResponse.ok) {
-              const imageBlob = await imageResponse.blob();
-              const arrayBuffer = await imageBlob.arrayBuffer();
-              const base64Image = arrayBufferToBase64(arrayBuffer);
-              const mimeType = imageBlob.type || 'image/jpeg';
+            if (!imageResponse.ok) return { descriptions: [], receiptResult: null };
 
-              // Check if this image is a receipt
-              console.log('[process-note] Checking if image is a receipt...');
-              const receiptCheck = await detectReceipt(genai, base64Image, mimeType);
-              console.log('[process-note] Receipt detection result:', receiptCheck);
+            const imageBlob = await imageResponse.blob();
+            const arrayBuffer = await imageBlob.arrayBuffer();
+            const base64Image = arrayBufferToBase64(arrayBuffer);
+            const mimeType = imageBlob.type || 'image/jpeg';
 
-              if (receiptCheck.isReceipt && receiptCheck.confidence >= 0.7) {
-                // Process as receipt with specialized handler
-                console.log('[process-note] High-confidence receipt detected, processing with receipt handler');
-                receiptProcessingResult = await processReceiptImage(supabase, base64Image, user_id, couple_id);
+            // Check if receipt
+            const receiptCheck = await detectReceipt(genai, base64Image, mimeType);
 
-                if (receiptProcessingResult.success && receiptProcessingResult.transaction) {
-                  // Add receipt info to media descriptions
-                  const txn = receiptProcessingResult.transaction;
-                  mediaDescriptions.push(`[Receipt] ${txn.merchant} - $${txn.amount} (${txn.category}) on ${txn.date}`);
-
-                  // If there's a budget alert, add it to the description
-                  if (receiptProcessingResult.alert && receiptProcessingResult.message) {
-                    mediaDescriptions.push(`[Budget Alert] ${receiptProcessingResult.message}`);
-                  }
-                } else {
-                  // Fallback to normal image analysis if receipt processing fails
-                  console.log('[process-note] Receipt processing failed, falling back to normal image analysis');
-                  const description = await analyzeImageWithGemini(genai, mediaUrl);
-                  if (description) {
-                    mediaDescriptions.push(`[Image] ${description}`);
-                  }
+            if (receiptCheck.isReceipt && receiptCheck.confidence >= 0.7) {
+              localReceiptResult = await processReceiptImage(supabase, base64Image, user_id, couple_id);
+              if (localReceiptResult.success && localReceiptResult.transaction) {
+                const txn = localReceiptResult.transaction;
+                results.push(`[Receipt] ${txn.merchant} - $${txn.amount} (${txn.category}) on ${txn.date}`);
+                if (localReceiptResult.alert && localReceiptResult.message) {
+                  results.push(`[Budget Alert] ${localReceiptResult.message}`);
                 }
               } else {
-                // Not a receipt - use normal image analysis
-                const description = await analyzeImageWithGemini(genai, mediaUrl);
-                if (description) {
-                  mediaDescriptions.push(`[Image] ${description}`);
-                }
+                // Receipt processing failed — analyze with vision using EXISTING base64 (no re-download)
+                const description = await analyzeImageWithGeminiFromBase64(genai, base64Image, mimeType);
+                if (description) results.push(`[Image] ${description}`);
               }
             } else {
-              // Couldn't download image, try normal analysis
-              const description = await analyzeImageWithGemini(genai, mediaUrl);
-              if (description) {
-                mediaDescriptions.push(`[Image] ${description}`);
-              }
+              // Not a receipt — analyze with vision using EXISTING base64 (no re-download)
+              const description = await analyzeImageWithGeminiFromBase64(genai, base64Image, mimeType);
+              if (description) results.push(`[Image] ${description}`);
             }
           } catch (imgError) {
             console.error('[process-note] Image processing error:', imgError);
-            // Fallback to normal analysis
-            const description = await analyzeImageWithGemini(genai, mediaUrl);
-            if (description) {
-              mediaDescriptions.push(`[Image] ${description}`);
-            }
+          }
+        } else if (mediaType === 'pdf') {
+          const description = await analyzePdfWithGemini(genai, mediaUrl);
+          if (description) results.push(`[PDF Document] ${description}`);
+        } else if (mediaType === 'audio') {
+          const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
+          if (transcription) results.push(`[Audio transcription] ${transcription}`);
+        } else if (mediaType === 'video') {
+          const videoAnalysis = await analyzeVideoWithGemini(genai, mediaUrl);
+          if (videoAnalysis) {
+            results.push(`[Video] ${videoAnalysis}`);
+          } else {
+            const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
+            if (transcription) results.push(`[Video audio transcription] ${transcription}`);
+            else results.push(`[Video] Video attachment (analysis unavailable)`);
+          }
+        }
+        return { descriptions: results, receiptResult: localReceiptResult };
+      });
+
+      const mediaResults = await Promise.all(mediaProcessors);
+      for (const mr of mediaResults) {
+        mediaDescriptions.push(...mr.descriptions);
+        if (mr.receiptResult && mr.receiptResult.success) {
+          receiptProcessingResult = mr.receiptResult;
+        }
+      }
           }
         } else if (mediaType === 'pdf') {
           const description = await analyzePdfWithGemini(genai, mediaUrl);
