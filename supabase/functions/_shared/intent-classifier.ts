@@ -367,7 +367,9 @@ export async function classifyIntent(
 
     const response = await genai.models.generateContent({
       model: getModel("lite"), // gemini-2.5-flash-lite — fast, cheap, structured output
-      contents: `Classify this message: "${input.message}"`,
+      contents: input.hasMedia 
+        ? `Classify this message (sent WITH a media attachment — image, document, or file): "${input.message}"`
+        : `Classify this message: "${input.message}"`,
       config: {
         systemInstruction: buildClassificationPrompt(input),
         responseMimeType: "application/json",
