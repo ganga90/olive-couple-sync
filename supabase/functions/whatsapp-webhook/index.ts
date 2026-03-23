@@ -4997,6 +4997,7 @@ CRITICAL INSTRUCTIONS:
 ${savedItemsContext}
 ${calendarContext}
 ${memoryContext}
+${ctxAskMemoryFileContext}
 ${agentInsightsContext}
 ${conversationHistoryContext}
 ${entityContext}
