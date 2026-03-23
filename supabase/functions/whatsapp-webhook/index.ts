@@ -3240,6 +3240,7 @@ Description: "${parsedExpense.description}"`;
       activatedSkills,
       userLists,
       userLanguage: userLang,
+      hasMedia: mediaUrls.length > 0,
     });
     const aiResult = classificationResult.intent;
     const classificationLatencyMs = classificationResult.latencyMs;
