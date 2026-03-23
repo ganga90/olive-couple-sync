@@ -1434,6 +1434,15 @@ User's Question: ${actualMessage}`;
     // Extract the text response from the interaction
     const assistantReply = extractTextFromInteraction(data);
 
+    // Auto-evolve profile from conversation (non-blocking)
+    if (actualUserId && supabase && actualMessage && assistantReply) {
+      try {
+        const { evolveProfileFromConversation } = await import("../_shared/orchestrator.ts");
+        evolveProfileFromConversation(supabase, actualUserId, actualMessage, assistantReply)
+          .catch(e => console.warn('[ProfileEvolution] Non-blocking error:', e));
+      } catch {}
+    }
+
     // Return both 'reply' and 'response' for backwards compatibility
     // NEW: Include citations for frontend display
     return new Response(JSON.stringify({
