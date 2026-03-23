@@ -28,6 +28,7 @@ export interface ClassificationInput {
   activatedSkills: Array<{ skill_id: string; name: string }>;
   userLists?: Array<{ name: string }>; // User's existing list names for disambiguation
   userLanguage?: string; // defaults to "en"
+  hasMedia?: boolean; // Whether media (image, document, PDF) is attached
 }
 
 export interface ClassifiedIntent {
