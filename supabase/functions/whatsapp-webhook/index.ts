@@ -5986,6 +5986,13 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
         // Save conversation history (no specific entity for CHAT)
         await saveReferencedEntity(null, chatResponse);
 
+        // Auto-evolve profile from conversation (non-blocking, fire-and-forget)
+        try {
+          const { evolveProfileFromConversation } = await import("../_shared/orchestrator.ts");
+          evolveProfileFromConversation(supabase, userId, effectiveMessage || '', chatResponse)
+            .catch(e => console.warn('[ProfileEvolution] Non-blocking error:', e));
+        } catch {}
+
         return reply(chatResponse.slice(0, 1500));
       } catch (error) {
         console.error('[WhatsApp] Chat AI error:', error);
