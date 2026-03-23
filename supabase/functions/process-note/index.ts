@@ -729,14 +729,46 @@ function detectMultiItemInput(text: string): string[] | null {
   }
   
   // Pattern 3: Newline-separated distinct tasks (each line is a separate task)
-  // Only trigger if 3+ lines, each reasonably short (to avoid splitting paragraphs)
+  // Only trigger if 2+ lines, each reasonably short (to avoid splitting paragraphs)
   const lines = trimmed.split(/\n+/).map(s => s.trim()).filter(s => s.length > 0);
-  if (lines.length >= 3 && lines.every(l => l.length < 120)) {
-    // Verify they look like distinct tasks, not a paragraph
+  if (lines.length >= 2 && lines.every(l => l.length < 120)) {
     const avgLen = lines.reduce((sum, l) => sum + l.length, 0) / lines.length;
     if (avgLen < 80) {
       console.log('[MultiItemDetect] Multi-line tasks detected:', lines.length, 'items');
       return lines;
+    }
+  }
+  
+  // Pattern 4: Comma-separated distinct tasks — "buy milk, call doctor, book restaurant"
+  // Only split if 3+ segments and they look like distinct actions (contain verbs or are short phrases)
+  if (trimmed.includes(',') && !trimmed.includes('\n')) {
+    const segments = trimmed.split(/,\s*/).map(s => s.trim()).filter(s => s.length > 2);
+    if (segments.length >= 3 && segments.every(s => s.length < 80)) {
+      // Verify they look like distinct tasks, not a single sentence with commas
+      // Check if most segments start with a verb or are short noun phrases
+      const actionVerbs = /^(buy|get|call|book|pick|fix|send|pay|check|schedule|cancel|return|order|clean|wash|remind|update|find|research|plan|make|cook|prepare|organize|sort|arrange|set up|follow up|renew|register|sign up|drop off|pick up)/i;
+      const verbCount = segments.filter(s => actionVerbs.test(s)).length;
+      // If at least half start with verbs, or all are short (<30 chars each), treat as multi-item
+      if (verbCount >= segments.length * 0.5 || segments.every(s => s.length < 30)) {
+        console.log('[MultiItemDetect] Comma-separated tasks detected:', segments.length, 'items');
+        return segments;
+      }
+    }
+  }
+  
+  // Pattern 5: "and"-conjunction splitting for distinct actions
+  // "buy milk and call doctor and book restaurant"
+  // Only when "and" joins clearly different action phrases
+  if (/\band\b/i.test(trimmed) && !trimmed.includes(',') && !trimmed.includes('\n')) {
+    const andSegments = trimmed.split(/\s+and\s+/i).map(s => s.trim()).filter(s => s.length > 2);
+    if (andSegments.length >= 2 && andSegments.length <= 5) {
+      const actionVerbs = /^(buy|get|call|book|pick|fix|send|pay|check|schedule|cancel|return|order|clean|wash|remind|update|find|research|plan|make|cook|prepare)/i;
+      const verbCount = andSegments.filter(s => actionVerbs.test(s)).length;
+      // Only split if most segments start with action verbs (indicates distinct tasks)
+      if (verbCount >= andSegments.length * 0.7) {
+        console.log('[MultiItemDetect] And-conjunction tasks detected:', andSegments.length, 'items');
+        return andSegments;
+      }
     }
   }
   
@@ -1070,6 +1102,54 @@ Max 500 words.`;
     return description;
   } catch (error) {
     console.error('[Gemini Vision] Error analyzing image:', error);
+    return '';
+  }
+}
+
+// Analyze image using pre-downloaded base64 data (avoids re-downloading)
+async function analyzeImageWithGeminiFromBase64(genai: GoogleGenAI, base64Image: string, mimeType: string): Promise<string> {
+  try {
+    console.log('[Gemini Vision] Analyzing image from base64, type:', mimeType);
+    
+    const extractionPrompt = `Analyze this image and extract ALL useful information with MAXIMUM detail. Be thorough and specific.
+
+**HANDWRITTEN TEXT / STICKY NOTES / WHITEBOARDS / MEETING NOTES — TOP PRIORITY:**
+- Perform careful OCR on ALL handwritten text, even if messy or partial
+- Preserve the EXACT words written, do not paraphrase
+- Format: Start with "HANDWRITTEN:" followed by the full transcribed content
+
+**BUSINESS/LOCATION PAGES**: Extract name, phone, website, address, hours, rating, reviews, price level, cuisine, amenities.
+**PRODUCTS**: Use exact brand + model name. NEVER prefix with "PRODUCTS:".
+**TRAVEL DOCUMENTS**: Start with "TRAVEL:" prefix. Extract carrier, flight number, route, dates, passenger.
+**RECEIPTS**: Store name, items, amounts, date.
+**PROMO CODES**: Code, discount, expiration, conditions.
+**EVENTS**: Name, venue, date, time, tickets, price.
+
+CRITICAL: Extract EVERY piece of visible information. Be specific and complete.
+Max 500 words.`;
+
+    const response = await genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: extractionPrompt },
+            { inlineData: { mimeType, data: base64Image } }
+          ]
+        }
+      ],
+      config: {
+        temperature: 0.1,
+        maxOutputTokens: 800
+      }
+    });
+    
+    const description = response.text || '';
+    console.log('[Gemini Vision] Base64 analysis result:', description.substring(0, 200));
+    return description;
+  } catch (error) {
+    console.error('[Gemini Vision] Error analyzing base64 image:', error);
     return '';
   }
 }
@@ -1426,127 +1506,128 @@ serve(async (req) => {
     let receiptProcessingResult: { success: boolean; transaction?: any; alert?: boolean; message?: string } | null = null;
 
     if (mediaUrls.length > 0) {
-      console.log('[process-note] Processing', mediaUrls.length, 'media files, content types:', contentTypes);
+      console.log('[process-note] Processing', mediaUrls.length, 'media files in PARALLEL');
 
-      for (let i = 0; i < mediaUrls.length; i++) {
-        const mediaUrl = mediaUrls[i];
-        // Use content type from WhatsApp if available, fallback to URL detection
+      // Process all media files in parallel
+      const mediaProcessors = mediaUrls.map(async (mediaUrl, i) => {
         const contentType = contentTypes[i] || undefined;
         const mediaType = getMediaType(mediaUrl, contentType);
-        console.log('[process-note] Media type:', mediaType, 'Content-Type:', contentType, 'URL:', mediaUrl);
+        console.log('[process-note] Media type:', mediaType, 'URL:', mediaUrl.substring(0, 80));
+        const results: string[] = [];
+        let localReceiptResult: typeof receiptProcessingResult = null;
 
         if (mediaType === 'image') {
-          // Download image for receipt detection
           try {
+            // Download image ONCE, reuse buffer for both receipt detection and vision analysis
             const imageResponse = await fetch(mediaUrl);
-            if (imageResponse.ok) {
-              const imageBlob = await imageResponse.blob();
-              const arrayBuffer = await imageBlob.arrayBuffer();
-              const base64Image = arrayBufferToBase64(arrayBuffer);
-              const mimeType = imageBlob.type || 'image/jpeg';
+            if (!imageResponse.ok) return { descriptions: [], receiptResult: null };
 
-              // Check if this image is a receipt
-              console.log('[process-note] Checking if image is a receipt...');
-              const receiptCheck = await detectReceipt(genai, base64Image, mimeType);
-              console.log('[process-note] Receipt detection result:', receiptCheck);
+            const imageBlob = await imageResponse.blob();
+            const arrayBuffer = await imageBlob.arrayBuffer();
+            const base64Image = arrayBufferToBase64(arrayBuffer);
+            const mimeType = imageBlob.type || 'image/jpeg';
 
-              if (receiptCheck.isReceipt && receiptCheck.confidence >= 0.7) {
-                // Process as receipt with specialized handler
-                console.log('[process-note] High-confidence receipt detected, processing with receipt handler');
-                receiptProcessingResult = await processReceiptImage(supabase, base64Image, user_id, couple_id);
+            // Check if receipt
+            const receiptCheck = await detectReceipt(genai, base64Image, mimeType);
 
-                if (receiptProcessingResult.success && receiptProcessingResult.transaction) {
-                  // Add receipt info to media descriptions
-                  const txn = receiptProcessingResult.transaction;
-                  mediaDescriptions.push(`[Receipt] ${txn.merchant} - $${txn.amount} (${txn.category}) on ${txn.date}`);
-
-                  // If there's a budget alert, add it to the description
-                  if (receiptProcessingResult.alert && receiptProcessingResult.message) {
-                    mediaDescriptions.push(`[Budget Alert] ${receiptProcessingResult.message}`);
-                  }
-                } else {
-                  // Fallback to normal image analysis if receipt processing fails
-                  console.log('[process-note] Receipt processing failed, falling back to normal image analysis');
-                  const description = await analyzeImageWithGemini(genai, mediaUrl);
-                  if (description) {
-                    mediaDescriptions.push(`[Image] ${description}`);
-                  }
+            if (receiptCheck.isReceipt && receiptCheck.confidence >= 0.7) {
+              localReceiptResult = await processReceiptImage(supabase, base64Image, user_id, couple_id);
+              if (localReceiptResult.success && localReceiptResult.transaction) {
+                const txn = localReceiptResult.transaction;
+                results.push(`[Receipt] ${txn.merchant} - $${txn.amount} (${txn.category}) on ${txn.date}`);
+                if (localReceiptResult.alert && localReceiptResult.message) {
+                  results.push(`[Budget Alert] ${localReceiptResult.message}`);
                 }
               } else {
-                // Not a receipt - use normal image analysis
-                const description = await analyzeImageWithGemini(genai, mediaUrl);
-                if (description) {
-                  mediaDescriptions.push(`[Image] ${description}`);
-                }
+                // Receipt processing failed — analyze with vision using EXISTING base64 (no re-download)
+                const description = await analyzeImageWithGeminiFromBase64(genai, base64Image, mimeType);
+                if (description) results.push(`[Image] ${description}`);
               }
             } else {
-              // Couldn't download image, try normal analysis
-              const description = await analyzeImageWithGemini(genai, mediaUrl);
-              if (description) {
-                mediaDescriptions.push(`[Image] ${description}`);
-              }
+              // Not a receipt — analyze with vision using EXISTING base64 (no re-download)
+              const description = await analyzeImageWithGeminiFromBase64(genai, base64Image, mimeType);
+              if (description) results.push(`[Image] ${description}`);
             }
           } catch (imgError) {
             console.error('[process-note] Image processing error:', imgError);
-            // Fallback to normal analysis
-            const description = await analyzeImageWithGemini(genai, mediaUrl);
-            if (description) {
-              mediaDescriptions.push(`[Image] ${description}`);
-            }
           }
         } else if (mediaType === 'pdf') {
           const description = await analyzePdfWithGemini(genai, mediaUrl);
-          if (description) {
-            mediaDescriptions.push(`[PDF Document] ${description}`);
-          }
+          if (description) results.push(`[PDF Document] ${description}`);
         } else if (mediaType === 'audio') {
           const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
-          if (transcription) {
-            mediaDescriptions.push(`[Audio transcription] ${transcription}`);
-          }
+          if (transcription) results.push(`[Audio transcription] ${transcription}`);
         } else if (mediaType === 'video') {
-          // For videos, use Gemini's native multimodal video understanding
-          // This analyzes both visual content AND audio simultaneously
           const videoAnalysis = await analyzeVideoWithGemini(genai, mediaUrl);
           if (videoAnalysis) {
-            mediaDescriptions.push(`[Video] ${videoAnalysis}`);
+            results.push(`[Video] ${videoAnalysis}`);
           } else {
-            // Fallback: try audio-only transcription if visual analysis fails
-            console.log('[process-note] Video visual analysis failed, trying audio-only fallback');
             const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
-            if (transcription) {
-              mediaDescriptions.push(`[Video audio transcription] ${transcription}`);
-            } else {
-              mediaDescriptions.push(`[Video] Video attachment (analysis unavailable)`);
-            }
+            if (transcription) results.push(`[Video audio transcription] ${transcription}`);
+            else results.push(`[Video] Video attachment (analysis unavailable)`);
           }
+        }
+        return { descriptions: results, receiptResult: localReceiptResult };
+      });
+
+      const mediaResults = await Promise.all(mediaProcessors);
+      for (const mr of mediaResults) {
+        mediaDescriptions.push(...mr.descriptions);
+        if (mr.receiptResult && mr.receiptResult.success) {
+          receiptProcessingResult = mr.receiptResult;
         }
       }
 
       console.log('[process-note] Media descriptions:', mediaDescriptions);
     }
 
-    // Fetch RELEVANT user memories using semantic search
+    // ======================================================================
+    // PARALLEL CONTEXT FETCHING: memory, lists, and recent patterns at once
+    // ======================================================================
     let memoryContext = '';
-    try {
-      // Build a search query from text and media descriptions
-      const searchQuery = [
-        safeText,
-        ...mediaDescriptions.map(d => d.replace(/^\[.*?\]\s*/, '').substring(0, 200))
-      ].filter(Boolean).join(' ');
-      
-      console.log('[process-note] Searching relevant memories for query:', searchQuery.substring(0, 100));
-      
-      const { data: memoryData } = await supabase.functions.invoke('manage-memories', {
-        body: { action: 'search_relevant', user_id, query: searchQuery }
-      });
-      
-      if (memoryData?.success && memoryData.context) {
-        memoryContext = memoryData.context;
-        console.log('[process-note] Retrieved', memoryData.count, 'relevant user memories via semantic search');
-      } else {
-        console.log('[process-note] No relevant memories found, using fallback');
-        // Fallback to get_context if search fails
+    let existingLists: any[] | null = null;
+    let recentNotePatterns: Record<string, string> = {};
+
+    const searchQuery = [
+      safeText,
+      ...mediaDescriptions.map(d => d.replace(/^\[.*?\]\s*/, '').substring(0, 200))
+    ].filter(Boolean).join(' ');
+
+    // Build lists query
+    let listsQueryBuilder = couple_id
+      ? supabase.from('clerk_lists').select('id, name, description, is_manual')
+          .or(`and(author_id.eq.${user_id},couple_id.is.null),couple_id.eq.${couple_id}`)
+      : supabase.from('clerk_lists').select('id, name, description, is_manual')
+          .eq('author_id', user_id).is('couple_id', null);
+
+    // Run all three in parallel
+    const [memoryResult, listsResult, patternsResult] = await Promise.all([
+      // 1. Memory search
+      supabase.functions.invoke('manage-memories', {
+        body: { action: 'search_relevant', user_id, query: searchQuery.substring(0, 300) }
+      }).catch((err: any) => { console.warn('[process-note] Memory fetch error:', err); return { data: null }; }),
+
+      // 2. Lists fetch
+      listsQueryBuilder.then((res: any) => res).catch((err: any) => { 
+        console.warn('[process-note] Lists fetch error:', err); return { data: null, error: err }; 
+      }),
+
+      // 3. Recent note patterns
+      supabase.from('clerk_notes').select('summary, category, list_id')
+        .eq('author_id', user_id).eq('completed', false)
+        .not('list_id', 'is', null)
+        .order('created_at', { ascending: false }).limit(30)
+        .then((res: any) => res)
+        .catch((err: any) => { console.warn('[process-note] Patterns fetch error:', err); return { data: null }; })
+    ]);
+
+    // Process memory result
+    if (memoryResult?.data?.success && memoryResult.data.context) {
+      memoryContext = memoryResult.data.context;
+      console.log('[process-note] Retrieved', memoryResult.data.count, 'relevant memories');
+    } else {
+      // Fallback to get_context
+      try {
         const { data: fallbackData } = await supabase.functions.invoke('manage-memories', {
           body: { action: 'get_context', user_id }
         });
@@ -1554,64 +1635,31 @@ serve(async (req) => {
           memoryContext = fallbackData.context;
           console.log('[process-note] Fallback: Retrieved', fallbackData.count, 'memories');
         }
+      } catch (memErr) {
+        console.warn('[process-note] Memory fallback error:', memErr);
       }
-    } catch (memErr) {
-      console.warn('[process-note] Could not fetch user memories:', memErr);
     }
 
-    // Fetch existing lists for context
-    let existingListsQuery = supabase
-      .from('clerk_lists')
-      .select('id, name, description, is_manual')
-      .eq('author_id', user_id);
-
-    if (couple_id) {
-      existingListsQuery = supabase
-        .from('clerk_lists')
-        .select('id, name, description, is_manual')
-        .or(`and(author_id.eq.${user_id},couple_id.is.null),couple_id.eq.${couple_id}`);
-    } else {
-      existingListsQuery = existingListsQuery.is('couple_id', null);
+    // Process lists result
+    existingLists = listsResult?.data || [];
+    if (listsResult?.error) {
+      console.error('Error fetching lists:', listsResult.error);
     }
 
-    const { data: existingLists, error: listsError } = await existingListsQuery;
-    
-    if (listsError) {
-      console.error('Error fetching existing lists:', listsError);
-    }
-
-    // Fetch recent note categories to learn user routing patterns
-    let recentNotePatterns: Record<string, string> = {}; // keyword -> list_name
-    try {
-      const recentQuery = supabase
-        .from('clerk_notes')
-        .select('summary, category, list_id')
-        .eq('author_id', user_id)
-        .eq('completed', false)
-        .not('list_id', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(30);
-      
-      const { data: recentNotes } = await recentQuery;
-      
-      if (recentNotes && existingLists) {
-        // Build a map of content patterns → list names
-        for (const note of recentNotes) {
-          const matchedList = existingLists.find((l: any) => l.id === note.list_id);
-          if (matchedList) {
-            // Store category → list name mapping for pattern learning
-            const catKey = note.category?.toLowerCase();
-            if (catKey && !recentNotePatterns[catKey]) {
-              recentNotePatterns[catKey] = matchedList.name;
-            }
+    // Process patterns result
+    if (patternsResult?.data && existingLists) {
+      for (const note of patternsResult.data) {
+        const matchedList = existingLists.find((l: any) => l.id === note.list_id);
+        if (matchedList) {
+          const catKey = note.category?.toLowerCase();
+          if (catKey && !recentNotePatterns[catKey]) {
+            recentNotePatterns[catKey] = matchedList.name;
           }
         }
-        if (Object.keys(recentNotePatterns).length > 0) {
-          console.log('[process-note] Learned routing patterns:', recentNotePatterns);
-        }
       }
-    } catch (err) {
-      console.warn('[process-note] Could not fetch recent note patterns:', err);
+      if (Object.keys(recentNotePatterns).length > 0) {
+        console.log('[process-note] Learned routing patterns:', recentNotePatterns);
+      }
     }
 
     // Prepare context - include list descriptions for richer AI matching
@@ -1785,40 +1833,38 @@ Process this note:
     // ======================================================================
     const preDetectedItems = detectMultiItemInput(enhancedText);
     if (preDetectedItems && preDetectedItems.length > 1 && !hasMedia) {
-      console.log('[process-note] Pre-split detected', preDetectedItems.length, 'items from structured input');
-      // Process each item separately through the AI for proper categorization
-      const allProcessedNotes: any[] = [];
+      console.log('[process-note] Pre-split detected', preDetectedItems.length, 'items — processing in PARALLEL');
       
-      for (const item of preDetectedItems) {
-        const itemPrompt = `${systemPrompt}${listsContext}\n\nProcess this single note (this is ONE item from a multi-item brain dump — return multiple:false with a single note):\n"${item}"`;
+      // Process ALL items in parallel for maximum speed
+      const itemPromises = preDetectedItems.map(async (item) => {
+        const itemPrompt = `${systemPrompt}${listsContext}\n\nProcess this single note (this is ONE item from a multi-item brain dump):\n"${item}"`;
         
         try {
           const itemResponse = await genai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-2.5-flash-lite",  // Use lite model for simple single items — 3x faster
             contents: itemPrompt,
             config: {
               responseMimeType: "application/json",
-              responseSchema: multiNoteSchema,
+              responseSchema: singleNoteSchema,  // Use single schema — less tokens, faster
               temperature: 0.1,
-              maxOutputTokens: 600
+              maxOutputTokens: 400
             }
           });
           
-          const itemParsed = JSON.parse(itemResponse.text || '{}');
-          const note = itemParsed.notes?.[0] || itemParsed;
-          allProcessedNotes.push(note);
+          return JSON.parse(itemResponse.text || '{}');
         } catch (itemErr) {
-          console.warn('[process-note] Pre-split item processing failed for:', item, itemErr);
-          // Fallback: create a simple note
-          allProcessedNotes.push({
+          console.warn('[process-note] Pre-split item failed:', item.substring(0, 50), itemErr);
+          return {
             summary: item.length > 100 ? item.substring(0, 97) + '...' : item,
             category: 'task',
             priority: 'medium',
             tags: [],
             items: []
-          });
+          };
         }
-      }
+      });
+      
+      const allProcessedNotes = await Promise.all(itemPromises);
       
       // Skip the main AI call — we already have results
       processedResponse = { multiple: true, notes: allProcessedNotes };
