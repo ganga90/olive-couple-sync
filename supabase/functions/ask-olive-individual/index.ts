@@ -1255,6 +1255,19 @@ serve(async (req) => {
         fullContext += `\n${memoryContext}\n`;
       }
 
+      // Inject dynamic memory files (profile + daily logs + household)
+      if (actualUserId && supabase) {
+        try {
+          const { fetchDynamicMemoryContext } = await import("../_shared/orchestrator.ts");
+          const dynamicCtx = await fetchDynamicMemoryContext(supabase, actualUserId, actualCoupleId);
+          if (dynamicCtx) {
+            fullContext += `\n${dynamicCtx}\n`;
+          }
+        } catch (dynErr) {
+          console.warn('[Ask Olive Individual] Dynamic memory fetch error (non-blocking):', dynErr);
+        }
+      }
+
       if (ouraContext) {
         fullContext += `\n${ouraContext}\n`;
       }
@@ -1420,6 +1433,15 @@ User's Question: ${actualMessage}`;
 
     // Extract the text response from the interaction
     const assistantReply = extractTextFromInteraction(data);
+
+    // Auto-evolve profile from conversation (non-blocking)
+    if (actualUserId && supabase && actualMessage && assistantReply) {
+      try {
+        const { evolveProfileFromConversation } = await import("../_shared/orchestrator.ts");
+        evolveProfileFromConversation(supabase, actualUserId, actualMessage, assistantReply)
+          .catch(e => console.warn('[ProfileEvolution] Non-blocking error:', e));
+      } catch {}
+    }
 
     // Return both 'reply' and 'response' for backwards compatibility
     // NEW: Include citations for frontend display

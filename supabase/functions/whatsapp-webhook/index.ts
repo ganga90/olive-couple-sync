@@ -4954,16 +4954,19 @@ Description: "${parsedExpense.description}"`;
         });
       }
 
-      // Fetch recent agent insights (last 48h) — uses shared orchestrator helper
+      // Fetch recent agent insights + dynamic memory files (parallel)
       let agentInsightsContext = '';
+      let ctxAskMemoryFileContext = '';
       try {
-        const { fetchAgentInsightsContext } = await import("../_shared/orchestrator.ts");
-        agentInsightsContext = await fetchAgentInsightsContext(supabase, userId);
-        if (agentInsightsContext) {
-          agentInsightsContext = '\n' + agentInsightsContext;
-        }
-      } catch (agentErr) {
-        console.warn('[WhatsApp] Agent insights fetch error (non-blocking):', agentErr);
+        const { fetchAgentInsightsContext, fetchDynamicMemoryContext } = await import("../_shared/orchestrator.ts");
+        const [agentCtx, memFileCtx] = await Promise.all([
+          fetchAgentInsightsContext(supabase, userId),
+          fetchDynamicMemoryContext(supabase, userId, coupleId),
+        ]);
+        agentInsightsContext = agentCtx ? '\n' + agentCtx : '';
+        ctxAskMemoryFileContext = memFileCtx;
+      } catch (ctxErr) {
+        console.warn('[WhatsApp] Dynamic context fetch error (non-blocking):', ctxErr);
       }
 
       // Build conversation history context for pronoun resolution
@@ -4994,6 +4997,7 @@ CRITICAL INSTRUCTIONS:
 ${savedItemsContext}
 ${calendarContext}
 ${memoryContext}
+${ctxAskMemoryFileContext}
 ${agentInsightsContext}
 ${conversationHistoryContext}
 ${entityContext}
@@ -5721,18 +5725,22 @@ IMPORTANT: Use the above skill knowledge to enhance your response with domain-sp
       }
       
       // ================================================================
-      // RECENT AGENT INSIGHTS (for CHAT handler) — uses shared orchestrator
+      // DYNAMIC CONTEXT: Agent Insights + Memory Files (parallel fetch)
       // ================================================================
       let chatAgentInsightsContext = '';
+      let dynamicMemoryFileContext = '';
       try {
-        const { fetchAgentInsightsContext } = await import("../_shared/orchestrator.ts");
-        const fullContext = await fetchAgentInsightsContext(supabase, userId);
-        // Strip the header for inline use in baseContext (header added in template literal)
-        chatAgentInsightsContext = fullContext
+        const { fetchAgentInsightsContext, fetchDynamicMemoryContext } = await import("../_shared/orchestrator.ts");
+        const [fullAgentCtx, memFileCtx] = await Promise.all([
+          fetchAgentInsightsContext(supabase, userId),
+          fetchDynamicMemoryContext(supabase, userId, coupleId),
+        ]);
+        chatAgentInsightsContext = fullAgentCtx
           .replace(/^## Recent Agent Insights.*\n/m, '')
           .trim();
-      } catch (agentErr) {
-        console.warn('[WhatsApp Chat] Agent insights fetch error (non-blocking):', agentErr);
+        dynamicMemoryFileContext = memFileCtx;
+      } catch (ctxErr) {
+        console.warn('[WhatsApp Chat] Dynamic context fetch error (non-blocking):', ctxErr);
       }
 
       // ================================================================
@@ -5761,6 +5769,7 @@ ${memoryContext}
 ${patternContext}
 ${partnerContext}
 ${skillContext}
+${dynamicMemoryFileContext}
 ${chatAgentInsightsContext ? `## Recent Agent Insights (Background AI analysis):\n${chatAgentInsightsContext}\n` : ''}
 ## Current Priorities:
 - Urgent tasks: ${topUrgentTasks.join(', ') || 'None'}
@@ -5976,6 +5985,13 @@ NEVER say you cannot modify tasks, change dates, or manage their calendar. You a
 
         // Save conversation history (no specific entity for CHAT)
         await saveReferencedEntity(null, chatResponse);
+
+        // Auto-evolve profile from conversation (non-blocking, fire-and-forget)
+        try {
+          const { evolveProfileFromConversation } = await import("../_shared/orchestrator.ts");
+          evolveProfileFromConversation(supabase, userId, effectiveMessage || '', chatResponse)
+            .catch(e => console.warn('[ProfileEvolution] Non-blocking error:', e));
+        } catch {}
 
         return reply(chatResponse.slice(0, 1500));
       } catch (error) {
