@@ -4954,16 +4954,19 @@ Description: "${parsedExpense.description}"`;
         });
       }
 
-      // Fetch recent agent insights (last 48h) — uses shared orchestrator helper
+      // Fetch recent agent insights + dynamic memory files (parallel)
       let agentInsightsContext = '';
+      let ctxAskMemoryFileContext = '';
       try {
-        const { fetchAgentInsightsContext } = await import("../_shared/orchestrator.ts");
-        agentInsightsContext = await fetchAgentInsightsContext(supabase, userId);
-        if (agentInsightsContext) {
-          agentInsightsContext = '\n' + agentInsightsContext;
-        }
-      } catch (agentErr) {
-        console.warn('[WhatsApp] Agent insights fetch error (non-blocking):', agentErr);
+        const { fetchAgentInsightsContext, fetchDynamicMemoryContext } = await import("../_shared/orchestrator.ts");
+        const [agentCtx, memFileCtx] = await Promise.all([
+          fetchAgentInsightsContext(supabase, userId),
+          fetchDynamicMemoryContext(supabase, userId, coupleId),
+        ]);
+        agentInsightsContext = agentCtx ? '\n' + agentCtx : '';
+        ctxAskMemoryFileContext = memFileCtx;
+      } catch (ctxErr) {
+        console.warn('[WhatsApp] Dynamic context fetch error (non-blocking):', ctxErr);
       }
 
       // Build conversation history context for pronoun resolution
