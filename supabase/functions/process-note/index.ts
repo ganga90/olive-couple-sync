@@ -1810,28 +1810,38 @@ Process this note:
     // ======================================================================
     const preDetectedItems = detectMultiItemInput(enhancedText);
     if (preDetectedItems && preDetectedItems.length > 1 && !hasMedia) {
-      console.log('[process-note] Pre-split detected', preDetectedItems.length, 'items from structured input');
-      // Process each item separately through the AI for proper categorization
-      const allProcessedNotes: any[] = [];
+      console.log('[process-note] Pre-split detected', preDetectedItems.length, 'items — processing in PARALLEL');
       
-      for (const item of preDetectedItems) {
-        const itemPrompt = `${systemPrompt}${listsContext}\n\nProcess this single note (this is ONE item from a multi-item brain dump — return multiple:false with a single note):\n"${item}"`;
+      // Process ALL items in parallel for maximum speed
+      const itemPromises = preDetectedItems.map(async (item) => {
+        const itemPrompt = `${systemPrompt}${listsContext}\n\nProcess this single note (this is ONE item from a multi-item brain dump):\n"${item}"`;
         
         try {
           const itemResponse = await genai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-2.5-flash-lite",  // Use lite model for simple single items — 3x faster
             contents: itemPrompt,
             config: {
               responseMimeType: "application/json",
-              responseSchema: multiNoteSchema,
+              responseSchema: singleNoteSchema,  // Use single schema — less tokens, faster
               temperature: 0.1,
-              maxOutputTokens: 600
+              maxOutputTokens: 400
             }
           });
           
-          const itemParsed = JSON.parse(itemResponse.text || '{}');
-          const note = itemParsed.notes?.[0] || itemParsed;
-          allProcessedNotes.push(note);
+          return JSON.parse(itemResponse.text || '{}');
+        } catch (itemErr) {
+          console.warn('[process-note] Pre-split item failed:', item.substring(0, 50), itemErr);
+          return {
+            summary: item.length > 100 ? item.substring(0, 97) + '...' : item,
+            category: 'task',
+            priority: 'medium',
+            tags: [],
+            items: []
+          };
+        }
+      });
+      
+      const allProcessedNotes = await Promise.all(itemPromises);
         } catch (itemErr) {
           console.warn('[process-note] Pre-split item processing failed for:', item, itemErr);
           // Fallback: create a simple note
