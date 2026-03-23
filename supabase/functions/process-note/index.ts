@@ -729,14 +729,46 @@ function detectMultiItemInput(text: string): string[] | null {
   }
   
   // Pattern 3: Newline-separated distinct tasks (each line is a separate task)
-  // Only trigger if 3+ lines, each reasonably short (to avoid splitting paragraphs)
+  // Only trigger if 2+ lines, each reasonably short (to avoid splitting paragraphs)
   const lines = trimmed.split(/\n+/).map(s => s.trim()).filter(s => s.length > 0);
-  if (lines.length >= 3 && lines.every(l => l.length < 120)) {
-    // Verify they look like distinct tasks, not a paragraph
+  if (lines.length >= 2 && lines.every(l => l.length < 120)) {
     const avgLen = lines.reduce((sum, l) => sum + l.length, 0) / lines.length;
     if (avgLen < 80) {
       console.log('[MultiItemDetect] Multi-line tasks detected:', lines.length, 'items');
       return lines;
+    }
+  }
+  
+  // Pattern 4: Comma-separated distinct tasks — "buy milk, call doctor, book restaurant"
+  // Only split if 3+ segments and they look like distinct actions (contain verbs or are short phrases)
+  if (trimmed.includes(',') && !trimmed.includes('\n')) {
+    const segments = trimmed.split(/,\s*/).map(s => s.trim()).filter(s => s.length > 2);
+    if (segments.length >= 3 && segments.every(s => s.length < 80)) {
+      // Verify they look like distinct tasks, not a single sentence with commas
+      // Check if most segments start with a verb or are short noun phrases
+      const actionVerbs = /^(buy|get|call|book|pick|fix|send|pay|check|schedule|cancel|return|order|clean|wash|remind|update|find|research|plan|make|cook|prepare|organize|sort|arrange|set up|follow up|renew|register|sign up|drop off|pick up)/i;
+      const verbCount = segments.filter(s => actionVerbs.test(s)).length;
+      // If at least half start with verbs, or all are short (<30 chars each), treat as multi-item
+      if (verbCount >= segments.length * 0.5 || segments.every(s => s.length < 30)) {
+        console.log('[MultiItemDetect] Comma-separated tasks detected:', segments.length, 'items');
+        return segments;
+      }
+    }
+  }
+  
+  // Pattern 5: "and"-conjunction splitting for distinct actions
+  // "buy milk and call doctor and book restaurant"
+  // Only when "and" joins clearly different action phrases
+  if (/\band\b/i.test(trimmed) && !trimmed.includes(',') && !trimmed.includes('\n')) {
+    const andSegments = trimmed.split(/\s+and\s+/i).map(s => s.trim()).filter(s => s.length > 2);
+    if (andSegments.length >= 2 && andSegments.length <= 5) {
+      const actionVerbs = /^(buy|get|call|book|pick|fix|send|pay|check|schedule|cancel|return|order|clean|wash|remind|update|find|research|plan|make|cook|prepare)/i;
+      const verbCount = andSegments.filter(s => actionVerbs.test(s)).length;
+      // Only split if most segments start with action verbs (indicates distinct tasks)
+      if (verbCount >= andSegments.length * 0.7) {
+        console.log('[MultiItemDetect] And-conjunction tasks detected:', andSegments.length, 'items');
+        return andSegments;
+      }
     }
   }
   
