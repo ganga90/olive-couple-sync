@@ -5686,8 +5686,11 @@ ${myAssignments.length > 0 ? `- You assigned to them: ${myAssignments.join(', ')
         .slice(0, 3)
         .map(([list, count]) => `${list}: ${count}`);
       
+      // Distinguish between user's own tasks and total space tasks
+      const yourTasks = activeTasks.filter(t => t.author_id === userId || t.task_owner === userId);
       const taskContext = {
         total_active: activeTasks.length,
+        your_active: yourTasks.length,
         urgent: urgentTasks.length,
         overdue: overdueTasks.length,
         due_today: dueTodayTasks.length,
