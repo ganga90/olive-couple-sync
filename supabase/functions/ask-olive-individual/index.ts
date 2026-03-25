@@ -1140,8 +1140,8 @@ serve(async (req) => {
 
         // Execute task actions server-side (complete, set_priority, set_due, delete)
         if (aiResult && aiResult.confidence >= 0.5) {
-          const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind'];
-          if (taskActions.includes(aiResult.intent)) {
+            const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind', 'move', 'assign'];
+            if (taskActions.includes(aiResult.intent)) {
             console.log(`[Ask Olive Individual] Task action detected: ${aiResult.intent} (confidence: ${aiResult.confidence})`);
             actionResult = await executeTaskAction(supabase, aiResult, actualUserId, actualCoupleId, actualMessage);
 
