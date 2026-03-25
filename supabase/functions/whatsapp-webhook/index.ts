@@ -1168,8 +1168,8 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
     // Spanish
     'enero': 0, 'febrero': 1, 'marzo': 2, 'abril': 3, 'mayo': 4, 'junio': 5,
     'julio': 6, 'agosto': 7, 'septiembre': 8, 'octubre': 9, 'noviembre': 10, 'diciembre': 11,
-    // Italian
-    'gennaio': 0, 'febbraio': 1, 'marzo_it': 2, 'aprile': 3, 'maggio': 4, 'giugno': 5,
+    // Italian (marzo already covered by Spanish entry above — same month index 2)
+    'gennaio': 0, 'febbraio': 1, 'aprile': 3, 'maggio': 4, 'giugno': 5,
     'luglio': 6, 'settembre': 8, 'ottobre': 9, 'novembre': 10, 'dicembre': 11,
   };
   
