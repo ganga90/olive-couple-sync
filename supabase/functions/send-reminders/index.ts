@@ -181,16 +181,19 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const now = new Date();
+    // Wider window: catch reminders from 15 minutes AGO (missed by previous runs)
+    // to 5 minutes in the FUTURE (upcoming)
+    const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
     const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
 
-    console.log('Checking for reminders between:', now.toISOString(), 'and', fiveMinutesFromNow.toISOString());
+    console.log('Checking for reminders between:', fifteenMinutesAgo.toISOString(), 'and', fiveMinutesFromNow.toISOString());
 
     const { data: explicitReminders, error: notesError } = await supabase
       .from('clerk_notes')
       .select('id, summary, reminder_time, author_id, tags, category, recurrence_frequency, recurrence_interval, last_reminded_at, due_date, auto_reminders_sent')
       .not('reminder_time', 'is', null)
       .lte('reminder_time', fiveMinutesFromNow.toISOString())
-      .gte('reminder_time', now.toISOString())
+      .gte('reminder_time', fifteenMinutesAgo.toISOString())
       .eq('completed', false);
 
     if (notesError) {
