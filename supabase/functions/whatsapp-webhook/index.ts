@@ -142,6 +142,37 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'es': 'Necesitas estar en un espacio compartido para enviar mensajes a tu pareja. ¡Invítale desde la app!',
     'it': 'Devi essere in uno spazio condiviso per inviare messaggi al tuo partner. Invitalo dall\'app!',
   },
+  // ── Note creation confirmation labels (localized) ──
+  note_saved: {
+    en: '✅ Saved: {summary}',
+    'es': '✅ Guardado: {summary}',
+    'it': '✅ Salvato: {summary}',
+  },
+  note_added_to: {
+    en: '📂 Added to: {list}',
+    'es': '📂 Añadido a: {list}',
+    'it': '📂 Aggiunto a: {list}',
+  },
+  note_priority_high: {
+    en: '🔥 Priority: High',
+    'es': '🔥 Prioridad: Alta',
+    'it': '🔥 Priorità: Alta',
+  },
+  note_manage: {
+    en: '🔗 Manage: https://witholive.app',
+    'es': '🔗 Gestionar: https://witholive.app',
+    'it': '🔗 Gestisci: https://witholive.app',
+  },
+  note_multi_saved: {
+    en: '✅ Saved {count} items!',
+    'es': '✅ ¡Guardados {count} elementos!',
+    'it': '✅ Salvati {count} elementi!',
+  },
+  note_similar_found: {
+    en: '⚠️ Similar task found: "{task}"\nReply "Merge" to combine them.',
+    'es': '⚠️ Tarea similar encontrada: "{task}"\nResponde "Merge" para combinarlas.',
+    'it': '⚠️ Attività simile trovata: "{task}"\nRispondi "Merge" per unirle.',
+  },
   help_text: {
     en: `🫒 *Olive Quick Commands*
 
@@ -6770,27 +6801,47 @@ FORMAT for WhatsApp (max 1500 chars):
       let insertedNoteSummary: string = '';
       let insertedListId: string | null = null;
       
-      const randomTips = [
-        "Reply 'Make it urgent' to change priority",
-        "Reply 'Show my tasks' to see your list",
-        "You can send voice notes too! 🎤",
-        "Reply 'Move to Work' to switch lists",
-        "Use ! prefix for urgent tasks (e.g., !call mom)",
-        "Use + prefix to quickly save tasks (e.g., +Buy milk)",
-        "Use $ to log expenses (e.g., $25 lunch at Chipotle)",
-        "Use ? to search your tasks (e.g., ?groceries)",
-        "Use @ to assign to partner (e.g., @partner pick up kids)",
-        "Send a photo of a receipt to log it automatically 📸",
-        "Say 'Remind me tomorrow at 9am' to set reminders",
-        "Ask 'What's overdue?' to see pending tasks",
-        "Say 'Summarize my week' for a weekly recap",
-        "Use / to chat with Olive (e.g., /what should I focus on?)",
-        "Send a comma-separated list to create multiple tasks at once",
-        "Say 'done with X' to mark a task complete",
-        "Send a photo or PDF and Olive will extract the details 📄",
-        "Say 'remind [partner] to...' to relay a message 💑"
-      ];
-      const getRandomTip = () => randomTips[Math.floor(Math.random() * randomTips.length)];
+      const randomTipsLocalized: Record<string, string[]> = {
+        en: [
+          "Reply 'Make it urgent' to change priority",
+          "Reply 'Show my tasks' to see your list",
+          "You can send voice notes too! 🎤",
+          "Use ! prefix for urgent tasks (e.g., !call mom)",
+          "Use $ to log expenses (e.g., $25 lunch)",
+          "Use ? to search your tasks (e.g., ?groceries)",
+          "Send a photo of a receipt to log it automatically 📸",
+          "Say 'Remind me tomorrow at 9am' to set reminders",
+          "Say 'done with X' to mark a task complete",
+          "Send a comma-separated list to create multiple tasks at once",
+        ],
+        es: [
+          "Responde 'Hazlo urgente' para cambiar prioridad",
+          "Responde 'Mostrar mis tareas' para ver tu lista",
+          "¡También puedes enviar notas de voz! 🎤",
+          "Usa ! para tareas urgentes (ej. !llamar a mamá)",
+          "Usa $ para registrar gastos (ej. $25 almuerzo)",
+          "Usa ? para buscar tareas (ej. ?compras)",
+          "Envía una foto de un recibo para registrarlo automáticamente 📸",
+          "Di 'Recuérdame mañana a las 9am' para establecer recordatorios",
+          "Di 'hecho con X' para completar una tarea",
+          "Envía una lista separada por comas para crear varias tareas a la vez",
+        ],
+        it: [
+          "Rispondi 'Rendilo urgente' per cambiare priorità",
+          "Rispondi 'Mostra le mie attività' per vedere la tua lista",
+          "Puoi anche inviare note vocali! 🎤",
+          "Usa ! per attività urgenti (es. !chiamare mamma)",
+          "Usa $ per registrare spese (es. $25 pranzo)",
+          "Usa ? per cercare attività (es. ?spesa)",
+          "Invia una foto di uno scontrino per registrarlo automaticamente 📸",
+          "Di 'Ricordami domani alle 9' per impostare promemoria",
+          "Di 'fatto con X' per completare un'attività",
+          "Invia una lista separata da virgole per creare più attività",
+        ],
+      };
+      const shortLang = (userLang || 'en').split('-')[0];
+      const tips = randomTipsLocalized[shortLang] || randomTipsLocalized.en;
+      const getRandomTip = () => tips[Math.floor(Math.random() * tips.length)];
       
       async function getListName(listId: string | null): Promise<string> {
         if (!listId) return 'Tasks';
@@ -6943,26 +6994,25 @@ FORMAT for WhatsApp (max 1500 chars):
         }
 
         // ================================================================
-        // RICH RESPONSE BUILDER
+        // RICH RESPONSE BUILDER (LOCALIZED)
         // ================================================================
         let confirmationMessage: string;
         
         if (duplicateWarning?.found) {
           confirmationMessage = [
-            `✅ Saved: ${insertedNoteSummary}`,
-            `📂 Added to: ${listName}`,
+            t('note_saved', userLang, { summary: insertedNoteSummary }),
+            t('note_added_to', userLang, { list: listName }),
             ``,
-            `⚠️ Similar task found: "${duplicateWarning.targetTitle}"`,
-            `Reply "Merge" to combine them.`
+            t('note_similar_found', userLang, { task: duplicateWarning.targetTitle }),
           ].join('\n');
         } else {
           const sensitiveLabel = encryptionFields.is_sensitive ? '\n🔒 Encrypted at rest' : '';
           confirmationMessage = [
-            `✅ Saved: ${rawSummary}`,
-            `📂 Added to: ${listName}`,
+            t('note_saved', userLang, { summary: rawSummary }),
+            t('note_added_to', userLang, { list: listName }),
             sensitiveLabel,
             ``,
-            `🔗 Manage: https://witholive.app`,
+            t('note_manage', userLang),
             ``,
             `💡 ${getRandomTip()}`
           ].filter(Boolean).join('\n');

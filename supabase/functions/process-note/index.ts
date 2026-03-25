@@ -1977,7 +1977,9 @@ Process this note:
       'entertainment': ['karaoke', 'dj ', 'dj night', 'happy hour', 'concert', 'festival', 'live music', 'comedy show', 'trivia', 'nightlife', 'club event', 'themed night', 'show', 'theater', 'theatre', 'standup', 'stand-up', 'open mic'],
       'shopping': ['promo code', 'coupon', 'discount', 'sale', 'deal', 'price', 'store', 'amazon', 'ebay', 'walmart', 'target', 'zara', 'nike', 'adidas', 'electronics', 'gadget', 'clothes', 'shoes', 'accessory', 'order', 'delivery'],
       'home_improvement': ['repair', 'fix', 'plumber', 'electrician', 'paint', 'renovation', 'contractor', 'leak', 'faucet', 'pipe', 'drywall', 'tile', 'flooring', 'cabinet', 'shelf', 'furniture', 'ikea', 'hardware', 'drill', 'hammer', 'maintenance', 'sofa', 'couch', 'bed', 'mattress', 'desk', 'table', 'chair', 'dresser', 'wardrobe', 'bookshelf', 'nightstand', 'headboard', 'armchair', 'ottoman', 'curtain', 'curtains', 'rug', 'lamp', 'mirror', 'closet'],
-      'personal': ['errand', 'admin', 'register', 'renew', 'passport', 'license', 'dmv', 'post office', 'notary', 'laundry', 'dry clean', 'car wash', 'oil change', 'inspection']
+      'personal': ['errand', 'admin', 'register', 'renew', 'passport', 'license', 'dmv', 'post office', 'notary', 'laundry', 'dry clean', 'car wash', 'oil change', 'inspection'],
+      'research': ['report', 'study', 'analysis', 'research', 'paper', 'whitepaper', 'white paper', 'thesis', 'dissertation', 'journal', 'publication', 'article', 'document', 'comprehensive', 'executive summary', 'findings', 'methodology', 'data', 'survey', 'statistics', 'benchmark', 'outlook', 'forecast', 'trend', 'industry', 'sector', 'policy', 'strategy', 'framework', 'innovation', 'digital transformation', 'artificial intelligence', 'AI', 'machine learning', 'technology', 'era'],
+      'education': ['course', 'class', 'lesson', 'tutorial', 'learn', 'study', 'school', 'university', 'degree', 'certification', 'exam', 'test', 'quiz', 'homework', 'assignment', 'lecture', 'professor', 'student', 'campus', 'semester', 'syllabus'],
     };
     
     // Minimum keyword matches required per category to trigger an override
@@ -1996,6 +1998,8 @@ Process this note:
       'stocks': 2,
       'recipes': 2,
       'music': 2,
+      'research': 2,
+      'education': 2,
     };
 
     // ================================================================
@@ -2020,6 +2024,8 @@ Process this note:
       'gift_ideas': { displayName: 'Gift Ideas', aliases: ['gift ideas', 'gift idea', 'gifts', 'gift', 'presents'] },
       'task': { displayName: 'Tasks', aliases: ['task', 'tasks', 'to do', 'todo'] },
       'stocks': { displayName: 'Investments', aliases: ['stocks', 'stock', 'investing', 'portfolio', 'trading'] },
+      'research': { displayName: 'Research', aliases: ['research', 'report', 'study', 'analysis', 'paper', 'whitepaper', 'documents'] },
+      'education': { displayName: 'Education', aliases: ['education', 'learning', 'courses', 'school', 'university'] },
       // Novel categories from AI are auto-formatted: "real_estate" → "Real Estate"
     };
 
@@ -2221,10 +2227,6 @@ Process this note:
       
       // ================================================================
       // PRIORITY 4.5: Universal content-based category override
-      // If the AI classified as generic ("task"/"personal") but content
-      // strongly matches a domain, override for better routing.
-      // ================================================================
-      // PRIORITY 4.5: Universal content-based category override
       // Checks ALL keyword categories, not just hardcoded ones.
       // If the note content strongly matches a category's keywords,
       // override the AI's category (which often defaults to "task").
@@ -2232,7 +2234,9 @@ Process this note:
       const allContentForOverride = [safeText, summary, ...mediaDescriptions].filter(Boolean).join(' ').toLowerCase();
       let effectiveCategory = category;
       
-      // Only override if current category is generic ("task" or "personal")
+      // Override if current category is generic ("task" or "personal")
+      // CRITICAL FOR NEW USERS: This override runs even when there are NO existing lists,
+      // ensuring that domain-specific content never defaults to "Tasks"
       const genericCategories = ['task', 'personal', 'general'];
       if (genericCategories.includes(normalizeName(effectiveCategory))) {
         let bestOverrideCategory: string | null = null;
@@ -2259,19 +2263,44 @@ Process this note:
           effectiveCategory = bestOverrideCategory;
           
           // After override, re-check if an existing list matches the NEW category
-          const overrideListMatch = findEquivalentList(effectiveCategory);
-          if (overrideListMatch) {
-            console.log('[findOrCreateList] Post-override match found:', overrideListMatch.name);
-            return overrideListMatch.id;
+          if (existingLists && existingLists.length > 0) {
+            const overrideListMatch = findEquivalentList(effectiveCategory);
+            if (overrideListMatch) {
+              console.log('[findOrCreateList] Post-override match found:', overrideListMatch.name);
+              return overrideListMatch.id;
+            }
           }
         }
       }
 
       // ================================================================
+      // PRIORITY 4.6: AI category promotion for new users
+      // When the AI assigned a non-generic category but the content override
+      // didn't trigger (e.g., niche topics like "research", "education", etc.),
+      // preserve the AI's domain category instead of falling to "Tasks".
+      // This ensures new users get meaningful list auto-creation from day one.
+      // ================================================================
+      if (genericCategories.includes(normalizeName(effectiveCategory)) && !genericCategories.includes(normalizeName(category))) {
+        // The original AI category was more specific — restore it
+        console.log('[findOrCreateList] Restoring AI category:', category, '(was overridden to generic:', effectiveCategory, ')');
+        effectiveCategory = category;
+      }
+
+      // ================================================================
       // PRIORITY 5: Create new list only if no match found
-      // Use canonical name map for clean, user-friendly names
+      // Use canonical name map for clean, user-friendly names.
+      // NEVER auto-create a list called "Tasks" — that's the fallback
+      // category and would just accumulate unorganized items.
       // ================================================================
       const catKey = normalizeName(effectiveCategory).replace(/\s+/g, '_');
+
+      // If the effective category is still generic, do NOT create a list — return null
+      // so the note lands in the default "Tasks" view without a dedicated list.
+      if (genericCategories.includes(catKey)) {
+        console.log('[findOrCreateList] Generic category "' + effectiveCategory + '" — skipping list creation');
+        return null;
+      }
+
       const canonical = canonicalListNames[catKey] || canonicalListNames[effectiveCategory];
       const listName = canonical?.displayName || effectiveCategory
         .replace(/_/g, ' ')
