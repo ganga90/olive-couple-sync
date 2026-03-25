@@ -1414,6 +1414,7 @@ serve(async (req) => {
           set_priority: `changed the priority to ${actionResult.details?.new_priority || 'updated'}`,
           set_due: `updated the due date/time to ${actionResult.details?.new_due_date ? new Date(actionResult.details.new_due_date).toLocaleString() : 'updated'}`,
           delete: 'deleted',
+          expense: `logged an expense of ${actionResult.details?.amount ? '$' + actionResult.details.amount : ''} at ${actionResult.details?.merchant || 'unknown'} (${actionResult.details?.category || 'other'})`,
           remind: `set a reminder ${actionResult.details?.readable || 'for ' + (actionResult.details?.new_reminder_time ? new Date(actionResult.details.new_reminder_time).toLocaleString() : 'later')}`,
           partner_message: actionResult.details?.sent
             ? `sent a WhatsApp message to ${actionResult.details?.partner_name || 'your partner'}${actionResult.details?.task_created ? ' and created a task assigned to them' : ''}`
