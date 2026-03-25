@@ -576,7 +576,8 @@ async function executeTaskAction(
       }
 
       case 'set_priority': {
-        const newPriority = intent.parameters?.priority?.toLowerCase() === 'low' ? 'low' : 'high';
+        const rawPriority = (intent.parameters?.priority || '').toLowerCase();
+        const newPriority = rawPriority === 'low' ? 'low' : rawPriority === 'medium' ? 'medium' : 'high';
         const { error } = await supabase
           .from('clerk_notes')
           .update({ priority: newPriority, updated_at: new Date().toISOString() })
