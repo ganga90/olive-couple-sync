@@ -142,6 +142,37 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'es': 'Necesitas estar en un espacio compartido para enviar mensajes a tu pareja. ¡Invítale desde la app!',
     'it': 'Devi essere in uno spazio condiviso per inviare messaggi al tuo partner. Invitalo dall\'app!',
   },
+  // ── Note creation confirmation labels (localized) ──
+  note_saved: {
+    en: '✅ Saved: {summary}',
+    'es': '✅ Guardado: {summary}',
+    'it': '✅ Salvato: {summary}',
+  },
+  note_added_to: {
+    en: '📂 Added to: {list}',
+    'es': '📂 Añadido a: {list}',
+    'it': '📂 Aggiunto a: {list}',
+  },
+  note_priority_high: {
+    en: '🔥 Priority: High',
+    'es': '🔥 Prioridad: Alta',
+    'it': '🔥 Priorità: Alta',
+  },
+  note_manage: {
+    en: '🔗 Manage: https://witholive.app',
+    'es': '🔗 Gestionar: https://witholive.app',
+    'it': '🔗 Gestisci: https://witholive.app',
+  },
+  note_multi_saved: {
+    en: '✅ Saved {count} items!',
+    'es': '✅ ¡Guardados {count} elementos!',
+    'it': '✅ Salvati {count} elementi!',
+  },
+  note_similar_found: {
+    en: '⚠️ Similar task found: "{task}"\nReply "Merge" to combine them.',
+    'es': '⚠️ Tarea similar encontrada: "{task}"\nResponde "Merge" para combinarlas.',
+    'it': '⚠️ Attività simile trovata: "{task}"\nRispondi "Merge" per unirle.',
+  },
   help_text: {
     en: `🫒 *Olive Quick Commands*
 
