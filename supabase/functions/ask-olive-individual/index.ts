@@ -434,7 +434,7 @@ async function executeTaskAction(
   coupleId: string | null,
   userMessage: string = ''
 ): Promise<ActionResult | null> {
-  const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind'];
+  const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind', 'move', 'assign'];
   if (!taskActions.includes(intent.intent)) return null;
     if (intent.confidence < 0.5) return null;
 
