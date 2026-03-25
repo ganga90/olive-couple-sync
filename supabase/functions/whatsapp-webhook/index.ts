@@ -5322,7 +5322,7 @@ Format a helpful, concise WhatsApp response with the key information and links:`
       
       const { data: allTasks } = await supabase
         .from('clerk_notes')
-        .select('id, summary, due_date, completed, priority, category, list_id, items, created_at, updated_at, task_owner')
+        .select('id, summary, due_date, completed, priority, category, list_id, items, created_at, updated_at, task_owner, author_id')
         .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
         .order('created_at', { ascending: false })
         .limit(100);
