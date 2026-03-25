@@ -2830,7 +2830,13 @@ serve(async (req) => {
             })
             .eq('id', pendingAction.task_id);
 
-          return reply(`✅ Done! "${pendingAction.task_summary}" is now due ${pendingAction.readable}. 📅`);
+          const dueSetLocalized: Record<string, string> = {
+            en: `✅ Done! "${pendingAction.task_summary}" is now due ${pendingAction.readable}. 📅`,
+            es: `✅ ¡Hecho! "${pendingAction.task_summary}" ahora vence ${pendingAction.readable}. 📅`,
+            it: `✅ Fatto! "${pendingAction.task_summary}" ora è previsto ${pendingAction.readable}. 📅`,
+          };
+          const sl = (userLang || 'en').split('-')[0];
+          return reply(dueSetLocalized[sl] || dueSetLocalized.en);
         } else if (pendingAction?.type === 'set_reminder') {
           const updateData: any = {
             reminder_time: pendingAction.time,
@@ -2846,7 +2852,12 @@ serve(async (req) => {
             .update(updateData)
             .eq('id', pendingAction.task_id);
 
-          return reply(`✅ Done! I'll remind you about "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`);
+          const reminderSetLocalized: Record<string, string> = {
+            en: `✅ Done! I'll remind you about "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`,
+            es: `✅ ¡Hecho! Te recordaré "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`,
+            it: `✅ Fatto! Ti ricorderò "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`,
+          };
+          return reply(reminderSetLocalized[sl] || reminderSetLocalized.en);
         } else if (pendingAction?.type === 'delete') {
           await supabase
             .from('clerk_notes')
