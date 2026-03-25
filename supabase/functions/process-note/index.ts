@@ -1977,7 +1977,9 @@ Process this note:
       'entertainment': ['karaoke', 'dj ', 'dj night', 'happy hour', 'concert', 'festival', 'live music', 'comedy show', 'trivia', 'nightlife', 'club event', 'themed night', 'show', 'theater', 'theatre', 'standup', 'stand-up', 'open mic'],
       'shopping': ['promo code', 'coupon', 'discount', 'sale', 'deal', 'price', 'store', 'amazon', 'ebay', 'walmart', 'target', 'zara', 'nike', 'adidas', 'electronics', 'gadget', 'clothes', 'shoes', 'accessory', 'order', 'delivery'],
       'home_improvement': ['repair', 'fix', 'plumber', 'electrician', 'paint', 'renovation', 'contractor', 'leak', 'faucet', 'pipe', 'drywall', 'tile', 'flooring', 'cabinet', 'shelf', 'furniture', 'ikea', 'hardware', 'drill', 'hammer', 'maintenance', 'sofa', 'couch', 'bed', 'mattress', 'desk', 'table', 'chair', 'dresser', 'wardrobe', 'bookshelf', 'nightstand', 'headboard', 'armchair', 'ottoman', 'curtain', 'curtains', 'rug', 'lamp', 'mirror', 'closet'],
-      'personal': ['errand', 'admin', 'register', 'renew', 'passport', 'license', 'dmv', 'post office', 'notary', 'laundry', 'dry clean', 'car wash', 'oil change', 'inspection']
+      'personal': ['errand', 'admin', 'register', 'renew', 'passport', 'license', 'dmv', 'post office', 'notary', 'laundry', 'dry clean', 'car wash', 'oil change', 'inspection'],
+      'research': ['report', 'study', 'analysis', 'research', 'paper', 'whitepaper', 'white paper', 'thesis', 'dissertation', 'journal', 'publication', 'article', 'document', 'comprehensive', 'executive summary', 'findings', 'methodology', 'data', 'survey', 'statistics', 'benchmark', 'outlook', 'forecast', 'trend', 'industry', 'sector', 'policy', 'strategy', 'framework', 'innovation', 'digital transformation', 'artificial intelligence', 'AI', 'machine learning', 'technology', 'era'],
+      'education': ['course', 'class', 'lesson', 'tutorial', 'learn', 'study', 'school', 'university', 'degree', 'certification', 'exam', 'test', 'quiz', 'homework', 'assignment', 'lecture', 'professor', 'student', 'campus', 'semester', 'syllabus'],
     };
     
     // Minimum keyword matches required per category to trigger an override
