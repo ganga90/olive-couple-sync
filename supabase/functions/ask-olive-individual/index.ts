@@ -529,8 +529,38 @@ async function executeTaskAction(
     }
 
     if (!taskId) {
-      console.warn('[executeTaskAction] No task found for:', taskSummary);
-      return null;
+      // ── REMIND AUTO-CREATE: If intent is 'remind' and no existing task found,
+      // auto-create a new task via process-note and then set the reminder ──
+      if (intent.intent === 'remind' && taskSummary && intent.parameters?.due_date_expression) {
+        console.log('[executeTaskAction] Remind auto-create: creating new task for:', taskSummary);
+        try {
+          const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
+            body: {
+              text: taskSummary,
+              user_id: userId,
+              couple_id: coupleId,
+              source: 'web_chat',
+            },
+          });
+
+          if (!processError && processData) {
+            const newId = processData.id || processData.note?.id;
+            const newSummary = processData.summary || processData.note?.summary || taskSummary;
+            if (newId) {
+              taskId = newId;
+              taskSummary = newSummary;
+              console.log('[executeTaskAction] Remind auto-create succeeded:', taskSummary, 'id:', taskId);
+            }
+          }
+        } catch (autoCreateErr) {
+          console.error('[executeTaskAction] Remind auto-create failed:', autoCreateErr);
+        }
+      }
+
+      if (!taskId) {
+        console.warn('[executeTaskAction] No task found for:', taskSummary);
+        return null;
+      }
     }
 
     switch (intent.intent) {
