@@ -697,6 +697,66 @@ async function executeTaskAction(
         return { type: 'delete', task_id: taskId, task_summary: taskSummary || '', success: true };
       }
 
+      case 'move': {
+        // Move task to a different list
+        const targetListName = intent.parameters?.list_name || '';
+        if (!targetListName) return null;
+
+        // Find matching list
+        const { data: userLists } = await supabase
+          .from('clerk_lists')
+          .select('id, name')
+          .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
+
+        const listMatch = userLists?.find((l: any) => 
+          l.name.toLowerCase().includes(targetListName.toLowerCase()) ||
+          targetListName.toLowerCase().includes(l.name.toLowerCase())
+        );
+
+        if (!listMatch) {
+          // Create the list if it doesn't exist
+          const formattedName = targetListName.trim().split(/\s+/).map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+          const { data: newList } = await supabase
+            .from('clerk_lists')
+            .insert({ name: formattedName, author_id: userId, couple_id: coupleId || null, is_manual: true })
+            .select('id, name')
+            .single();
+
+          if (newList) {
+            const { error } = await supabase.from('clerk_notes').update({ list_id: newList.id, updated_at: new Date().toISOString() }).eq('id', taskId);
+            if (error) throw error;
+            return { type: 'move', task_id: taskId, task_summary: taskSummary || '', success: true, details: { target_list: newList.name, created_list: true } };
+          }
+          return null;
+        }
+
+        const { error } = await supabase.from('clerk_notes').update({ list_id: listMatch.id, updated_at: new Date().toISOString() }).eq('id', taskId);
+        if (error) throw error;
+        return { type: 'move', task_id: taskId, task_summary: taskSummary || '', success: true, details: { target_list: listMatch.name } };
+      }
+
+      case 'assign': {
+        if (!coupleId) return { type: 'assign', success: false, details: { error: 'no_couple' } };
+
+        // Find partner
+        const { data: partnerMemberForAssign } = await supabase
+          .from('clerk_couple_members')
+          .select('user_id, display_name')
+          .eq('couple_id', coupleId)
+          .neq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+
+        if (!partnerMemberForAssign) return { type: 'assign', success: false, details: { error: 'no_partner' } };
+
+        const { error } = await supabase.from('clerk_notes')
+          .update({ task_owner: partnerMemberForAssign.user_id, updated_at: new Date().toISOString() })
+          .eq('id', taskId);
+        if (error) throw error;
+
+        return { type: 'assign', task_id: taskId, task_summary: taskSummary || '', success: true, details: { partner_name: partnerMemberForAssign.display_name || 'your partner' } };
+      }
+
       case 'partner_message': {
         // Handle partner messaging from web chat
         const partnerMsgContent = intent.parameters?.partner_message_content || intent.target_task_name || '';
