@@ -1270,6 +1270,61 @@ serve(async (req) => {
                 .catch(err => console.warn('[WebSession] search save error:', err));
             }
           }
+
+          // Handle expense intent — parse and save expense
+          if (aiResult.intent === 'expense' && aiResult.confidence >= 0.5) {
+            const amount = aiResult.parameters?.amount;
+            const description = aiResult.parameters?.expense_description || actualMessage;
+            console.log(`[Ask Olive Individual] EXPENSE intent: amount=${amount}, desc=${description}`);
+
+            if (amount && amount > 0) {
+              try {
+                // Use AI to categorize the expense
+                let merchant = description;
+                let category = 'other';
+                try {
+                  const { GEMINI_KEY: gemKey, getModel: getM } = await import("../_shared/gemini.ts");
+                  if (gemKey) {
+                    const { GoogleGenAI: GAI } = await import("https://esm.sh/@google/genai@1.0.0");
+                    const gai = new GAI({ apiKey: gemKey });
+                    const catResult = await gai.models.generateContent({
+                      model: getM("lite"),
+                      contents: `Extract merchant and category from: "${description}". Respond ONLY with JSON: {"merchant": "name", "category": "one_of_these"} Categories: food, transport, shopping, entertainment, utilities, health, groceries, travel, personal, education, subscriptions, other`,
+                      config: { temperature: 0.2, maxOutputTokens: 100 },
+                    });
+                    const parsed = JSON.parse((catResult.text || '').replace(/```json?|```/g, '').trim());
+                    if (parsed.merchant) merchant = parsed.merchant;
+                    if (parsed.category) category = parsed.category;
+                  }
+                } catch { /* fallback to raw description */ }
+
+                const { error: expError } = await supabase
+                  .from('expenses')
+                  .insert({
+                    user_id: actualUserId,
+                    couple_id: actualCoupleId || null,
+                    amount,
+                    name: merchant,
+                    category,
+                    currency: 'USD',
+                    paid_by: actualUserId,
+                    split_type: 'individual',
+                    expense_date: new Date().toISOString().split('T')[0],
+                    is_shared: false,
+                    original_text: actualMessage,
+                  });
+
+                if (!expError) {
+                  actionResult = {
+                    type: 'expense', success: true, task_summary: `$${amount} ${merchant}`,
+                    details: { amount, merchant, category },
+                  };
+                }
+              } catch (expErr) {
+                console.error('[Ask Olive Individual] Expense error:', expErr);
+              }
+            }
+          }
         }
 
         // For search/contextual_ask intents, save the displayed task list for ordinal resolution
