@@ -6932,9 +6932,16 @@ FORMAT for WhatsApp (max 1500 chars):
         
         const count = processData.notes.length;
         const itemsList = insertedNotes?.slice(0, 3).map(n => `• ${n.summary}`).join('\n') || '';
-        const moreText = count > 3 ? `\n...and ${count - 3} more` : '';
+        const moreCount = count > 3 ? count - 3 : 0;
+        const moreTextLocalized: Record<string, string> = {
+          en: `\n...and ${moreCount} more`,
+          es: `\n...y ${moreCount} más`,
+          it: `\n...e altri ${moreCount}`,
+        };
+        const sl = (userLang || 'en').split('-')[0];
+        const moreText = moreCount > 0 ? (moreTextLocalized[sl] || moreTextLocalized.en) : '';
         
-        return reply(`✅ Saved ${count} items!\n${itemsList}${moreText}\n\n📂 Added to: ${listName}\n\n🔗 Manage: https://witholive.app\n\n💡 ${getRandomTip()}`);
+        return reply(`${t('note_multi_saved', userLang, { count: String(count) })}\n${itemsList}${moreText}\n\n${t('note_added_to', userLang, { list: listName })}\n\n${t('note_manage', userLang)}\n\n💡 ${getRandomTip()}`);
       } else {
         // Build note data with optional encryption for sensitive notes
         const rawOriginalText = messageBody || processData.summary || 'Media attachment';
