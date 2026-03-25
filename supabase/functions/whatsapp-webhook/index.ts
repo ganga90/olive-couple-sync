@@ -6801,27 +6801,47 @@ FORMAT for WhatsApp (max 1500 chars):
       let insertedNoteSummary: string = '';
       let insertedListId: string | null = null;
       
-      const randomTips = [
-        "Reply 'Make it urgent' to change priority",
-        "Reply 'Show my tasks' to see your list",
-        "You can send voice notes too! 🎤",
-        "Reply 'Move to Work' to switch lists",
-        "Use ! prefix for urgent tasks (e.g., !call mom)",
-        "Use + prefix to quickly save tasks (e.g., +Buy milk)",
-        "Use $ to log expenses (e.g., $25 lunch at Chipotle)",
-        "Use ? to search your tasks (e.g., ?groceries)",
-        "Use @ to assign to partner (e.g., @partner pick up kids)",
-        "Send a photo of a receipt to log it automatically 📸",
-        "Say 'Remind me tomorrow at 9am' to set reminders",
-        "Ask 'What's overdue?' to see pending tasks",
-        "Say 'Summarize my week' for a weekly recap",
-        "Use / to chat with Olive (e.g., /what should I focus on?)",
-        "Send a comma-separated list to create multiple tasks at once",
-        "Say 'done with X' to mark a task complete",
-        "Send a photo or PDF and Olive will extract the details 📄",
-        "Say 'remind [partner] to...' to relay a message 💑"
-      ];
-      const getRandomTip = () => randomTips[Math.floor(Math.random() * randomTips.length)];
+      const randomTipsLocalized: Record<string, string[]> = {
+        en: [
+          "Reply 'Make it urgent' to change priority",
+          "Reply 'Show my tasks' to see your list",
+          "You can send voice notes too! 🎤",
+          "Use ! prefix for urgent tasks (e.g., !call mom)",
+          "Use $ to log expenses (e.g., $25 lunch)",
+          "Use ? to search your tasks (e.g., ?groceries)",
+          "Send a photo of a receipt to log it automatically 📸",
+          "Say 'Remind me tomorrow at 9am' to set reminders",
+          "Say 'done with X' to mark a task complete",
+          "Send a comma-separated list to create multiple tasks at once",
+        ],
+        es: [
+          "Responde 'Hazlo urgente' para cambiar prioridad",
+          "Responde 'Mostrar mis tareas' para ver tu lista",
+          "¡También puedes enviar notas de voz! 🎤",
+          "Usa ! para tareas urgentes (ej. !llamar a mamá)",
+          "Usa $ para registrar gastos (ej. $25 almuerzo)",
+          "Usa ? para buscar tareas (ej. ?compras)",
+          "Envía una foto de un recibo para registrarlo automáticamente 📸",
+          "Di 'Recuérdame mañana a las 9am' para establecer recordatorios",
+          "Di 'hecho con X' para completar una tarea",
+          "Envía una lista separada por comas para crear varias tareas a la vez",
+        ],
+        it: [
+          "Rispondi 'Rendilo urgente' per cambiare priorità",
+          "Rispondi 'Mostra le mie attività' per vedere la tua lista",
+          "Puoi anche inviare note vocali! 🎤",
+          "Usa ! per attività urgenti (es. !chiamare mamma)",
+          "Usa $ per registrare spese (es. $25 pranzo)",
+          "Usa ? per cercare attività (es. ?spesa)",
+          "Invia una foto di uno scontrino per registrarlo automaticamente 📸",
+          "Di 'Ricordami domani alle 9' per impostare promemoria",
+          "Di 'fatto con X' per completare un'attività",
+          "Invia una lista separata da virgole per creare più attività",
+        ],
+      };
+      const shortLang = (userLang || 'en').split('-')[0];
+      const tips = randomTipsLocalized[shortLang] || randomTipsLocalized.en;
+      const getRandomTip = () => tips[Math.floor(Math.random() * tips.length)];
       
       async function getListName(listId: string | null): Promise<string> {
         if (!listId) return 'Tasks';
