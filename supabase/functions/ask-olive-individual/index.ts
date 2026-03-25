@@ -1253,6 +1253,16 @@ serve(async (req) => {
             } else if (queryType === 'overdue') {
               searchItems = activeTasks.filter((t: any) => t.due_date && new Date(t.due_date) < new Date());
               searchLabel = 'Overdue Tasks';
+            } else if (queryType === 'today') {
+              const todayStr = new Date().toISOString().split('T')[0];
+              searchItems = activeTasks.filter((t: any) => t.due_date && t.due_date.startsWith(todayStr));
+              searchLabel = 'Tasks Due Today';
+            } else if (queryType === 'this_week') {
+              const now = new Date();
+              const endOfWeek = new Date(now);
+              endOfWeek.setDate(now.getDate() + (7 - now.getDay()));
+              searchItems = activeTasks.filter((t: any) => t.due_date && new Date(t.due_date) <= endOfWeek);
+              searchLabel = 'Tasks Due This Week';
             }
 
             actionResult = {
