@@ -1403,11 +1403,108 @@ serve(async (req) => {
           }
         }
 
-        // For search/contextual_ask intents, save the displayed task list for ordinal resolution
-        if (aiResult && (aiResult.intent === 'contextual_ask') && activeTasks.length > 0) {
-          const displayedTasks = activeTasks.slice(0, 10);
-          saveWebReferencedEntity(supabase, actualUserId, displayedTasks[0], displayedTasks)
-            .catch(err => console.warn('[WebSession] Non-blocking list save error:', err));
+        // For contextual_ask, build rich server-side context (don't rely on frontend's stale context)
+        if (aiResult && aiResult.intent === 'contextual_ask' && supabase) {
+          try {
+            // Fetch full task data with original_text for detailed answers
+            const { data: fullNotes } = await supabase
+              .from('clerk_notes')
+              .select('id, summary, original_text, category, list_id, items, tags, priority, due_date, reminder_time, completed, created_at')
+              .or(`author_id.eq.${actualUserId}${actualCoupleId ? `,couple_id.eq.${actualCoupleId}` : ''}`)
+              .order('created_at', { ascending: false })
+              .limit(200);
+
+            if (fullNotes && fullNotes.length > 0) {
+              // Score each task by relevance to the question
+              const questionLower = actualMessage.toLowerCase();
+              const questionWords = questionLower.split(/\s+/).filter((w: string) => w.length > 2);
+
+              const scoredTasks = fullNotes.map((task: any) => {
+                const combined = `${(task.summary || '').toLowerCase()} ${(task.original_text || '').toLowerCase()}`;
+                let score = 0;
+                questionWords.forEach((w: string) => {
+                  if (combined.includes(w)) score += 1;
+                  if ((task.summary || '').toLowerCase().includes(w)) score += 1;
+                });
+                return { ...task, relevanceScore: score };
+              });
+
+              const relevantTasks = scoredTasks.filter((t: any) => t.relevanceScore >= 2).sort((a: any, b: any) => b.relevanceScore - a.relevanceScore);
+
+              // Build server-side context for relevant items with FULL details
+              let serverContext = '\n\nSERVER-ENRICHED SAVED DATA (full details for answering questions):\n';
+              
+              if (relevantTasks.length > 0) {
+                serverContext += '## MOST RELEVANT ITEMS:\n';
+                relevantTasks.slice(0, 10).forEach((task: any) => {
+                  const listName = userLists.find((l: any) => l.id === task.list_id)?.name || task.category;
+                  const dueInfo = task.due_date ? ` | Due: ${new Date(task.due_date).toLocaleDateString()}` : '';
+                  const reminderInfo = task.reminder_time ? ` | Reminder: ${new Date(task.reminder_time).toLocaleString()}` : '';
+                  serverContext += `📌 "${task.summary}" [${listName}]${dueInfo}${reminderInfo}\n`;
+                  if (task.original_text && task.original_text !== task.summary) {
+                    serverContext += `   Full details: ${task.original_text.substring(0, 800)}\n`;
+                  }
+                  if (task.items && task.items.length > 0) {
+                    task.items.forEach((item: string) => { serverContext += `   • ${item}\n`; });
+                  }
+                });
+              }
+
+              // Also add calendar context for time-related questions
+              const timeRelatedPatterns = /\b(when|what time|schedule|calendar|appointment|event|meeting|tomorrow|today|next week|questa settimana|cuándo|domani|mañana)\b/i;
+              if (timeRelatedPatterns.test(actualMessage)) {
+                try {
+                  const { data: calConnections } = await supabase
+                    .from('calendar_connections')
+                    .select('id')
+                    .eq('user_id', actualUserId)
+                    .eq('is_active', true);
+
+                  if (calConnections && calConnections.length > 0) {
+                    const connIds = calConnections.map((c: any) => c.id);
+                    const now = new Date();
+                    const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+                    const { data: calEvents } = await supabase
+                      .from('calendar_events')
+                      .select('title, start_time, end_time, location, description, all_day')
+                      .in('connection_id', connIds)
+                      .gte('start_time', now.toISOString())
+                      .lte('start_time', thirtyDays.toISOString())
+                      .order('start_time', { ascending: true })
+                      .limit(20);
+
+                    if (calEvents && calEvents.length > 0) {
+                      serverContext += '\n## UPCOMING CALENDAR EVENTS:\n';
+                      calEvents.forEach((ev: any) => {
+                        const start = new Date(ev.start_time);
+                        const dayStr = start.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+                        const timeStr = ev.all_day ? 'All day' : start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                        const loc = ev.location ? ` | 📍 ${ev.location}` : '';
+                        serverContext += `- ${ev.title}: ${dayStr} at ${timeStr}${loc}\n`;
+                      });
+                    }
+                  }
+                } catch { /* non-blocking */ }
+              }
+
+              // Inject this into the fullContext later
+              actionResult = actionResult || { type: 'contextual_ask', success: true, task_summary: '', details: { server_context: serverContext } };
+              if (actionResult.type !== 'contextual_ask') {
+                // Don't overwrite if another action already happened
+              } else {
+                actionResult.details = { ...actionResult.details, server_context: serverContext };
+              }
+            }
+
+            // Save displayed tasks for ordinal resolution
+            if (activeTasks.length > 0) {
+              const displayedTasks = activeTasks.slice(0, 10);
+              saveWebReferencedEntity(supabase, actualUserId, displayedTasks[0], displayedTasks)
+                .catch(err => console.warn('[WebSession] Non-blocking list save error:', err));
+            }
+          } catch (ctxAskErr) {
+            console.warn('[Ask Olive Individual] contextual_ask enrichment error (non-blocking):', ctxAskErr);
+          }
         }
       } catch (err) {
         console.warn('[Ask Olive Individual] Intent classification error (non-fatal):', err);
