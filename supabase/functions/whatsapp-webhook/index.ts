@@ -6994,26 +6994,25 @@ FORMAT for WhatsApp (max 1500 chars):
         }
 
         // ================================================================
-        // RICH RESPONSE BUILDER
+        // RICH RESPONSE BUILDER (LOCALIZED)
         // ================================================================
         let confirmationMessage: string;
         
         if (duplicateWarning?.found) {
           confirmationMessage = [
-            `✅ Saved: ${insertedNoteSummary}`,
-            `📂 Added to: ${listName}`,
+            t('note_saved', userLang, { summary: insertedNoteSummary }),
+            t('note_added_to', userLang, { list: listName }),
             ``,
-            `⚠️ Similar task found: "${duplicateWarning.targetTitle}"`,
-            `Reply "Merge" to combine them.`
+            t('note_similar_found', userLang, { task: duplicateWarning.targetTitle }),
           ].join('\n');
         } else {
           const sensitiveLabel = encryptionFields.is_sensitive ? '\n🔒 Encrypted at rest' : '';
           confirmationMessage = [
-            `✅ Saved: ${rawSummary}`,
-            `📂 Added to: ${listName}`,
+            t('note_saved', userLang, { summary: rawSummary }),
+            t('note_added_to', userLang, { list: listName }),
             sensitiveLabel,
             ``,
-            `🔗 Manage: https://witholive.app`,
+            t('note_manage', userLang),
             ``,
             `💡 ${getRandomTip()}`
           ].filter(Boolean).join('\n');
