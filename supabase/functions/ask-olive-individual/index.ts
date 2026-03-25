@@ -1559,6 +1559,11 @@ serve(async (req) => {
         fullContext += ragContext;
       }
 
+      // Add server-side enriched context for contextual_ask
+      if (actionResult?.type === 'contextual_ask' && actionResult.details?.server_context) {
+        fullContext += actionResult.details.server_context;
+      }
+
       // Add conversation history for multi-turn context
       if (conversationHistory.length > 0) {
         fullContext += '\nCONVERSATION HISTORY:\n';
