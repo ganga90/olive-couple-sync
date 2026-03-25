@@ -204,7 +204,14 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Found ${explicitReminders?.length || 0} notes with explicit reminders`);
+    // Filter out reminders that were already sent (last_reminded_at within the window)
+    const filteredReminders = (explicitReminders || []).filter(r => {
+      if (!r.last_reminded_at) return true;
+      const lastReminded = new Date(r.last_reminded_at).getTime();
+      // Skip if reminded within the last 20 minutes (prevents double-sends)
+      return (now.getTime() - lastReminded) > 20 * 60 * 1000;
+    });
+    console.log(`Found ${explicitReminders?.length || 0} explicit reminders, ${filteredReminders.length} after dedup`);
 
     // ── Fetch notes with due dates for auto-reminders ──────────────────────
     const { data: dueDateNotes, error: dueDateError } = await supabase
