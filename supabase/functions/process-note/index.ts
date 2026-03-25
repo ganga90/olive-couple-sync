@@ -2221,10 +2221,6 @@ Process this note:
       
       // ================================================================
       // PRIORITY 4.5: Universal content-based category override
-      // If the AI classified as generic ("task"/"personal") but content
-      // strongly matches a domain, override for better routing.
-      // ================================================================
-      // PRIORITY 4.5: Universal content-based category override
       // Checks ALL keyword categories, not just hardcoded ones.
       // If the note content strongly matches a category's keywords,
       // override the AI's category (which often defaults to "task").
@@ -2232,7 +2228,9 @@ Process this note:
       const allContentForOverride = [safeText, summary, ...mediaDescriptions].filter(Boolean).join(' ').toLowerCase();
       let effectiveCategory = category;
       
-      // Only override if current category is generic ("task" or "personal")
+      // Override if current category is generic ("task" or "personal")
+      // CRITICAL FOR NEW USERS: This override runs even when there are NO existing lists,
+      // ensuring that domain-specific content never defaults to "Tasks"
       const genericCategories = ['task', 'personal', 'general'];
       if (genericCategories.includes(normalizeName(effectiveCategory))) {
         let bestOverrideCategory: string | null = null;
@@ -2259,19 +2257,44 @@ Process this note:
           effectiveCategory = bestOverrideCategory;
           
           // After override, re-check if an existing list matches the NEW category
-          const overrideListMatch = findEquivalentList(effectiveCategory);
-          if (overrideListMatch) {
-            console.log('[findOrCreateList] Post-override match found:', overrideListMatch.name);
-            return overrideListMatch.id;
+          if (existingLists && existingLists.length > 0) {
+            const overrideListMatch = findEquivalentList(effectiveCategory);
+            if (overrideListMatch) {
+              console.log('[findOrCreateList] Post-override match found:', overrideListMatch.name);
+              return overrideListMatch.id;
+            }
           }
         }
       }
 
       // ================================================================
+      // PRIORITY 4.6: AI category promotion for new users
+      // When the AI assigned a non-generic category but the content override
+      // didn't trigger (e.g., niche topics like "research", "education", etc.),
+      // preserve the AI's domain category instead of falling to "Tasks".
+      // This ensures new users get meaningful list auto-creation from day one.
+      // ================================================================
+      if (genericCategories.includes(normalizeName(effectiveCategory)) && !genericCategories.includes(normalizeName(category))) {
+        // The original AI category was more specific — restore it
+        console.log('[findOrCreateList] Restoring AI category:', category, '(was overridden to generic:', effectiveCategory, ')');
+        effectiveCategory = category;
+      }
+
+      // ================================================================
       // PRIORITY 5: Create new list only if no match found
-      // Use canonical name map for clean, user-friendly names
+      // Use canonical name map for clean, user-friendly names.
+      // NEVER auto-create a list called "Tasks" — that's the fallback
+      // category and would just accumulate unorganized items.
       // ================================================================
       const catKey = normalizeName(effectiveCategory).replace(/\s+/g, '_');
+
+      // If the effective category is still generic, do NOT create a list — return null
+      // so the note lands in the default "Tasks" view without a dedicated list.
+      if (genericCategories.includes(catKey)) {
+        console.log('[findOrCreateList] Generic category "' + effectiveCategory + '" — skipping list creation');
+        return null;
+      }
+
       const canonical = canonicalListNames[catKey] || canonicalListNames[effectiveCategory];
       const listName = canonical?.displayName || effectiveCategory
         .replace(/_/g, ' ')
