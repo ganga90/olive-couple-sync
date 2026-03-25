@@ -990,6 +990,19 @@ serve(async (req) => {
         const activeSkills = skillsRes.data || [];
         const userLists = listsRes.data || [];
 
+        // Detect user language from profile
+        let webUserLang = 'en';
+        try {
+          const { data: profileData } = await supabase
+            .from('clerk_profiles')
+            .select('language_preference')
+            .eq('id', actualUserId)
+            .maybeSingle();
+          if (profileData?.language_preference) {
+            webUserLang = profileData.language_preference.split('-')[0] || 'en';
+          }
+        } catch { /* non-blocking */ }
+
         // Classify intent using shared classifier
         const { classifyIntent: sharedClassifyIntent } = await import("../_shared/intent-classifier.ts");
         const classificationResult = await sharedClassifyIntent({
@@ -999,6 +1012,7 @@ serve(async (req) => {
           userMemories: userMems,
           activatedSkills: activeSkills,
           userLists,
+          userLanguage: webUserLang,
         });
         const aiResult = classificationResult.intent;
         const classificationLatencyMs = classificationResult.latencyMs;
