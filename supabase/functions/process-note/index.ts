@@ -1998,6 +1998,8 @@ Process this note:
       'stocks': 2,
       'recipes': 2,
       'music': 2,
+      'research': 2,
+      'education': 2,
     };
 
     // ================================================================
