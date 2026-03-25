@@ -1317,7 +1317,12 @@ serve(async (req) => {
                     amount,
                     name: merchant,
                     category,
-                    currency: 'USD',
+                    currency: (() => {
+                      // Detect currency from original message
+                      if (actualMessage.includes('€')) return 'EUR';
+                      if (actualMessage.includes('£')) return 'GBP';
+                      return 'USD';
+                    })(),
                     paid_by: actualUserId,
                     split_type: 'individual',
                     expense_date: new Date().toISOString().split('T')[0],
