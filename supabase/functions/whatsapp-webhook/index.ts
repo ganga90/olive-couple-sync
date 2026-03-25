@@ -1183,7 +1183,7 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
       'domingo': 0, 'lunes': 1, 'martes': 2, 'miércoles': 3, 'miercoles': 3, 'jueves': 4, 'viernes': 5, 'sábado': 6, 'sabado': 6,
       // Italian
       'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2, 'mercoledì': 3, 'mercoledi': 3,
-      'giovedì': 4, 'giovedi': 4, 'venerdì': 5, 'venerdi': 5, 'sabato_it': 6,
+      'giovedì': 4, 'giovedi': 4, 'venerdì': 5, 'venerdi': 5, 'sabato': 6,
     };
     const targetDay = dayMap[dayName.toLowerCase()] ?? days.indexOf(dayName.toLowerCase());
     if (targetDay === -1) return now;
