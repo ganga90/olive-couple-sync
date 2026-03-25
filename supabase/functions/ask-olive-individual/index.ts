@@ -435,7 +435,7 @@ async function executeTaskAction(
   userMessage: string = ''
 ): Promise<ActionResult | null> {
   const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind'];
-    if (!taskActions.includes(intent.intent)) return null;
+  if (!taskActions.includes(intent.intent)) return null;
     if (intent.confidence < 0.5) return null;
 
   try {
@@ -529,8 +529,38 @@ async function executeTaskAction(
     }
 
     if (!taskId) {
-      console.warn('[executeTaskAction] No task found for:', taskSummary);
-      return null;
+      // ── REMIND AUTO-CREATE: If intent is 'remind' and no existing task found,
+      // auto-create a new task via process-note and then set the reminder ──
+      if (intent.intent === 'remind' && taskSummary && intent.parameters?.due_date_expression) {
+        console.log('[executeTaskAction] Remind auto-create: creating new task for:', taskSummary);
+        try {
+          const { data: processData, error: processError } = await supabase.functions.invoke('process-note', {
+            body: {
+              text: taskSummary,
+              user_id: userId,
+              couple_id: coupleId,
+              source: 'web_chat',
+            },
+          });
+
+          if (!processError && processData) {
+            const newId = processData.id || processData.note?.id;
+            const newSummary = processData.summary || processData.note?.summary || taskSummary;
+            if (newId) {
+              taskId = newId;
+              taskSummary = newSummary;
+              console.log('[executeTaskAction] Remind auto-create succeeded:', taskSummary, 'id:', taskId);
+            }
+          }
+        } catch (autoCreateErr) {
+          console.error('[executeTaskAction] Remind auto-create failed:', autoCreateErr);
+        }
+      }
+
+      if (!taskId) {
+        console.warn('[executeTaskAction] No task found for:', taskSummary);
+        return null;
+      }
     }
 
     switch (intent.intent) {
@@ -990,6 +1020,19 @@ serve(async (req) => {
         const activeSkills = skillsRes.data || [];
         const userLists = listsRes.data || [];
 
+        // Detect user language from profile
+        let webUserLang = 'en';
+        try {
+          const { data: profileData } = await supabase
+            .from('clerk_profiles')
+            .select('language_preference')
+            .eq('id', actualUserId)
+            .maybeSingle();
+          if (profileData?.language_preference) {
+            webUserLang = profileData.language_preference.split('-')[0] || 'en';
+          }
+        } catch { /* non-blocking */ }
+
         // Classify intent using shared classifier
         const { classifyIntent: sharedClassifyIntent } = await import("../_shared/intent-classifier.ts");
         const classificationResult = await sharedClassifyIntent({
@@ -999,6 +1042,7 @@ serve(async (req) => {
           userMemories: userMems,
           activatedSkills: activeSkills,
           userLists,
+          userLanguage: webUserLang,
         });
         const aiResult = classificationResult.intent;
         const classificationLatencyMs = classificationResult.latencyMs;
@@ -1209,6 +1253,16 @@ serve(async (req) => {
             } else if (queryType === 'overdue') {
               searchItems = activeTasks.filter((t: any) => t.due_date && new Date(t.due_date) < new Date());
               searchLabel = 'Overdue Tasks';
+            } else if (queryType === 'today') {
+              const todayStr = new Date().toISOString().split('T')[0];
+              searchItems = activeTasks.filter((t: any) => t.due_date && t.due_date.startsWith(todayStr));
+              searchLabel = 'Tasks Due Today';
+            } else if (queryType === 'this_week') {
+              const now = new Date();
+              const endOfWeek = new Date(now);
+              endOfWeek.setDate(now.getDate() + (7 - now.getDay()));
+              searchItems = activeTasks.filter((t: any) => t.due_date && new Date(t.due_date) <= endOfWeek);
+              searchLabel = 'Tasks Due This Week';
             }
 
             actionResult = {
@@ -1224,6 +1278,61 @@ serve(async (req) => {
             if (searchItems.length > 0) {
               saveWebReferencedEntity(supabase, actualUserId, searchItems[0], searchItems.slice(0, 10))
                 .catch(err => console.warn('[WebSession] search save error:', err));
+            }
+          }
+
+          // Handle expense intent — parse and save expense
+          if (aiResult.intent === 'expense' && aiResult.confidence >= 0.5) {
+            const amount = aiResult.parameters?.amount;
+            const description = aiResult.parameters?.expense_description || actualMessage;
+            console.log(`[Ask Olive Individual] EXPENSE intent: amount=${amount}, desc=${description}`);
+
+            if (amount && amount > 0) {
+              try {
+                // Use AI to categorize the expense
+                let merchant = description;
+                let category = 'other';
+                try {
+                  const { GEMINI_KEY: gemKey, getModel: getM } = await import("../_shared/gemini.ts");
+                  if (gemKey) {
+                    const { GoogleGenAI: GAI } = await import("https://esm.sh/@google/genai@1.0.0");
+                    const gai = new GAI({ apiKey: gemKey });
+                    const catResult = await gai.models.generateContent({
+                      model: getM("lite"),
+                      contents: `Extract merchant and category from: "${description}". Respond ONLY with JSON: {"merchant": "name", "category": "one_of_these"} Categories: food, transport, shopping, entertainment, utilities, health, groceries, travel, personal, education, subscriptions, other`,
+                      config: { temperature: 0.2, maxOutputTokens: 100 },
+                    });
+                    const parsed = JSON.parse((catResult.text || '').replace(/```json?|```/g, '').trim());
+                    if (parsed.merchant) merchant = parsed.merchant;
+                    if (parsed.category) category = parsed.category;
+                  }
+                } catch { /* fallback to raw description */ }
+
+                const { error: expError } = await supabase
+                  .from('expenses')
+                  .insert({
+                    user_id: actualUserId,
+                    couple_id: actualCoupleId || null,
+                    amount,
+                    name: merchant,
+                    category,
+                    currency: 'USD',
+                    paid_by: actualUserId,
+                    split_type: 'individual',
+                    expense_date: new Date().toISOString().split('T')[0],
+                    is_shared: false,
+                    original_text: actualMessage,
+                  });
+
+                if (!expError) {
+                  actionResult = {
+                    type: 'expense', success: true, task_summary: `$${amount} ${merchant}`,
+                    details: { amount, merchant, category },
+                  };
+                }
+              } catch (expErr) {
+                console.error('[Ask Olive Individual] Expense error:', expErr);
+              }
             }
           }
         }
@@ -1305,6 +1414,7 @@ serve(async (req) => {
           set_priority: `changed the priority to ${actionResult.details?.new_priority || 'updated'}`,
           set_due: `updated the due date/time to ${actionResult.details?.new_due_date ? new Date(actionResult.details.new_due_date).toLocaleString() : 'updated'}`,
           delete: 'deleted',
+          expense: `logged an expense of ${actionResult.details?.amount ? '$' + actionResult.details.amount : ''} at ${actionResult.details?.merchant || 'unknown'} (${actionResult.details?.category || 'other'})`,
           remind: `set a reminder ${actionResult.details?.readable || 'for ' + (actionResult.details?.new_reminder_time ? new Date(actionResult.details.new_reminder_time).toLocaleString() : 'later')}`,
           partner_message: actionResult.details?.sent
             ? `sent a WhatsApp message to ${actionResult.details?.partner_name || 'your partner'}${actionResult.details?.task_created ? ' and created a task assigned to them' : ''}`

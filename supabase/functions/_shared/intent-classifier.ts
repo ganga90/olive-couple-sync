@@ -372,7 +372,10 @@ ${memoryList || "No memories stored."}
 ${skillsList || "No skills activated."}
 
 ## USER'S EXISTING LISTS (use to disambiguate list names in create/search/list_recap/move):
-${listNamesCtx || "No lists yet."}`;
+${listNamesCtx || "No lists yet."}
+
+## NEW USER GUIDANCE:
+${!taskList && !listNamesCtx ? `⚠️ THIS IS A NEW USER with no tasks or lists yet. Their FIRST messages are almost certainly brain dumps to CREATE. Be very aggressive about classifying as "create" — they are setting up their organizational system. Noun phrases, short descriptions, and any content that looks like a note/idea = ALWAYS CREATE with very high confidence (0.95+). Do NOT classify new user messages as "search" or "contextual_ask" since they have nothing to search. Only classify as "chat" if it's explicitly a greeting or question TO Olive.` : 'Returning user — use standard disambiguation rules.'}`;
 }
 
 // ─── Main Classification Function ─────────────────────────────

@@ -3073,42 +3073,79 @@ serve(async (req) => {
           }
 
           // Build rich confirmation matching main CREATE path
-          const shortcutTips = [
-            "Reply 'Make it urgent' to change priority",
-            "Reply 'Show my tasks' to see your list",
-            "You can send voice notes too! 🎤",
-            "Reply 'Move to Work' to switch lists",
-            "Use ! prefix for urgent tasks (e.g., !call mom)",
-            "Use $ to log expenses (e.g., $25 lunch)",
-            "Use ? to search your tasks (e.g., ?groceries)",
-            "Use @ to assign to partner (e.g., @partner pick up kids)",
-            "Send a photo of a receipt to log it automatically 📸",
-            "Say 'Remind me tomorrow at 9am' to set reminders",
-            "Ask 'What's overdue?' to see pending tasks",
-            "Say 'Summarize my week' for a weekly recap",
-            "Use / to chat with Olive (e.g., /what should I focus on?)",
-            "Send a comma-separated list to create multiple tasks at once",
-            "Say 'done with X' to mark a task complete"
-          ];
-          const tip = shortcutTips[Math.floor(Math.random() * shortcutTips.length)];
+          const shortcutTips: Record<string, string[]> = {
+            en: [
+              "Reply 'Make it urgent' to change priority",
+              "Reply 'Show my tasks' to see your list",
+              "You can send voice notes too! 🎤",
+              "Reply 'Move to Work' to switch lists",
+              "Use ! prefix for urgent tasks (e.g., !call mom)",
+              "Use $ to log expenses (e.g., $25 lunch)",
+              "Use ? to search your tasks (e.g., ?groceries)",
+              "Use @ to assign to partner (e.g., @partner pick up kids)",
+              "Send a photo of a receipt to log it automatically 📸",
+              "Say 'Remind me tomorrow at 9am' to set reminders",
+              "Ask 'What's overdue?' to see pending tasks",
+              "Say 'Summarize my week' for a weekly recap",
+              "Use / to chat with Olive (e.g., /what should I focus on?)",
+              "Send a comma-separated list to create multiple tasks at once",
+              "Say 'done with X' to mark a task complete",
+            ],
+            es: [
+              "Responde 'Hazlo urgente' para cambiar la prioridad",
+              "Responde 'Mostrar mis tareas' para ver tu lista",
+              "¡También puedes enviar notas de voz! 🎤",
+              "Responde 'Mover a Trabajo' para cambiar de lista",
+              "Usa ! para tareas urgentes (ej. !llamar mamá)",
+              "Usa $ para registrar gastos (ej. $25 almuerzo)",
+              "Usa ? para buscar tareas (ej. ?compras)",
+              "Usa @ para asignar a tu pareja (ej. @pareja recoger niños)",
+              "Envía una foto de un recibo para registrarlo automáticamente 📸",
+              "Di 'Recuérdame mañana a las 9am' para poner recordatorios",
+              "Pregunta '¿Qué está vencido?' para ver tareas pendientes",
+              "Di 'Resumen de mi semana' para un recap semanal",
+              "Usa / para chatear con Olive (ej. /¿en qué debo enfocarme?)",
+              "Envía una lista separada por comas para crear varias tareas",
+              "Di 'hecho con X' para completar una tarea",
+            ],
+            it: [
+              "Rispondi 'Rendilo urgente' per cambiare la priorità",
+              "Rispondi 'Mostra le mie attività' per vedere la lista",
+              "Puoi anche inviare note vocali! 🎤",
+              "Rispondi 'Sposta in Lavoro' per cambiare lista",
+              "Usa ! per attività urgenti (es. !chiamare mamma)",
+              "Usa $ per registrare spese (es. $25 pranzo)",
+              "Usa ? per cercare attività (es. ?spesa)",
+              "Usa @ per assegnare al partner (es. @partner prendere i bambini)",
+              "Invia una foto di uno scontrino per registrarlo automaticamente 📸",
+              "Di 'Ricordami domani alle 9' per impostare promemoria",
+              "Chiedi 'Cosa è scaduto?' per vedere le attività in ritardo",
+              "Di 'Riassunto della settimana' per un recap settimanale",
+              "Usa / per chattare con Olive (es. /su cosa dovrei concentrarmi?)",
+              "Invia una lista separata da virgole per creare più attività",
+              "Di 'fatto con X' per completare un'attività",
+            ],
+          };
+          const langTips = shortcutTips[userLang.split('-')[0]] || shortcutTips.en;
+          const tip = langTips[Math.floor(Math.random() * langTips.length)];
 
           let confirmMsg: string;
           if (isUrgent) {
             confirmMsg = [
-              `✅ Saved: ${summary}`,
-              `📂 Added to: ${listName}`,
-              `🔥 Priority: High`,
+              t('note_saved', userLang, { summary }),
+              t('note_added_to', userLang, { list: listName }),
+              t('note_priority_high', userLang),
               ``,
-              `🔗 Manage: https://witholive.app`,
+              t('note_manage', userLang),
               ``,
               `💡 ${tip}`
             ].join('\n');
           } else {
             confirmMsg = [
-              `✅ Saved: ${summary}`,
-              `📂 Added to: ${listName}`,
+              t('note_saved', userLang, { summary }),
+              t('note_added_to', userLang, { list: listName }),
               ``,
-              `🔗 Manage: https://witholive.app`,
+              t('note_manage', userLang),
               ``,
               `💡 ${tip}`
             ].join('\n');
