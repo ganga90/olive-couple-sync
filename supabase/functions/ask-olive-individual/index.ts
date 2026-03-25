@@ -381,7 +381,7 @@ const ORDINAL_MAP: Record<string, number> = {
   // Italian
   primo: 0, secondo: 1, terzo: 2, quarto: 3, quinto: 4, sesto: 5, settimo: 6, ottavo: 7,
   // Spanish
-  primero: 0, segundo_es: 1, tercero: 2, cuarto_es: 3, quinto_es: 4, sexto_es: 5, séptimo: 6, octavo: 7,
+  primero: 0, tercero: 2, séptimo: 6, octavo: 7,
 };
 
 function resolveOrdinalIndex(message: string): number {
