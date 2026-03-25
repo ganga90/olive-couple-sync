@@ -181,16 +181,19 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const now = new Date();
+    // Wider window: catch reminders from 15 minutes AGO (missed by previous runs)
+    // to 5 minutes in the FUTURE (upcoming)
+    const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
     const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
 
-    console.log('Checking for reminders between:', now.toISOString(), 'and', fiveMinutesFromNow.toISOString());
+    console.log('Checking for reminders between:', fifteenMinutesAgo.toISOString(), 'and', fiveMinutesFromNow.toISOString());
 
     const { data: explicitReminders, error: notesError } = await supabase
       .from('clerk_notes')
       .select('id, summary, reminder_time, author_id, tags, category, recurrence_frequency, recurrence_interval, last_reminded_at, due_date, auto_reminders_sent')
       .not('reminder_time', 'is', null)
       .lte('reminder_time', fiveMinutesFromNow.toISOString())
-      .gte('reminder_time', now.toISOString())
+      .gte('reminder_time', fifteenMinutesAgo.toISOString())
       .eq('completed', false);
 
     if (notesError) {
@@ -201,7 +204,14 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Found ${explicitReminders?.length || 0} notes with explicit reminders`);
+    // Filter out reminders that were already sent (last_reminded_at within the window)
+    const filteredReminders = (explicitReminders || []).filter(r => {
+      if (!r.last_reminded_at) return true;
+      const lastReminded = new Date(r.last_reminded_at).getTime();
+      // Skip if reminded within the last 20 minutes (prevents double-sends)
+      return (now.getTime() - lastReminded) > 20 * 60 * 1000;
+    });
+    console.log(`Found ${explicitReminders?.length || 0} explicit reminders, ${filteredReminders.length} after dedup`);
 
     // ── Fetch notes with due dates for auto-reminders ──────────────────────
     const { data: dueDateNotes, error: dueDateError } = await supabase
@@ -278,7 +288,7 @@ serve(async (req) => {
 
     console.log(`Found ${autoReminders.length} notes needing automatic due date reminders`);
 
-    const allReminders = [...(explicitReminders || []), ...autoReminders];
+    const allReminders = [...filteredReminders, ...autoReminders];
 
     if (allReminders.length === 0) {
       return new Response(
@@ -302,7 +312,7 @@ serve(async (req) => {
       // Fetch profile with 24h window info
       const { data: profile, error: profileError } = await supabase
         .from('clerk_profiles')
-        .select('phone_number, display_name, last_user_message_at')
+        .select('phone_number, display_name, last_user_message_at, language_preference')
         .eq('id', authorId)
         .single();
 
@@ -312,9 +322,42 @@ serve(async (req) => {
         continue;
       }
 
-      const reminderText = notes.length === 1
-        ? `⏰ ${(notes[0] as any).reminder_type ? `Reminder: "${notes[0].summary}" is due ${(notes[0] as any).reminder_message}` : `Here's your reminder: "${notes[0].summary}"`}\n\nLet me know if you have completed it or if you want me to remind you later! 🙂`
-        : `⏰ You have ${notes.length} reminders:\n\n${notes.map((n: any, i: number) => `${i + 1}. ${n.summary}${n.reminder_type ? ` (due ${n.reminder_message})` : ''}`).join('\n')}\n\nLet me know which ones you've completed or if you want me to remind you later! 🙂`;
+      // Localized reminder text
+      const lang = (profile.language_preference || 'en').split('-')[0];
+      const reminderTemplates: Record<string, { single: string; singleDue: string; multi: string; cta: string }> = {
+        en: {
+          single: `⏰ Here's your reminder: "{summary}"`,
+          singleDue: `⏰ Reminder: "{summary}" is due {due}`,
+          multi: `⏰ You have {count} reminders:`,
+          cta: `\n\nLet me know if you have completed it or if you want me to remind you later! 🙂`,
+        },
+        es: {
+          single: `⏰ Tu recordatorio: "{summary}"`,
+          singleDue: `⏰ Recordatorio: "{summary}" vence {due}`,
+          multi: `⏰ Tienes {count} recordatorios:`,
+          cta: `\n\n¡Dime si ya lo completaste o si quieres que te recuerde más tarde! 🙂`,
+        },
+        it: {
+          single: `⏰ Ecco il tuo promemoria: "{summary}"`,
+          singleDue: `⏰ Promemoria: "{summary}" è previsto {due}`,
+          multi: `⏰ Hai {count} promemoria:`,
+          cta: `\n\nFammi sapere se l'hai completato o se vuoi che te lo ricordi più tardi! 🙂`,
+        },
+      };
+      const tpl = reminderTemplates[lang] || reminderTemplates.en;
+
+      let reminderText: string;
+      if (notes.length === 1) {
+        const n = notes[0] as any;
+        reminderText = n.reminder_type
+          ? tpl.singleDue.replace('{summary}', n.summary).replace('{due}', n.reminder_message)
+          : tpl.single.replace('{summary}', n.summary);
+        reminderText += tpl.cta;
+      } else {
+        reminderText = tpl.multi.replace('{count}', String(notes.length));
+        reminderText += '\n\n' + notes.map((n: any, i: number) => `${i + 1}. ${n.summary}${n.reminder_type ? ` (${n.reminder_message})` : ''}`).join('\n');
+        reminderText += tpl.cta;
+      }
 
       try {
         // Smart send: template outside 24h window, text inside

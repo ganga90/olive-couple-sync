@@ -2483,7 +2483,28 @@ serve(async (req) => {
     console.log('Authenticated user:', profile.id, profile.display_name);
     const userId = profile.id;
     _authenticatedUserId = userId; // Enable reply() to save outbound context
-    const userLang = profile.language_preference || 'en';
+    // Detect language: prefer profile setting, then auto-detect from message content
+    let userLang = profile.language_preference || '';
+    if (!userLang || userLang === 'en') {
+      // Auto-detect language from message content for users who haven't set preference
+      const msgLower = (messageBody || '').toLowerCase();
+      const italianSignals = /\b(ciao|buon(?:giorno|asera)|grazie|per favore|ricordami|mostra|fatto|attività|promemoria|cosa|quali|sono|che|il|la|le|gli|del|della|delle|dei|degli|nel|nella|nelle|nei|agli|alle|quanto|quando|perch[eé]|anche|molto|questo|questa|questi|queste|quel[lo]?|come)\b/i;
+      const spanishSignals = /\b(hola|buenos?\s*d[ií]as|gracias|por favor|recu[ée]rdame|muestra|hecho|tareas|recordatorio|qu[ée]|cu[aá]les|son|los|las|del|de la|de los|en el|en la|cu[aá]nto|cu[aá]ndo|tambi[ée]n|mucho|este|esta|estos|estas|aquel|como)\b/i;
+      if (italianSignals.test(msgLower)) {
+        userLang = 'it';
+        // Auto-save detected language for future messages
+        try {
+          await supabase.from('clerk_profiles').update({ language_preference: 'it-IT' }).eq('id', profile.id);
+        } catch (_) { /* non-blocking */ }
+      } else if (spanishSignals.test(msgLower)) {
+        userLang = 'es';
+        try {
+          await supabase.from('clerk_profiles').update({ language_preference: 'es-ES' }).eq('id', profile.id);
+        } catch (_) { /* non-blocking */ }
+      } else {
+        userLang = userLang || 'en';
+      }
+    }
 
     // Fetch recent outbound messages for conversation context (last 60 min)
     const recentOutbound = await getRecentOutboundMessages(supabase, userId);
@@ -2809,7 +2830,13 @@ serve(async (req) => {
             })
             .eq('id', pendingAction.task_id);
 
-          return reply(`✅ Done! "${pendingAction.task_summary}" is now due ${pendingAction.readable}. 📅`);
+          const dueSetLocalized: Record<string, string> = {
+            en: `✅ Done! "${pendingAction.task_summary}" is now due ${pendingAction.readable}. 📅`,
+            es: `✅ ¡Hecho! "${pendingAction.task_summary}" ahora vence ${pendingAction.readable}. 📅`,
+            it: `✅ Fatto! "${pendingAction.task_summary}" ora è previsto ${pendingAction.readable}. 📅`,
+          };
+          const sl = (userLang || 'en').split('-')[0];
+          return reply(dueSetLocalized[sl] || dueSetLocalized.en);
         } else if (pendingAction?.type === 'set_reminder') {
           const updateData: any = {
             reminder_time: pendingAction.time,
@@ -2825,7 +2852,12 @@ serve(async (req) => {
             .update(updateData)
             .eq('id', pendingAction.task_id);
 
-          return reply(`✅ Done! I'll remind you about "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`);
+          const reminderSetLocalized: Record<string, string> = {
+            en: `✅ Done! I'll remind you about "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`,
+            es: `✅ ¡Hecho! Te recordaré "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`,
+            it: `✅ Fatto! Ti ricorderò "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`,
+          };
+          return reply(reminderSetLocalized[sl] || reminderSetLocalized.en);
         } else if (pendingAction?.type === 'delete') {
           await supabase
             .from('clerk_notes')
@@ -5301,7 +5333,7 @@ Format a helpful, concise WhatsApp response with the key information and links:`
       
       const { data: allTasks } = await supabase
         .from('clerk_notes')
-        .select('id, summary, due_date, completed, priority, category, list_id, items, created_at, updated_at, task_owner')
+        .select('id, summary, due_date, completed, priority, category, list_id, items, created_at, updated_at, task_owner, author_id')
         .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -5665,8 +5697,11 @@ ${myAssignments.length > 0 ? `- You assigned to them: ${myAssignments.join(', ')
         .slice(0, 3)
         .map(([list, count]) => `${list}: ${count}`);
       
+      // Distinguish between user's own tasks and total space tasks
+      const yourTasks = activeTasks.filter(t => t.author_id === userId || t.task_owner === userId);
       const taskContext = {
         total_active: activeTasks.length,
+        your_active: yourTasks.length,
         urgent: urgentTasks.length,
         overdue: overdueTasks.length,
         due_today: dueTodayTasks.length,
@@ -5782,7 +5817,8 @@ IMPORTANT: Use the above skill knowledge to enhance your response with domain-sp
 
       const baseContext = `
 ## User Task Analytics:
-- Active tasks: ${taskContext.total_active}
+- Your active tasks: ${taskContext.your_active}
+- Total in shared space: ${taskContext.total_active}
 - Urgent (high priority): ${taskContext.urgent}
 - Overdue: ${taskContext.overdue}
 - Due today: ${taskContext.due_today}
@@ -5792,6 +5828,7 @@ IMPORTANT: Use the above skill knowledge to enhance your response with domain-sp
 - Completion rate: ${taskContext.completion_rate}%
 - Top categories: ${taskContext.top_categories.join(', ') || 'None'}
 - Top lists: ${taskContext.top_lists.join(', ') || 'None'}
+IMPORTANT: When telling the user how many tasks they have, use "Your active tasks" (${taskContext.your_active}), NOT the total space count. Only mention "shared space" count if explicitly asked about partner/couple tasks.
 
 ## User Memories/Preferences:
 ${memoryContext}
@@ -6906,9 +6943,16 @@ FORMAT for WhatsApp (max 1500 chars):
         
         const count = processData.notes.length;
         const itemsList = insertedNotes?.slice(0, 3).map(n => `• ${n.summary}`).join('\n') || '';
-        const moreText = count > 3 ? `\n...and ${count - 3} more` : '';
+        const moreCount = count > 3 ? count - 3 : 0;
+        const moreTextLocalized: Record<string, string> = {
+          en: `\n...and ${moreCount} more`,
+          es: `\n...y ${moreCount} más`,
+          it: `\n...e altri ${moreCount}`,
+        };
+        const sl = (userLang || 'en').split('-')[0];
+        const moreText = moreCount > 0 ? (moreTextLocalized[sl] || moreTextLocalized.en) : '';
         
-        return reply(`✅ Saved ${count} items!\n${itemsList}${moreText}\n\n📂 Added to: ${listName}\n\n🔗 Manage: https://witholive.app\n\n💡 ${getRandomTip()}`);
+        return reply(`${t('note_multi_saved', userLang, { count: String(count) })}\n${itemsList}${moreText}\n\n${t('note_added_to', userLang, { list: listName })}\n\n${t('note_manage', userLang)}\n\n💡 ${getRandomTip()}`);
       } else {
         // Build note data with optional encryption for sensitive notes
         const rawOriginalText = messageBody || processData.summary || 'Media attachment';
