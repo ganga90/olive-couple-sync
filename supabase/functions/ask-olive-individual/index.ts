@@ -434,7 +434,7 @@ async function executeTaskAction(
   coupleId: string | null,
   userMessage: string = ''
 ): Promise<ActionResult | null> {
-  const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind'];
+  const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind', 'move', 'assign'];
   if (!taskActions.includes(intent.intent)) return null;
     if (intent.confidence < 0.5) return null;
 
@@ -695,6 +695,66 @@ async function executeTaskAction(
         if (error) throw error;
         console.log('[executeTaskAction] Deleted task:', taskSummary);
         return { type: 'delete', task_id: taskId, task_summary: taskSummary || '', success: true };
+      }
+
+      case 'move': {
+        // Move task to a different list
+        const targetListName = intent.parameters?.list_name || '';
+        if (!targetListName) return null;
+
+        // Find matching list
+        const { data: userLists } = await supabase
+          .from('clerk_lists')
+          .select('id, name')
+          .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
+
+        const listMatch = userLists?.find((l: any) => 
+          l.name.toLowerCase().includes(targetListName.toLowerCase()) ||
+          targetListName.toLowerCase().includes(l.name.toLowerCase())
+        );
+
+        if (!listMatch) {
+          // Create the list if it doesn't exist
+          const formattedName = targetListName.trim().split(/\s+/).map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+          const { data: newList } = await supabase
+            .from('clerk_lists')
+            .insert({ name: formattedName, author_id: userId, couple_id: coupleId || null, is_manual: true })
+            .select('id, name')
+            .single();
+
+          if (newList) {
+            const { error } = await supabase.from('clerk_notes').update({ list_id: newList.id, updated_at: new Date().toISOString() }).eq('id', taskId);
+            if (error) throw error;
+            return { type: 'move', task_id: taskId, task_summary: taskSummary || '', success: true, details: { target_list: newList.name, created_list: true } };
+          }
+          return null;
+        }
+
+        const { error } = await supabase.from('clerk_notes').update({ list_id: listMatch.id, updated_at: new Date().toISOString() }).eq('id', taskId);
+        if (error) throw error;
+        return { type: 'move', task_id: taskId, task_summary: taskSummary || '', success: true, details: { target_list: listMatch.name } };
+      }
+
+      case 'assign': {
+        if (!coupleId) return { type: 'assign', success: false, details: { error: 'no_couple' } };
+
+        // Find partner
+        const { data: partnerMemberForAssign } = await supabase
+          .from('clerk_couple_members')
+          .select('user_id, display_name')
+          .eq('couple_id', coupleId)
+          .neq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+
+        if (!partnerMemberForAssign) return { type: 'assign', success: false, details: { error: 'no_partner' } };
+
+        const { error } = await supabase.from('clerk_notes')
+          .update({ task_owner: partnerMemberForAssign.user_id, updated_at: new Date().toISOString() })
+          .eq('id', taskId);
+        if (error) throw error;
+
+        return { type: 'assign', task_id: taskId, task_summary: taskSummary || '', success: true, details: { partner_name: partnerMemberForAssign.display_name || 'your partner' } };
       }
 
       case 'partner_message': {
@@ -1080,8 +1140,8 @@ serve(async (req) => {
 
         // Execute task actions server-side (complete, set_priority, set_due, delete)
         if (aiResult && aiResult.confidence >= 0.5) {
-          const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind'];
-          if (taskActions.includes(aiResult.intent)) {
+            const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind', 'move', 'assign'];
+            if (taskActions.includes(aiResult.intent)) {
             console.log(`[Ask Olive Individual] Task action detected: ${aiResult.intent} (confidence: ${aiResult.confidence})`);
             actionResult = await executeTaskAction(supabase, aiResult, actualUserId, actualCoupleId, actualMessage);
 
@@ -1343,11 +1403,108 @@ serve(async (req) => {
           }
         }
 
-        // For search/contextual_ask intents, save the displayed task list for ordinal resolution
-        if (aiResult && (aiResult.intent === 'contextual_ask') && activeTasks.length > 0) {
-          const displayedTasks = activeTasks.slice(0, 10);
-          saveWebReferencedEntity(supabase, actualUserId, displayedTasks[0], displayedTasks)
-            .catch(err => console.warn('[WebSession] Non-blocking list save error:', err));
+        // For contextual_ask, build rich server-side context (don't rely on frontend's stale context)
+        if (aiResult && aiResult.intent === 'contextual_ask' && supabase) {
+          try {
+            // Fetch full task data with original_text for detailed answers
+            const { data: fullNotes } = await supabase
+              .from('clerk_notes')
+              .select('id, summary, original_text, category, list_id, items, tags, priority, due_date, reminder_time, completed, created_at')
+              .or(`author_id.eq.${actualUserId}${actualCoupleId ? `,couple_id.eq.${actualCoupleId}` : ''}`)
+              .order('created_at', { ascending: false })
+              .limit(200);
+
+            if (fullNotes && fullNotes.length > 0) {
+              // Score each task by relevance to the question
+              const questionLower = actualMessage.toLowerCase();
+              const questionWords = questionLower.split(/\s+/).filter((w: string) => w.length > 2);
+
+              const scoredTasks = fullNotes.map((task: any) => {
+                const combined = `${(task.summary || '').toLowerCase()} ${(task.original_text || '').toLowerCase()}`;
+                let score = 0;
+                questionWords.forEach((w: string) => {
+                  if (combined.includes(w)) score += 1;
+                  if ((task.summary || '').toLowerCase().includes(w)) score += 1;
+                });
+                return { ...task, relevanceScore: score };
+              });
+
+              const relevantTasks = scoredTasks.filter((t: any) => t.relevanceScore >= 2).sort((a: any, b: any) => b.relevanceScore - a.relevanceScore);
+
+              // Build server-side context for relevant items with FULL details
+              let serverContext = '\n\nSERVER-ENRICHED SAVED DATA (full details for answering questions):\n';
+              
+              if (relevantTasks.length > 0) {
+                serverContext += '## MOST RELEVANT ITEMS:\n';
+                relevantTasks.slice(0, 10).forEach((task: any) => {
+                  const listName = userLists.find((l: any) => l.id === task.list_id)?.name || task.category;
+                  const dueInfo = task.due_date ? ` | Due: ${new Date(task.due_date).toLocaleDateString()}` : '';
+                  const reminderInfo = task.reminder_time ? ` | Reminder: ${new Date(task.reminder_time).toLocaleString()}` : '';
+                  serverContext += `📌 "${task.summary}" [${listName}]${dueInfo}${reminderInfo}\n`;
+                  if (task.original_text && task.original_text !== task.summary) {
+                    serverContext += `   Full details: ${task.original_text.substring(0, 800)}\n`;
+                  }
+                  if (task.items && task.items.length > 0) {
+                    task.items.forEach((item: string) => { serverContext += `   • ${item}\n`; });
+                  }
+                });
+              }
+
+              // Also add calendar context for time-related questions
+              const timeRelatedPatterns = /\b(when|what time|schedule|calendar|appointment|event|meeting|tomorrow|today|next week|questa settimana|cuándo|domani|mañana)\b/i;
+              if (timeRelatedPatterns.test(actualMessage)) {
+                try {
+                  const { data: calConnections } = await supabase
+                    .from('calendar_connections')
+                    .select('id')
+                    .eq('user_id', actualUserId)
+                    .eq('is_active', true);
+
+                  if (calConnections && calConnections.length > 0) {
+                    const connIds = calConnections.map((c: any) => c.id);
+                    const now = new Date();
+                    const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+                    const { data: calEvents } = await supabase
+                      .from('calendar_events')
+                      .select('title, start_time, end_time, location, description, all_day')
+                      .in('connection_id', connIds)
+                      .gte('start_time', now.toISOString())
+                      .lte('start_time', thirtyDays.toISOString())
+                      .order('start_time', { ascending: true })
+                      .limit(20);
+
+                    if (calEvents && calEvents.length > 0) {
+                      serverContext += '\n## UPCOMING CALENDAR EVENTS:\n';
+                      calEvents.forEach((ev: any) => {
+                        const start = new Date(ev.start_time);
+                        const dayStr = start.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+                        const timeStr = ev.all_day ? 'All day' : start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                        const loc = ev.location ? ` | 📍 ${ev.location}` : '';
+                        serverContext += `- ${ev.title}: ${dayStr} at ${timeStr}${loc}\n`;
+                      });
+                    }
+                  }
+                } catch { /* non-blocking */ }
+              }
+
+              // Inject this into the fullContext later
+              actionResult = actionResult || { type: 'contextual_ask', success: true, task_summary: '', details: { server_context: serverContext } };
+              if (actionResult.type !== 'contextual_ask') {
+                // Don't overwrite if another action already happened
+              } else {
+                actionResult.details = { ...actionResult.details, server_context: serverContext };
+              }
+            }
+
+            // Save displayed tasks for ordinal resolution
+            if (activeTasks.length > 0) {
+              const displayedTasks = activeTasks.slice(0, 10);
+              saveWebReferencedEntity(supabase, actualUserId, displayedTasks[0], displayedTasks)
+                .catch(err => console.warn('[WebSession] Non-blocking list save error:', err));
+            }
+          } catch (ctxAskErr) {
+            console.warn('[Ask Olive Individual] contextual_ask enrichment error (non-blocking):', ctxAskErr);
+          }
         }
       } catch (err) {
         console.warn('[Ask Olive Individual] Intent classification error (non-fatal):', err);
@@ -1400,6 +1557,11 @@ serve(async (req) => {
       // Add RAG context
       if (ragContext) {
         fullContext += ragContext;
+      }
+
+      // Add server-side enriched context for contextual_ask
+      if (actionResult?.type === 'contextual_ask' && actionResult.details?.server_context) {
+        fullContext += actionResult.details.server_context;
       }
 
       // Add conversation history for multi-turn context
@@ -1460,6 +1622,10 @@ serve(async (req) => {
             return recapCtx;
           })(),
           create: `saved a new item "${actionResult.task_summary}" to ${actionResult.details?.list_name || 'Tasks'}${actionResult.details?.is_urgent ? ' with high priority 🔥' : ''}`,
+          move: `moved the task "${actionResult.task_summary}" to the "${actionResult.details?.target_list}" list${actionResult.details?.created_list ? ' (created new list)' : ''}`,
+          assign: actionResult.success 
+            ? `assigned the task "${actionResult.task_summary}" to ${actionResult.details?.partner_name || 'your partner'}` 
+            : actionResult.details?.error === 'no_couple' ? 'couldn\'t assign — you\'re not in a shared space' : 'couldn\'t find a partner to assign to',
           search: (() => {
             const d = actionResult.details;
             let ctx = `found ${d?.count || 0} items in "${d?.label || 'Tasks'}"`;
