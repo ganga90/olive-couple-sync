@@ -5806,7 +5806,8 @@ IMPORTANT: Use the above skill knowledge to enhance your response with domain-sp
 
       const baseContext = `
 ## User Task Analytics:
-- Active tasks: ${taskContext.total_active}
+- Your active tasks: ${taskContext.your_active}
+- Total in shared space: ${taskContext.total_active}
 - Urgent (high priority): ${taskContext.urgent}
 - Overdue: ${taskContext.overdue}
 - Due today: ${taskContext.due_today}
@@ -5816,6 +5817,7 @@ IMPORTANT: Use the above skill knowledge to enhance your response with domain-sp
 - Completion rate: ${taskContext.completion_rate}%
 - Top categories: ${taskContext.top_categories.join(', ') || 'None'}
 - Top lists: ${taskContext.top_lists.join(', ') || 'None'}
+IMPORTANT: When telling the user how many tasks they have, use "Your active tasks" (${taskContext.your_active}), NOT the total space count. Only mention "shared space" count if explicitly asked about partner/couple tasks.
 
 ## User Memories/Preferences:
 ${memoryContext}
