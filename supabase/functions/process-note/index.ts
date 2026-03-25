@@ -1925,24 +1925,99 @@ Process this note:
           ? deriveSummaryFromMedia(mediaDescriptions)
           : (safeText.length > 100 ? safeText.substring(0, 97) + "..." : safeText || 'Saved note');
         
-        // Try keyword-based category detection instead of defaulting to "task"
+        // ================================================================
+        // ADAPTIVE KEYWORD-BASED CATEGORIZATION (Fallback when AI is unavailable)
+        // 1. First try to match against user's existing list names (adaptive)
+        // 2. Then fall back to expanded keyword detection (25+ domains)
+        // ================================================================
         let fallbackCategory = 'task';
         const fallbackContent = [safeText, ...mediaDescriptions].join(' ').toLowerCase();
-        const categoryKeywordPairs: [string, RegExp][] = [
-          ['groceries', /\b(milk|eggs|bread|butter|cheese|chicken|fruit|vegetable|grocery|supermarket)\b/i],
-          ['health', /\b(doctor|dentist|appointment|vitamin|supplement|medicine|medical|wellness)\b/i],
-          ['travel', /\b(flight|airline|hotel|trip|vacation|boarding|airport|itinerary)\b/i],
-          ['shopping', /\b(buy|purchase|store|amazon|promo|coupon|discount|order)\b/i],
-          ['entertainment', /\b(concert|movie|show|event|ticket|festival|theater|karaoke)\b/i],
-          ['finance', /\b(bill|payment|budget|investment|bank|tax|insurance|mortgage)\b/i],
-          ['home_improvement', /\b(repair|fix|plumber|paint|renovation|furniture|sofa|ikea)\b/i],
-          ['books', /\b(book|author|novel|reading|isbn|publisher)\b/i],
-          ['recipes', /\b(recipe|cook|bake|ingredient|cuisine|dish|meal)\b/i],
-        ];
-        for (const [cat, regex] of categoryKeywordPairs) {
-          if (regex.test(fallbackContent)) {
-            fallbackCategory = cat;
-            break;
+
+        // LAYER 1: Adaptive — match against user's actual list names
+        // This makes the fallback personalized to each user's organization
+        let adaptiveMatch = false;
+        if (existingLists && existingLists.length > 0) {
+          const sortedLists = [...existingLists].sort((a: any, b: any) => b.name.length - a.name.length);
+          for (const list of sortedLists) {
+            const listName = (list.name || '').toLowerCase();
+            if (listName.length < 2) continue;
+            // Check if list name appears as a word boundary in the content
+            const listRegex = new RegExp(`\\b${listName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+            if (listRegex.test(fallbackContent)) {
+              fallbackCategory = list.name; // Use exact list name casing
+              adaptiveMatch = true;
+              console.log(`[Fallback] Adaptive match: "${list.name}" found in content`);
+              break;
+            }
+          }
+        }
+
+        // LAYER 2: Expanded keyword detection across 25+ domains
+        if (!adaptiveMatch) {
+          const categoryKeywordPairs: [string, RegExp][] = [
+            // Food & Kitchen
+            ['groceries', /\b(milk|eggs|bread|butter|cheese|chicken|fruit|vegetable|veggies|grocery|groceries|supermarket|produce|yogurt|rice|pasta|cereal|snack|meat|fish|salmon|shrimp|organic|tofu|oat|almond)\b/i],
+            ['recipes', /\b(recipe|cook|bake|baking|ingredient|cuisine|dish|meal|prep|marinade|sauce|roast|grill|stir.?fry|slow.?cook|instant.?pot|air.?fryer)\b/i],
+            ['restaurants', /\b(restaurant|dine|dining|brunch|lunch.?spot|dinner.?spot|cafe|bistro|pizzeria|sushi|ramen|reservation|yelp|michelin|takeout|delivery)\b/i],
+            // Health & Wellness
+            ['health', /\b(doctor|dentist|appointment|vitamin|supplement|medicine|medical|wellness|therapy|therapist|prescription|pharmacy|checkup|vaccine|blood.?test|x.?ray|physical|dermatologist|optometrist|chiropractor|mental.?health|gym|workout|exercise|yoga|pilates|run|jog|marathon|meditation|mindfulness|sleep|skincare)\b/i],
+            // Travel & Transportation
+            ['travel', /\b(flight|airline|hotel|trip|vacation|boarding|airport|itinerary|passport|visa|hostel|airbnb|luggage|packing|road.?trip|cruise|resort|backpack|travel|destination|sightseeing|tourist|layover)\b/i],
+            // Shopping & Commerce
+            ['shopping', /\b(buy|purchase|store|amazon|promo|coupon|discount|order|cart|wishlist|sale|deal|clearance|refund|return|exchange|warranty|unboxing|mall|outlet|clothing|shoes|accessories|gadget)\b/i],
+            // Entertainment & Media
+            ['entertainment', /\b(concert|movie|show|event|ticket|festival|theater|theatre|karaoke|comedy|netflix|streaming|series|episode|season|premiere|trailer|gaming|game|playstation|xbox|nintendo|spotify|playlist|podcast|album|vinyl)\b/i],
+            ['movies_to_watch', /\b(watch|film|cinema|documentary|blockbuster|horror|thriller|rom.?com|sci.?fi|animated|oscar|imdb)\b/i],
+            ['books_to_read', /\b(book|author|novel|reading|isbn|publisher|kindle|audiobook|goodreads|bestseller|fiction|non.?fiction|memoir|biography|chapter|library|bookshop|paperback|hardcover)\b/i],
+            // Finance & Money
+            ['finance', /\b(bill|payment|budget|investment|bank|tax|insurance|mortgage|loan|debt|credit|savings|retirement|401k|ira|stock|crypto|interest|invoice|expense|refund|paycheck|salary|rent|tuition)\b/i],
+            // Home & Living
+            ['home_improvement', /\b(repair|fix|plumber|paint|renovation|furniture|sofa|ikea|shelf|cabinet|tile|flooring|wall|roof|garden|yard|lawn|landscaping|fence|deck|patio|garage|basement|attic|closet|organize|declutter|clean|deep.?clean|mop|vacuum)\b/i],
+            // Work & Career
+            ['work', /\b(meeting|deadline|project|client|report|presentation|email|colleague|manager|boss|promotion|interview|resume|cv|portfolio|contract|invoice|quarter|KPI|standup|sprint|agile|slack|zoom)\b/i],
+            // Education & Learning
+            ['education', /\b(class|course|lesson|study|exam|test|homework|assignment|lecture|professor|tutor|school|university|college|degree|certificate|scholarship|thesis|dissertation|research|seminar|workshop|tutorial|learn|skill)\b/i],
+            // Kids & Family
+            ['family', /\b(kid|child|children|baby|toddler|daycare|school.?pick|pediatrician|playdate|birthday.?party|babysitter|nanny|parent|family|diaper|formula|stroller|car.?seat|bedtime|homework.?help)\b/i],
+            // Pets
+            ['pets', /\b(dog|cat|puppy|kitten|vet|veterinarian|pet.?food|grooming|walk.?the|litter|aquarium|fish.?tank|hamster|bird|leash|collar|pet.?store|treats)\b/i],
+            // Auto & Vehicle
+            ['auto', /\b(car|vehicle|oil.?change|mechanic|tire|brake|inspection|registration|insurance|gas|fuel|carwash|detailing|lease|dealership|test.?drive|parking|garage)\b/i],
+            // Technology
+            ['technology', /\b(laptop|computer|phone|tablet|app|software|update|upgrade|wifi|router|password|backup|cloud|storage|SSD|monitor|keyboard|mouse|charger|cable|bluetooth|printer|setup|install|uninstall)\b/i],
+            // Gift Ideas
+            ['gift_ideas', /\b(gift|present|surprise|anniversary|birthday|wedding|christmas|valentine|mother.?s.?day|father.?s.?day|graduation|baby.?shower|housewarming|registry|wish.?list|wrapping)\b/i],
+            // Date Ideas & Romance
+            ['date_ideas', /\b(date|romantic|couple|anniversary|surprise|picnic|stargazing|sunset|wine.?tasting|spa|weekend.?getaway|love|relationship)\b/i],
+            // Real Estate & Housing
+            ['real_estate', /\b(apartment|house|condo|rent|lease|landlord|tenant|real.?estate|mortgage|down.?payment|closing|inspection|neighborhood|moving|relocat|storage.?unit)\b/i],
+            // Legal & Admin
+            ['legal', /\b(lawyer|attorney|notary|contract|agreement|will|trust|power.?of.?attorney|legal|court|filing|license|permit|registration|document|notarize)\b/i],
+            // Garden & Plants
+            ['garden', /\b(plant|seed|garden|flower|herb|pot|soil|fertilizer|water|prune|harvest|compost|succulent|indoor.?plant|outdoor|landscape|mulch|weed)\b/i],
+            // Events & Planning
+            ['events', /\b(party|celebration|gathering|invite|RSVP|venue|catering|decoration|theme|wedding|shower|reunion|potluck|barbecue|bbq|picnic|holiday)\b/i],
+            // DIY & Crafts
+            ['crafts', /\b(DIY|craft|knit|crochet|sew|quilt|scrapbook|paint|drawing|sketch|pottery|woodwork|handmade|project|glue|fabric|pattern)\b/i],
+            // Subscriptions & Services
+            ['subscriptions', /\b(subscription|membership|renew|cancel|trial|plan|monthly|annual|netflix|spotify|gym.?membership|magazine|newspaper|service)\b/i],
+          ];
+          for (const [cat, regex] of categoryKeywordPairs) {
+            if (regex.test(fallbackContent)) {
+              fallbackCategory = cat;
+              console.log(`[Fallback] Keyword match: "${cat}"`);
+              break;
+            }
+          }
+        }
+
+        // LAYER 3: Check user's recent note patterns for frequency-based inference
+        if (fallbackCategory === 'task' && recentNotePatterns && Object.keys(recentNotePatterns).length > 0) {
+          // If user predominantly uses one category, bias toward it for ambiguous notes
+          const patternEntries = Object.entries(recentNotePatterns);
+          if (patternEntries.length === 1) {
+            fallbackCategory = patternEntries[0][1]; // Use most common category
+            console.log(`[Fallback] Pattern-based: "${fallbackCategory}" (sole recent pattern)`);
           }
         }
         
