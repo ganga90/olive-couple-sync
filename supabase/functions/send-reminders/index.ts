@@ -288,7 +288,7 @@ serve(async (req) => {
 
     console.log(`Found ${autoReminders.length} notes needing automatic due date reminders`);
 
-    const allReminders = [...(explicitReminders || []), ...autoReminders];
+    const allReminders = [...filteredReminders, ...autoReminders];
 
     if (allReminders.length === 0) {
       return new Response(
