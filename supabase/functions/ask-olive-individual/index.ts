@@ -1520,6 +1520,10 @@ serve(async (req) => {
             return recapCtx;
           })(),
           create: `saved a new item "${actionResult.task_summary}" to ${actionResult.details?.list_name || 'Tasks'}${actionResult.details?.is_urgent ? ' with high priority 🔥' : ''}`,
+          move: `moved the task "${actionResult.task_summary}" to the "${actionResult.details?.target_list}" list${actionResult.details?.created_list ? ' (created new list)' : ''}`,
+          assign: actionResult.success 
+            ? `assigned the task "${actionResult.task_summary}" to ${actionResult.details?.partner_name || 'your partner'}` 
+            : actionResult.details?.error === 'no_couple' ? 'couldn\'t assign — you\'re not in a shared space' : 'couldn\'t find a partner to assign to',
           search: (() => {
             const d = actionResult.details;
             let ctx = `found ${d?.count || 0} items in "${d?.label || 'Tasks'}"`;
