@@ -1920,15 +1920,37 @@ Process this note:
         message.includes('Too Many Requests') ||
         (genAiError as any)?.status === 429
       ) {
-        console.warn('[GenAI SDK] Quota exceeded, falling back to simple note creation');
+        console.warn('[GenAI SDK] Quota exceeded, falling back to keyword-based categorization');
         const fallbackSummary = mediaDescriptions.length > 0 
           ? deriveSummaryFromMedia(mediaDescriptions)
           : (safeText.length > 100 ? safeText.substring(0, 97) + "..." : safeText || 'Saved note');
+        
+        // Try keyword-based category detection instead of defaulting to "task"
+        let fallbackCategory = 'task';
+        const fallbackContent = [safeText, ...mediaDescriptions].join(' ').toLowerCase();
+        const categoryKeywordPairs: [string, RegExp][] = [
+          ['groceries', /\b(milk|eggs|bread|butter|cheese|chicken|fruit|vegetable|grocery|supermarket)\b/i],
+          ['health', /\b(doctor|dentist|appointment|vitamin|supplement|medicine|medical|wellness)\b/i],
+          ['travel', /\b(flight|airline|hotel|trip|vacation|boarding|airport|itinerary)\b/i],
+          ['shopping', /\b(buy|purchase|store|amazon|promo|coupon|discount|order)\b/i],
+          ['entertainment', /\b(concert|movie|show|event|ticket|festival|theater|karaoke)\b/i],
+          ['finance', /\b(bill|payment|budget|investment|bank|tax|insurance|mortgage)\b/i],
+          ['home_improvement', /\b(repair|fix|plumber|paint|renovation|furniture|sofa|ikea)\b/i],
+          ['books', /\b(book|author|novel|reading|isbn|publisher)\b/i],
+          ['recipes', /\b(recipe|cook|bake|ingredient|cuisine|dish|meal)\b/i],
+        ];
+        for (const [cat, regex] of categoryKeywordPairs) {
+          if (regex.test(fallbackContent)) {
+            fallbackCategory = cat;
+            break;
+          }
+        }
+        
         processedResponse_inner = {
           multiple: false,
           notes: [{
             summary: fallbackSummary,
-            category: "task",
+            category: fallbackCategory,
             due_date: null,
             priority: "medium",
             tags: [],

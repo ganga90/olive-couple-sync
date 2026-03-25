@@ -381,7 +381,7 @@ const ORDINAL_MAP: Record<string, number> = {
   // Italian
   primo: 0, secondo: 1, terzo: 2, quarto: 3, quinto: 4, sesto: 5, settimo: 6, ottavo: 7,
   // Spanish
-  primero: 0, segundo_es: 1, tercero: 2, cuarto_es: 3, quinto_es: 4, sexto_es: 5, séptimo: 6, octavo: 7,
+  primero: 0, tercero: 2, séptimo: 6, octavo: 7,
 };
 
 function resolveOrdinalIndex(message: string): number {
@@ -576,7 +576,8 @@ async function executeTaskAction(
       }
 
       case 'set_priority': {
-        const newPriority = intent.parameters?.priority?.toLowerCase() === 'low' ? 'low' : 'high';
+        const rawPriority = (intent.parameters?.priority || '').toLowerCase();
+        const newPriority = rawPriority === 'low' ? 'low' : rawPriority === 'medium' ? 'medium' : 'high';
         const { error } = await supabase
           .from('clerk_notes')
           .update({ priority: newPriority, updated_at: new Date().toISOString() })
@@ -1316,7 +1317,12 @@ serve(async (req) => {
                     amount,
                     name: merchant,
                     category,
-                    currency: 'USD',
+                    currency: (() => {
+                      // Detect currency from original message
+                      if (actualMessage.includes('€')) return 'EUR';
+                      if (actualMessage.includes('£')) return 'GBP';
+                      return 'USD';
+                    })(),
                     paid_by: actualUserId,
                     split_type: 'individual',
                     expense_date: new Date().toISOString().split('T')[0],

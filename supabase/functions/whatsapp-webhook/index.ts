@@ -1148,7 +1148,7 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
     'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9, 'diez': 10, 'quince': 15,
     'veinte': 20, 'treinta': 30, 'media': 0.5,
     // Italian
-    'un\'': 1, 'mezza': 0.5, 'mezz\'ora': 0.5, 'due': 2, 'tre_it': 3, 'quattro': 4,
+    'un\'': 1, 'mezza': 0.5, 'mezz\'ora': 0.5, 'due': 2, 'tre': 3, 'quattro': 4,
     'cinque': 5, 'sei': 6, 'sette': 7, 'otto': 8, 'nove': 9, 'dieci': 10,
     'quindici': 15, 'venti': 20, 'trenta': 30,
   };
@@ -1168,8 +1168,8 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
     // Spanish
     'enero': 0, 'febrero': 1, 'marzo': 2, 'abril': 3, 'mayo': 4, 'junio': 5,
     'julio': 6, 'agosto': 7, 'septiembre': 8, 'octubre': 9, 'noviembre': 10, 'diciembre': 11,
-    // Italian
-    'gennaio': 0, 'febbraio': 1, 'marzo_it': 2, 'aprile': 3, 'maggio': 4, 'giugno': 5,
+    // Italian (marzo already covered by Spanish entry above — same month index 2)
+    'gennaio': 0, 'febbraio': 1, 'aprile': 3, 'maggio': 4, 'giugno': 5,
     'luglio': 6, 'settembre': 8, 'ottobre': 9, 'novembre': 10, 'dicembre': 11,
   };
   
@@ -1183,7 +1183,7 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
       'domingo': 0, 'lunes': 1, 'martes': 2, 'miércoles': 3, 'miercoles': 3, 'jueves': 4, 'viernes': 5, 'sábado': 6, 'sabado': 6,
       // Italian
       'domenica': 0, 'lunedì': 1, 'lunedi': 1, 'martedì': 2, 'martedi': 2, 'mercoledì': 3, 'mercoledi': 3,
-      'giovedì': 4, 'giovedi': 4, 'venerdì': 5, 'venerdi': 5, 'sabato_it': 6,
+      'giovedì': 4, 'giovedi': 4, 'venerdì': 5, 'venerdi': 5, 'sabato': 6,
     };
     const targetDay = dayMap[dayName.toLowerCase()] ?? days.indexOf(dayName.toLowerCase());
     if (targetDay === -1) return now;
