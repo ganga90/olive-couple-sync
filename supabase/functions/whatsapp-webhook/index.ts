@@ -2483,7 +2483,28 @@ serve(async (req) => {
     console.log('Authenticated user:', profile.id, profile.display_name);
     const userId = profile.id;
     _authenticatedUserId = userId; // Enable reply() to save outbound context
-    const userLang = profile.language_preference || 'en';
+    // Detect language: prefer profile setting, then auto-detect from message content
+    let userLang = profile.language_preference || '';
+    if (!userLang || userLang === 'en') {
+      // Auto-detect language from message content for users who haven't set preference
+      const msgLower = (messageBody || '').toLowerCase();
+      const italianSignals = /\b(ciao|buon(?:giorno|asera)|grazie|per favore|ricordami|mostra|fatto|attività|promemoria|cosa|quali|sono|che|il|la|le|gli|del|della|delle|dei|degli|nel|nella|nelle|nei|agli|alle|quanto|quando|perch[eé]|anche|molto|questo|questa|questi|queste|quel[lo]?|come)\b/i;
+      const spanishSignals = /\b(hola|buenos?\s*d[ií]as|gracias|por favor|recu[ée]rdame|muestra|hecho|tareas|recordatorio|qu[ée]|cu[aá]les|son|los|las|del|de la|de los|en el|en la|cu[aá]nto|cu[aá]ndo|tambi[ée]n|mucho|este|esta|estos|estas|aquel|como)\b/i;
+      if (italianSignals.test(msgLower)) {
+        userLang = 'it';
+        // Auto-save detected language for future messages
+        try {
+          await supabase.from('clerk_profiles').update({ language_preference: 'it-IT' }).eq('id', profile.id);
+        } catch (_) { /* non-blocking */ }
+      } else if (spanishSignals.test(msgLower)) {
+        userLang = 'es';
+        try {
+          await supabase.from('clerk_profiles').update({ language_preference: 'es-ES' }).eq('id', profile.id);
+        } catch (_) { /* non-blocking */ }
+      } else {
+        userLang = userLang || 'en';
+      }
+    }
 
     // Fetch recent outbound messages for conversation context (last 60 min)
     const recentOutbound = await getRecentOutboundMessages(supabase, userId);
