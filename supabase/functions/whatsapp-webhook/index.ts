@@ -1148,7 +1148,7 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
     'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9, 'diez': 10, 'quince': 15,
     'veinte': 20, 'treinta': 30, 'media': 0.5,
     // Italian
-    'un\'': 1, 'mezza': 0.5, 'mezz\'ora': 0.5, 'due': 2, 'tre_it': 3, 'quattro': 4,
+    'un\'': 1, 'mezza': 0.5, 'mezz\'ora': 0.5, 'due': 2, 'tre': 3, 'quattro': 4,
     'cinque': 5, 'sei': 6, 'sette': 7, 'otto': 8, 'nove': 9, 'dieci': 10,
     'quindici': 15, 'venti': 20, 'trenta': 30,
   };
