@@ -2024,6 +2024,8 @@ Process this note:
       'gift_ideas': { displayName: 'Gift Ideas', aliases: ['gift ideas', 'gift idea', 'gifts', 'gift', 'presents'] },
       'task': { displayName: 'Tasks', aliases: ['task', 'tasks', 'to do', 'todo'] },
       'stocks': { displayName: 'Investments', aliases: ['stocks', 'stock', 'investing', 'portfolio', 'trading'] },
+      'research': { displayName: 'Research', aliases: ['research', 'report', 'study', 'analysis', 'paper', 'whitepaper', 'documents'] },
+      'education': { displayName: 'Education', aliases: ['education', 'learning', 'courses', 'school', 'university'] },
       // Novel categories from AI are auto-formatted: "real_estate" → "Real Estate"
     };
 
