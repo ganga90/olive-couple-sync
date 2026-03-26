@@ -521,6 +521,63 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
     }
   };
 
+  /**
+   * Save an assistant message as a note/task
+   */
+  const handleSaveAsNote = useCallback(async (messageId: string, content: string) => {
+    if (!user?.id || !content.trim()) return;
+
+    try {
+      // Find the user message that prompted this response
+      const msgIndex = messages.findIndex(m => m.id === messageId);
+      const userPrompt = msgIndex > 0
+        ? messages.slice(0, msgIndex).reverse().find(m => m.role === 'user')?.content || ''
+        : '';
+
+      // Call process-note to get proper classification
+      const { data: processed, error: processError } = await supabase.functions.invoke('process-note', {
+        body: {
+          text: `${userPrompt}\n\n---\n\n${content}`,
+          user_id: user.id,
+          couple_id: currentCouple?.id || null,
+          source: 'olive-chat',
+        },
+      });
+
+      const title = processed?.summary || content.split('\n')[0]?.replace(/[*#]/g, '').trim().substring(0, 80) || 'Saved from Olive';
+      const category = processed?.category || 'task';
+      const tags = [...(processed?.tags || []), 'olive-draft'];
+
+      const { error: insertError } = await supabase
+        .from('clerk_notes')
+        .insert({
+          author_id: user.id,
+          couple_id: currentCouple?.id || null,
+          original_text: `${userPrompt}\n\n---\n\n${content}`.substring(0, 5000),
+          summary: title,
+          category,
+          priority: processed?.priority || 'medium',
+          tags,
+          items: processed?.items || [],
+          completed: false,
+          source: 'olive-chat',
+        });
+
+      if (insertError) throw insertError;
+
+      // Mark message as saved
+      setMessages(prev => prev.map(m =>
+        m.id === messageId ? { ...m, savedAsNote: true } : m
+      ));
+
+      refetchNotes?.();
+      toast.success(t('askOlive.savedAsNote', 'Saved as a note! 📝'));
+    } catch (err) {
+      console.error('[SaveAsNote] Error:', err);
+      toast.error(t('askOlive.saveError', "Couldn't save. Please try again."));
+    }
+  }, [user?.id, currentCouple?.id, messages, refetchNotes, t]);
+
   return (
     <div className="flex flex-col h-[60vh] max-h-[500px]">
       {/* Messages Area */}
