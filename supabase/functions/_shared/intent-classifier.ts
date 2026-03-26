@@ -117,6 +117,7 @@ const INTENT_SCHEMA = {
             "motivation",
             "planning",
             "greeting",
+            "assistant",
             "general",
           ],
         },
@@ -209,13 +210,23 @@ If a shortcut prefix is present, strip it from the content for processing. Set c
 - "assign": User wants to assign a task to their partner (e.g., "give this to Marcus", "assign it to my partner", "let her handle it")
 - "remind": User wants a reminder — EITHER on an existing task OR creating a new one with a reminder. Examples: "remind me at 5 PM" (existing context), "remind me about this tomorrow" (existing task), "Moonswatch - remind me to check it out on March 6th" (NEW item + reminder), "remind me to call the dentist next Monday" (NEW task + reminder). Use target_task_name for the subject/task name and due_date_expression for the time. The system will auto-create a new task if no existing one matches.
 - "expense": User wants to log spending/money. CRITICAL: Any message that contains a currency symbol ($, €, £) followed by a number, OR a number followed by a currency symbol, OR mentions spending/paying at a specific merchant with an amount, is ALWAYS an expense. Examples: "spent $45 on dinner", "$20 gas", "Amazon $57.85", "$57.85 Amazon", "€30 groceries", "coffee £4.50", "paid 25 at Walmart", "Starbucks $5.75", "Uber €12", "lunch 15". Set amount and expense_description parameters. If the message is JUST a merchant name + amount (e.g., "Amazon $57.85"), it is ALWAYS expense, never create.
-- "chat": User wants conversational interaction — briefings, motivation, planning, greetings (e.g., "good morning", "how am I doing?", "summarize my week", "what should I focus on?", "help me plan my day")
+- "chat": User wants conversational interaction — briefings, motivation, planning, greetings, OR ASSISTIVE HELP with a task. This includes:
+  - Standard: "good morning", "how am I doing?", "summarize my week", "what should I focus on?", "help me plan my day"
+  - **ASSISTIVE (chat_type="assistant")**: When the user asks Olive to HELP THEM with a creative or compositional task — drafting an email, composing a message, writing text, brainstorming, preparing content, planning a trip itinerary, etc. The KEY signal: the user wants Olive to PRODUCE content FOR THEM or COLLABORATE on something, not just save a note. Examples:
+    - "Help me draft an email to my boss about the deadline" → chat (assistant)
+    - "Ti passo dei contenuti per una mail verso X@Y.com, ci pensi tu?" → chat (assistant) — user wants Olive to help compose an email to an EXTERNAL person
+    - "Can you write a message to congratulate Sara on her promotion?" → chat (assistant)
+    - "Aiutami a scrivere una risposta a questo messaggio" → chat (assistant)
+    - "Help me plan what to say at the meeting" → chat (assistant)
+    - "Prepara un testo per invitare i colleghi alla cena" → chat (assistant)
+    - "Puoi prepararmi una bozza di email?" → chat (assistant)
+  **CRITICAL DISTINCTION from partner_message**: "partner_message" is ONLY for relaying a message to the user's PARTNER within the Olive shared space (someone already in their couple/space). If the recipient is an EXTERNAL person (email address, colleague, friend NOT in the shared space, boss, client), it is ALWAYS "chat" with chat_type="assistant" — NOT partner_message. Look for signals: email addresses, external names, professional context, "draft", "compose", "write", "prepare", "bozza", "redigi", "scrivi", "prepara".
 - "contextual_ask": (ALREADY DEFINED ABOVE — see intents list). IMPORTANT: If the message describes a NEW item/event/appointment (especially with a date, time, or location), it is NOT contextual_ask — it is "create". Only use contextual_ask when the user is clearly querying/asking about data they already saved.
 - "web_search": User wants EXTERNAL information from the web — booking links, reviews, directions, prices, availability, or any information NOT already in their saved data. Examples: "can you give me the link to book it?", "search for more information on X", "find me reviews for Y", "what's the address of Z?", "how do I get there?", "is it open now?", "find me a link", "look it up online", "search the web for X". IMPORTANT: If the user asks about something they already saved BUT wants ADDITIONAL external info (booking link, website, directions), classify as "web_search" NOT "contextual_ask". The key signal is that they want info from the INTERNET, not from their saved items.
 - "merge": User wants to merge duplicate tasks (exactly "merge")
 - "create_list": User EXPLICITLY asks to CREATE A NEW LIST — they must use words like "create a list", "make a list", "start a list", "new list" + a topic/name. Examples: "create a list about wedding planning", "make a list for our trip to Rome", "start a grocery list", "new list: Home Renovation". This is NOT for creating a task — it's specifically for creating a new organizational LIST/FOLDER. The list_name parameter should contain the desired list name extracted from the message. If the user also provides initial items (e.g., "create a list of books: Atomic Habits, Deep Work"), include them in the partner_message_content parameter (repurposed for initial items). Set confidence to 0.9+.
 - "list_recap": User wants a DETAILED RECAP or REVIEW of a specific list — they want to see every item with full details, status, due dates, and an overall summary. Trigger words: "recap", "review", "summarize", "detail", "breakdown", "overview" combined with a list name. Examples: "recap my groceries list", "give me a detailed review of my travel list", "summarize my work list", "what's the status of my home improvement list?", "review everything in my books list". This is DIFFERENT from "search" (which shows a simple numbered list) — list_recap provides an AI-generated analytical summary with insights. Set list_name parameter to the target list name.
-- "partner_message": User wants to send a message TO their partner via Olive (e.g., "remind Marco to buy lemons", "tell Almu to pick up the kids", "ask partner to call the dentist", "let Marcus know dinner is ready", "dile a Marco que compre limones", "ricorda a Marco di comprare i limoni"). The user is asking YOU to relay a message or task to their partner. Set partner_message_content to the message/task for the partner, and partner_action to the type (remind/tell/ask/notify).
+- "partner_message": User wants to send a message TO their PARTNER (someone IN their Olive shared space) via Olive. Examples: "remind Marco to buy lemons", "tell Almu to pick up the kids", "ask partner to call the dentist", "let Marcus know dinner is ready", "dile a Marco que compre limones", "ricorda a Marco di comprare i limoni". The user is asking YOU to relay a message or task to their partner IN THE SHARED SPACE. Set partner_message_content to the message/task for the partner, and partner_action to the type (remind/tell/ask/notify). **CRITICAL: This is ONLY for messages to the user's PARTNER within the Olive space. If the message mentions an email address, an external colleague/client/friend, or asks Olive to "draft"/"compose"/"write"/"prepare" content, it is "chat" with chat_type="assistant" — NOT partner_message.**
 
 ## MEDIA ATTACHMENT:
 ${hasMedia ? '⚠️ **THIS MESSAGE HAS A MEDIA ATTACHMENT (image, document, or file).** Messages with media are ALMOST ALWAYS "create" — the user is saving a photo, document, receipt, or visual note. The caption text describes what the media is about. Examples: [image] + "Health info urologist" = CREATE (saving health document). [image] + "Sofa measures" = CREATE (saving measurements). [image] + "Receipt from dinner" = CREATE or expense. The ONLY exceptions: "$25 receipt" with image = expense. An image with NO caption was already handled separately. ALWAYS classify media+caption as "create" unless the caption is clearly an expense with $ amount.' : 'No media attached.'}
@@ -247,7 +258,7 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 10. **Ambiguity resolution hierarchy:** (a) If the message ends with "?" → contextual_ask or search, NEVER create. (b) If the message is a SINGLE WORD or short phrase that EXACTLY matches an existing list name → search. (c) If the message is a noun phrase (no verb, no question mark) that does NOT match a list name → CREATE (brain dump). (d) If the message has a verb at the start → CREATE (imperative task). (e) Only use "search" for explicit dashboard requests like "show my tasks", "what's urgent?", "what's due today?".
 11. **Language:** The user speaks ${userLanguage}. Understand their message natively in that language.
 12. **Confidence:** 0.9+ clear, 0.7-0.9 moderate, 0.5-0.7 uncertain, <0.5 very ambiguous.
-13. For chat_type, use: briefing, weekly_summary, daily_focus, productivity_tips, progress_check, motivation, planning, greeting, general.
+13. For chat_type, use: briefing, weekly_summary, daily_focus, productivity_tips, progress_check, motivation, planning, greeting, assistant, general. Use "assistant" when the user wants help composing, drafting, writing, or creating content (emails, messages, texts, plans).
 14. **SINGLE-WORD LIST MATCH:** If the user's message is a SINGLE WORD (or a very short phrase with no verb) that exactly matches one of their EXISTING LISTS (see USER'S EXISTING LISTS below), classify as "search" — they want to see that list. Examples: user has a list "Groceries" and sends "groceries" → search. User has "Books" list and sends "books" → search. But "buy groceries" → create (has a verb). If it does NOT match any list → it's a brain dump → CREATE.
 15. **"ADD X TO Y" PATTERN:** "Add milk to groceries", "put this in my work list", "aggiungi latte alla spesa" → ALWAYS "create" (NOT create_list). The system routes the item to the correct list automatically. "create_list" is ONLY for when the user wants to make a BRAND NEW list that doesn't exist yet.
 16. **REMIND-CREATE HYBRID:** "Remind me to buy milk tomorrow" or "Remind me about the meeting at 5pm" — if the subject IS a new task (buy milk, call doctor, etc.), classify as "remind" with target_task_name set to the task description (e.g., "buy milk") and due_date_expression to the time (e.g., "tomorrow"). The system will auto-create the task AND set the reminder. Do NOT classify as "create" — use "remind" so the reminder is set automatically.
@@ -346,6 +357,18 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 - "pranzo €12" → expense (amount=12, expense_description="pranzo")
 - "Buy groceries" → CREATE (no amount = task, NOT expense)
 - "Amazon package arrived" → CREATE (no amount = task, NOT expense)
+
+## ASSISTIVE CHAT vs PARTNER MESSAGE (CRITICAL DISTINCTION):
+- "Help me draft an email to john@company.com" → chat (assistant) — external recipient, composing content
+- "Ti passo dei contenuti per una mail verso X@Y.it, ci pensi tu?" → chat (assistant) — asking Olive to help compose an email to an external person
+- "Can you write a thank you message for my colleague?" → chat (assistant) — external person, content creation
+- "Prepara un messaggio per il mio capo" → chat (assistant) — external person (boss), content creation
+- "Aiutami a scrivere una risposta" → chat (assistant) — asking for help composing
+- "Puoi preparare una bozza?" → chat (assistant) — asking for a draft
+- "Remind Marco to buy lemons" → partner_message — Marco is the partner IN the shared space
+- "Tell my partner dinner is ready" → partner_message — relaying to partner in space
+- "Dile a Marco que..." → partner_message — telling partner in shared space
+KEY: Does the message mention an EMAIL ADDRESS or EXTERNAL person/colleague/boss/client? → ALWAYS chat (assistant). Is it about relaying to the PARTNER in their Olive space? → partner_message.
 
 - [After Olive listed restaurants] "Do they offer reservations?" → web_search (follow-up wanting external info)
 - [After Olive listed restaurants] "Search for a table at Kebo" → web_search (wanting to book/find external info)

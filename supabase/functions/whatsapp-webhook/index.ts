@@ -138,9 +138,9 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'it': '😕 Vorrei mandare un messaggio a {partner}, ma non ha ancora collegato il suo WhatsApp.\n\nChiedigli di aprire Olive → Profilo → Collega WhatsApp.',
   },
   partner_no_space: {
-    en: 'You need to be in a shared space to send messages to your partner. Invite them from the app!',
-    'es': 'Necesitas estar en un espacio compartido para enviar mensajes a tu pareja. ¡Invítale desde la app!',
-    'it': 'Devi essere in uno spazio condiviso per inviare messaggi al tuo partner. Invitalo dall\'app!',
+    en: 'I couldn\'t find your partner in the shared space. Make sure they\'ve accepted your invite!\n\nTo invite someone: open Olive → Profile → Invite Partner 💚',
+    'es': 'No encontré a tu pareja en el espacio compartido. ¡Asegúrate de que haya aceptado tu invitación!\n\nPara invitar: abre Olive → Perfil → Invitar Pareja 💚',
+    'it': 'Non ho trovato il tuo partner nello spazio condiviso. Assicurati che abbia accettato il tuo invito!\n\nPer invitare qualcuno: apri Olive → Profilo → Invita Partner 💚',
   },
   // ── Note creation confirmation labels (localized) ──
   note_saved: {
@@ -418,6 +418,7 @@ type ChatType =
   | 'planning'            // "help me plan", "what's next"
   | 'greeting'            // "hi", "hello"
   | 'help'                // "what can you do", "help"
+  | 'assistant'           // "help me draft an email", "write a message for me"
   | 'general';            // Catch-all for other questions
 
 // ============================================================================
@@ -3414,6 +3415,29 @@ Description: "${parsedExpense.description}"`;
     }
 
     // ========================================================================
+    // POST-CLASSIFICATION SAFETY NET #0.5: Long conversational messages with
+    // email addresses or assistive requests misclassified as PARTNER_MESSAGE
+    // or CREATE should be routed to CHAT (assistant).
+    // ========================================================================
+    if ((intentResult.intent === 'PARTNER_MESSAGE' || intentResult.intent === 'CREATE') && messageBody) {
+      const msgLower = messageBody.toLowerCase();
+      const hasEmailAddress = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(messageBody);
+      const isLongConversational = messageBody.length > 120;
+      const hasAssistiveSignals = /\b(draft|compose|write|prepare|bozza|redigi|scrivi|prepara|aiutami|help me|ci pensi tu|puoi|can you)\b/i.test(msgLower);
+      
+      if (hasEmailAddress && (isLongConversational || hasAssistiveSignals)) {
+        console.log(`[SafetyNet#0.5] Overriding ${intentResult.intent} → CHAT (assistant) — email address + assistive signals`);
+        intentResult = { ...intentResult, intent: 'CHAT', chatType: 'assistant' } as any;
+      } else if (isLongConversational && hasAssistiveSignals) {
+        const hasDraftKeywords = /\b(draft|compose|write|prepare|bozza|scrivi|prepara|redigi)\b/i.test(msgLower);
+        if (hasDraftKeywords) {
+          console.log(`[SafetyNet#0.5] Overriding ${intentResult.intent} → CHAT (assistant) — long assistive message`);
+          intentResult = { ...intentResult, intent: 'CHAT', chatType: 'assistant' } as any;
+        }
+      }
+    }
+
+    //
     // POST-CLASSIFICATION SAFETY NET: Catch misclassified follow-up actions
     // If the AI classified as CREATE but the message is clearly a follow-up
     // action (change/update/move/delete/remind + pronoun), override to TASK_ACTION
@@ -6070,6 +6094,29 @@ Be natural and personable.`;
           // Return help text directly — no AI call needed
           return reply(t('help_text', userLang));
           
+        case 'assistant':
+          systemPrompt = `You are Olive, a warm, intelligent AI personal assistant. The user is asking you to HELP THEM with a creative or compositional task — drafting content, writing an email, composing a message, brainstorming ideas, or similar.
+
+${baseContext}
+
+## YOUR ROLE:
+You are their trusted personal assistant who HELPS them accomplish tasks. When they ask you to draft an email, compose a message, or prepare content:
+1. **Understand** what they need — who is the recipient, what's the purpose, what tone?
+2. **Draft it** — produce the actual content they can copy and use
+3. **Be proactive** — if you have relevant context from their memories, tasks, or conversation history, USE IT to make the draft better
+4. **Ask only if truly needed** — if the request is clear enough, just produce the draft. Only ask for clarification if critical information is missing.
+
+## RESPONSE FORMAT:
+- Produce the draft/content directly
+- If it's an email, format it with Subject, greeting, body, sign-off
+- If you need to clarify something first, ask briefly, then offer a preliminary draft anyway
+- Keep your own commentary minimal — focus on the content they asked for
+- If they provide context about what to include, incorporate ALL of it
+
+## LANGUAGE:
+Respond in the same language the user wrote in. Draft content in the language appropriate for the recipient (if they specify an Italian colleague, write in Italian, etc.).`;
+          break;
+
         default: // 'general'
           systemPrompt = `You are Olive, a warm, intelligent, and deeply contextual AI assistant. You are the user's trusted personal companion for organization AND conversation.
 
@@ -6089,11 +6136,15 @@ ${baseContext}
 - Set reminders, log expenses, send messages to partners
 - Search saved data, provide briefings, weekly summaries
 - Chat about anything — life, ideas, plans, feelings
+- Help draft emails, compose messages, brainstorm ideas
 If the user asks to modify a task but the action didn't execute, guide them with the right phrasing.
 NEVER say you cannot modify tasks or manage their data. You absolutely can.
 
 ## MULTI-TURN AWARENESS:
-Pay close attention to RECENT CONVERSATION HISTORY. If the user says "yes", "ok", "do it", "sounds good" — connect it to what Olive last said/asked. If they ask a follow-up about a topic Olive discussed, continue that thread naturally.`;
+Pay close attention to RECENT CONVERSATION HISTORY. If the user says "yes", "ok", "do it", "sounds good" — connect it to what Olive last said/asked. If they ask a follow-up about a topic Olive discussed, continue that thread naturally.
+
+## ASSISTIVE DETECTION:
+If the user's message is long and conversational — asking for help with something, requesting you to draft content, compose a message, or perform a creative task — DO IT. Don't save it as a task. Help them accomplish what they're asking for.`;
       }
       
       try {
@@ -6193,14 +6244,14 @@ Pay close attention to RECENT CONVERSATION HISTORY. If the user says "yes", "ok"
       });
 
       if (!spaceMembers || spaceMembers.length === 0) {
-        return reply('I couldn\'t find your shared space. Make sure it\'s set up correctly!');
+        return reply(t('partner_no_space', userLang));
       }
 
       const currentMember = spaceMembers.find((m: any) => m.user_id === userId);
       const otherMembers = spaceMembers.filter((m: any) => m.user_id !== userId);
 
       if (otherMembers.length === 0) {
-        return reply('I couldn\'t find your partner in the shared space. Make sure they\'ve accepted your invite!');
+        return reply(t('partner_no_space', userLang));
       }
 
       // Look up profiles for ALL other members and pick the one with a phone number
@@ -6225,7 +6276,7 @@ Pay close attention to RECENT CONVERSATION HISTORY. If the user says "yes", "ok"
         || null;
 
       if (!partnerProfile) {
-        return reply('I couldn\'t find your partner in the shared space. Make sure they\'ve accepted your invite!');
+        return reply(t('partner_no_space', userLang));
       }
 
       const partnerId = partnerProfile.id;
