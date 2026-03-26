@@ -226,6 +226,16 @@ $ Spesa: $45 pranzo da Chipotle
 
 🔗 Gestisci: https://witholive.app`,
   },
+  artifact_saved: {
+    en: '✅ Saved! "{title}"{list}\n\n📝 You can find it in your notes on the app.\n\n🔗 witholive.app',
+    'es': '✅ ¡Guardado! "{title}"{list}\n\n📝 Puedes encontrarlo en tus notas en la app.\n\n🔗 witholive.app',
+    'it': '✅ Salvato! "{title}"{list}\n\n📝 Puoi trovarlo nelle tue note nell\'app.\n\n🔗 witholive.app',
+  },
+  artifact_none: {
+    en: "I don't have a recent draft or output to save. Ask me to help you with something first, then say \"save it\" 🫒",
+    'es': 'No tengo un borrador reciente para guardar. Pídeme ayuda con algo primero y luego di "guárdalo" 🫒',
+    'it': 'Non ho una bozza recente da salvare. Chiedimi aiuto con qualcosa prima, poi di "salvalo" 🫒',
+  },
 };
 
 function t(key: string, lang: string, vars?: Record<string, string>): string {
