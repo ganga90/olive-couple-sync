@@ -6846,7 +6846,7 @@ Return ONLY valid JSON, no markdown.`,
         
       } catch (artifactErr) {
         console.error('[SAVE_ARTIFACT] Error:', artifactErr);
-        return reply("Sorry, I ran into an issue saving that. Please try again.");
+        return reply(t('artifact_save_error', userLang));
       }
     }
 
