@@ -6208,7 +6208,7 @@ If the user's message is long and conversational — asking for help with someth
             .catch(e => console.warn('[ProfileEvolution] Non-blocking error:', e));
         } catch {}
 
-        return reply(chatResponse.slice(0, 1500));
+        return reply(chatResponse.slice(0, chatType === 'assistant' ? 2000 : 1500));
       } catch (error) {
         console.error('[WhatsApp] Chat AI error:', error);
         
