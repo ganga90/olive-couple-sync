@@ -503,6 +503,12 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
       setIsLoading(false);
       setIsStreaming(false);
       abortControllerRef.current = null;
+      
+      // Persist session after each exchange
+      setMessages((currentMsgs) => {
+        saveSession(currentMsgs, sessionId);
+        return currentMsgs;
+      });
     }
   };
 
