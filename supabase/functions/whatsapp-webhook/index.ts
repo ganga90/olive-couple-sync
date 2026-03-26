@@ -3507,7 +3507,30 @@ Description: "${parsedExpense.description}"`;
     }
 
     // ========================================================================
-    // POST-CLASSIFICATION SAFETY NET #2: Follow-up detection
+    // POST-CLASSIFICATION SAFETY NET #1.5: "Save this" / "Save it as a note"
+    // If the user asks to save something and Olive recently produced an assistant
+    // output (email draft, plan, etc.), override to SAVE_ARTIFACT intent.
+    // ========================================================================
+    if (messageBody) {
+      const msgLower = messageBody.toLowerCase();
+      const saveArtifactPatterns = /\b(save\s+(?:this|it|that)|salva(?:lo|la|melo)?|guarda(?:lo|la|melo)?|save\s+(?:as|in|to)\s+(?:a\s+)?(?:note|task|list|my\s+list)|add\s+(?:this|it|that)\s+(?:to|as|in)\s+(?:a\s+)?(?:note|task|list|my\s+list)|save\s+(?:this|it)\s+(?:for\s+(?:me|later))|keep\s+(?:this|it)|guardalo|salvalo|guardar(?:lo)?|guárdalo|añade(?:lo)?\s+(?:a|como|en))\b/i.test(msgLower);
+      
+      if (saveArtifactPatterns) {
+        const sessionCtxSave = (session.context_data || {}) as ConversationContext;
+        const hasRecentOutput = sessionCtxSave.last_assistant_output &&
+          sessionCtxSave.last_assistant_output_at &&
+          (Date.now() - new Date(sessionCtxSave.last_assistant_output_at).getTime()) < 30 * 60 * 1000; // 30 min window
+        
+        if (hasRecentOutput) {
+          console.log(`[SafetyNet#1.5] Overriding ${intentResult.intent} → SAVE_ARTIFACT — user wants to save recent assistant output`);
+          intentResult = {
+            intent: 'SAVE_ARTIFACT' as any,
+            cleanMessage: messageBody,
+          } as any;
+        }
+      }
+    }
+
     // If AI classified as CREATE but conversation history shows Olive just
     // answered a contextual_ask or web_search, and the message looks like a
     // follow-up question/clarification, override to the appropriate intent.
