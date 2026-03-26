@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { Send, Sparkles } from "lucide-react";
+import { Send, Sparkles, BookmarkPlus, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,6 +12,7 @@ import ReactMarkdown from "react-markdown";
 import { useSupabaseNotes, type SupabaseNote } from "@/hooks/useSupabaseNotes";
 import { useSupabaseLists, type SupabaseList } from "@/hooks/useSupabaseLists";
 import { CitationBadges, type Citation, type SourcesUsed } from "@/components/chat/CitationBadges";
+import { toast } from "sonner";
 
 interface TaskAction {
   type: string;
@@ -29,6 +30,7 @@ interface Message {
   citations?: Citation[];
   sourcesUsed?: SourcesUsed;
   action?: TaskAction;
+  savedAsNote?: boolean; // Track if this message was saved
 }
 
 interface AskOliveChatGlobalProps {
