@@ -358,6 +358,18 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 - "Buy groceries" → CREATE (no amount = task, NOT expense)
 - "Amazon package arrived" → CREATE (no amount = task, NOT expense)
 
+## ASSISTIVE CHAT vs PARTNER MESSAGE (CRITICAL DISTINCTION):
+- "Help me draft an email to john@company.com" → chat (assistant) — external recipient, composing content
+- "Ti passo dei contenuti per una mail verso X@Y.it, ci pensi tu?" → chat (assistant) — asking Olive to help compose an email to an external person
+- "Can you write a thank you message for my colleague?" → chat (assistant) — external person, content creation
+- "Prepara un messaggio per il mio capo" → chat (assistant) — external person (boss), content creation
+- "Aiutami a scrivere una risposta" → chat (assistant) — asking for help composing
+- "Puoi preparare una bozza?" → chat (assistant) — asking for a draft
+- "Remind Marco to buy lemons" → partner_message — Marco is the partner IN the shared space
+- "Tell my partner dinner is ready" → partner_message — relaying to partner in space
+- "Dile a Marco que..." → partner_message — telling partner in shared space
+KEY: Does the message mention an EMAIL ADDRESS or EXTERNAL person/colleague/boss/client? → ALWAYS chat (assistant). Is it about relaying to the PARTNER in their Olive space? → partner_message.
+
 - [After Olive listed restaurants] "Do they offer reservations?" → web_search (follow-up wanting external info)
 - [After Olive listed restaurants] "Search for a table at Kebo" → web_search (wanting to book/find external info)
 - [After Olive showed search results] "I meant the restaurant Kebo" → web_search (clarification, continue same thread)
