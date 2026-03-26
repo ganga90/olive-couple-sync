@@ -6266,13 +6266,16 @@ Pay close attention to RECENT CONVERSATION HISTORY. If the user says "yes", "ok"
 
               if (keywords.length > 0) {
                 // Search for incomplete tasks in the couple space matching keywords
-                const searchTerms = keywords.slice(0, 4).join(' & '); // Top 4 keywords for tsquery
+                // Use 'websearch' type so OR is properly interpreted (plainto_tsquery
+                // treats everything as AND, which fails when extra words like "check"
+                // are present in the query but not in the stored summary).
+                const searchQuery = keywords.slice(0, 4).join(' OR ');
                 const { data: keywordMatches } = await supabase
                   .from('clerk_notes')
                   .select('id, summary, original_text')
                   .eq('completed', false)
                   .or(`couple_id.eq.${coupleId},and(author_id.eq.${userId},couple_id.is.null)`)
-                  .textSearch('summary', keywords.slice(0, 3).join(' | '), { type: 'plain' })
+                  .textSearch('summary', searchQuery, { type: 'websearch' })
                   .limit(5);
 
                 if (keywordMatches && keywordMatches.length > 0) {
