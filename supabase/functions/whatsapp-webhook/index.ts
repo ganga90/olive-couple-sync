@@ -16,7 +16,7 @@ const corsHeaders = {
 // CREATE: Everything else (default)
 // ============================================================================
 
-type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'WEB_SEARCH' | 'TASK_ACTION' | 'EXPENSE' | 'PARTNER_MESSAGE' | 'CREATE_LIST' | 'LIST_RECAP'; isUrgent?: boolean; cleanMessage?: string };
+type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'WEB_SEARCH' | 'TASK_ACTION' | 'EXPENSE' | 'PARTNER_MESSAGE' | 'CREATE_LIST' | 'LIST_RECAP' | 'SAVE_ARTIFACT'; isUrgent?: boolean; cleanMessage?: string };
 
 // ============================================================================
 // RECENT OUTBOUND MESSAGE CONTEXT
@@ -225,6 +225,16 @@ $ Spesa: $45 pranzo da Chipotle
 • "riassunto della settimana" per approfondimenti
 
 🔗 Gestisci: https://witholive.app`,
+  },
+  artifact_saved: {
+    en: '✅ Saved! "{title}"{list}\n\n📝 You can find it in your notes on the app.\n\n🔗 witholive.app',
+    'es': '✅ ¡Guardado! "{title}"{list}\n\n📝 Puedes encontrarlo en tus notas en la app.\n\n🔗 witholive.app',
+    'it': '✅ Salvato! "{title}"{list}\n\n📝 Puoi trovarlo nelle tue note nell\'app.\n\n🔗 witholive.app',
+  },
+  artifact_none: {
+    en: "I don't have a recent draft or output to save. Ask me to help you with something first, then say \"save it\" 🫒",
+    'es': 'No tengo un borrador reciente para guardar. Pídeme ayuda con algo primero y luego di "guárdalo" 🫒',
+    'it': 'Non ho una bozza recente da salvare. Chiedimi aiuto con qualcosa prima, poi di "salvalo" 🫒',
   },
 };
 
@@ -532,6 +542,10 @@ interface ConversationContext {
   // Store last user message for "schedule it" / "then create it" context resolution
   last_user_message?: string;
   last_user_message_at?: string;
+  // Store last assistant-produced artifact (email draft, plan, etc.) for "save this" follow-ups
+  last_assistant_output?: string;
+  last_assistant_output_at?: string;
+  last_assistant_request?: string; // The user's original request that triggered the output
 }
 
 // ============================================================================
@@ -3503,7 +3517,30 @@ Description: "${parsedExpense.description}"`;
     }
 
     // ========================================================================
-    // POST-CLASSIFICATION SAFETY NET #2: Follow-up detection
+    // POST-CLASSIFICATION SAFETY NET #1.5: "Save this" / "Save it as a note"
+    // If the user asks to save something and Olive recently produced an assistant
+    // output (email draft, plan, etc.), override to SAVE_ARTIFACT intent.
+    // ========================================================================
+    if (messageBody) {
+      const msgLower = messageBody.toLowerCase();
+      const saveArtifactPatterns = /\b(save\s+(?:this|it|that)|salva(?:lo|la|melo)?|guarda(?:lo|la|melo)?|save\s+(?:as|in|to)\s+(?:a\s+)?(?:note|task|list|my\s+list)|add\s+(?:this|it|that)\s+(?:to|as|in)\s+(?:a\s+)?(?:note|task|list|my\s+list)|save\s+(?:this|it)\s+(?:for\s+(?:me|later))|keep\s+(?:this|it)|guardalo|salvalo|guardar(?:lo)?|guárdalo|añade(?:lo)?\s+(?:a|como|en))\b/i.test(msgLower);
+      
+      if (saveArtifactPatterns) {
+        const sessionCtxSave = (session.context_data || {}) as ConversationContext;
+        const hasRecentOutput = sessionCtxSave.last_assistant_output &&
+          sessionCtxSave.last_assistant_output_at &&
+          (Date.now() - new Date(sessionCtxSave.last_assistant_output_at).getTime()) < 30 * 60 * 1000; // 30 min window
+        
+        if (hasRecentOutput) {
+          console.log(`[SafetyNet#1.5] Overriding ${intentResult.intent} → SAVE_ARTIFACT — user wants to save recent assistant output`);
+          intentResult = {
+            intent: 'SAVE_ARTIFACT' as any,
+            cleanMessage: messageBody,
+          } as any;
+        }
+      }
+    }
+
     // If AI classified as CREATE but conversation history shows Olive just
     // answered a contextual_ask or web_search, and the message looks like a
     // follow-up question/clarification, override to the appropriate intent.
@@ -6199,7 +6236,30 @@ If the user's message is long and conversational — asking for help with someth
         }
 
         // Save conversation history (no specific entity for CHAT)
+        // For assistant-type responses, also store the full output for "save this" follow-ups
         await saveReferencedEntity(null, chatResponse);
+        
+        if (chatType === 'assistant') {
+          try {
+            const currentCtx = (session.context_data || {}) as ConversationContext;
+            await supabase
+              .from('user_sessions')
+              .update({
+                context_data: {
+                  ...currentCtx,
+                  // Refresh conversation_history (saveReferencedEntity already updated it)
+                  last_assistant_output: chatResponse.substring(0, 2000),
+                  last_assistant_output_at: new Date().toISOString(),
+                  last_assistant_request: (effectiveMessage || '').substring(0, 500),
+                },
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', session.id);
+            console.log('[CHAT/assistant] Stored assistant output for save-artifact follow-up');
+          } catch (storeErr) {
+            console.warn('[CHAT/assistant] Failed to store output (non-blocking):', storeErr);
+          }
+        }
 
         // Auto-evolve profile from conversation (non-blocking, fire-and-forget)
         try {
@@ -6648,6 +6708,140 @@ If the user's message is long and conversational — asking for help with someth
           partner: partnerName,
           message: partnerMessageContent.substring(0, 200),
         }));
+      }
+    }
+
+    // ========================================================================
+    // SAVE ARTIFACT HANDLER - Save Olive's assistant output as a note/task
+    // Triggered when user says "save this", "save it as a note", etc.
+    // after Olive produced content (email draft, plan, brainstorm, etc.)
+    // ========================================================================
+    if (intent === 'SAVE_ARTIFACT') {
+      console.log('[SAVE_ARTIFACT] User wants to save assistant output as note');
+      
+      const sessionCtxArtifact = (session.context_data || {}) as ConversationContext;
+      const artifactContent = sessionCtxArtifact.last_assistant_output;
+      const artifactRequest = sessionCtxArtifact.last_assistant_request || '';
+      
+      if (!artifactContent) {
+        return reply(t('artifact_none', userLang));
+      }
+      
+      try {
+        // Use AI to generate a proper title and category for the artifact
+        const classifyResult = await callAI(
+          `You classify saved content into a structured note. Given the user's original request and the AI-produced content, return JSON with:
+- "title": A concise title (max 8 words) that captures what this artifact IS (e.g., "Email draft to boss about vacation", "Trip plan for Rome", "Gift ideas for Sara's birthday")
+- "category": One of: task, work, personal, travel, finance, health, shopping, entertainment, recipes, general
+- "tags": Array of 1-3 relevant tags
+
+Return ONLY valid JSON, no markdown.`,
+          `USER REQUEST: "${artifactRequest.substring(0, 300)}"\n\nARTIFACT CONTENT:\n${artifactContent.substring(0, 1000)}`,
+          0.1,
+          'lite'
+        );
+        
+        let title = 'Saved draft';
+        let category = 'task';
+        let tags: string[] = ['olive-draft'];
+        
+        try {
+          const parsed = JSON.parse(classifyResult.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
+          title = parsed.title || title;
+          category = parsed.category || category;
+          tags = [...(parsed.tags || []), 'olive-draft'];
+        } catch {
+          // Fallback: extract first line as title
+          const firstLine = artifactContent.split('\n')[0]?.replace(/[*#]/g, '').trim();
+          if (firstLine && firstLine.length < 80) title = firstLine;
+        }
+        
+        // Build note data
+        const noteData: any = {
+          author_id: userId,
+          couple_id: effectiveCoupleId,
+          original_text: `${artifactRequest}\n\n---\n\n${artifactContent}`.substring(0, 5000),
+          summary: title,
+          category: category.toLowerCase().replace(/\s+/g, '_'),
+          priority: 'medium',
+          tags: tags,
+          items: [],
+          completed: false,
+        };
+        
+        // If user mentioned a specific list, try to find it
+        const msgLower = (messageBody || '').toLowerCase();
+        const listMention = msgLower.match(/(?:in|to|on)\s+(?:my\s+)?(\w+)\s+list/i);
+        if (listMention) {
+          const { data: matchedLists } = await supabase
+            .from('clerk_lists')
+            .select('id, name, couple_id')
+            .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
+          
+          const targetName = listMention[1].toLowerCase();
+          const matched = matchedLists?.find(l => l.name.toLowerCase().includes(targetName));
+          if (matched) {
+            noteData.list_id = matched.id;
+            noteData.couple_id = matched.couple_id ?? effectiveCoupleId;
+          }
+        }
+        
+        const { data: savedNote, error: saveError } = await supabase
+          .from('clerk_notes')
+          .insert(noteData)
+          .select('id, summary, list_id')
+          .single();
+        
+        if (saveError || !savedNote) {
+          console.error('[SAVE_ARTIFACT] Insert error:', saveError);
+          return reply("Sorry, I couldn't save that. Please try again.");
+        }
+        
+        // Generate embedding for the saved note (non-blocking)
+        try {
+          const embedding = await generateEmbedding(title + ' ' + artifactContent.substring(0, 500));
+          if (embedding) {
+            await supabase
+              .from('clerk_notes')
+              .update({ embedding })
+              .eq('id', savedNote.id);
+          }
+        } catch {}
+        
+        // Clear the stored artifact from session
+        try {
+          await supabase
+            .from('user_sessions')
+            .update({
+              context_data: {
+                ...sessionCtxArtifact,
+                last_assistant_output: null,
+                last_assistant_output_at: null,
+                last_assistant_request: null,
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+        } catch {}
+        
+        // Get list name for confirmation
+        let listConfirm = '';
+        if (savedNote.list_id) {
+          const { data: listInfo } = await supabase
+            .from('clerk_lists')
+            .select('name')
+            .eq('id', savedNote.list_id)
+            .single();
+          if (listInfo) listConfirm = ` in your *${listInfo.name}* list`;
+        }
+        
+        const saveConfirm = t('artifact_saved', userLang, { title: savedNote.summary, list: listConfirm });
+        await saveReferencedEntity(savedNote, saveConfirm);
+        return reply(saveConfirm);
+        
+      } catch (artifactErr) {
+        console.error('[SAVE_ARTIFACT] Error:', artifactErr);
+        return reply("Sorry, I ran into an issue saving that. Please try again.");
       }
     }
 
