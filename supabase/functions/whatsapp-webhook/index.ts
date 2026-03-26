@@ -138,9 +138,9 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'it': '😕 Vorrei mandare un messaggio a {partner}, ma non ha ancora collegato il suo WhatsApp.\n\nChiedigli di aprire Olive → Profilo → Collega WhatsApp.',
   },
   partner_no_space: {
-    en: 'You need to be in a shared space to send messages to your partner. Invite them from the app!',
-    'es': 'Necesitas estar en un espacio compartido para enviar mensajes a tu pareja. ¡Invítale desde la app!',
-    'it': 'Devi essere in uno spazio condiviso per inviare messaggi al tuo partner. Invitalo dall\'app!',
+    en: 'I couldn\'t find your partner in the shared space. Make sure they\'ve accepted your invite!\n\nTo invite someone: open Olive → Profile → Invite Partner 💚',
+    'es': 'No encontré a tu pareja en el espacio compartido. ¡Asegúrate de que haya aceptado tu invitación!\n\nPara invitar: abre Olive → Perfil → Invitar Pareja 💚',
+    'it': 'Non ho trovato il tuo partner nello spazio condiviso. Assicurati che abbia accettato il tuo invito!\n\nPer invitare qualcuno: apri Olive → Profilo → Invita Partner 💚',
   },
   // ── Note creation confirmation labels (localized) ──
   note_saved: {
