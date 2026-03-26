@@ -532,6 +532,10 @@ interface ConversationContext {
   // Store last user message for "schedule it" / "then create it" context resolution
   last_user_message?: string;
   last_user_message_at?: string;
+  // Store last assistant-produced artifact (email draft, plan, etc.) for "save this" follow-ups
+  last_assistant_output?: string;
+  last_assistant_output_at?: string;
+  last_assistant_request?: string; // The user's original request that triggered the output
 }
 
 // ============================================================================
