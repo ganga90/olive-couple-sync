@@ -15,7 +15,11 @@
     "placeholder": "Pregúntame lo que quieras...",
     "thinking": "Pensando...",
     "error": "Tengo problemas para responder ahora. Por favor, inténtalo de nuevo.",
-    "connectionError": "Lo siento, tengo problemas de conexión. Por favor, inténtalo de nuevo."
+    "connectionError": "Lo siento, tengo problemas de conexión. Por favor, inténtalo de nuevo.",
+    "saveAsNote": "Guardar como nota",
+    "saved": "Guardado",
+    "savedAsNote": "¡Guardado como nota! 📝",
+    "saveError": "No pude guardarlo. Inténtalo de nuevo."
   },
   "nav": {
     "home": "Inicio",
