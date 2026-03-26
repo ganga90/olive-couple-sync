@@ -6835,7 +6835,7 @@ Return ONLY valid JSON, no markdown.`,
           if (listInfo) listConfirm = ` in your *${listInfo.name}* list`;
         }
         
-        const saveConfirm = `✅ Saved! "${savedNote.summary}"${listConfirm}\n\n📝 You can find it in your notes on the app.\n\n🔗 witholive.app`;
+        const saveConfirm = t('artifact_saved', userLang, { title: savedNote.summary, list: listConfirm });
         await saveReferencedEntity(savedNote, saveConfirm);
         return reply(saveConfirm);
         
