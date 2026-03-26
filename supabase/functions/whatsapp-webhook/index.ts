@@ -6253,7 +6253,7 @@ If the user's message is long and conversational — asking for help with someth
         || null;
 
       if (!partnerProfile) {
-        return reply('I couldn\'t find your partner in the shared space. Make sure they\'ve accepted your invite!');
+        return reply(t('partner_no_space', userLang));
       }
 
       const partnerId = partnerProfile.id;
