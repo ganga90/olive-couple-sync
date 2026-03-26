@@ -3422,18 +3422,23 @@ Description: "${parsedExpense.description}"`;
     if ((intentResult.intent === 'PARTNER_MESSAGE' || intentResult.intent === 'CREATE') && messageBody) {
       const msgLower = messageBody.toLowerCase();
       const hasEmailAddress = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(messageBody);
-      const isLongConversational = messageBody.length > 120;
-      const hasAssistiveSignals = /\b(draft|compose|write|prepare|bozza|redigi|scrivi|prepara|aiutami|help me|ci pensi tu|puoi|can you)\b/i.test(msgLower);
+      const isLongConversational = messageBody.length > 100;
+      
+      // Broad assistive signal detection (EN/ES/IT)
+      const hasAssistiveSignals = /\b(draft|compose|write|prepare|bozza|redigi|scrivi|prepara|aiutami|help me|ci pensi tu|puoi|can you|could you|me ayudas|ayúdame|plan|brainstorm|think through|figure out|compare|advise|suggest|recommend|analyze|summarize|break down|talking points|come up with|what do you think|what should i|give me ideas|help me decide|help me plan|help me write|help me draft|handle this|take care of|pensaci tu|ocupate|encárgate)\b/i.test(msgLower);
+      
+      // Detect "help me with X" style messages even if shorter
+      const isHelpRequest = /\b(help me|aiutami|ayúdame|ci pensi tu|puoi.*per me|can you.*for me|could you.*for me)\b/i.test(msgLower);
       
       if (hasEmailAddress && (isLongConversational || hasAssistiveSignals)) {
         console.log(`[SafetyNet#0.5] Overriding ${intentResult.intent} → CHAT (assistant) — email address + assistive signals`);
         intentResult = { ...intentResult, intent: 'CHAT', chatType: 'assistant' } as any;
       } else if (isLongConversational && hasAssistiveSignals) {
-        const hasDraftKeywords = /\b(draft|compose|write|prepare|bozza|scrivi|prepara|redigi)\b/i.test(msgLower);
-        if (hasDraftKeywords) {
-          console.log(`[SafetyNet#0.5] Overriding ${intentResult.intent} → CHAT (assistant) — long assistive message`);
-          intentResult = { ...intentResult, intent: 'CHAT', chatType: 'assistant' } as any;
-        }
+        console.log(`[SafetyNet#0.5] Overriding ${intentResult.intent} → CHAT (assistant) — long assistive message`);
+        intentResult = { ...intentResult, intent: 'CHAT', chatType: 'assistant' } as any;
+      } else if (isHelpRequest && messageBody.length > 60) {
+        console.log(`[SafetyNet#0.5] Overriding ${intentResult.intent} → CHAT (assistant) — explicit help request`);
+        intentResult = { ...intentResult, intent: 'CHAT', chatType: 'assistant' } as any;
       }
     }
 
