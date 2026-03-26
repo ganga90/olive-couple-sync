@@ -95,7 +95,7 @@ export const useSupabaseLists = (coupleId?: string | null) => {
     };
   }, [fetchLists]);
 
-  const createList = useCallback(async (listData: { name: string; description?: string; is_manual?: boolean }) => {
+  const createList = useCallback(async (listData: { name: string; description?: string; is_manual?: boolean; isShared?: boolean }) => {
     if (!user?.id) {
       toast.error("You must be signed in to create lists");
       return null;
@@ -106,10 +106,18 @@ export const useSupabaseLists = (coupleId?: string | null) => {
       const supabase = getSupabase();
       const normalizedName = listData.name.trim();
       
-      // Check if list already exists (case-insensitive)
-      const existingList = lists.find(list => 
-        list.name.toLowerCase().trim() === normalizedName.toLowerCase()
-      );
+      // Resolve the privacy for this list
+      const resolvedCoupleId = listData.isShared === false ? null : (listData.isShared === true ? (coupleId || null) : (coupleId || null));
+      
+      // Check if list already exists with the SAME name AND SAME privacy scope
+      // Users CAN have "Work" (private) and "Work" (shared) as separate lists
+      const existingList = lists.find(list => {
+        const nameMatch = list.name.toLowerCase().trim() === normalizedName.toLowerCase();
+        if (!nameMatch) return false;
+        const listIsShared = list.couple_id !== null;
+        const newIsShared = resolvedCoupleId !== null;
+        return listIsShared === newIsShared;
+      });
       
       if (existingList) {
         toast.info("List already exists");
@@ -121,7 +129,7 @@ export const useSupabaseLists = (coupleId?: string | null) => {
         description: listData.description || null,
         is_manual: listData.is_manual !== false,
         author_id: user.id,
-        couple_id: coupleId || null,
+        couple_id: resolvedCoupleId,
       };
       
       const { data, error } = await supabase

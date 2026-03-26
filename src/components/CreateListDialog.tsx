@@ -47,24 +47,12 @@ export const CreateListDialog: React.FC<CreateListDialogProps> = ({ onListCreate
     
     setLoading(true);
     
-    // Note: createList already uses the coupleId from the hook
-    // For shared lists, we pass the coupleId; for private, we override with null
     const result = await createList({
       name: name.trim(),
       description: description.trim() || undefined,
-      is_manual: true
+      is_manual: true,
+      isShared: currentCouple ? isShared : false,
     });
-    
-    // If user wants private and we're in a couple, update the list to remove couple_id
-    if (result && !isShared && currentCouple) {
-      // The list was created with couple_id by default, but user wants private
-      // We need to update it to remove the couple_id
-      const supabase = (await import("@/lib/supabaseClient")).getSupabase();
-      await supabase
-        .from("clerk_lists")
-        .update({ couple_id: null })
-        .eq("id", result.id);
-    }
     
     if (result) {
       setName("");
