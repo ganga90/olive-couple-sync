@@ -6768,19 +6768,23 @@ Return ONLY valid JSON, no markdown.`,
           tags: tags,
           items: [],
           completed: false,
+          source: 'olive-chat',
         };
         
-        // If user mentioned a specific list, try to find it
+        // If user mentioned a specific list, try to find it (multi-word support)
         const msgLower = (messageBody || '').toLowerCase();
-        const listMention = msgLower.match(/(?:in|to|on)\s+(?:my\s+)?(\w+)\s+list/i);
+        const listMention = msgLower.match(/(?:in|to|on|nella|nella\s+lista|en\s+(?:mi\s+)?lista|alla\s+lista)\s+(?:my\s+)?[""""]?([^""""\n]{2,30})[""""]?\s*(?:list|lista)?/i);
         if (listMention) {
           const { data: matchedLists } = await supabase
             .from('clerk_lists')
             .select('id, name, couple_id')
             .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
           
-          const targetName = listMention[1].toLowerCase();
-          const matched = matchedLists?.find(l => l.name.toLowerCase().includes(targetName));
+          const targetName = listMention[1].toLowerCase().trim();
+          // Try exact match first, then partial
+          const matched = matchedLists?.find(l => l.name.toLowerCase() === targetName)
+            || matchedLists?.find(l => l.name.toLowerCase().includes(targetName))
+            || matchedLists?.find(l => targetName.includes(l.name.toLowerCase()));
           if (matched) {
             noteData.list_id = matched.id;
             noteData.couple_id = matched.couple_id ?? effectiveCoupleId;
