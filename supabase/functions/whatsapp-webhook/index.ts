@@ -757,19 +757,53 @@ function standardizePhoneNumber(rawNumber: string): string {
 /**
  * Format a date/time string into a friendly readable format
  * e.g. "Friday, February 20th at 12:00 PM"
+ * 
+ * When timezone is provided, the UTC date is converted to the user's local time
+ * for display. This is critical because reminder_time is stored in UTC but the
+ * user expects to see their local time.
  */
-function formatFriendlyDate(dateStr: string, includeTime: boolean = true): string {
+function formatFriendlyDate(dateStr: string, includeTime: boolean = true, timezone?: string): string {
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return dateStr;
+
+  // If timezone provided, format in user's local time; otherwise use UTC
+  let dayOfWeek: number, month: number, dayNum: number, year: number, hours: number, mins: number;
+  
+  if (timezone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        weekday: 'short', year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: 'numeric', hour12: false,
+      }).formatToParts(d);
+      
+      const get = (type: string) => parts.find(p => p.type === type)?.value || '0';
+      month = parseInt(get('month')) - 1;
+      dayNum = parseInt(get('day'));
+      year = parseInt(get('year'));
+      hours = parseInt(get('hour'));
+      mins = parseInt(get('minute'));
+      
+      // Get day of week via a separate formatter
+      const dowStr = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'long' }).format(d);
+      const dowMap: Record<string, number> = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+      dayOfWeek = dowMap[dowStr] ?? d.getUTCDay();
+    } catch {
+      // Fallback to UTC
+      dayOfWeek = d.getUTCDay(); month = d.getUTCMonth(); dayNum = d.getUTCDate();
+      year = d.getUTCFullYear(); hours = d.getUTCHours(); mins = d.getUTCMinutes();
+    }
+  } else {
+    dayOfWeek = d.getUTCDay(); month = d.getUTCMonth(); dayNum = d.getUTCDate();
+    year = d.getUTCFullYear(); hours = d.getUTCHours(); mins = d.getUTCMinutes();
+  }
 
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const months = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
 
-  const dayName = days[d.getUTCDay()];
-  const monthName = months[d.getUTCMonth()];
-  const dayNum = d.getUTCDate();
-  const year = d.getUTCFullYear();
+  const dayName = days[dayOfWeek];
+  const monthName = months[month];
 
   // Ordinal suffix
   const suffix = (dayNum === 1 || dayNum === 21 || dayNum === 31) ? 'st'
@@ -786,13 +820,11 @@ function formatFriendlyDate(dateStr: string, includeTime: boolean = true): strin
 
   // Include time if not midnight/noon placeholder
   if (includeTime) {
-    const hours = d.getUTCHours();
-    const minutes = d.getUTCMinutes();
     // Skip time display if it's exactly midnight (00:00) — likely date-only
-    if (hours !== 0 || minutes !== 0) {
+    if (hours !== 0 || mins !== 0) {
       const h12 = hours % 12 || 12;
       const ampm = hours < 12 ? 'AM' : 'PM';
-      const minStr = minutes.toString().padStart(2, '0');
+      const minStr = mins.toString().padStart(2, '0');
       result += ` at ${h12}:${minStr} ${ampm}`;
     }
   }
@@ -4365,7 +4397,8 @@ Description: "${parsedExpense.description}"`;
             if (list) listName = list.name;
           }
           
-          const friendlyDate = reminderTime ? formatFriendlyDate(reminderTime) : (eventDueDate ? formatFriendlyDate(eventDueDate) : 'tomorrow at 9:00 AM');
+          const userTz = profile.timezone || 'America/New_York';
+          const friendlyDate = reminderTime ? formatFriendlyDate(reminderTime, true, userTz) : (eventDueDate ? formatFriendlyDate(eventDueDate, true, userTz) : 'tomorrow at 9:00 AM');
           
           const confirmationMessage = [
             `✅ Saved: ${insertedNote.summary}`,
@@ -4445,7 +4478,7 @@ Description: "${parsedExpense.description}"`;
               if (timeOnlyMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
               existingDate.setUTCHours(hours, mins, 0, 0);
               parsed.date = existingDate.toISOString();
-              parsed.readable = formatFriendlyDate(parsed.date);
+              parsed.readable = formatFriendlyDate(parsed.date, true, profile.timezone || 'America/New_York');
               console.log('[Context] Time-only update: keeping date from task, setting time to', hours + ':' + mins);
             }
           }
@@ -4461,7 +4494,7 @@ Description: "${parsedExpense.description}"`;
               if (timeOnlyMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
               today.setHours(hours, mins, 0, 0);
               parsed.date = today.toISOString();
-              parsed.readable = formatFriendlyDate(parsed.date);
+              parsed.readable = formatFriendlyDate(parsed.date, true, profile.timezone || 'America/New_York');
               console.log('[Context] Time-only update: using today with time', hours + ':' + mins);
             }
           }
