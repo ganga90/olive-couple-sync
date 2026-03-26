@@ -630,6 +630,25 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
                         </span>
                       </div>
                     )}
+                    {/* Save as note button — show on substantive assistant messages */}
+                    {message.content.length > 80 && message.id !== "greeting" && !message.id.startsWith("restored-") && (
+                      <div className="mt-1 pt-1.5 border-t border-border/30 flex justify-end">
+                        {message.savedAsNote ? (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Check className="h-3 w-3" />
+                            {t('askOlive.saved', 'Saved')}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleSaveAsNote(message.id, message.content)}
+                            className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
+                          >
+                            <BookmarkPlus className="h-3 w-3" />
+                            {t('askOlive.saveAsNote', 'Save as note')}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <p className="whitespace-pre-wrap">{message.content}</p>
