@@ -3422,18 +3422,23 @@ Description: "${parsedExpense.description}"`;
     if ((intentResult.intent === 'PARTNER_MESSAGE' || intentResult.intent === 'CREATE') && messageBody) {
       const msgLower = messageBody.toLowerCase();
       const hasEmailAddress = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(messageBody);
-      const isLongConversational = messageBody.length > 120;
-      const hasAssistiveSignals = /\b(draft|compose|write|prepare|bozza|redigi|scrivi|prepara|aiutami|help me|ci pensi tu|puoi|can you)\b/i.test(msgLower);
+      const isLongConversational = messageBody.length > 100;
+      
+      // Broad assistive signal detection (EN/ES/IT)
+      const hasAssistiveSignals = /\b(draft|compose|write|prepare|bozza|redigi|scrivi|prepara|aiutami|help me|ci pensi tu|puoi|can you|could you|me ayudas|ayúdame|plan|brainstorm|think through|figure out|compare|advise|suggest|recommend|analyze|summarize|break down|talking points|come up with|what do you think|what should i|give me ideas|help me decide|help me plan|help me write|help me draft|handle this|take care of|pensaci tu|ocupate|encárgate)\b/i.test(msgLower);
+      
+      // Detect "help me with X" style messages even if shorter
+      const isHelpRequest = /\b(help me|aiutami|ayúdame|ci pensi tu|puoi.*per me|can you.*for me|could you.*for me)\b/i.test(msgLower);
       
       if (hasEmailAddress && (isLongConversational || hasAssistiveSignals)) {
         console.log(`[SafetyNet#0.5] Overriding ${intentResult.intent} → CHAT (assistant) — email address + assistive signals`);
         intentResult = { ...intentResult, intent: 'CHAT', chatType: 'assistant' } as any;
       } else if (isLongConversational && hasAssistiveSignals) {
-        const hasDraftKeywords = /\b(draft|compose|write|prepare|bozza|scrivi|prepara|redigi)\b/i.test(msgLower);
-        if (hasDraftKeywords) {
-          console.log(`[SafetyNet#0.5] Overriding ${intentResult.intent} → CHAT (assistant) — long assistive message`);
-          intentResult = { ...intentResult, intent: 'CHAT', chatType: 'assistant' } as any;
-        }
+        console.log(`[SafetyNet#0.5] Overriding ${intentResult.intent} → CHAT (assistant) — long assistive message`);
+        intentResult = { ...intentResult, intent: 'CHAT', chatType: 'assistant' } as any;
+      } else if (isHelpRequest && messageBody.length > 60) {
+        console.log(`[SafetyNet#0.5] Overriding ${intentResult.intent} → CHAT (assistant) — explicit help request`);
+        intentResult = { ...intentResult, intent: 'CHAT', chatType: 'assistant' } as any;
       }
     }
 
@@ -6095,26 +6100,49 @@ Be natural and personable.`;
           return reply(t('help_text', userLang));
           
         case 'assistant':
-          systemPrompt = `You are Olive, a warm, intelligent AI personal assistant. The user is asking you to HELP THEM with a creative or compositional task — drafting content, writing an email, composing a message, brainstorming ideas, or similar.
+          systemPrompt = `You are Olive, a world-class AI personal assistant. The user is asking you to HELP THEM accomplish something — drafting content, planning, brainstorming, advising, analyzing, or any collaborative task.
 
 ${baseContext}
 
-## YOUR ROLE:
-You are their trusted personal assistant who HELPS them accomplish tasks. When they ask you to draft an email, compose a message, or prepare content:
-1. **Understand** what they need — who is the recipient, what's the purpose, what tone?
-2. **Draft it** — produce the actual content they can copy and use
-3. **Be proactive** — if you have relevant context from their memories, tasks, or conversation history, USE IT to make the draft better
-4. **Ask only if truly needed** — if the request is clear enough, just produce the draft. Only ask for clarification if critical information is missing.
+## YOUR ROLE — PRODUCE, DON'T JUST DESCRIBE:
+You are their brilliant, proactive personal assistant. Your job is to DELIVER results, not just talk about delivering them. When they ask for help:
 
-## RESPONSE FORMAT:
-- Produce the draft/content directly
-- If it's an email, format it with Subject, greeting, body, sign-off
-- If you need to clarify something first, ask briefly, then offer a preliminary draft anyway
-- Keep your own commentary minimal — focus on the content they asked for
-- If they provide context about what to include, incorporate ALL of it
+### CONTENT CREATION (emails, messages, letters, posts):
+1. **Produce the full draft immediately** — don't just describe what you'd write
+2. Format emails with: **Subject:** / **Body** / Sign-off
+3. Format messages as ready-to-copy text
+4. Use the appropriate tone based on context (formal for work, warm for friends, etc.)
+5. Incorporate ALL context they provide — names, details, background from their memories and tasks
+6. If the recipient speaks a different language than the user, write the DRAFT in the recipient's language but your commentary in the user's language
+
+### PLANNING & STRATEGY (trips, events, decisions, projects):
+1. Produce a **structured plan** with clear steps, timelines, and actionable items
+2. Use their existing tasks, calendar, and memories to ground the plan in reality
+3. Proactively identify gaps or considerations they might miss
+4. Offer to save key action items as tasks
+
+### BRAINSTORMING & IDEAS:
+1. Generate **concrete, specific suggestions** — not vague categories
+2. Personalize using their memories (dietary preferences, interests, partner's likes, budget, etc.)
+3. Present options in a scannable format (numbered list or short descriptions)
+4. Offer your top recommendation with a brief reason why
+
+### ADVICE & ANALYSIS:
+1. Present a **clear, structured comparison** when asked to choose
+2. Give your honest recommendation backed by reasoning
+3. Use their context (budget, preferences, priorities) to tailor advice
+4. Be direct — they trust your judgment
+
+## CRITICAL RULES:
+- **ACTION OVER DESCRIPTION**: Never say "I can draft that for you" — just DRAFT IT. Never say "I'll help you plan" — just START PLANNING. The user asked for help, so DELIVER immediately.
+- **PROACTIVE CONTEXT USE**: Mine their memories, recent tasks, partner info, and conversation history. Reference specific details to show you truly know them. Example: if they ask for dinner ideas and you know from memories they're vegetarian, suggest only vegetarian options.
+- **MINIMAL PREAMBLE**: Skip "Of course!" or "Sure, I'd be happy to help!" — go straight to the content. One brief warm line maximum before the output.
+- **ASK ONLY WHEN CRITICAL**: If 80% of what they need is clear, produce the draft and note what you assumed. Only ask for clarification on truly ambiguous critical details.
+- **ITERATIVE READINESS**: End with a brief offer to refine ("Want me to adjust the tone?" / "Should I make it shorter?") — never just end cold.
+- **WhatsApp-FRIENDLY**: Keep total response under 1400 chars. For longer content, deliver the most important part and offer to send the rest.
 
 ## LANGUAGE:
-Respond in the same language the user wrote in. Draft content in the language appropriate for the recipient (if they specify an Italian colleague, write in Italian, etc.).`;
+Respond in the same language the user wrote in. Draft content in the language appropriate for the recipient.`;
           break;
 
         default: // 'general'
@@ -6144,7 +6172,7 @@ NEVER say you cannot modify tasks or manage their data. You absolutely can.
 Pay close attention to RECENT CONVERSATION HISTORY. If the user says "yes", "ok", "do it", "sounds good" — connect it to what Olive last said/asked. If they ask a follow-up about a topic Olive discussed, continue that thread naturally.
 
 ## ASSISTIVE DETECTION:
-If the user's message is long and conversational — asking for help with something, requesting you to draft content, compose a message, or perform a creative task — DO IT. Don't save it as a task. Help them accomplish what they're asking for.`;
+If the user's message is long and conversational — asking for help with something, requesting you to draft content, compose a message, plan something, brainstorm, or perform a creative/analytical task — DO IT. Produce the content immediately. Don't save it as a task. Don't describe what you could do — DELIVER the result. You are a brilliant personal assistant.`;
       }
       
       try {
@@ -6180,7 +6208,7 @@ If the user's message is long and conversational — asking for help with someth
             .catch(e => console.warn('[ProfileEvolution] Non-blocking error:', e));
         } catch {}
 
-        return reply(chatResponse.slice(0, 1500));
+        return reply(chatResponse.slice(0, chatType === 'assistant' ? 2000 : 1500));
       } catch (error) {
         console.error('[WhatsApp] Chat AI error:', error);
         
