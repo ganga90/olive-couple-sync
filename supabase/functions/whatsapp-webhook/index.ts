@@ -4494,7 +4494,7 @@ Description: "${parsedExpense.description}"`;
               if (timeOnlyMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
               today.setHours(hours, mins, 0, 0);
               parsed.date = today.toISOString();
-              parsed.readable = formatFriendlyDate(parsed.date);
+              parsed.readable = formatFriendlyDate(parsed.date, true, profile.timezone || 'America/New_York');
               console.log('[Context] Time-only update: using today with time', hours + ':' + mins);
             }
           }
