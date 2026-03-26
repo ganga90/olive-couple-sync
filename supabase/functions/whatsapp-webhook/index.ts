@@ -6702,6 +6702,140 @@ If the user's message is long and conversational — asking for help with someth
     }
 
     // ========================================================================
+    // SAVE ARTIFACT HANDLER - Save Olive's assistant output as a note/task
+    // Triggered when user says "save this", "save it as a note", etc.
+    // after Olive produced content (email draft, plan, brainstorm, etc.)
+    // ========================================================================
+    if (intent === 'SAVE_ARTIFACT') {
+      console.log('[SAVE_ARTIFACT] User wants to save assistant output as note');
+      
+      const sessionCtxArtifact = (session.context_data || {}) as ConversationContext;
+      const artifactContent = sessionCtxArtifact.last_assistant_output;
+      const artifactRequest = sessionCtxArtifact.last_assistant_request || '';
+      
+      if (!artifactContent) {
+        return reply("I don't have a recent draft or output to save. Ask me to help you with something first, then say \"save it\" 🫒");
+      }
+      
+      try {
+        // Use AI to generate a proper title and category for the artifact
+        const classifyResult = await callAI(
+          `You classify saved content into a structured note. Given the user's original request and the AI-produced content, return JSON with:
+- "title": A concise title (max 8 words) that captures what this artifact IS (e.g., "Email draft to boss about vacation", "Trip plan for Rome", "Gift ideas for Sara's birthday")
+- "category": One of: task, work, personal, travel, finance, health, shopping, entertainment, recipes, general
+- "tags": Array of 1-3 relevant tags
+
+Return ONLY valid JSON, no markdown.`,
+          `USER REQUEST: "${artifactRequest.substring(0, 300)}"\n\nARTIFACT CONTENT:\n${artifactContent.substring(0, 1000)}`,
+          0.1,
+          'lite'
+        );
+        
+        let title = 'Saved draft';
+        let category = 'task';
+        let tags: string[] = ['olive-draft'];
+        
+        try {
+          const parsed = JSON.parse(classifyResult.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
+          title = parsed.title || title;
+          category = parsed.category || category;
+          tags = [...(parsed.tags || []), 'olive-draft'];
+        } catch {
+          // Fallback: extract first line as title
+          const firstLine = artifactContent.split('\n')[0]?.replace(/[*#]/g, '').trim();
+          if (firstLine && firstLine.length < 80) title = firstLine;
+        }
+        
+        // Build note data
+        const noteData: any = {
+          author_id: userId,
+          couple_id: effectiveCoupleId,
+          original_text: `${artifactRequest}\n\n---\n\n${artifactContent}`.substring(0, 5000),
+          summary: title,
+          category: category.toLowerCase().replace(/\s+/g, '_'),
+          priority: 'medium',
+          tags: tags,
+          items: [],
+          completed: false,
+        };
+        
+        // If user mentioned a specific list, try to find it
+        const msgLower = (messageBody || '').toLowerCase();
+        const listMention = msgLower.match(/(?:in|to|on)\s+(?:my\s+)?(\w+)\s+list/i);
+        if (listMention) {
+          const { data: matchedLists } = await supabase
+            .from('clerk_lists')
+            .select('id, name, couple_id')
+            .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
+          
+          const targetName = listMention[1].toLowerCase();
+          const matched = matchedLists?.find(l => l.name.toLowerCase().includes(targetName));
+          if (matched) {
+            noteData.list_id = matched.id;
+            noteData.couple_id = matched.couple_id ?? effectiveCoupleId;
+          }
+        }
+        
+        const { data: savedNote, error: saveError } = await supabase
+          .from('clerk_notes')
+          .insert(noteData)
+          .select('id, summary, list_id')
+          .single();
+        
+        if (saveError || !savedNote) {
+          console.error('[SAVE_ARTIFACT] Insert error:', saveError);
+          return reply("Sorry, I couldn't save that. Please try again.");
+        }
+        
+        // Generate embedding for the saved note (non-blocking)
+        try {
+          const embedding = await generateEmbedding(title + ' ' + artifactContent.substring(0, 500));
+          if (embedding) {
+            await supabase
+              .from('clerk_notes')
+              .update({ embedding })
+              .eq('id', savedNote.id);
+          }
+        } catch {}
+        
+        // Clear the stored artifact from session
+        try {
+          await supabase
+            .from('user_sessions')
+            .update({
+              context_data: {
+                ...sessionCtxArtifact,
+                last_assistant_output: null,
+                last_assistant_output_at: null,
+                last_assistant_request: null,
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+        } catch {}
+        
+        // Get list name for confirmation
+        let listConfirm = '';
+        if (savedNote.list_id) {
+          const { data: listInfo } = await supabase
+            .from('clerk_lists')
+            .select('name')
+            .eq('id', savedNote.list_id)
+            .single();
+          if (listInfo) listConfirm = ` in your *${listInfo.name}* list`;
+        }
+        
+        const saveConfirm = `✅ Saved! "${savedNote.summary}"${listConfirm}\n\n📝 You can find it in your notes on the app.\n\n🔗 witholive.app`;
+        await saveReferencedEntity(savedNote, saveConfirm);
+        return reply(saveConfirm);
+        
+      } catch (artifactErr) {
+        console.error('[SAVE_ARTIFACT] Error:', artifactErr);
+        return reply("Sorry, I ran into an issue saving that. Please try again.");
+      }
+    }
+
+    // ========================================================================
     // CREATE LIST HANDLER - Create a new organizational list from WhatsApp
     // ========================================================================
     if (intent === 'CREATE_LIST') {
