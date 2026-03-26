@@ -236,6 +236,11 @@ $ Spesa: $45 pranzo da Chipotle
     'es': 'No tengo un borrador reciente para guardar. Pídeme ayuda con algo primero y luego di "guárdalo" 🫒',
     'it': 'Non ho una bozza recente da salvare. Chiedimi aiuto con qualcosa prima, poi di "salvalo" 🫒',
   },
+  artifact_save_error: {
+    en: "Sorry, I couldn't save that. Please try again 🫒",
+    'es': 'Lo siento, no pude guardarlo. Inténtalo de nuevo 🫒',
+    'it': 'Scusa, non sono riuscita a salvarlo. Riprova 🫒',
+  },
 };
 
 function t(key: string, lang: string, vars?: Record<string, string>): string {
