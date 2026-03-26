@@ -3523,7 +3523,8 @@ Description: "${parsedExpense.description}"`;
     // ========================================================================
     if (messageBody) {
       const msgLower = messageBody.toLowerCase();
-      const saveArtifactPatterns = /\b(save\s+(?:this|it|that)|salva(?:lo|la|melo)?|guarda(?:lo|la|melo)?|save\s+(?:as|in|to)\s+(?:a\s+)?(?:note|task|list|my\s+list)|add\s+(?:this|it|that)\s+(?:to|as|in)\s+(?:a\s+)?(?:note|task|list|my\s+list)|save\s+(?:this|it)\s+(?:for\s+(?:me|later))|keep\s+(?:this|it)|guardalo|salvalo|guardar(?:lo)?|guárdalo|añade(?:lo)?\s+(?:a|como|en))\b/i.test(msgLower);
+      // Comprehensive multilingual "save this" detection
+      const saveArtifactPatterns = /\b(save\s+(?:this|it|that)(?:\s+(?:as|in|to|for)\s+\w+)?|keep\s+(?:this|it|that)(?:\s+for\s+(?:me|later))?|salva(?:lo|la|melo|re\s+(?:questo|questa|tutto))?|guarda(?:lo|la|melo)?|metti(?:lo|la|melo)?\s+(?:nelle?\s+note|nei?\s+task|nelle?\s+attività|nella\s+lista)|aggiungi(?:lo|la|melo)?\s+(?:alle?\s+note|ai?\s+task|alla\s+lista)|save\s+(?:as|in|to)\s+(?:a\s+)?(?:note|task|list|my\s+list|notes)|add\s+(?:this|it|that)\s+(?:to|as|in)\s+(?:a\s+)?(?:note|task|list|my\s+list|notes)|guárdalo|guárdamelo|añade(?:lo)?\s+(?:a|como|en)\s+(?:mis?\s+)?(?:notas?|tareas?|lista)|guardar(?:lo)?\s+(?:como|en)\s+(?:una?\s+)?(?:nota|tarea|lista))\b/i.test(msgLower);
       
       if (saveArtifactPatterns) {
         const sessionCtxSave = (session.context_data || {}) as ConversationContext;
