@@ -6724,7 +6724,7 @@ If the user's message is long and conversational — asking for help with someth
       const artifactRequest = sessionCtxArtifact.last_assistant_request || '';
       
       if (!artifactContent) {
-        return reply("I don't have a recent draft or output to save. Ask me to help you with something first, then say \"save it\" 🫒");
+        return reply(t('artifact_none', userLang));
       }
       
       try {
