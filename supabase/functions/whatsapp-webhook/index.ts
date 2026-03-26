@@ -4478,7 +4478,7 @@ Description: "${parsedExpense.description}"`;
               if (timeOnlyMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
               existingDate.setUTCHours(hours, mins, 0, 0);
               parsed.date = existingDate.toISOString();
-              parsed.readable = formatFriendlyDate(parsed.date);
+              parsed.readable = formatFriendlyDate(parsed.date, true, profile.timezone || 'America/New_York');
               console.log('[Context] Time-only update: keeping date from task, setting time to', hours + ':' + mins);
             }
           }
