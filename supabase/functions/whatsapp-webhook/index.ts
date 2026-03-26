@@ -6799,7 +6799,7 @@ Return ONLY valid JSON, no markdown.`,
         
         if (saveError || !savedNote) {
           console.error('[SAVE_ARTIFACT] Insert error:', saveError);
-          return reply("Sorry, I couldn't save that. Please try again.");
+          return reply(t('artifact_save_error', userLang));
         }
         
         // Generate embedding for the saved note (non-blocking)
