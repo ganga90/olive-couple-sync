@@ -7077,9 +7077,19 @@ FORMAT for WhatsApp (max 1500 chars):
             } catch (e) { /* fallback to plaintext */ }
           }
           
+          // If note has a list_id, inherit the list's couple_id (shared list → shared note)
+          const noteListId = note.list_id;
+          let noteCoupleId = effectiveCoupleId;
+          if (noteListId) {
+            const matchedList = existingLists?.find((l: any) => l.id === noteListId);
+            if (matchedList) {
+              noteCoupleId = matchedList.couple_id ?? effectiveCoupleId;
+            }
+          }
+          
           return {
             author_id: userId,
-            couple_id: effectiveCoupleId,
+            couple_id: noteCoupleId,
             ...encFields,
             category: note.category || 'task',
             due_date: note.due_date,
