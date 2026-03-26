@@ -16,7 +16,7 @@ const corsHeaders = {
 // CREATE: Everything else (default)
 // ============================================================================
 
-type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'WEB_SEARCH' | 'TASK_ACTION' | 'EXPENSE' | 'PARTNER_MESSAGE' | 'CREATE_LIST' | 'LIST_RECAP'; isUrgent?: boolean; cleanMessage?: string };
+type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'WEB_SEARCH' | 'TASK_ACTION' | 'EXPENSE' | 'PARTNER_MESSAGE' | 'CREATE_LIST' | 'LIST_RECAP' | 'SAVE_ARTIFACT'; isUrgent?: boolean; cleanMessage?: string };
 
 // ============================================================================
 // RECENT OUTBOUND MESSAGE CONTEXT
