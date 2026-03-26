@@ -7151,9 +7151,22 @@ FORMAT for WhatsApp (max 1500 chars):
           }
         }
         
+        // If note has a list_id, inherit the list's couple_id (shared list → shared note)
+        let singleNoteCoupleId = effectiveCoupleId;
+        if (processData.list_id) {
+          const { data: listData } = await supabase
+            .from('clerk_lists')
+            .select('couple_id')
+            .eq('id', processData.list_id)
+            .single();
+          if (listData) {
+            singleNoteCoupleId = listData.couple_id ?? effectiveCoupleId;
+          }
+        }
+        
         const noteData = {
           author_id: userId,
-          couple_id: effectiveCoupleId,
+          couple_id: singleNoteCoupleId,
           ...encryptionFields,
           category: processData.category || 'task',
           due_date: processData.due_date,
