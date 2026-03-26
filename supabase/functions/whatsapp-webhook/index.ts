@@ -7081,9 +7081,13 @@ FORMAT for WhatsApp (max 1500 chars):
           const noteListId = note.list_id;
           let noteCoupleId = effectiveCoupleId;
           if (noteListId) {
-            const matchedList = existingLists?.find((l: any) => l.id === noteListId);
-            if (matchedList) {
-              noteCoupleId = matchedList.couple_id ?? effectiveCoupleId;
+            const { data: noteListData } = await supabase
+              .from('clerk_lists')
+              .select('couple_id')
+              .eq('id', noteListId)
+              .single();
+            if (noteListData) {
+              noteCoupleId = noteListData.couple_id ?? effectiveCoupleId;
             }
           }
           
