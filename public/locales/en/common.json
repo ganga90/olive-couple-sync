@@ -15,7 +15,11 @@
     "placeholder": "Ask me anything...",
     "thinking": "Thinking...",
     "error": "I'm having trouble responding right now. Please try again.",
-    "connectionError": "Sorry, I'm having trouble connecting right now. Please try again."
+    "connectionError": "Sorry, I'm having trouble connecting right now. Please try again.",
+    "saveAsNote": "Save as note",
+    "saved": "Saved",
+    "savedAsNote": "Saved as a note! 📝",
+    "saveError": "Couldn't save. Please try again."
   },
   "nav": {
     "home": "Home",

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { Send, Sparkles } from "lucide-react";
+import { Send, Sparkles, BookmarkPlus, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,6 +12,7 @@ import ReactMarkdown from "react-markdown";
 import { useSupabaseNotes, type SupabaseNote } from "@/hooks/useSupabaseNotes";
 import { useSupabaseLists, type SupabaseList } from "@/hooks/useSupabaseLists";
 import { CitationBadges, type Citation, type SourcesUsed } from "@/components/chat/CitationBadges";
+import { toast } from "sonner";
 
 interface TaskAction {
   type: string;
@@ -29,6 +30,7 @@ interface Message {
   citations?: Citation[];
   sourcesUsed?: SourcesUsed;
   action?: TaskAction;
+  savedAsNote?: boolean; // Track if this message was saved
 }
 
 interface AskOliveChatGlobalProps {
@@ -519,6 +521,63 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
     }
   };
 
+  /**
+   * Save an assistant message as a note/task
+   */
+  const handleSaveAsNote = useCallback(async (messageId: string, content: string) => {
+    if (!user?.id || !content.trim()) return;
+
+    try {
+      // Find the user message that prompted this response
+      const msgIndex = messages.findIndex(m => m.id === messageId);
+      const userPrompt = msgIndex > 0
+        ? messages.slice(0, msgIndex).reverse().find(m => m.role === 'user')?.content || ''
+        : '';
+
+      // Call process-note to get proper classification
+      const { data: processed, error: processError } = await supabase.functions.invoke('process-note', {
+        body: {
+          text: `${userPrompt}\n\n---\n\n${content}`,
+          user_id: user.id,
+          couple_id: currentCouple?.id || null,
+          source: 'olive-chat',
+        },
+      });
+
+      const title = processed?.summary || content.split('\n')[0]?.replace(/[*#]/g, '').trim().substring(0, 80) || 'Saved from Olive';
+      const category = processed?.category || 'task';
+      const tags = [...(processed?.tags || []), 'olive-draft'];
+
+      const { error: insertError } = await supabase
+        .from('clerk_notes')
+        .insert({
+          author_id: user.id,
+          couple_id: currentCouple?.id || null,
+          original_text: `${userPrompt}\n\n---\n\n${content}`.substring(0, 5000),
+          summary: title,
+          category,
+          priority: processed?.priority || 'medium',
+          tags,
+          items: processed?.items || [],
+          completed: false,
+          source: 'olive-chat',
+        });
+
+      if (insertError) throw insertError;
+
+      // Mark message as saved
+      setMessages(prev => prev.map(m =>
+        m.id === messageId ? { ...m, savedAsNote: true } : m
+      ));
+
+      refetchNotes?.();
+      toast.success(t('askOlive.savedAsNote', 'Saved as a note! 📝'));
+    } catch (err) {
+      console.error('[SaveAsNote] Error:', err);
+      toast.error(t('askOlive.saveError', "Couldn't save. Please try again."));
+    }
+  }, [user?.id, currentCouple?.id, messages, refetchNotes, t]);
+
   return (
     <div className="flex flex-col h-[60vh] max-h-[500px]">
       {/* Messages Area */}
@@ -569,6 +628,25 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
                             <span className="font-medium">— {message.action.task_summary}</span>
                           )}
                         </span>
+                      </div>
+                    )}
+                    {/* Save as note button — show on substantive assistant messages */}
+                    {message.content.length > 80 && message.id !== "greeting" && !message.id.startsWith("restored-") && (
+                      <div className="mt-1 pt-1.5 border-t border-border/30 flex justify-end">
+                        {message.savedAsNote ? (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Check className="h-3 w-3" />
+                            {t('askOlive.saved', 'Saved')}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleSaveAsNote(message.id, message.content)}
+                            className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
+                          >
+                            <BookmarkPlus className="h-3 w-3" />
+                            {t('askOlive.saveAsNote', 'Save as note')}
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>

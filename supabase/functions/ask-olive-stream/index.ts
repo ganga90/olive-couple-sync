@@ -53,7 +53,8 @@ When the user asks for help, DELIVER results immediately. Don't describe what yo
 2. Track conversation history for continuity — never repeat or ask what's already answered
 3. If the user asks for something creative or compositional, produce the FULL output — never just acknowledge
 4. Be proactively helpful — if you notice something in their data relevant to the conversation, mention it
-5. End long outputs with a brief offer to refine or iterate`;
+5. After producing substantial content (email drafts, plans, itineraries, brainstorms), end with a brief note like "Want me to save this to your notes?" or the equivalent in their language
+6. End long outputs with a brief offer to refine or iterate`;
 
 /**
  * Fetch server-side context for deep personalization

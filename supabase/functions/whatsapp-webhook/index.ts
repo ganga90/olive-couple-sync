@@ -236,6 +236,11 @@ $ Spesa: $45 pranzo da Chipotle
     'es': 'No tengo un borrador reciente para guardar. Pídeme ayuda con algo primero y luego di "guárdalo" 🫒',
     'it': 'Non ho una bozza recente da salvare. Chiedimi aiuto con qualcosa prima, poi di "salvalo" 🫒',
   },
+  artifact_save_error: {
+    en: "Sorry, I couldn't save that. Please try again 🫒",
+    'es': 'Lo siento, no pude guardarlo. Inténtalo de nuevo 🫒',
+    'it': 'Scusa, non sono riuscita a salvarlo. Riprova 🫒',
+  },
 };
 
 function t(key: string, lang: string, vars?: Record<string, string>): string {
@@ -3523,7 +3528,8 @@ Description: "${parsedExpense.description}"`;
     // ========================================================================
     if (messageBody) {
       const msgLower = messageBody.toLowerCase();
-      const saveArtifactPatterns = /\b(save\s+(?:this|it|that)|salva(?:lo|la|melo)?|guarda(?:lo|la|melo)?|save\s+(?:as|in|to)\s+(?:a\s+)?(?:note|task|list|my\s+list)|add\s+(?:this|it|that)\s+(?:to|as|in)\s+(?:a\s+)?(?:note|task|list|my\s+list)|save\s+(?:this|it)\s+(?:for\s+(?:me|later))|keep\s+(?:this|it)|guardalo|salvalo|guardar(?:lo)?|guárdalo|añade(?:lo)?\s+(?:a|como|en))\b/i.test(msgLower);
+      // Comprehensive multilingual "save this" detection
+      const saveArtifactPatterns = /\b(save\s+(?:this|it|that)(?:\s+(?:as|in|to|for)\s+\w+)?|keep\s+(?:this|it|that)(?:\s+for\s+(?:me|later))?|salva(?:lo|la|melo|re\s+(?:questo|questa|tutto))?|guarda(?:lo|la|melo)?|metti(?:lo|la|melo)?\s+(?:nelle?\s+note|nei?\s+task|nelle?\s+attività|nella\s+lista)|aggiungi(?:lo|la|melo)?\s+(?:alle?\s+note|ai?\s+task|alla\s+lista)|save\s+(?:as|in|to)\s+(?:a\s+)?(?:note|task|list|my\s+list|notes)|add\s+(?:this|it|that)\s+(?:to|as|in)\s+(?:a\s+)?(?:note|task|list|my\s+list|notes)|guárdalo|guárdamelo|añade(?:lo)?\s+(?:a|como|en)\s+(?:mis?\s+)?(?:notas?|tareas?|lista)|guardar(?:lo)?\s+(?:como|en)\s+(?:una?\s+)?(?:nota|tarea|lista))\b/i.test(msgLower);
       
       if (saveArtifactPatterns) {
         const sessionCtxSave = (session.context_data || {}) as ConversationContext;
@@ -6248,7 +6254,7 @@ If the user's message is long and conversational — asking for help with someth
                 context_data: {
                   ...currentCtx,
                   // Refresh conversation_history (saveReferencedEntity already updated it)
-                  last_assistant_output: chatResponse.substring(0, 2000),
+                  last_assistant_output: chatResponse.substring(0, 4000),
                   last_assistant_output_at: new Date().toISOString(),
                   last_assistant_request: (effectiveMessage || '').substring(0, 500),
                 },
@@ -6767,19 +6773,23 @@ Return ONLY valid JSON, no markdown.`,
           tags: tags,
           items: [],
           completed: false,
+          source: 'olive-chat',
         };
         
-        // If user mentioned a specific list, try to find it
+        // If user mentioned a specific list, try to find it (multi-word support)
         const msgLower = (messageBody || '').toLowerCase();
-        const listMention = msgLower.match(/(?:in|to|on)\s+(?:my\s+)?(\w+)\s+list/i);
+        const listMention = msgLower.match(/(?:in|to|on|nella|nella\s+lista|en\s+(?:mi\s+)?lista|alla\s+lista)\s+(?:my\s+)?[""""]?([^""""\n]{2,30})[""""]?\s*(?:list|lista)?/i);
         if (listMention) {
           const { data: matchedLists } = await supabase
             .from('clerk_lists')
             .select('id, name, couple_id')
             .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
           
-          const targetName = listMention[1].toLowerCase();
-          const matched = matchedLists?.find(l => l.name.toLowerCase().includes(targetName));
+          const targetName = listMention[1].toLowerCase().trim();
+          // Try exact match first, then partial
+          const matched = matchedLists?.find(l => l.name.toLowerCase() === targetName)
+            || matchedLists?.find(l => l.name.toLowerCase().includes(targetName))
+            || matchedLists?.find(l => targetName.includes(l.name.toLowerCase()));
           if (matched) {
             noteData.list_id = matched.id;
             noteData.couple_id = matched.couple_id ?? effectiveCoupleId;
@@ -6794,7 +6804,7 @@ Return ONLY valid JSON, no markdown.`,
         
         if (saveError || !savedNote) {
           console.error('[SAVE_ARTIFACT] Insert error:', saveError);
-          return reply("Sorry, I couldn't save that. Please try again.");
+          return reply(t('artifact_save_error', userLang));
         }
         
         // Generate embedding for the saved note (non-blocking)
@@ -6841,7 +6851,7 @@ Return ONLY valid JSON, no markdown.`,
         
       } catch (artifactErr) {
         console.error('[SAVE_ARTIFACT] Error:', artifactErr);
-        return reply("Sorry, I ran into an issue saving that. Please try again.");
+        return reply(t('artifact_save_error', userLang));
       }
     }
 
