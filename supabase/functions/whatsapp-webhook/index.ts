@@ -6249,7 +6249,7 @@ If the user's message is long and conversational — asking for help with someth
                 context_data: {
                   ...currentCtx,
                   // Refresh conversation_history (saveReferencedEntity already updated it)
-                  last_assistant_output: chatResponse.substring(0, 2000),
+                  last_assistant_output: chatResponse.substring(0, 4000),
                   last_assistant_output_at: new Date().toISOString(),
                   last_assistant_request: (effectiveMessage || '').substring(0, 500),
                 },
