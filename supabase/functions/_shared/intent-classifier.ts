@@ -117,6 +117,7 @@ const INTENT_SCHEMA = {
             "motivation",
             "planning",
             "greeting",
+            "assistant",
             "general",
           ],
         },
