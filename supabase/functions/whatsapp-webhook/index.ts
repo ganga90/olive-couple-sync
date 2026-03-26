@@ -4397,7 +4397,8 @@ Description: "${parsedExpense.description}"`;
             if (list) listName = list.name;
           }
           
-          const friendlyDate = reminderTime ? formatFriendlyDate(reminderTime) : (eventDueDate ? formatFriendlyDate(eventDueDate) : 'tomorrow at 9:00 AM');
+          const userTz = profile.timezone || 'America/New_York';
+          const friendlyDate = reminderTime ? formatFriendlyDate(reminderTime, true, userTz) : (eventDueDate ? formatFriendlyDate(eventDueDate, true, userTz) : 'tomorrow at 9:00 AM');
           
           const confirmationMessage = [
             `✅ Saved: ${insertedNote.summary}`,
