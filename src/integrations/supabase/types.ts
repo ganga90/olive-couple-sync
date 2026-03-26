@@ -1081,6 +1081,47 @@ export type Database = {
         }
         Relationships: []
       }
+      olive_chat_sessions: {
+        Row: {
+          couple_id: string | null
+          created_at: string | null
+          id: string
+          last_message_at: string | null
+          messages: Json
+          summary: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          couple_id?: string | null
+          created_at?: string | null
+          id?: string
+          last_message_at?: string | null
+          messages?: Json
+          summary?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          couple_id?: string | null
+          created_at?: string | null
+          id?: string
+          last_message_at?: string | null
+          messages?: Json
+          summary?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_chat_sessions_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_couples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       olive_conversations: {
         Row: {
           created_at: string
