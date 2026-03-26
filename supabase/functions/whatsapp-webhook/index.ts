@@ -6663,17 +6663,25 @@ If the user's message is long and conversational — asking for help with someth
         return reply('📋 What should I name the list? Try: "Create a list about [topic]"');
       }
 
-      // Check if a list with this name already exists (case-insensitive)
+      // Check if a list with this name already exists with the SAME privacy scope
+      // Users CAN have "Work" (private) and "Work" (shared) as separate lists
       const { data: existingLists } = await supabase
         .from('clerk_lists')
-        .select('id, name')
+        .select('id, name, couple_id')
         .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
 
       const normalizedNewName = listName.toLowerCase().trim();
-      const existingMatch = existingLists?.find(l => l.name.toLowerCase().trim() === normalizedNewName);
+      // Only match if same name AND same privacy scope
+      const existingMatch = existingLists?.find(l => {
+        const nameMatch = l.name.toLowerCase().trim() === normalizedNewName;
+        if (!nameMatch) return false;
+        const existingIsShared = l.couple_id !== null;
+        const newIsShared = effectiveCoupleId !== null;
+        return existingIsShared === newIsShared;
+      });
 
       if (existingMatch) {
-        // List already exists — inform the user
+        // List already exists with same privacy — inform the user
         const { data: existingItems } = await supabase
           .from('clerk_notes')
           .select('id')
@@ -7069,9 +7077,23 @@ FORMAT for WhatsApp (max 1500 chars):
             } catch (e) { /* fallback to plaintext */ }
           }
           
+          // If note has a list_id, inherit the list's couple_id (shared list → shared note)
+          const noteListId = note.list_id;
+          let noteCoupleId = effectiveCoupleId;
+          if (noteListId) {
+            const { data: noteListData } = await supabase
+              .from('clerk_lists')
+              .select('couple_id')
+              .eq('id', noteListId)
+              .single();
+            if (noteListData) {
+              noteCoupleId = noteListData.couple_id ?? effectiveCoupleId;
+            }
+          }
+          
           return {
             author_id: userId,
-            couple_id: effectiveCoupleId,
+            couple_id: noteCoupleId,
             ...encFields,
             category: note.category || 'task',
             due_date: note.due_date,
@@ -7133,9 +7155,22 @@ FORMAT for WhatsApp (max 1500 chars):
           }
         }
         
+        // If note has a list_id, inherit the list's couple_id (shared list → shared note)
+        let singleNoteCoupleId = effectiveCoupleId;
+        if (processData.list_id) {
+          const { data: listData } = await supabase
+            .from('clerk_lists')
+            .select('couple_id')
+            .eq('id', processData.list_id)
+            .single();
+          if (listData) {
+            singleNoteCoupleId = listData.couple_id ?? effectiveCoupleId;
+          }
+        }
+        
         const noteData = {
           author_id: userId,
-          couple_id: effectiveCoupleId,
+          couple_id: singleNoteCoupleId,
           ...encryptionFields,
           category: processData.category || 'task',
           due_date: processData.due_date,
