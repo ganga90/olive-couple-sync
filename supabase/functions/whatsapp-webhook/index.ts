@@ -6221,14 +6221,14 @@ If the user's message is long and conversational — asking for help with someth
       });
 
       if (!spaceMembers || spaceMembers.length === 0) {
-        return reply('I couldn\'t find your shared space. Make sure it\'s set up correctly!');
+        return reply(t('partner_no_space', userLang));
       }
 
       const currentMember = spaceMembers.find((m: any) => m.user_id === userId);
       const otherMembers = spaceMembers.filter((m: any) => m.user_id !== userId);
 
       if (otherMembers.length === 0) {
-        return reply('I couldn\'t find your partner in the shared space. Make sure they\'ve accepted your invite!');
+        return reply(t('partner_no_space', userLang));
       }
 
       // Look up profiles for ALL other members and pick the one with a phone number
