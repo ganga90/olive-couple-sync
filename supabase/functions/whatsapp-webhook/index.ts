@@ -6266,26 +6266,37 @@ Pay close attention to RECENT CONVERSATION HISTORY. If the user says "yes", "ok"
 
               if (keywords.length > 0) {
                 // Search for incomplete tasks in the couple space matching keywords
-                const searchTerms = keywords.slice(0, 4).join(' & '); // Top 4 keywords for tsquery
+                // Use 'websearch' type so OR is properly interpreted (plainto_tsquery
+                // treats everything as AND, which fails when extra words like "check"
+                // are present in the query but not in the stored summary).
+                const searchQuery = keywords.slice(0, 4).join(' OR ');
                 const { data: keywordMatches } = await supabase
                   .from('clerk_notes')
                   .select('id, summary, original_text')
                   .eq('completed', false)
                   .or(`couple_id.eq.${coupleId},and(author_id.eq.${userId},couple_id.is.null)`)
-                  .textSearch('summary', keywords.slice(0, 3).join(' | '), { type: 'plain' })
+                  .textSearch('summary', searchQuery, { type: 'websearch' })
                   .limit(5);
 
                 if (keywordMatches && keywordMatches.length > 0) {
                   // Score by word overlap
+                  // Score by word overlap — compare task words against the
+                  // user's original keywords, ignoring action verbs that
+                  // appear in the relay command but not in the task itself
+                  // (e.g., "check" in "tell X to check renew Mazda registration").
+                  const actionVerbs = new Set(['check','remind','tell','ask','notify','make','do','get','send','dile','ricorda','dì','chiedi']);
+                  const contentKeywords = keywords.filter(k => !actionVerbs.has(k));
+                  const matchKeywords = contentKeywords.length >= 2 ? contentKeywords : keywords;
+
                   const bestMatch = keywordMatches
                     .map(m => {
-                      const mWords = new Set((m.summary + ' ' + (m.original_text || '')).toLowerCase().split(/\s+/));
-                      const overlap = keywords.filter(k => mWords.has(k)).length;
-                      return { ...m, overlap, ratio: overlap / keywords.length };
+                      const mWords = new Set((m.summary + ' ' + (m.original_text || '')).toLowerCase().split(/\s+/).map((w: string) => w.replace(/[^\w]/g, '')));
+                      const overlap = matchKeywords.filter(k => mWords.has(k)).length;
+                      return { ...m, overlap, ratio: overlap / matchKeywords.length };
                     })
                     .sort((a, b) => b.ratio - a.ratio)[0];
 
-                  if (bestMatch && bestMatch.ratio >= 0.5) {
+                  if (bestMatch && bestMatch.ratio >= 0.4) {
                     duplicateNote = { id: bestMatch.id, summary: bestMatch.summary };
                     console.log('[PARTNER_MESSAGE] 🔍 Keyword duplicate found:', bestMatch.summary, '| overlap:', bestMatch.ratio);
                   }
