@@ -6280,15 +6280,23 @@ Pay close attention to RECENT CONVERSATION HISTORY. If the user says "yes", "ok"
 
                 if (keywordMatches && keywordMatches.length > 0) {
                   // Score by word overlap
+                  // Score by word overlap — compare task words against the
+                  // user's original keywords, ignoring action verbs that
+                  // appear in the relay command but not in the task itself
+                  // (e.g., "check" in "tell X to check renew Mazda registration").
+                  const actionVerbs = new Set(['check','remind','tell','ask','notify','make','do','get','send','dile','ricorda','dì','chiedi']);
+                  const contentKeywords = keywords.filter(k => !actionVerbs.has(k));
+                  const matchKeywords = contentKeywords.length >= 2 ? contentKeywords : keywords;
+
                   const bestMatch = keywordMatches
                     .map(m => {
-                      const mWords = new Set((m.summary + ' ' + (m.original_text || '')).toLowerCase().split(/\s+/));
-                      const overlap = keywords.filter(k => mWords.has(k)).length;
-                      return { ...m, overlap, ratio: overlap / keywords.length };
+                      const mWords = new Set((m.summary + ' ' + (m.original_text || '')).toLowerCase().split(/\s+/).map((w: string) => w.replace(/[^\w]/g, '')));
+                      const overlap = matchKeywords.filter(k => mWords.has(k)).length;
+                      return { ...m, overlap, ratio: overlap / matchKeywords.length };
                     })
                     .sort((a, b) => b.ratio - a.ratio)[0];
 
-                  if (bestMatch && bestMatch.ratio >= 0.5) {
+                  if (bestMatch && bestMatch.ratio >= 0.4) {
                     duplicateNote = { id: bestMatch.id, summary: bestMatch.summary };
                     console.log('[PARTNER_MESSAGE] 🔍 Keyword duplicate found:', bestMatch.summary, '| overlap:', bestMatch.ratio);
                   }
