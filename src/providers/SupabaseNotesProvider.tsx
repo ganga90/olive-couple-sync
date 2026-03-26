@@ -147,7 +147,28 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const addNote = useCallback(async (noteData: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => {
     let resolvedCoupleId: string | null;
-    if (noteData.isShared === true) {
+
+    // If the note has a list_id, look up the list's couple_id to inherit its privacy
+    // Shared lists → notes inside are shared, regardless of user's default privacy
+    if (noteData.list_id) {
+      try {
+        const listResult = await supabase
+          .from("clerk_lists")
+          .select("couple_id")
+          .eq("id", noteData.list_id)
+          .single();
+        
+        if (listResult.data) {
+          // Inherit from the list: shared list → shared note, private list → private note
+          resolvedCoupleId = listResult.data.couple_id;
+        } else {
+          // Fallback to normal resolution if list not found
+          resolvedCoupleId = defaultPrivacy === "private" ? null : (currentCouple?.id || null);
+        }
+      } catch {
+        resolvedCoupleId = defaultPrivacy === "private" ? null : (currentCouple?.id || null);
+      }
+    } else if (noteData.isShared === true) {
       resolvedCoupleId = currentCouple?.id || null;
     } else if (noteData.isShared === false) {
       resolvedCoupleId = null;
