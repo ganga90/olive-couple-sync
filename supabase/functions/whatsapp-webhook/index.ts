@@ -418,6 +418,7 @@ type ChatType =
   | 'planning'            // "help me plan", "what's next"
   | 'greeting'            // "hi", "hello"
   | 'help'                // "what can you do", "help"
+  | 'assistant'           // "help me draft an email", "write a message for me"
   | 'general';            // Catch-all for other questions
 
 // ============================================================================
