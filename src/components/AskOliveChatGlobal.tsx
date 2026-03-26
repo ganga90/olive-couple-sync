@@ -166,9 +166,11 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [interactionId, setInteractionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sessionLoadedRef = useRef(false);
 
   const { user } = useAuth();
   const { currentCouple, you } = useSupabaseCouple();
@@ -184,28 +186,114 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
     return formatUserContextForAI(notes, lists);
   }, [notes, lists, notesLoading, listsLoading]);
 
-  // Initial greeting
-  useEffect(() => {
-    const displayName = String(
-      you || user?.fullName || user?.firstName || user?.username || ""
-    ).trim();
+  // Save chat session to DB (debounced via caller)
+  const saveSession = useCallback(async (msgs: Message[], sid: string | null) => {
+    if (!user?.id || msgs.length <= 1) return; // Don't save greeting-only sessions
+    
+    const messagesToSave = msgs
+      .filter(m => m.id !== "greeting")
+      .map(m => ({ role: m.role, content: m.content, timestamp: m.timestamp }));
+    
+    if (messagesToSave.length === 0) return;
 
-    const greeting: Message = {
-      id: "greeting",
-      role: "assistant",
-      content: displayName
-        ? t("askOlive.greetingWithName", {
-            name: displayName,
-            defaultValue: `Hi ${displayName}! 👋 How can I help you today? I can help with tasks, planning, reminders, or just chat about anything.`,
+    try {
+      if (sid) {
+        // Update existing session
+        await supabase
+          .from('olive_chat_sessions')
+          .update({
+            messages: messagesToSave,
+            last_message_at: new Date().toISOString(),
           })
-        : t("askOlive.greetingNoName", {
-            defaultValue:
-              "Hi! 👋 How can I help you today? I can help with tasks, planning, reminders, or just chat about anything.",
-          }),
-      timestamp: new Date(),
+          .eq('id', sid);
+      } else {
+        // Create new session
+        const { data } = await supabase
+          .from('olive_chat_sessions')
+          .insert({
+            user_id: user.id,
+            couple_id: currentCouple?.id || null,
+            messages: messagesToSave,
+            last_message_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single();
+        
+        if (data?.id) setSessionId(data.id);
+      }
+    } catch (err) {
+      console.warn('[Chat] Session save error:', err);
+    }
+  }, [user?.id, currentCouple?.id]);
+
+  // Load previous session on mount (within last 24h)
+  useEffect(() => {
+    if (!user?.id || sessionLoadedRef.current) return;
+    sessionLoadedRef.current = true;
+
+    const loadSession = async () => {
+      try {
+        const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data } = await supabase
+          .from('olive_chat_sessions')
+          .select('id, messages')
+          .eq('user_id', user.id)
+          .gte('last_message_at', cutoff)
+          .order('last_message_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (data?.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+          setSessionId(data.id);
+          // Restore previous messages + add greeting
+          const displayName = String(you || user?.fullName || user?.firstName || user?.username || "").trim();
+          const greeting: Message = {
+            id: "greeting",
+            role: "assistant",
+            content: displayName
+              ? t("askOlive.greetingWithName", {
+                  name: displayName,
+                  defaultValue: `Welcome back ${displayName}! 👋 I remember our previous chat. How can I help?`,
+                })
+              : t("askOlive.greetingNoName", {
+                  defaultValue: "Welcome back! 👋 I remember our previous chat. How can I help?",
+                }),
+            timestamp: new Date(),
+          };
+
+          const restored: Message[] = [greeting, ...data.messages.map((m: any, i: number) => ({
+            id: `restored-${i}`,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            timestamp: new Date(m.timestamp || Date.now()),
+          }))];
+          setMessages(restored);
+          return;
+        }
+      } catch (err) {
+        console.warn('[Chat] Session load error:', err);
+      }
+
+      // No previous session — show fresh greeting
+      const displayName = String(you || user?.fullName || user?.firstName || user?.username || "").trim();
+      const greeting: Message = {
+        id: "greeting",
+        role: "assistant",
+        content: displayName
+          ? t("askOlive.greetingWithName", {
+              name: displayName,
+              defaultValue: `Hi ${displayName}! 👋 How can I help you today? I can help with tasks, planning, reminders, or just chat about anything.`,
+            })
+          : t("askOlive.greetingNoName", {
+              defaultValue: "Hi! 👋 How can I help you today? I can help with tasks, planning, reminders, or just chat about anything.",
+            }),
+        timestamp: new Date(),
+      };
+      setMessages([greeting]);
     };
-    setMessages([greeting]);
-  }, [you, user, t]);
+
+    loadSession();
+  }, [user, you, t]);
 
   // Auto-scroll to bottom
   useEffect(() => {
