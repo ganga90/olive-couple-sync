@@ -251,6 +251,23 @@ const Profile = () => {
           </SettingsCard>
         </CollapsibleSection>
 
+        {/* SECTION: Help & FAQ */}
+        <CollapsibleSection 
+          title={t('profile:sections.help', 'Help & FAQ')}
+          icon={<HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />}
+          delay={175}
+          sectionId="help"
+        >
+          <SettingsCard
+            icon={<HelpCircle className="h-5 w-5 text-primary" />}
+            iconBg="bg-primary/10"
+            title={t('profile:help.faq', 'Frequently Asked Questions')}
+            subtitle={t('profile:help.faqDesc', 'Find answers to common questions about Olive.')}
+          >
+            <HelpFAQSection />
+          </SettingsCard>
+        </CollapsibleSection>
+
         {/* SECTION 4: System & Legal */}
         <CollapsibleSection 
           title={t('profile:sections.system', 'System')}
