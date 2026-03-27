@@ -6762,16 +6762,22 @@ Return ONLY valid JSON, no markdown.`,
           if (firstLine && firstLine.length < 80) title = firstLine;
         }
         
-        // Build note data
+        // Build note data — artifact goes into items (details section) for easy copy/paste
+        // original_text keeps only the user's request for context
+        const artifactLines = artifactContent
+          .split('\n')
+          .map((l: string) => l.trim())
+          .filter((l: string) => l.length > 0);
+        
         const noteData: any = {
           author_id: userId,
           couple_id: effectiveCoupleId,
-          original_text: `${artifactRequest}\n\n---\n\n${artifactContent}`.substring(0, 5000),
+          original_text: (artifactRequest || 'Saved from Olive chat').substring(0, 2000),
           summary: title,
           category: category.toLowerCase().replace(/\s+/g, '_'),
           priority: 'medium',
           tags: tags,
-          items: [],
+          items: artifactLines.length > 0 ? artifactLines : [artifactContent.substring(0, 4000)],
           completed: false,
           source: 'olive-chat',
         };
