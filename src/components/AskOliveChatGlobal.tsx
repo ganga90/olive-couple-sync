@@ -548,17 +548,24 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
       const category = processed?.category || 'task';
       const tags = [...(processed?.tags || []), 'olive-draft'];
 
+      // Artifact content goes into items (details section) for easy copy/paste
+      // original_text keeps only the user's request for context
+      const artifactLines = content
+        .split('\n')
+        .map((l: string) => l.trim())
+        .filter((l: string) => l.length > 0);
+
       const { error: insertError } = await supabase
         .from('clerk_notes')
         .insert({
           author_id: user.id,
           couple_id: currentCouple?.id || null,
-          original_text: `${userPrompt}\n\n---\n\n${content}`.substring(0, 5000),
+          original_text: (userPrompt || 'Saved from Olive chat').substring(0, 2000),
           summary: title,
           category,
           priority: processed?.priority || 'medium',
           tags,
-          items: processed?.items || [],
+          items: artifactLines.length > 0 ? artifactLines : (processed?.items || []),
           completed: false,
           source: 'olive-chat',
         });
