@@ -16,7 +16,8 @@ import { OliveAutomationHub } from "@/components/settings/OliveAutomationHub";
 import { DefaultPrivacyCard } from "@/components/settings/DefaultPrivacyCard";
 import { ExpensePreferencesCard } from "@/components/settings/ExpensePreferencesCard";
 import { CollapsibleSection } from "@/components/settings/CollapsibleSection";
-import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot, Mail, Fingerprint, Wallet } from "lucide-react";
+import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot, Mail, Fingerprint, Wallet, HelpCircle } from "lucide-react";
+import { HelpFAQSection } from "@/components/settings/HelpFAQSection";
 import { PasskeySettingsCard } from "@/components/settings/PasskeySettingsCard";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
@@ -247,6 +248,23 @@ const Profile = () => {
             subtitle={t('profile:export.subtitle')}
           >
             <DataExport />
+          </SettingsCard>
+        </CollapsibleSection>
+
+        {/* SECTION: Help & FAQ */}
+        <CollapsibleSection 
+          title={t('profile:sections.help', 'Help & FAQ')}
+          icon={<HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />}
+          delay={175}
+          sectionId="help"
+        >
+          <SettingsCard
+            icon={<HelpCircle className="h-5 w-5 text-primary" />}
+            iconBg="bg-primary/10"
+            title={t('profile:help.faq', 'Frequently Asked Questions')}
+            subtitle={t('profile:help.faqDesc', 'Find answers to common questions about Olive.')}
+          >
+            <HelpFAQSection />
           </SettingsCard>
         </CollapsibleSection>
 

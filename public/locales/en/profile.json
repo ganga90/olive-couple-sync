@@ -20,6 +20,7 @@
     "identity": "My Profile & Household",
     "intelligence": "Olive's Intelligence",
     "integrations": "Connected Apps",
+    "help": "Help & FAQ",
     "system": "System"
   },
   "regional": {
@@ -247,7 +248,10 @@
     "contact": "Contact Support",
     "contactDesc": "Need help? Reach out to our support team.",
     "feedback": "Send Feedback",
-    "feedbackDesc": "We love hearing from you! Share your ideas."
+    "feedbackDesc": "We love hearing from you! Share your ideas.",
+    "searchPlaceholder": "Search help articles...",
+    "noResults": "No articles found. Try a different search or ask Olive directly!",
+    "askOliveHint": "Can't find what you need? Ask Olive in the chat or on WhatsApp!"
   },
   "export": {
     "title": "Export Your Data",
