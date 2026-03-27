@@ -549,23 +549,33 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
       const tags = [...(processed?.tags || []), 'olive-draft'];
 
       // Artifact content goes into items (details section) for easy copy/paste
-      // original_text keeps only the user's request for context
+      // original_text keeps ONLY the user's request for context — NOT the AI output
       const artifactLines = content
         .split('\n')
         .map((l: string) => l.trim())
         .filter((l: string) => l.length > 0);
+
+      const userRequest = (userPrompt || 'Saved from Olive chat').substring(0, 2000);
+      const detailItems = artifactLines.length > 0 ? artifactLines : [content.substring(0, 4000)];
+
+      console.log('[SaveAsNote] Saving artifact:', {
+        originalTextLength: userRequest.length,
+        itemsCount: detailItems.length,
+        title,
+        category,
+      });
 
       const { error: insertError } = await supabase
         .from('clerk_notes')
         .insert({
           author_id: user.id,
           couple_id: currentCouple?.id || null,
-          original_text: (userPrompt || 'Saved from Olive chat').substring(0, 2000),
+          original_text: userRequest,
           summary: title,
           category,
           priority: processed?.priority || 'medium',
           tags,
-          items: artifactLines.length > 0 ? artifactLines : (processed?.items || []),
+          items: detailItems,
           completed: false,
           source: 'olive-chat',
         });

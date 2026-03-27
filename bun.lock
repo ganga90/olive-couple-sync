@@ -114,7 +114,7 @@
 
     "@capacitor/core": ["@capacitor/core@7.4.3", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-wCWr8fQ9Wxn0466vPg7nMn0tivbNVjNy1yL4GvDSIZuZx7UpU2HeVGNe9QjN/quEd+YLRFeKEBLBw619VqUiNg=="],
 
-    "@capacitor/haptics": ["@capacitor/haptics@8.0.1", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@capacitor/haptics/-/haptics-8.0.1.tgz", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-8v8rowLBMeb3CryqoQvXndwyUsoi4pPXf0qFw7IGA4D32Uk7+K6juN2SjRowqunoovkvvbFmU9TD7JIAz2zmFw=="],
+    "@capacitor/haptics": ["@capacitor/haptics@8.0.1", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@capacitor/haptics/-/haptics-8.0.1.tgz", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-8v8rowLBMeb3CryqoQvXndwyUsoi4pPXf0qFw7IGA4D32Uk7+K6juN2SjRowqunoovkvvbFmU9TD7JIAz2zmFw=="],
 
     "@capacitor/ios": ["@capacitor/ios@7.4.3", "", { "peerDependencies": { "@capacitor/core": "^7.4.0" } }, "sha512-VNm7cHODgh3KK/4ZC2rXU9gBlvHii/mYFLI+XMXwq24nhB679QxHhz+pUuI7PatYoM2q4MAL0NR/dRgehKCaSA=="],
 
