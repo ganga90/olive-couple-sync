@@ -3547,7 +3547,24 @@ Description: "${parsedExpense.description}"`;
       }
     }
 
-    // If AI classified as CREATE but conversation history shows Olive just
+    // ========================================================================
+    // POST-CLASSIFICATION SAFETY NET #1.6: Help/How-to about Olive features
+    // If the user is asking HOW to use Olive (not asking Olive to DO something),
+    // override to CHAT with chatType 'help_about_olive' for contextual help.
+    // ========================================================================
+    if (messageBody && !['SAVE_ARTIFACT'].includes(intentResult.intent)) {
+      const msgLower = messageBody.toLowerCase();
+      const isOliveHelpQuestion = /\b(how\s+(?:do\s+i|can\s+i|to)\s+(?:use|connect|invite|create|add|set|change|export|link|share|assign|delete|complete|track|sync|make|find|search|configure|setup|manage|enable|disable)|come\s+(?:faccio|posso|si\s+fa)\s+(?:a|per)\s+|como\s+(?:hago|puedo|se\s+hace)\s+(?:para|a)\s+|what\s+(?:is|are|does|can)\s+(?:olive|my\s+day|background\s+agents?|lists?|memories|skills|shortcuts)|che\s+cos[''']?[èe]\s+|qué\s+(?:es|son|hace)\s+|how\s+does\s+(?:olive|the\s+(?:app|calendar|expense|whatsapp|sharing|privacy|reminder|list)))\b/i.test(msgLower);
+      
+      // Also catch direct feature questions
+      const isFeatureQuestion = /\b(how\s+(?:do|does|can)\s+(?:i|olive|it|this|the)\b.{0,40}\b(?:work|function|operate)|what\s+(?:features?|can\s+olive|commands?|shortcuts?)|show\s+me\s+(?:how|what)|explain\s+(?:how|what)|tell\s+me\s+(?:how|about)\s+(?:olive|the\s+app|features?))\b/i.test(msgLower);
+      
+      if (isOliveHelpQuestion || isFeatureQuestion) {
+        console.log(`[SafetyNet#1.6] Overriding ${intentResult.intent} → CHAT (help_about_olive) — user asking about Olive features`);
+        intentResult = { ...intentResult, intent: 'CHAT', chatType: 'help_about_olive' } as any;
+      }
+    }
+
     // answered a contextual_ask or web_search, and the message looks like a
     // follow-up question/clarification, override to the appropriate intent.
     // ========================================================================
