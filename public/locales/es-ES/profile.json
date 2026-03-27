@@ -248,7 +248,10 @@
     "contact": "Contactar Soporte",
     "contactDesc": "¿Necesitas ayuda? Contacta con nuestro equipo.",
     "feedback": "Enviar Comentarios",
-    "feedbackDesc": "¡Nos encanta escucharte! Comparte tus ideas."
+    "feedbackDesc": "¡Nos encanta escucharte! Comparte tus ideas.",
+    "searchPlaceholder": "Buscar artículos de ayuda...",
+    "noResults": "No se encontraron artículos. ¡Prueba otra búsqueda o pregúntale a Olive directamente!",
+    "askOliveHint": "¿No encuentras lo que necesitas? ¡Pregúntale a Olive en el chat o en WhatsApp!"
   },
   "export": {
     "title": "Exportar Tus Datos",
