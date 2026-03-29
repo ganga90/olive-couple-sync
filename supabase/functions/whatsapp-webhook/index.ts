@@ -5437,21 +5437,37 @@ Respond with exactly two lines starting with SEARCH_QUERY: and USER_QUESTION:`,
           return reply('🔍 I couldn\'t find relevant results. Try rephrasing your search.');
         }
 
+        // Fetch personal context to blend into web search results
+        let personalContext = '';
+        try {
+          const { data: userMems } = await supabase
+            .from('user_memories')
+            .select('title, content, category')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .order('importance', { ascending: false })
+            .limit(10);
+          if (userMems && userMems.length > 0) {
+            personalContext = `\nUSER'S PERSONAL CONTEXT (weave in naturally if relevant):\n${userMems.map(m => `- [${m.category}] ${m.title}: ${m.content}`).join('\n')}\n`;
+          }
+        } catch (_) { /* non-blocking */ }
+
         // Use AI to format the Perplexity result for WhatsApp  
         const ctxLangName = LANG_NAMES[userLang] || LANG_NAMES[userLang.split('-')[0]] || 'English';
         let formattedResponse: string;
         try {
           formattedResponse = await callAI(
-            `You are Olive, a friendly AI assistant. The user asked a SPECIFIC question. Answer THAT question directly using the search results below. Format for WhatsApp (max 1200 chars). Be warm but concise. Only include details that answer the question. If links are relevant to the answer, include them.${ctxLangName !== 'English' ? `\n\nIMPORTANT: Respond entirely in ${ctxLangName}.` : ''}
+            `You are Olive, a world-class AI assistant — like a brilliant friend who knows the world AND the user's life. The user asked a question. Answer it comprehensively using the search results, and if any personal context is relevant, weave it in naturally. Format for WhatsApp (max 1200 chars). Be warm, specific, and genuinely helpful. Use emojis sparingly 🫒${ctxLangName !== 'English' ? `\n\nIMPORTANT: Respond entirely in ${ctxLangName}.` : ''}
 
-USER'S SPECIFIC QUESTION: ${userQuestion}
-
+USER'S QUESTION: ${userQuestion}
+${savedItemContext}
+${personalContext}
 WEB SEARCH RESULTS:
 ${searchResult}
 
 ${citations.length > 0 ? 'SOURCES:\n' + citations.map((c: string, i: number) => `[${i+1}] ${c}`).join('\n') : ''}
 
-Format a helpful, concise WhatsApp response with the key information and links:`,
+Answer the question thoroughly, then briefly mention any relevant personal connections. End with "Want me to save this?" if the response contains useful recommendations.`,
             searchResult,
             0.5,
             'lite'

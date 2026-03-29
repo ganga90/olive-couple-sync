@@ -120,10 +120,12 @@ function detectIntent(message: string, conversationHistory: Array<{ role: string
     return { type: 'help', confidence: 0.9 };
   }
 
-  // Web search signals — user wants external info
-  if (/\b(search|google|look\s*up|find\s+(?:me|us)?\s*(?:a|the|some)?|best\s+(?:restaurants?|hotels?|places?|things?|cities|towns|activities|spots|bars?|cafes?|shops?)|top\s+\d+|recommend\s+(?:a|some)|what\s+(?:are|is)\s+the\s+best|where\s+(?:can|should)\s+(?:I|we)|reviews?\s+(?:for|of)|directions?\s+to|near\s+(?:me|us|here)|what's\s+(?:the\s+)?(?:weather|news|price|cost|time\s+(?:in|at)))\b/i.test(lower) &&
+  // Web search signals — user wants external info OR general knowledge
+  if ((/\b(search|google|look\s*up|find\s+(?:me|us)?\s*(?:a|the|some)?|best\s+(?:restaurants?|hotels?|places?|things?|cities|towns|activities|spots?|bars?|cafes?|shops?|neighborhoods?|beaches?|parks?|museums?|attractions?|destinations?)|top\s+\d+|recommend\s+(?:a|some|me)|what\s+(?:are|is)\s+the\s+(?:best|top|most|greatest|popular|famous|nicest)|where\s+(?:can|should)\s+(?:I|we)\s+(?:go|visit|eat|stay|travel)|reviews?\s+(?:for|of)|directions?\s+to|near\s+(?:me|us|here)|what's\s+(?:the\s+)?(?:weather|news|price|cost|time\s+(?:in|at))|what\s+(?:should|can|do)\s+(?:i|we)\s+(?:do|see|visit|try|eat|cook|watch|read|buy)\s+(?:in|at|near|around|for)|good\s+(?:places?|things?|restaurants?|cities|spots?|ideas?|activities)\s+(?:in|at|near|around|for|to))\b/i.test(lower) ||
+      // General knowledge "what are" / "how much" patterns
+      /\b(what\s+(?:are|is)\s+(?:the\s+)?(?:best|top|main|biggest|famous|popular|capital|most)|how\s+(?:much|many|far|long)\s+(?:does|do|is|are)\b)/i.test(lower)) &&
       !/\b(my\s+(?:tasks?|notes?|lists?|items?|saved|data))\b/i.test(lower)) {
-    return { type: 'web_search', confidence: 0.8 };
+    return { type: 'web_search', confidence: 0.85 };
   }
 
   // Contextual ask — questions about user's saved data
