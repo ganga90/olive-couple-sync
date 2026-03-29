@@ -120,10 +120,12 @@ function detectIntent(message: string, conversationHistory: Array<{ role: string
     return { type: 'help', confidence: 0.9 };
   }
 
-  // Web search signals — user wants external info
-  if (/\b(search|google|look\s*up|find\s+(?:me|us)?\s*(?:a|the|some)?|best\s+(?:restaurants?|hotels?|places?|things?|cities|towns|activities|spots|bars?|cafes?|shops?)|top\s+\d+|recommend\s+(?:a|some)|what\s+(?:are|is)\s+the\s+best|where\s+(?:can|should)\s+(?:I|we)|reviews?\s+(?:for|of)|directions?\s+to|near\s+(?:me|us|here)|what's\s+(?:the\s+)?(?:weather|news|price|cost|time\s+(?:in|at)))\b/i.test(lower) &&
+  // Web search signals — user wants external info OR general knowledge
+  if ((/\b(search|google|look\s*up|find\s+(?:me|us)?\s*(?:a|the|some)?|best\s+(?:restaurants?|hotels?|places?|things?|cities|towns|activities|spots?|bars?|cafes?|shops?|neighborhoods?|beaches?|parks?|museums?|attractions?|destinations?)|top\s+\d+|recommend\s+(?:a|some|me)|what\s+(?:are|is)\s+the\s+(?:best|top|most|greatest|popular|famous|nicest)|where\s+(?:can|should)\s+(?:I|we)\s+(?:go|visit|eat|stay|travel)|reviews?\s+(?:for|of)|directions?\s+to|near\s+(?:me|us|here)|what's\s+(?:the\s+)?(?:weather|news|price|cost|time\s+(?:in|at))|what\s+(?:should|can|do)\s+(?:i|we)\s+(?:do|see|visit|try|eat|cook|watch|read|buy)\s+(?:in|at|near|around|for)|good\s+(?:places?|things?|restaurants?|cities|spots?|ideas?|activities)\s+(?:in|at|near|around|for|to))\b/i.test(lower) ||
+      // General knowledge "what are" / "how much" patterns
+      /\b(what\s+(?:are|is)\s+(?:the\s+)?(?:best|top|main|biggest|famous|popular|capital|most)|how\s+(?:much|many|far|long)\s+(?:does|do|is|are)\b)/i.test(lower)) &&
       !/\b(my\s+(?:tasks?|notes?|lists?|items?|saved|data))\b/i.test(lower)) {
-    return { type: 'web_search', confidence: 0.8 };
+    return { type: 'web_search', confidence: 0.85 };
   }
 
   // Contextual ask — questions about user's saved data
@@ -569,15 +571,23 @@ serve(async (req) => {
         return streamGeminiResponse(OLIVE_CHAT_PROMPT, fullContext, route.responseTier);
       }
 
-      // Stream Gemini formatting of the search results
+      // Stream Gemini formatting of the search results + personal context
       const citationsList = searchResult.citations.length > 0
         ? '\n\nSOURCES:\n' + searchResult.citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join('\n')
         : '';
 
-      const searchContext = `${WEB_SEARCH_FORMAT_PROMPT}
+      const searchContext = `You are Olive, a world-class AI assistant — like a brilliant friend who knows the world AND the user's life.
+
+CRITICAL INSTRUCTIONS:
+1. Lead with a comprehensive, expert answer using the WEB SEARCH RESULTS.
+2. If relevant personal context exists (memories, saved items), WEAVE IT IN naturally.
+3. Be specific, helpful, and thorough. Give real recommendations with details.
+4. Use markdown formatting (bold, bullets, numbered lists).
+5. After substantial content, suggest saving it: "Want me to save this to your notes?"
 
 ${serverCtx.profile}
 ${serverCtx.memories}
+${serverCtx.deepProfile}
 
 USER'S QUESTION: ${message}
 
@@ -587,21 +597,53 @@ ${citationsList}
 
 ${context?.user_name ? `User's name: ${context.user_name}` : ''}
 
-Provide a helpful, well-formatted response with the key information. Include relevant links. Use markdown formatting.`;
+Answer comprehensively using web knowledge, then naturally connect to any relevant personal context.`;
 
       const historyCtx = conversationHistory.length > 0
         ? '\n\nCONVERSATION HISTORY:\n' + conversationHistory.map(m => `${m.role}: ${m.content}`).join('\n')
         : '';
 
-      return streamGeminiResponse(WEB_SEARCH_FORMAT_PROMPT, searchContext + historyCtx, 'standard');
+      return streamGeminiResponse(searchContext, searchContext + historyCtx, 'standard');
     }
 
     // ── CONTEXTUAL ASK ────────────────────────────────────────────
     if (detected.type === 'contextual_ask') {
       const serverCtx = await serverCtxPromise;
 
-      const ctxAskContent = `${CONTEXTUAL_ASK_PROMPT}
+      // Check if this is also a general knowledge question that needs web augmentation
+      const msgLower = message.toLowerCase();
+      const isGeneralKnowledge = (
+        /\b(what\s+(?:are|is)\s+the\s+(?:best|top|most|greatest|popular|famous)|best\s+(?:cities|restaurants?|hotels?|places?|things?|activities|spots?)|top\s+\d+|recommend\s+(?:a|some)|where\s+(?:should|can)\s+(?:i|we)\s+(?:go|visit|eat|stay))\b/i.test(msgLower) ||
+        /\b(what\s+(?:should|can|do)\s+(?:i|we)\s+(?:do|see|visit|try|eat)\s+(?:in|at|near|for))\b/i.test(msgLower)
+      ) && !/\b(my\s+(?:tasks?|notes?|lists?|saved))\b/i.test(msgLower);
 
+      let webSearchContext = '';
+      if (isGeneralKnowledge) {
+        console.log('[ask-olive-stream] Contextual ask is general knowledge — adding Perplexity');
+        const searchResult = await performWebSearch(message, conversationHistory);
+        if (searchResult.content) {
+          webSearchContext = `\n## WEB SEARCH RESULTS (authoritative external knowledge):\n${searchResult.content}\n`;
+          if (searchResult.citations.length > 0) {
+            webSearchContext += `\nSources: ${searchResult.citations.slice(0, 3).join(', ')}\n`;
+          }
+        }
+      }
+
+      const isHybrid = webSearchContext.length > 0;
+      const hybridPrompt = isHybrid
+        ? `You are Olive, a world-class AI assistant — like a brilliant friend who knows the world AND the user's life.
+
+CRITICAL INSTRUCTIONS:
+1. Lead with a comprehensive, expert answer using the WEB SEARCH RESULTS.
+2. Then WEAVE IN any relevant personal context (saved items, calendar) naturally.
+3. Be specific, helpful, thorough — use markdown formatting.
+4. After substantial content, suggest: "Want me to save this to your notes?"
+`
+        : CONTEXTUAL_ASK_PROMPT;
+
+      const ctxAskContent = `${hybridPrompt}
+
+${webSearchContext}
 ${serverCtx.savedItems}
 ${serverCtx.calendar}
 ${serverCtx.memories}
@@ -616,9 +658,9 @@ ${context?.user_name ? `User's name: ${context.user_name}` : ''}
 
 USER'S QUESTION: ${message}
 
-Respond with helpful, specific information extracted from their saved data.`;
+${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect to personal context.' : 'Respond with helpful, specific information extracted from their saved data.'}`;
 
-      return streamGeminiResponse(CONTEXTUAL_ASK_PROMPT, ctxAskContent, route.responseTier);
+      return streamGeminiResponse(hybridPrompt, ctxAskContent, isHybrid ? 'standard' : route.responseTier);
     }
 
     // ── CHAT / ASSISTANT / HELP ───────────────────────────────────
