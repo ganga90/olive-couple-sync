@@ -5202,7 +5202,83 @@ Description: "${parsedExpense.description}"`;
 
       const entityContext = '';
 
-      let systemPrompt = `You are Olive, a friendly and intelligent AI assistant for the Olive app. The user is asking a question about their saved items, calendar, or personal data.
+      // ── HYBRID DETECTION: Is this a general knowledge question? ──
+      // If so, supplement with Perplexity web search results
+      const msgLowerForHybrid = (effectiveMessage || '').toLowerCase();
+      const isGeneralKnowledgeQ = (
+        // "What are the best X" patterns
+        /\b(what\s+(?:are|is)\s+the\s+(?:best|top|most|greatest|nicest|popular|famous|recommended)|best\s+(?:cities|restaurants?|hotels?|places?|things?|activities|spots?|bars?|cafes?|neighborhoods?|beaches?|parks?|museums?|shops?|attractions?|destinations?)|top\s+\d+|recommend\s+(?:a|some|me)|where\s+(?:should|can|do)\s+(?:i|we)\s+(?:go|visit|eat|stay|travel|explore)|what\s+(?:should|can|do)\s+(?:i|we)\s+(?:do|see|visit|try|eat|cook|watch|read|buy)\s+(?:in|at|near|around|for))\b/i.test(msgLowerForHybrid) ||
+        // General factual questions not about "my" data
+        /\b(how\s+(?:much|many|far|long|old|big|tall|deep|wide)\s+(?:is|are|does|do|did|was|were)\s+(?:the|a|an|it)?|what\s+(?:is|are|was|were)\s+(?:the\s+)?(?:capital|population|currency|language|weather|temperature|distance|cost|price|height|meaning|definition|history|origin|difference))\b/i.test(msgLowerForHybrid) ||
+        // Recommendation/opinion questions (not about saved data)
+        (/\b(good|great|nice|cool|fun|interesting|amazing)\s+(?:places?|things?|restaurants?|cities|spots?|ideas?|activities)\b/i.test(msgLowerForHybrid) && !/\b(my|saved|list|tasks?|notes?)\b/i.test(msgLowerForHybrid))
+      );
+
+      let webSearchContext = '';
+      if (isGeneralKnowledgeQ) {
+        console.log('[CONTEXTUAL_ASK] General knowledge detected — augmenting with Perplexity');
+        try {
+          const PERPLEXITY_KEY = Deno.env.get('OLIVE_PERPLEXITY');
+          if (PERPLEXITY_KEY) {
+            const perplexityRes = await fetch('https://api.perplexity.ai/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${PERPLEXITY_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'sonar',
+                messages: [
+                  { role: 'system', content: 'Be precise and comprehensive. Give actionable, specific answers with details.' },
+                  { role: 'user', content: effectiveMessage || '' }
+                ],
+                temperature: 0.2,
+              }),
+            });
+            if (perplexityRes.ok) {
+              const pData = await perplexityRes.json();
+              const searchResult = pData.choices?.[0]?.message?.content || '';
+              const citations = pData.citations || [];
+              if (searchResult) {
+                webSearchContext = `\n## WEB SEARCH RESULTS (authoritative external knowledge):\n${searchResult}\n`;
+                if (citations.length > 0) {
+                  webSearchContext += `\nSources: ${citations.slice(0, 3).join(', ')}\n`;
+                }
+              }
+              console.log('[CONTEXTUAL_ASK] Perplexity augmentation successful, length:', searchResult.length);
+            }
+          }
+        } catch (searchErr) {
+          console.warn('[CONTEXTUAL_ASK] Perplexity augmentation failed (non-blocking):', searchErr);
+        }
+      }
+
+      // Build system prompt — HYBRID when web search context is available
+      const isHybridResponse = webSearchContext.length > 0;
+      let systemPrompt = isHybridResponse
+        ? `You are Olive, a world-class AI assistant — like a brilliant friend who knows the world AND the user's life. The user asked a general knowledge question.
+
+CRITICAL INSTRUCTIONS:
+1. Lead with a comprehensive, knowledgeable answer using the WEB SEARCH RESULTS — be the expert. Give real, specific recommendations.
+2. Then, if relevant personal context exists in their saved data, WEAVE IT IN naturally (e.g., "I also noticed you have X saved..." or "By the way, you already have plans for Y...").
+3. The answer should feel like talking to a brilliant friend who knows the world AND knows your life.
+4. Be specific, helpful, and thorough. Give real recommendations with details.
+5. Use emojis sparingly for warmth 🫒
+6. Max 1200 chars for WhatsApp. Prioritize the most useful information.
+7. If you mention sources, keep it brief.
+
+${webSearchContext}
+${savedItemsContext}
+${calendarContext}
+${memoryContext}
+${ctxAskMemoryFileContext}
+${agentInsightsContext}
+${conversationHistoryContext}
+
+USER'S QUESTION: ${effectiveMessage}
+
+Answer comprehensively using web knowledge, then naturally connect to any relevant personal context.`
+        : `You are Olive, a friendly and intelligent AI assistant for the Olive app. The user is asking a question about their saved items, calendar, or personal data.
 
 CRITICAL INSTRUCTIONS:
 1. You MUST answer based on the user's actual saved data provided below — including the "Full details" field which contains rich information like addresses, flight arrival/departure times, booking references, ingredients, etc.
@@ -5212,8 +5288,8 @@ CRITICAL INSTRUCTIONS:
 5. If you can't find what they're looking for in their data, say so clearly.
 6. Be concise (max 500 chars for WhatsApp) but include all key details the user asked for.
 7. Use emojis sparingly for warmth.
-8. When mentioning dates, always include the day of the week and time if available (e.g. "Friday, February 20th at 12:00 PM").
-9. When the user uses pronouns like "it", "that", "this task", refer to the RECENT CONVERSATION section to understand what they mean.
+8. When mentioning dates, always include the day of the week and time if available.
+9. When the user uses pronouns like "it", "that", "this task", refer to the RECENT CONVERSATION section.
 10. Check CALENDAR EVENTS when questions involve timing, scheduling, or "when" questions.
 
 ${savedItemsContext}
@@ -5226,7 +5302,7 @@ ${entityContext}
 
 USER'S QUESTION: ${effectiveMessage}
 
-Respond with helpful, specific information extracted from their saved data. Answer the EXACT question asked — don't just describe what you found, give the precise answer.`;
+Respond with helpful, specific information extracted from their saved data. Answer the EXACT question asked.`;
 
       // Inject language instruction
       const ctxLangName = LANG_NAMES[userLang] || LANG_NAMES[userLang.split('-')[0]] || 'English';
@@ -5235,12 +5311,12 @@ Respond with helpful, specific information extracted from their saved data. Answ
       }
 
       try {
-        // Dynamic model selection — standard for most contextual asks
         let response: string;
+        const effectiveTier = isHybridResponse ? 'standard' : route.responseTier;
         try {
-          response = await callAI(systemPrompt, effectiveMessage || '', 0.7, route.responseTier);
+          response = await callAI(systemPrompt, effectiveMessage || '', 0.7, effectiveTier);
         } catch (escalationErr) {
-          if (route.responseTier === 'pro') {
+          if (effectiveTier === 'pro') {
             console.warn('[Router] Pro failed for CONTEXTUAL_ASK, falling back to standard:', escalationErr);
             response = await callAI(systemPrompt, effectiveMessage || '', 0.7, 'standard');
           } else {
@@ -5248,12 +5324,11 @@ Respond with helpful, specific information extracted from their saved data. Answ
           }
         }
 
-        // Store conversation context: identify which task/event was discussed
+        // Store conversation context
         try {
           const questionLower = (effectiveMessage || '').toLowerCase();
           const matchingTask = allTasks?.find(task => {
             const summaryLower = task.summary.toLowerCase();
-            // Check if the question contains significant words from the task summary
             const taskWords = summaryLower.split(/\s+/).filter((w: string) => w.length > 3);
             const matchCount = taskWords.filter((w: string) => questionLower.includes(w)).length;
             return matchCount >= Math.min(2, taskWords.length) ||
