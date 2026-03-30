@@ -5324,7 +5324,7 @@ Respond with helpful, specific information extracted from their saved data. Answ
           }
         }
 
-        // Store conversation context
+        // Store conversation context + artifact for "save this" follow-ups
         try {
           const questionLower = (effectiveMessage || '').toLowerCase();
           const matchingTask = allTasks?.find(task => {
@@ -5336,6 +5336,22 @@ Respond with helpful, specific information extracted from their saved data. Answ
           });
 
           await saveReferencedEntity(matchingTask || null, response);
+          
+          // Store output so user can "save this" later
+          const currentCtxCA = (session.context_data || {}) as ConversationContext;
+          await supabase
+            .from('user_sessions')
+            .update({
+              context_data: {
+                ...currentCtxCA,
+                last_assistant_output: response.substring(0, 4000),
+                last_assistant_output_at: new Date().toISOString(),
+                last_assistant_request: (effectiveMessage || '').substring(0, 500),
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+          console.log('[CONTEXTUAL_ASK] Stored output for save-artifact follow-up');
         } catch (ctxErr) {
           console.warn('[Context] Error saving context after CONTEXTUAL_ASK:', ctxErr);
         }
