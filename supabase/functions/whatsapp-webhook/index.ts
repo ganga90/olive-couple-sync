@@ -5324,7 +5324,7 @@ Respond with helpful, specific information extracted from their saved data. Answ
           }
         }
 
-        // Store conversation context
+        // Store conversation context + artifact for "save this" follow-ups
         try {
           const questionLower = (effectiveMessage || '').toLowerCase();
           const matchingTask = allTasks?.find(task => {
@@ -5336,6 +5336,22 @@ Respond with helpful, specific information extracted from their saved data. Answ
           });
 
           await saveReferencedEntity(matchingTask || null, response);
+          
+          // Store output so user can "save this" later
+          const currentCtxCA = (session.context_data || {}) as ConversationContext;
+          await supabase
+            .from('user_sessions')
+            .update({
+              context_data: {
+                ...currentCtxCA,
+                last_assistant_output: response.substring(0, 4000),
+                last_assistant_output_at: new Date().toISOString(),
+                last_assistant_request: (effectiveMessage || '').substring(0, 500),
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+          console.log('[CONTEXTUAL_ASK] Stored output for save-artifact follow-up');
         } catch (ctxErr) {
           console.warn('[Context] Error saving context after CONTEXTUAL_ASK:', ctxErr);
         }
@@ -5555,9 +5571,25 @@ Answer the question thoroughly, then briefly mention any relevant personal conne
           }
         }
 
-        // Save conversation context
+        // Save conversation context + artifact for "save this" follow-ups
         try {
           await saveReferencedEntity(null, formattedResponse);
+          
+          // Store output so user can "save this" later
+          const currentCtxWS = (session.context_data || {}) as ConversationContext;
+          await supabase
+            .from('user_sessions')
+            .update({
+              context_data: {
+                ...currentCtxWS,
+                last_assistant_output: formattedResponse.substring(0, 4000),
+                last_assistant_output_at: new Date().toISOString(),
+                last_assistant_request: (effectiveMessage || '').substring(0, 500),
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+          console.log('[WEB_SEARCH] Stored output for save-artifact follow-up');
         } catch (ctxErr) {
           console.warn('[Context] Error saving context after WEB_SEARCH:', ctxErr);
         }
@@ -6454,26 +6486,24 @@ If the user's message is long and conversational — asking for help with someth
         // For assistant-type responses, also store the full output for "save this" follow-ups
         await saveReferencedEntity(null, chatResponse);
         
-        if (chatType === 'assistant') {
-          try {
-            const currentCtx = (session.context_data || {}) as ConversationContext;
-            await supabase
-              .from('user_sessions')
-              .update({
-                context_data: {
-                  ...currentCtx,
-                  // Refresh conversation_history (saveReferencedEntity already updated it)
-                  last_assistant_output: chatResponse.substring(0, 4000),
-                  last_assistant_output_at: new Date().toISOString(),
-                  last_assistant_request: (effectiveMessage || '').substring(0, 500),
-                },
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', session.id);
-            console.log('[CHAT/assistant] Stored assistant output for save-artifact follow-up');
-          } catch (storeErr) {
-            console.warn('[CHAT/assistant] Failed to store output (non-blocking):', storeErr);
-          }
+        // Store output for ALL chat types so user can "save this" later
+        try {
+          const currentCtx = (session.context_data || {}) as ConversationContext;
+          await supabase
+            .from('user_sessions')
+            .update({
+              context_data: {
+                ...currentCtx,
+                last_assistant_output: chatResponse.substring(0, 4000),
+                last_assistant_output_at: new Date().toISOString(),
+                last_assistant_request: (effectiveMessage || '').substring(0, 500),
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+          console.log(`[CHAT/${chatType}] Stored output for save-artifact follow-up`);
+        } catch (storeErr) {
+          console.warn(`[CHAT/${chatType}] Failed to store output (non-blocking):`, storeErr);
         }
 
         // Auto-evolve profile from conversation (non-blocking, fire-and-forget)
@@ -6946,12 +6976,12 @@ If the user's message is long and conversational — asking for help with someth
         // Use AI to generate a proper title and category for the artifact
         const classifyResult = await callAI(
           `You classify saved content into a structured note. Given the user's original request and the AI-produced content, return JSON with:
-- "title": A concise title (max 8 words) that captures what this artifact IS (e.g., "Email draft to boss about vacation", "Trip plan for Rome", "Gift ideas for Sara's birthday")
+- "title": A concise, descriptive title (max 8 words) that captures the TOPIC of the content. NEVER use generic titles like "Save Note", "Saved Draft", "Note". Instead describe what the content is ABOUT. Examples: "Best Cities to Visit in Italy", "Email Draft to Boss About Vacation", "Gift Ideas for Sara's Birthday", "Weekly Meal Plan", "Trip Itinerary for Rome"
 - "category": One of: task, work, personal, travel, finance, health, shopping, entertainment, recipes, general
 - "tags": Array of 1-3 relevant tags
 
 Return ONLY valid JSON, no markdown.`,
-          `USER REQUEST: "${artifactRequest.substring(0, 300)}"\n\nARTIFACT CONTENT:\n${artifactContent.substring(0, 1000)}`,
+          `USER REQUEST: "${artifactRequest.substring(0, 500)}"\n\nFULL ARTIFACT CONTENT:\n${artifactContent.substring(0, 2000)}`,
           0.1,
           'lite'
         );
@@ -6962,13 +6992,21 @@ Return ONLY valid JSON, no markdown.`,
         
         try {
           const parsed = JSON.parse(classifyResult.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
-          title = parsed.title || title;
+          // Reject generic/useless titles
+          const genericTitles = /^(save\s*note|saved?\s*draft|note|task|untitled|n\/a)$/i;
+          title = (parsed.title && !genericTitles.test(parsed.title.trim())) ? parsed.title : title;
           category = parsed.category || category;
           tags = [...(parsed.tags || []), 'olive-draft'];
         } catch {
           // Fallback: extract first line as title
           const firstLine = artifactContent.split('\n')[0]?.replace(/[*#]/g, '').trim();
           if (firstLine && firstLine.length < 80) title = firstLine;
+        }
+        
+        // Final fallback: derive title from user request if still generic
+        if (/^saved?\s*draft$/i.test(title) && artifactRequest) {
+          const requestTitle = artifactRequest.replace(/^(can you |please |help me |tell me |what are )/i, '').substring(0, 60).trim();
+          if (requestTitle.length > 5) title = requestTitle.charAt(0).toUpperCase() + requestTitle.slice(1);
         }
         
         // Build note data — artifact goes into items (details section) for easy copy/paste
