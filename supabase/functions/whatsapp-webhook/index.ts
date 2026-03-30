@@ -6976,12 +6976,12 @@ If the user's message is long and conversational — asking for help with someth
         // Use AI to generate a proper title and category for the artifact
         const classifyResult = await callAI(
           `You classify saved content into a structured note. Given the user's original request and the AI-produced content, return JSON with:
-- "title": A concise title (max 8 words) that captures what this artifact IS (e.g., "Email draft to boss about vacation", "Trip plan for Rome", "Gift ideas for Sara's birthday")
+- "title": A concise, descriptive title (max 8 words) that captures the TOPIC of the content. NEVER use generic titles like "Save Note", "Saved Draft", "Note". Instead describe what the content is ABOUT. Examples: "Best Cities to Visit in Italy", "Email Draft to Boss About Vacation", "Gift Ideas for Sara's Birthday", "Weekly Meal Plan", "Trip Itinerary for Rome"
 - "category": One of: task, work, personal, travel, finance, health, shopping, entertainment, recipes, general
 - "tags": Array of 1-3 relevant tags
 
 Return ONLY valid JSON, no markdown.`,
-          `USER REQUEST: "${artifactRequest.substring(0, 300)}"\n\nARTIFACT CONTENT:\n${artifactContent.substring(0, 1000)}`,
+          `USER REQUEST: "${artifactRequest.substring(0, 500)}"\n\nFULL ARTIFACT CONTENT:\n${artifactContent.substring(0, 2000)}`,
           0.1,
           'lite'
         );
