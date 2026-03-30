@@ -6992,13 +6992,21 @@ Return ONLY valid JSON, no markdown.`,
         
         try {
           const parsed = JSON.parse(classifyResult.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
-          title = parsed.title || title;
+          // Reject generic/useless titles
+          const genericTitles = /^(save\s*note|saved?\s*draft|note|task|untitled|n\/a)$/i;
+          title = (parsed.title && !genericTitles.test(parsed.title.trim())) ? parsed.title : title;
           category = parsed.category || category;
           tags = [...(parsed.tags || []), 'olive-draft'];
         } catch {
           // Fallback: extract first line as title
           const firstLine = artifactContent.split('\n')[0]?.replace(/[*#]/g, '').trim();
           if (firstLine && firstLine.length < 80) title = firstLine;
+        }
+        
+        // Final fallback: derive title from user request if still generic
+        if (/^saved?\s*draft$/i.test(title) && artifactRequest) {
+          const requestTitle = artifactRequest.replace(/^(can you |please |help me |tell me |what are )/i, '').substring(0, 60).trim();
+          if (requestTitle.length > 5) title = requestTitle.charAt(0).toUpperCase() + requestTitle.slice(1);
         }
         
         // Build note data — artifact goes into items (details section) for easy copy/paste
