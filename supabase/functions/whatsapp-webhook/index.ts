@@ -6486,26 +6486,24 @@ If the user's message is long and conversational — asking for help with someth
         // For assistant-type responses, also store the full output for "save this" follow-ups
         await saveReferencedEntity(null, chatResponse);
         
-        if (chatType === 'assistant') {
-          try {
-            const currentCtx = (session.context_data || {}) as ConversationContext;
-            await supabase
-              .from('user_sessions')
-              .update({
-                context_data: {
-                  ...currentCtx,
-                  // Refresh conversation_history (saveReferencedEntity already updated it)
-                  last_assistant_output: chatResponse.substring(0, 4000),
-                  last_assistant_output_at: new Date().toISOString(),
-                  last_assistant_request: (effectiveMessage || '').substring(0, 500),
-                },
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', session.id);
-            console.log('[CHAT/assistant] Stored assistant output for save-artifact follow-up');
-          } catch (storeErr) {
-            console.warn('[CHAT/assistant] Failed to store output (non-blocking):', storeErr);
-          }
+        // Store output for ALL chat types so user can "save this" later
+        try {
+          const currentCtx = (session.context_data || {}) as ConversationContext;
+          await supabase
+            .from('user_sessions')
+            .update({
+              context_data: {
+                ...currentCtx,
+                last_assistant_output: chatResponse.substring(0, 4000),
+                last_assistant_output_at: new Date().toISOString(),
+                last_assistant_request: (effectiveMessage || '').substring(0, 500),
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+          console.log(`[CHAT/${chatType}] Stored output for save-artifact follow-up`);
+        } catch (storeErr) {
+          console.warn(`[CHAT/${chatType}] Failed to store output (non-blocking):`, storeErr);
         }
 
         // Auto-evolve profile from conversation (non-blocking, fire-and-forget)
