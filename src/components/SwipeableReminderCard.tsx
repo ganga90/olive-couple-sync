@@ -159,7 +159,7 @@ export const SwipeableReminderCard = ({
               
               {/* Action buttons - only show on desktop */}
               <div className="hidden md:flex gap-1 flex-shrink-0">
-                {reminder.type === "explicit" && onEdit && (
+                {(reminder.type === "explicit" || reminder.type === "overdue") && onEdit && (
                   <Button
                     variant="ghost"
                     size="icon"
