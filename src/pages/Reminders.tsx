@@ -181,7 +181,7 @@ const Reminders = () => {
                 key={`${reminder.note.id}-${reminder.type}-${index}`}
                 reminder={reminder}
                 onDelete={() => handleDeleteReminder(reminder)}
-                onEdit={reminder.type === "explicit" ? () => handleEditReminder(reminder.note) : undefined}
+                onEdit={(reminder.type === "explicit" || reminder.type === "overdue") ? () => handleEditReminder(reminder.note) : undefined}
                 onClick={() => handleNoteClick(reminder.note.id)}
               />
             ))}
