@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useSwipeable } from "react-swipeable";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +11,7 @@ import type { Note } from "@/types/note";
 
 interface ReminderItem {
   note: Note;
-  type: "explicit" | "auto-24h" | "auto-2h";
+  type: "explicit" | "auto-24h" | "auto-2h" | "overdue";
   time: Date;
   label: string;
 }
@@ -28,6 +29,7 @@ export const SwipeableReminderCard = ({
   onEdit, 
   onClick 
 }: SwipeableReminderCardProps) => {
+  const { t } = useTranslation('reminders');
   const dateLocale = useDateLocale();
   const [offset, setOffset] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
@@ -90,7 +92,7 @@ export const SwipeableReminderCard = ({
           aria-label="Delete reminder"
         >
           <Trash2 className="h-5 w-5" />
-          <span className="text-xs font-medium mt-1">Delete</span>
+          <span className="text-xs font-medium mt-1">{t('swipe.delete')}</span>
         </button>
       </div>
 
@@ -112,7 +114,7 @@ export const SwipeableReminderCard = ({
               <div className="flex-1 min-w-0">
                 {/* Badges */}
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <Badge variant={reminder.type === "explicit" ? "default" : "secondary"} className="text-xs">
+                  <Badge variant={reminder.type === "overdue" ? "destructive" : reminder.type === "explicit" ? "default" : "secondary"} className="text-xs">
                     {reminder.label}
                   </Badge>
                   {reminder.note.category && (
@@ -157,7 +159,7 @@ export const SwipeableReminderCard = ({
               
               {/* Action buttons - only show on desktop */}
               <div className="hidden md:flex gap-1 flex-shrink-0">
-                {reminder.type === "explicit" && onEdit && (
+                {(reminder.type === "explicit" || reminder.type === "overdue") && onEdit && (
                   <Button
                     variant="ghost"
                     size="icon"

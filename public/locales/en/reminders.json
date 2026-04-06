@@ -6,7 +6,8 @@
   "sections": {
     "upcoming24h": "Upcoming (24h)",
     "thisWeek": "This Week",
-    "later": "Later"
+    "later": "Later",
+    "overdue": "Overdue"
   },
   "empty": {
     "title": "No upcoming reminders",
@@ -15,7 +16,8 @@
   "labels": {
     "reminder": "Reminder",
     "24hBefore": "24h before due",
-    "2hBefore": "2h before due"
+    "2hBefore": "2h before due",
+    "overdue": "Overdue"
   },
   "picker": {
     "setReminder": "Set Reminder",
@@ -29,6 +31,27 @@
     "2hours": "2 hours",
     "tomorrow9am": "Tomorrow 9am"
   },
+  "recurring": {
+    "title": "Recurring Reminder",
+    "frequency": "Frequency",
+    "every": "Every",
+    "none": "None",
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "monthly": "Monthly",
+    "yearly": "Yearly",
+    "summary": "Reminder will repeat every {{interval}} {{unit}}",
+    "units": {
+      "day": "day",
+      "days": "days",
+      "week": "week",
+      "weeks": "weeks",
+      "month": "month",
+      "months": "months",
+      "year": "year",
+      "years": "years"
+    }
+  },
   "dialog": {
     "setReminder": "Set Reminder",
     "setReminderFor": "Set a reminder for:",
@@ -40,5 +63,8 @@
     "quickSnooze": "Quick Snooze",
     "cancel": "Cancel",
     "save": "Save"
+  },
+  "swipe": {
+    "delete": "Delete"
   }
 }

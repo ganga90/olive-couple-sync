@@ -19,12 +19,13 @@ import type { Note } from "@/types/note";
 
 interface ReminderItem {
   note: Note;
-  type: "explicit" | "auto-24h" | "auto-2h";
+  type: "explicit" | "auto-24h" | "auto-2h" | "overdue";
   time: Date;
   label: string;
 }
 
 interface GroupedReminders {
+  overdue: ReminderItem[];
   upcoming: ReminderItem[];
   thisWeek: ReminderItem[];
   later: ReminderItem[];
@@ -55,17 +56,15 @@ const Reminders = () => {
     notes.forEach(note => {
       if (note.completed) return;
 
-      // Explicit reminders
+      // Explicit reminders (including overdue ones)
       if (note.reminder_time) {
         const reminderTime = new Date(note.reminder_time);
-        if (isBefore(now, reminderTime)) {
-          reminders.push({
-            note,
-            type: "explicit",
-            time: reminderTime,
-            label: t('labels.reminder')
-          });
-        }
+        reminders.push({
+          note,
+          type: isBefore(reminderTime, now) ? "overdue" : "explicit",
+          time: reminderTime,
+          label: isBefore(reminderTime, now) ? t('labels.overdue') : t('labels.reminder')
+        });
       }
 
       // Automatic due date reminders
@@ -95,20 +94,21 @@ const Reminders = () => {
       }
     });
 
-    // Sort and group
     const sorted = reminders.sort((a, b) => a.time.getTime() - b.time.getTime());
+    const futureReminders = sorted.filter(r => r.type !== "overdue");
     
     return {
-      upcoming: sorted.filter(r => isBefore(r.time, in24h)),
-      thisWeek: sorted.filter(r => isAfter(r.time, in24h) && isBefore(r.time, in7d)),
-      later: sorted.filter(r => isAfter(r.time, in7d))
+      overdue: sorted.filter(r => r.type === "overdue").sort((a, b) => b.time.getTime() - a.time.getTime()),
+      upcoming: futureReminders.filter(r => isBefore(r.time, in24h)),
+      thisWeek: futureReminders.filter(r => isAfter(r.time, in24h) && isBefore(r.time, in7d)),
+      later: futureReminders.filter(r => isAfter(r.time, in7d))
     };
   }, [notes, t]);
 
-  const totalReminders = groupedReminders.upcoming.length + groupedReminders.thisWeek.length + groupedReminders.later.length;
+  const totalReminders = groupedReminders.overdue.length + groupedReminders.upcoming.length + groupedReminders.thisWeek.length + groupedReminders.later.length;
 
   const handleDeleteReminder = async (reminder: ReminderItem) => {
-    if (reminder.type === "explicit") {
+    if (reminder.type === "explicit" || reminder.type === "overdue") {
       await updateNote(reminder.note.id, { 
         reminder_time: null,
         recurrence_frequency: 'none',
@@ -181,7 +181,7 @@ const Reminders = () => {
                 key={`${reminder.note.id}-${reminder.type}-${index}`}
                 reminder={reminder}
                 onDelete={() => handleDeleteReminder(reminder)}
-                onEdit={reminder.type === "explicit" ? () => handleEditReminder(reminder.note) : undefined}
+                onEdit={(reminder.type === "explicit" || reminder.type === "overdue") ? () => handleEditReminder(reminder.note) : undefined}
                 onClick={() => handleNoteClick(reminder.note.id)}
               />
             ))}
@@ -239,6 +239,14 @@ const Reminders = () => {
           </Card>
         ) : (
           <div className="space-y-6">
+            {/* Overdue */}
+            <ReminderSection
+              title={t('sections.overdue')}
+              icon={AlertTriangle}
+              reminders={groupedReminders.overdue}
+              variant="urgent"
+            />
+
             {/* Upcoming (Next 24 hours) */}
             <ReminderSection
               title={t('sections.upcoming24h')}
