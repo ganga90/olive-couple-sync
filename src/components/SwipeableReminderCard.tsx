@@ -11,7 +11,7 @@ import type { Note } from "@/types/note";
 
 interface ReminderItem {
   note: Note;
-  type: "explicit" | "auto-24h" | "auto-2h";
+  type: "explicit" | "auto-24h" | "auto-2h" | "overdue";
   time: Date;
   label: string;
 }
