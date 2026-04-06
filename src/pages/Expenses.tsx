@@ -836,25 +836,25 @@ const ExpensesPage: React.FC = () => {
   const hasDateFilter = dateFrom || dateTo;
 
   return (
-    <div className="space-y-5 pb-32 md:pb-8">
+    <div className="space-y-4 pb-32 md:pb-8 px-1">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight font-serif">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight font-serif">
             {t('title', 'Expenses')}
           </h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
+          <p className="text-muted-foreground text-xs sm:text-sm mt-0.5 truncate">
             {t('subtitle', 'Track, split, and settle expenses')}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" className="rounded-full" onClick={handleExportCSV} title={t('export.button', 'Export CSV')}>
+        <div className="flex gap-1.5 flex-shrink-0">
+          <Button size="icon" variant="outline" className="rounded-full h-9 w-9" onClick={handleExportCSV} title={t('export.button', 'Export CSV')}>
             <Download className="w-4 h-4" />
           </Button>
-          <Button size="sm" variant="outline" className="rounded-full" onClick={() => setBudgetDialogOpen(true)}>
+          <Button size="icon" variant="outline" className="rounded-full h-9 w-9" onClick={() => setBudgetDialogOpen(true)}>
             <Target className="w-4 h-4" />
           </Button>
-          <Button size="sm" onClick={() => setAddOpen(true)} className="rounded-full">
+          <Button size="sm" onClick={() => setAddOpen(true)} className="rounded-full h-9">
             <Plus className="w-4 h-4 mr-1" />
             {t('addButton', 'Add')}
           </Button>
@@ -886,62 +886,69 @@ const ExpensesPage: React.FC = () => {
 
       {/* Balance Summary Cards */}
       {/* Summary Cards Row */}
-      <div className={cn("grid gap-3", hasPartner ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-2")}>
+      <div className={cn("grid gap-2.5", hasPartner ? "grid-cols-2" : "grid-cols-2")}>
         <Card className="bg-card/80 backdrop-blur">
-          <CardContent className="pt-4 pb-3 px-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
-              <DollarSign className="w-3.5 h-3.5" />
-              {t('summary.total', 'Total Active')}
+          <CardContent className="pt-3 pb-2.5 px-3 sm:pt-4 sm:pb-3 sm:px-4">
+            <div className="flex items-center gap-1.5 text-muted-foreground text-[11px] sm:text-xs mb-1">
+              <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
+              <span className="truncate">{t('summary.total', 'Total Active')}</span>
             </div>
             {isMultiCurrency ? (
               <div className="space-y-0.5">
                 {Object.entries(analytics.totalsByCurrency).map(([c, total]) => (
-                  <p key={c} className="text-lg font-bold">{getCurrencySymbol(c)}{total.toFixed(2)}</p>
+                  <p key={c} className="text-base sm:text-lg font-bold truncate">{getCurrencySymbol(c)}{total.toFixed(2)}</p>
                 ))}
               </div>
             ) : (
-              <p className="text-xl font-bold">{currencySymbol}{analytics.totalExpenses.toFixed(2)}</p>
+              <p className="text-lg sm:text-xl font-bold truncate">{currencySymbol}{analytics.totalExpenses.toFixed(2)}</p>
             )}
           </CardContent>
         </Card>
 
         <Card className="bg-card/80 backdrop-blur">
-          <CardContent className="pt-4 pb-3 px-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
-              <Receipt className="w-3.5 h-3.5" />
-              {t('summary.count', 'Count')}
+          <CardContent className="pt-3 pb-2.5 px-3 sm:pt-4 sm:pb-3 sm:px-4">
+            <div className="flex items-center gap-1.5 text-muted-foreground text-[11px] sm:text-xs mb-1">
+              <Receipt className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
+              <span className="truncate">{t('summary.count', 'Count')}</span>
             </div>
-            <p className="text-xl font-bold">{activeExpenses.length}</p>
+            <p className="text-lg sm:text-xl font-bold">{activeExpenses.length}</p>
           </CardContent>
         </Card>
 
         {hasPartner && (
           <>
             <Card className={cn("bg-card/80 backdrop-blur", netBalance > 0 ? "border-[hsl(var(--success))]/30" : netBalance < 0 ? "border-[hsl(var(--warning))]/30" : "")}>
-              <CardContent className="pt-4 pb-3 px-4">
-                <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
-                  <ArrowLeftRight className="w-3.5 h-3.5" />
-                  {t('summary.balance', 'Net Balance')}
+              <CardContent className="pt-3 pb-2.5 px-3 sm:pt-4 sm:pb-3 sm:px-4">
+                <div className="flex items-center gap-1.5 text-muted-foreground text-[11px] sm:text-xs mb-1">
+                  <ArrowLeftRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
+                  <span className="truncate">{t('summary.balance', 'Net Balance')}</span>
                 </div>
                 {isMultiCurrency ? (
                   <CurrencyBalances balances={netBalanceByCurrency} partnerName={partnerName} t={t} />
                 ) : (
-                  <p className={cn("text-xl font-bold", netBalance > 0 ? "text-[hsl(var(--success))]" : netBalance < 0 ? "text-[hsl(var(--warning))]" : "")}>
-                    {netBalance > 0
-                      ? `${partnerName} ${t('summary.owesYou', 'owes')} ${currencySymbol}${netBalance.toFixed(2)}`
-                      : netBalance < 0
-                        ? `${t('summary.youOwe', 'You owe')} ${currencySymbol}${Math.abs(netBalance).toFixed(2)}`
-                        : t('summary.settled', 'All settled!')
-                    }
-                  </p>
+                  <div className={cn("font-bold", netBalance > 0 ? "text-[hsl(var(--success))]" : netBalance < 0 ? "text-[hsl(var(--warning))]" : "")}>
+                    {netBalance > 0 ? (
+                      <>
+                        <p className="text-sm sm:text-base leading-tight truncate">{partnerName} {t('summary.owesYou', 'owes')}</p>
+                        <p className="text-lg sm:text-xl">{currencySymbol}{netBalance.toFixed(2)}</p>
+                      </>
+                    ) : netBalance < 0 ? (
+                      <>
+                        <p className="text-sm sm:text-base leading-tight truncate">{t('summary.youOwe', 'You owe')}</p>
+                        <p className="text-lg sm:text-xl">{currencySymbol}{Math.abs(netBalance).toFixed(2)}</p>
+                      </>
+                    ) : (
+                      <p className="text-lg sm:text-xl">{t('summary.settled', 'All settled!')}</p>
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>
             <Card className="bg-card/80 backdrop-blur">
-              <CardContent className="pt-4 pb-3 px-4">
-                <p className="text-xs text-muted-foreground mb-1">{t('summary.unsettled', 'Unsettled')}</p>
-                <p className="text-xl font-bold">{activeExpenses.length}</p>
-                <p className="text-xs text-muted-foreground">{t('summary.expenses', 'expenses')}</p>
+              <CardContent className="pt-3 pb-2.5 px-3 sm:pt-4 sm:pb-3 sm:px-4">
+                <p className="text-[11px] sm:text-xs text-muted-foreground mb-1">{t('summary.unsettled', 'Unsettled')}</p>
+                <p className="text-lg sm:text-xl font-bold">{activeExpenses.length}</p>
+                <p className="text-[11px] sm:text-xs text-muted-foreground">{t('summary.expenses', 'expenses')}</p>
               </CardContent>
             </Card>
           </>
