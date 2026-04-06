@@ -239,6 +239,14 @@ const Reminders = () => {
           </Card>
         ) : (
           <div className="space-y-6">
+            {/* Overdue */}
+            <ReminderSection
+              title={t('sections.overdue')}
+              icon={AlertTriangle}
+              reminders={groupedReminders.overdue}
+              variant="urgent"
+            />
+
             {/* Upcoming (Next 24 hours) */}
             <ReminderSection
               title={t('sections.upcoming24h')}
