@@ -114,7 +114,7 @@ export const SwipeableReminderCard = ({
               <div className="flex-1 min-w-0">
                 {/* Badges */}
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <Badge variant={reminder.type === "explicit" ? "default" : "secondary"} className="text-xs">
+                  <Badge variant={reminder.type === "overdue" ? "destructive" : reminder.type === "explicit" ? "default" : "secondary"} className="text-xs">
                     {reminder.label}
                   </Badge>
                   {reminder.note.category && (
