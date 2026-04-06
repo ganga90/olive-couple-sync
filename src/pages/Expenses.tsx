@@ -1001,18 +1001,18 @@ const ExpensesPage: React.FC = () => {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3 rounded-full">
-          <TabsTrigger value="active" className="rounded-full text-xs">
-            <Wallet className="w-3.5 h-3.5 mr-1" />
-            {t('tabs.active', 'Active')}
+        <TabsList className="grid w-full grid-cols-3 rounded-full h-9">
+          <TabsTrigger value="active" className="rounded-full text-[11px] sm:text-xs gap-1 px-2">
+            <Wallet className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="truncate">{t('tabs.active', 'Active')}</span>
           </TabsTrigger>
-          <TabsTrigger value="analytics" className="rounded-full text-xs">
-            <BarChart3 className="w-3.5 h-3.5 mr-1" />
-            {t('tabs.analytics', 'Analytics')}
+          <TabsTrigger value="analytics" className="rounded-full text-[11px] sm:text-xs gap-1 px-2">
+            <BarChart3 className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="truncate">{t('tabs.analytics', 'Analytics')}</span>
           </TabsTrigger>
-          <TabsTrigger value="archive" className="rounded-full text-xs">
-            <Archive className="w-3.5 h-3.5 mr-1" />
-            {t('tabs.archive', 'Archive')}
+          <TabsTrigger value="archive" className="rounded-full text-[11px] sm:text-xs gap-1 px-2">
+            <Archive className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="truncate">{t('tabs.archive', 'Archive')}</span>
           </TabsTrigger>
         </TabsList>
 
