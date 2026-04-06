@@ -105,10 +105,10 @@ const Reminders = () => {
     };
   }, [notes, t]);
 
-  const totalReminders = groupedReminders.upcoming.length + groupedReminders.thisWeek.length + groupedReminders.later.length;
+  const totalReminders = groupedReminders.overdue.length + groupedReminders.upcoming.length + groupedReminders.thisWeek.length + groupedReminders.later.length;
 
   const handleDeleteReminder = async (reminder: ReminderItem) => {
-    if (reminder.type === "explicit") {
+    if (reminder.type === "explicit" || reminder.type === "overdue") {
       await updateNote(reminder.note.id, { 
         reminder_time: null,
         recurrence_frequency: 'none',
