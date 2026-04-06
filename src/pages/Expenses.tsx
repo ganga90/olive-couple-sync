@@ -750,12 +750,12 @@ const CurrencyBalances: React.FC<{ balances: Record<string, number>; partnerName
       {entries.map(([currency, balance]) => {
         const sym = getCurrencySymbol(currency);
         return (
-          <p key={currency} className={cn("text-sm font-bold", balance > 0 ? "text-[hsl(var(--success))]" : "text-[hsl(var(--warning))]")}>
-            {balance > 0
-              ? `${partnerName} ${t('summary.owesYou', 'owes')} ${sym}${balance.toFixed(2)}`
-              : `${t('summary.youOwe', 'You owe')} ${sym}${Math.abs(balance).toFixed(2)}`
-            }
-          </p>
+          <div key={currency} className={cn("font-bold", balance > 0 ? "text-[hsl(var(--success))]" : "text-[hsl(var(--warning))]")}>
+            <p className="text-xs sm:text-sm leading-tight truncate">
+              {balance > 0 ? `${partnerName} ${t('summary.owesYou', 'owes')}` : t('summary.youOwe', 'You owe')}
+            </p>
+            <p className="text-base sm:text-lg">{balance > 0 ? `${sym}${balance.toFixed(2)}` : `${sym}${Math.abs(balance).toFixed(2)}`}</p>
+          </div>
         );
       })}
     </div>
