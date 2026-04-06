@@ -6,7 +6,8 @@
   "sections": {
     "upcoming24h": "In arrivo (24h)",
     "thisWeek": "Questa Settimana",
-    "later": "Più Tardi"
+    "later": "Più Tardi",
+    "overdue": "Scaduti"
   },
   "empty": {
     "title": "Nessun promemoria in arrivo",
@@ -15,7 +16,8 @@
   "labels": {
     "reminder": "Promemoria",
     "24hBefore": "24h prima",
-    "2hBefore": "2h prima"
+    "2hBefore": "2h prima",
+    "overdue": "Scaduto"
   },
   "picker": {
     "setReminder": "Imposta Promemoria",
@@ -29,6 +31,27 @@
     "2hours": "2 ore",
     "tomorrow9am": "Domani 9:00"
   },
+  "recurring": {
+    "title": "Promemoria Ricorrente",
+    "frequency": "Frequenza",
+    "every": "Ogni",
+    "none": "Nessuno",
+    "daily": "Giornaliero",
+    "weekly": "Settimanale",
+    "monthly": "Mensile",
+    "yearly": "Annuale",
+    "summary": "Si ripeterà ogni {{interval}} {{unit}}",
+    "units": {
+      "day": "giorno",
+      "days": "giorni",
+      "week": "settimana",
+      "weeks": "settimane",
+      "month": "mese",
+      "months": "mesi",
+      "year": "anno",
+      "years": "anni"
+    }
+  },
   "dialog": {
     "setReminder": "Imposta Promemoria",
     "setReminderFor": "Imposta promemoria per:",
@@ -40,5 +63,8 @@
     "quickSnooze": "Posticipa Rapido",
     "cancel": "Annulla",
     "save": "Salva"
+  },
+  "swipe": {
+    "delete": "Elimina"
   }
 }

@@ -6,7 +6,8 @@
   "sections": {
     "upcoming24h": "Próximas (24h)",
     "thisWeek": "Esta Semana",
-    "later": "Más Tarde"
+    "later": "Más Tarde",
+    "overdue": "Vencidos"
   },
   "empty": {
     "title": "Sin recordatorios pendientes",
@@ -15,7 +16,8 @@
   "labels": {
     "reminder": "Recordatorio",
     "24hBefore": "24h antes",
-    "2hBefore": "2h antes"
+    "2hBefore": "2h antes",
+    "overdue": "Vencido"
   },
   "picker": {
     "setReminder": "Establecer Recordatorio",
@@ -29,6 +31,27 @@
     "2hours": "2 horas",
     "tomorrow9am": "Mañana 9am"
   },
+  "recurring": {
+    "title": "Recordatorio Recurrente",
+    "frequency": "Frecuencia",
+    "every": "Cada",
+    "none": "Ninguno",
+    "daily": "Diario",
+    "weekly": "Semanal",
+    "monthly": "Mensual",
+    "yearly": "Anual",
+    "summary": "Se repetirá cada {{interval}} {{unit}}",
+    "units": {
+      "day": "día",
+      "days": "días",
+      "week": "semana",
+      "weeks": "semanas",
+      "month": "mes",
+      "months": "meses",
+      "year": "año",
+      "years": "años"
+    }
+  },
   "dialog": {
     "setReminder": "Establecer Recordatorio",
     "setReminderFor": "Establecer recordatorio para:",
@@ -40,5 +63,8 @@
     "quickSnooze": "Posponer Rápido",
     "cancel": "Cancelar",
     "save": "Guardar"
+  },
+  "swipe": {
+    "delete": "Eliminar"
   }
 }
