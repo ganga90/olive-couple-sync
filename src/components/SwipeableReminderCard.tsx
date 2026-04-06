@@ -92,7 +92,7 @@ export const SwipeableReminderCard = ({
           aria-label="Delete reminder"
         >
           <Trash2 className="h-5 w-5" />
-          <span className="text-xs font-medium mt-1">Delete</span>
+          <span className="text-xs font-medium mt-1">{t('swipe.delete')}</span>
         </button>
       </div>
 
