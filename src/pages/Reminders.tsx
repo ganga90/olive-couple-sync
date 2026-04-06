@@ -56,17 +56,15 @@ const Reminders = () => {
     notes.forEach(note => {
       if (note.completed) return;
 
-      // Explicit reminders
+      // Explicit reminders (including overdue ones)
       if (note.reminder_time) {
         const reminderTime = new Date(note.reminder_time);
-        if (isBefore(now, reminderTime)) {
-          reminders.push({
-            note,
-            type: "explicit",
-            time: reminderTime,
-            label: t('labels.reminder')
-          });
-        }
+        reminders.push({
+          note,
+          type: isBefore(reminderTime, now) ? "overdue" : "explicit",
+          time: reminderTime,
+          label: isBefore(reminderTime, now) ? t('labels.overdue') : t('labels.reminder')
+        });
       }
 
       // Automatic due date reminders
@@ -96,13 +94,14 @@ const Reminders = () => {
       }
     });
 
-    // Sort and group
     const sorted = reminders.sort((a, b) => a.time.getTime() - b.time.getTime());
+    const futureReminders = sorted.filter(r => r.type !== "overdue");
     
     return {
-      upcoming: sorted.filter(r => isBefore(r.time, in24h)),
-      thisWeek: sorted.filter(r => isAfter(r.time, in24h) && isBefore(r.time, in7d)),
-      later: sorted.filter(r => isAfter(r.time, in7d))
+      overdue: sorted.filter(r => r.type === "overdue").sort((a, b) => b.time.getTime() - a.time.getTime()),
+      upcoming: futureReminders.filter(r => isBefore(r.time, in24h)),
+      thisWeek: futureReminders.filter(r => isAfter(r.time, in24h) && isBefore(r.time, in7d)),
+      later: futureReminders.filter(r => isAfter(r.time, in7d))
     };
   }, [notes, t]);
 
