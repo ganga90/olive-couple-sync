@@ -1410,13 +1410,13 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
       };
       const monthNum = abbrMonthMap[monthWord] ?? monthNames[monthWord];
       if (monthNum !== undefined && dayNum >= 1 && dayNum <= 31) {
-        targetDate = new Date(now.getFullYear(), monthNum, dayNum);
+        targetDate = new Date(localNow.getFullYear(), monthNum, dayNum);
         if (hours !== null) {
           targetDate.setHours(hours, minutes, 0, 0);
         } else {
           targetDate.setHours(9, 0, 0, 0);
         }
-        if (targetDate < now) {
+        if (targetDate < localNow) {
           targetDate.setFullYear(targetDate.getFullYear() + 1);
         }
         const monthDisplayNames = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -1432,14 +1432,14 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
         if (monthDayMatch) {
           const dayNum = parseInt(monthDayMatch[1]);
           if (dayNum >= 1 && dayNum <= 31) {
-            targetDate = new Date(now.getFullYear(), monthNum, dayNum);
+            targetDate = new Date(localNow.getFullYear(), monthNum, dayNum);
             if (hours !== null) {
               targetDate.setHours(hours, minutes, 0, 0);
             } else {
               targetDate.setHours(9, 0, 0, 0);
             }
             
-            if (targetDate < now) {
+            if (targetDate < localNow) {
               targetDate.setFullYear(targetDate.getFullYear() + 1);
             }
             
@@ -1475,7 +1475,7 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
   // This handles "at noon", "at 3pm", "at 10:30", etc.
   // IMPORTANT: Compare in the user's local timezone, not UTC
   if (!targetDate && hours !== null) {
-    targetDate = new Date(now);
+    targetDate = new Date(localNow);
     
     // Get the current hour/minute in the user's timezone to compare correctly
     let localHour: number, localMinute: number;
