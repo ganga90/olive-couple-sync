@@ -1354,35 +1354,35 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
     }
   }
 
-  // === NAMED DATE EXPRESSIONS ===
+  // === NAMED DATE EXPRESSIONS (use localNow for correct local-date arithmetic) ===
   if (!targetDate) {
     if (lowerExpr.includes('today') || lowerExpr.includes('hoy') || lowerExpr.includes('oggi')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       readable = 'today';
     } else if (lowerExpr.includes('tomorrow') || /\bmañana\b/.test(lowerExpr) || lowerExpr.includes('domani')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       targetDate.setDate(targetDate.getDate() + 1);
       readable = 'tomorrow';
     } else if (lowerExpr.includes('day after tomorrow') || lowerExpr.includes('pasado mañana') || lowerExpr.includes('dopodomani')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       targetDate.setDate(targetDate.getDate() + 2);
       readable = 'day after tomorrow';
     } else if (lowerExpr.includes('next week') || lowerExpr.includes('próxima semana') || lowerExpr.includes('prossima settimana') || lowerExpr.includes('la semana que viene') || lowerExpr.includes('settimana prossima')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       targetDate.setDate(targetDate.getDate() + 7);
       readable = 'next week';
     } else if (lowerExpr.includes('in a week') || lowerExpr.includes('in 1 week') || lowerExpr.includes('en una semana') || lowerExpr.includes('tra una settimana') || lowerExpr.includes('fra una settimana')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       targetDate.setDate(targetDate.getDate() + 7);
       readable = 'in a week';
     } else if (lowerExpr.includes('this weekend') || lowerExpr.includes('este fin de semana') || lowerExpr.includes('questo weekend') || lowerExpr.includes('questo fine settimana')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       const currentDay = targetDate.getDay();
       const daysUntilSaturday = currentDay === 6 ? 0 : (6 - currentDay);
       targetDate.setDate(targetDate.getDate() + daysUntilSaturday);
       readable = 'this weekend';
     } else if (lowerExpr.includes('next month') || lowerExpr.includes('próximo mes') || lowerExpr.includes('prossimo mese') || lowerExpr.includes('il mese prossimo')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       targetDate.setMonth(targetDate.getMonth() + 1);
       readable = 'next month';
     }
