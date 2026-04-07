@@ -60,9 +60,9 @@ export const NewPricing = () => {
               ))}
             </div>
 
-            <Link to={getLocalizedPath("/request-access")}>
+            <Link to={getLocalizedPath("/sign-up")}>
               <Button className="rounded-full px-10 py-6 text-base font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg">
-                {t('pricing.beta.cta', 'Request Beta Access')}
+                {t('pricing.beta.ctaSignup', 'Sign Up Free')}
               </Button>
             </Link>
 
