@@ -44,12 +44,12 @@ export const NewFooterCTA = () => {
           </p>
 
           {/* CTA Button */}
-          <Link to={getLocalizedPath("/request-access")}>
+          <Link to={getLocalizedPath("/sign-up")}>
             <Button 
               size="lg"
               className="bg-olive hover:bg-olive/90 text-white font-semibold px-10 py-7 rounded-full shadow-2xl shadow-olive/30 text-lg"
             >
-              {t('footerCta.betaCta', 'Get Access to Olive')}
+              {t('footerCta.cta', 'Start Using Olive — Free')}
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </Link>
