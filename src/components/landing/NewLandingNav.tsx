@@ -66,12 +66,12 @@ export const NewLandingNav = () => {
             </Link>
 
             {/* CTA */}
-            <Link to={getLocalizedPath("/request-access")}>
+            <Link to={getLocalizedPath("/sign-up")}>
               <Button 
                 size="sm"
                 className="bg-olive hover:bg-olive/90 text-white font-semibold px-4 py-2 rounded-full shadow-lg shadow-olive/20"
               >
-                {t('nav.betaCta', 'Get Access to Olive')}
+                {t('nav.cta', 'Try Olive Free')}
               </Button>
             </Link>
           </div>
