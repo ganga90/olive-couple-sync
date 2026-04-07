@@ -594,7 +594,27 @@ async function executeTaskAction(
         if (!dateExpr) return null;
 
         // Robust natural language date parsing
+        // Fetch user timezone for accurate date arithmetic
+        let userTimezone = 'America/New_York';
+        try {
+          const { data: tzProfile } = await supabase
+            .from('clerk_profiles')
+            .select('timezone')
+            .eq('id', userId)
+            .single();
+          if (tzProfile?.timezone) userTimezone = tzProfile.timezone;
+        } catch { /* fallback */ }
+
         const now = new Date();
+        // Create localNow to prevent off-by-one day errors when UTC date differs from local date
+        let localNow: Date;
+        try {
+          const localStr = now.toLocaleString('en-US', { timeZone: userTimezone });
+          localNow = new Date(localStr);
+        } catch {
+          localNow = new Date(now);
+        }
+
         let targetDate: Date | null = null;
         let readable = '';
         const lower = dateExpr.toLowerCase().trim();
