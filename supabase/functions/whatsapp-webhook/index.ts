@@ -1185,6 +1185,18 @@ function isValidCoordinates(lat: string | null, lon: string | null): boolean {
 // Parse natural language date/time expressions
 function parseNaturalDate(expression: string, timezone: string = 'America/New_York'): { date: string | null; time: string | null; readable: string } {
   const now = new Date();
+  
+  // CRITICAL FIX: Create a "local now" whose UTC fields represent the user's local time.
+  // This prevents off-by-one day errors when UTC date differs from local date
+  // (e.g., user at 8PM ET Monday = Tuesday 00:00 UTC → "tomorrow" would wrongly resolve to Wednesday).
+  let localNow: Date;
+  try {
+    const localStr = now.toLocaleString('en-US', { timeZone: timezone });
+    localNow = new Date(localStr);
+  } catch {
+    localNow = new Date(now);
+  }
+  
   const lowerExpr = expression.toLowerCase().trim();
   
   const formatDate = (d: Date): string => d.toISOString();
@@ -1238,9 +1250,9 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
       'giovedì': 4, 'giovedi': 4, 'venerdì': 5, 'venerdi': 5, 'sabato': 6,
     };
     const targetDay = dayMap[dayName.toLowerCase()] ?? days.indexOf(dayName.toLowerCase());
-    if (targetDay === -1) return now;
+    if (targetDay === -1) return localNow;
     
-    const result = new Date(now);
+    const result = new Date(localNow);
     const currentDay = result.getDay();
     let daysToAdd = targetDay - currentDay;
     if (daysToAdd <= 0) daysToAdd += 7;
@@ -1342,35 +1354,35 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
     }
   }
 
-  // === NAMED DATE EXPRESSIONS ===
+  // === NAMED DATE EXPRESSIONS (use localNow for correct local-date arithmetic) ===
   if (!targetDate) {
     if (lowerExpr.includes('today') || lowerExpr.includes('hoy') || lowerExpr.includes('oggi')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       readable = 'today';
     } else if (lowerExpr.includes('tomorrow') || /\bmañana\b/.test(lowerExpr) || lowerExpr.includes('domani')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       targetDate.setDate(targetDate.getDate() + 1);
       readable = 'tomorrow';
     } else if (lowerExpr.includes('day after tomorrow') || lowerExpr.includes('pasado mañana') || lowerExpr.includes('dopodomani')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       targetDate.setDate(targetDate.getDate() + 2);
       readable = 'day after tomorrow';
     } else if (lowerExpr.includes('next week') || lowerExpr.includes('próxima semana') || lowerExpr.includes('prossima settimana') || lowerExpr.includes('la semana que viene') || lowerExpr.includes('settimana prossima')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       targetDate.setDate(targetDate.getDate() + 7);
       readable = 'next week';
     } else if (lowerExpr.includes('in a week') || lowerExpr.includes('in 1 week') || lowerExpr.includes('en una semana') || lowerExpr.includes('tra una settimana') || lowerExpr.includes('fra una settimana')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       targetDate.setDate(targetDate.getDate() + 7);
       readable = 'in a week';
     } else if (lowerExpr.includes('this weekend') || lowerExpr.includes('este fin de semana') || lowerExpr.includes('questo weekend') || lowerExpr.includes('questo fine settimana')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       const currentDay = targetDate.getDay();
       const daysUntilSaturday = currentDay === 6 ? 0 : (6 - currentDay);
       targetDate.setDate(targetDate.getDate() + daysUntilSaturday);
       readable = 'this weekend';
     } else if (lowerExpr.includes('next month') || lowerExpr.includes('próximo mes') || lowerExpr.includes('prossimo mese') || lowerExpr.includes('il mese prossimo')) {
-      targetDate = new Date(now);
+      targetDate = new Date(localNow);
       targetDate.setMonth(targetDate.getMonth() + 1);
       readable = 'next month';
     }
@@ -1398,13 +1410,13 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
       };
       const monthNum = abbrMonthMap[monthWord] ?? monthNames[monthWord];
       if (monthNum !== undefined && dayNum >= 1 && dayNum <= 31) {
-        targetDate = new Date(now.getFullYear(), monthNum, dayNum);
+        targetDate = new Date(localNow.getFullYear(), monthNum, dayNum);
         if (hours !== null) {
           targetDate.setHours(hours, minutes, 0, 0);
         } else {
           targetDate.setHours(9, 0, 0, 0);
         }
-        if (targetDate < now) {
+        if (targetDate < localNow) {
           targetDate.setFullYear(targetDate.getFullYear() + 1);
         }
         const monthDisplayNames = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -1420,14 +1432,14 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
         if (monthDayMatch) {
           const dayNum = parseInt(monthDayMatch[1]);
           if (dayNum >= 1 && dayNum <= 31) {
-            targetDate = new Date(now.getFullYear(), monthNum, dayNum);
+            targetDate = new Date(localNow.getFullYear(), monthNum, dayNum);
             if (hours !== null) {
               targetDate.setHours(hours, minutes, 0, 0);
             } else {
               targetDate.setHours(9, 0, 0, 0);
             }
             
-            if (targetDate < now) {
+            if (targetDate < localNow) {
               targetDate.setFullYear(targetDate.getFullYear() + 1);
             }
             
@@ -1463,21 +1475,11 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
   // This handles "at noon", "at 3pm", "at 10:30", etc.
   // IMPORTANT: Compare in the user's local timezone, not UTC
   if (!targetDate && hours !== null) {
-    targetDate = new Date(now);
+    targetDate = new Date(localNow);
     
-    // Get the current hour/minute in the user's timezone to compare correctly
-    let localHour: number, localMinute: number;
-    try {
-      const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: timezone,
-        hour: 'numeric', minute: 'numeric', hour12: false
-      }).formatToParts(now);
-      localHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
-      localMinute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
-    } catch {
-      localHour = now.getHours();
-      localMinute = now.getMinutes();
-    }
+    // localNow already has the user's local time, so we can compare directly
+    const localHour = localNow.getHours();
+    const localMinute = localNow.getMinutes();
     
     const proposedMinutes = hours * 60 + minutes;
     const currentMinutes = localHour * 60 + localMinute;

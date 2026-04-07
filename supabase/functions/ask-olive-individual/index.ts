@@ -594,7 +594,27 @@ async function executeTaskAction(
         if (!dateExpr) return null;
 
         // Robust natural language date parsing
+        // Fetch user timezone for accurate date arithmetic
+        let userTimezone = 'America/New_York';
+        try {
+          const { data: tzProfile } = await supabase
+            .from('clerk_profiles')
+            .select('timezone')
+            .eq('id', userId)
+            .single();
+          if (tzProfile?.timezone) userTimezone = tzProfile.timezone;
+        } catch { /* fallback */ }
+
         const now = new Date();
+        // Create localNow to prevent off-by-one day errors when UTC date differs from local date
+        let localNow: Date;
+        try {
+          const localStr = now.toLocaleString('en-US', { timeZone: userTimezone });
+          localNow = new Date(localStr);
+        } catch {
+          localNow = new Date(now);
+        }
+
         let targetDate: Date | null = null;
         let readable = '';
         const lower = dateExpr.toLowerCase().trim();
@@ -626,16 +646,16 @@ async function executeTaskAction(
           if (num) { targetDate = new Date(now); targetDate.setDate(targetDate.getDate() + Math.round(num)); targetDate.setHours(9, 0, 0, 0); readable = `in ${Math.round(num)} day${num > 1 ? 's' : ''}`; }
         }
 
-        // Named dates
+        // Named dates (use localNow for correct local-date arithmetic)
         if (!targetDate) {
           if (lower.includes('tomorrow') || /\bmañana\b/.test(lower) || lower.includes('domani')) {
-            targetDate = new Date(now); targetDate.setDate(targetDate.getDate() + 1); targetDate.setHours(9, 0, 0, 0); readable = 'tomorrow';
+            targetDate = new Date(localNow); targetDate.setDate(targetDate.getDate() + 1); targetDate.setHours(9, 0, 0, 0); readable = 'tomorrow';
           } else if (lower.includes('today') || lower.includes('hoy') || lower.includes('oggi')) {
-            targetDate = new Date(now); targetDate.setHours(18, 0, 0, 0); readable = 'today';
+            targetDate = new Date(localNow); targetDate.setHours(18, 0, 0, 0); readable = 'today';
           } else if (lower.includes('next week') || lower.includes('próxima semana') || lower.includes('prossima settimana')) {
-            targetDate = new Date(now); targetDate.setDate(targetDate.getDate() + 7); targetDate.setHours(9, 0, 0, 0); readable = 'next week';
+            targetDate = new Date(localNow); targetDate.setDate(targetDate.getDate() + 7); targetDate.setHours(9, 0, 0, 0); readable = 'next week';
           } else if (lower.includes('this weekend') || lower.includes('este fin de semana') || lower.includes('questo weekend')) {
-            targetDate = new Date(now); const daysUntilSat = (6 - targetDate.getDay() + 7) % 7 || 7; targetDate.setDate(targetDate.getDate() + daysUntilSat); targetDate.setHours(10, 0, 0, 0); readable = 'this weekend';
+            targetDate = new Date(localNow); const daysUntilSat = (6 - targetDate.getDay() + 7) % 7 || 7; targetDate.setDate(targetDate.getDate() + daysUntilSat); targetDate.setHours(10, 0, 0, 0); readable = 'this weekend';
           }
         }
 
@@ -658,16 +678,26 @@ async function executeTaskAction(
           if (timeMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
         }
 
-        // Standalone time with no date → today (or tomorrow if passed)
+        // Standalone time with no date → today (or tomorrow if passed, using local time)
         if (!targetDate && hours !== null) {
-          targetDate = new Date(now);
-          const proposed = new Date(now); proposed.setHours(hours, mins, 0, 0);
-          if (proposed <= now) { targetDate.setDate(targetDate.getDate() + 1); readable = 'tomorrow'; } else { readable = 'today'; }
+          targetDate = new Date(localNow);
+          const proposedMinutes = hours * 60 + mins;
+          const currentMinutes = localNow.getHours() * 60 + localNow.getMinutes();
+          if (proposedMinutes <= currentMinutes) { targetDate.setDate(targetDate.getDate() + 1); readable = 'tomorrow'; } else { readable = 'today'; }
         }
 
-        // Apply time to date
+        // Apply time to date (timezone-aware UTC conversion)
         if (targetDate && hours !== null) {
           targetDate.setHours(hours, mins, 0, 0);
+          // Convert local time to UTC
+          try {
+            const utcStr = targetDate.toLocaleString('en-US', { timeZone: 'UTC' });
+            const tzStr = targetDate.toLocaleString('en-US', { timeZone: userTimezone });
+            const utcDate = new Date(utcStr);
+            const tzDate = new Date(tzStr);
+            const offsetMs = utcDate.getTime() - tzDate.getTime();
+            targetDate = new Date(targetDate.getTime() + offsetMs);
+          } catch { /* keep as-is */ }
           if (!readable.includes('minute') && !readable.includes('hour')) {
             readable += ` at ${hours > 12 ? hours - 12 : hours === 0 ? 12 : hours}:${mins.toString().padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
           }
