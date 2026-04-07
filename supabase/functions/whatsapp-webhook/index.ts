@@ -1477,19 +1477,9 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
   if (!targetDate && hours !== null) {
     targetDate = new Date(localNow);
     
-    // Get the current hour/minute in the user's timezone to compare correctly
-    let localHour: number, localMinute: number;
-    try {
-      const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: timezone,
-        hour: 'numeric', minute: 'numeric', hour12: false
-      }).formatToParts(now);
-      localHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
-      localMinute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
-    } catch {
-      localHour = now.getHours();
-      localMinute = now.getMinutes();
-    }
+    // localNow already has the user's local time, so we can compare directly
+    const localHour = localNow.getHours();
+    const localMinute = localNow.getMinutes();
     
     const proposedMinutes = hours * 60 + minutes;
     const currentMinutes = localHour * 60 + localMinute;
