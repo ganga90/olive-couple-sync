@@ -686,9 +686,18 @@ async function executeTaskAction(
           if (proposedMinutes <= currentMinutes) { targetDate.setDate(targetDate.getDate() + 1); readable = 'tomorrow'; } else { readable = 'today'; }
         }
 
-        // Apply time to date
+        // Apply time to date (timezone-aware UTC conversion)
         if (targetDate && hours !== null) {
           targetDate.setHours(hours, mins, 0, 0);
+          // Convert local time to UTC
+          try {
+            const utcStr = targetDate.toLocaleString('en-US', { timeZone: 'UTC' });
+            const tzStr = targetDate.toLocaleString('en-US', { timeZone: userTimezone });
+            const utcDate = new Date(utcStr);
+            const tzDate = new Date(tzStr);
+            const offsetMs = utcDate.getTime() - tzDate.getTime();
+            targetDate = new Date(targetDate.getTime() + offsetMs);
+          } catch { /* keep as-is */ }
           if (!readable.includes('minute') && !readable.includes('hour')) {
             readable += ` at ${hours > 12 ? hours - 12 : hours === 0 ? 12 : hours}:${mins.toString().padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
           }
