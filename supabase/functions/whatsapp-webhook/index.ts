@@ -1185,6 +1185,18 @@ function isValidCoordinates(lat: string | null, lon: string | null): boolean {
 // Parse natural language date/time expressions
 function parseNaturalDate(expression: string, timezone: string = 'America/New_York'): { date: string | null; time: string | null; readable: string } {
   const now = new Date();
+  
+  // CRITICAL FIX: Create a "local now" whose UTC fields represent the user's local time.
+  // This prevents off-by-one day errors when UTC date differs from local date
+  // (e.g., user at 8PM ET Monday = Tuesday 00:00 UTC → "tomorrow" would wrongly resolve to Wednesday).
+  let localNow: Date;
+  try {
+    const localStr = now.toLocaleString('en-US', { timeZone: timezone });
+    localNow = new Date(localStr);
+  } catch {
+    localNow = new Date(now);
+  }
+  
   const lowerExpr = expression.toLowerCase().trim();
   
   const formatDate = (d: Date): string => d.toISOString();
