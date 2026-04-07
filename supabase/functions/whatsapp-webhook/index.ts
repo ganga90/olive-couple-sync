@@ -1250,9 +1250,9 @@ function parseNaturalDate(expression: string, timezone: string = 'America/New_Yo
       'giovedì': 4, 'giovedi': 4, 'venerdì': 5, 'venerdi': 5, 'sabato': 6,
     };
     const targetDay = dayMap[dayName.toLowerCase()] ?? days.indexOf(dayName.toLowerCase());
-    if (targetDay === -1) return now;
+    if (targetDay === -1) return localNow;
     
-    const result = new Date(now);
+    const result = new Date(localNow);
     const currentDay = result.getDay();
     let daysToAdd = targetDay - currentDay;
     if (daysToAdd <= 0) daysToAdd += 7;
