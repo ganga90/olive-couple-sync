@@ -2396,8 +2396,8 @@ Process this note:
           Object.entries(categorySynonyms).forEach(([canonical, synonyms]) => {
             const normalizedSynonyms = synonyms.map(s => normalizeName(s));
             const categoryMatchesSynonyms = normalizedSynonyms.includes(categoryNorm) || 
-                                            normalizedSynonyms.some(s => categoryNorm.includes(s));
-            const listMatchesSynonyms = normalizedSynonyms.some(s => listNameNorm.includes(s) || s.includes(listNameNorm));
+                                            normalizedSynonyms.some(s => categoryNorm === s);
+            const listMatchesSynonyms = normalizedSynonyms.some(s => listNameNorm === s || s === listNameNorm);
             
             if (categoryMatchesSynonyms && listMatchesSynonyms) {
               score += 10;
