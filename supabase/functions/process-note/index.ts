@@ -213,7 +213,9 @@ async function detectAndCreateExpense(
   source?: string
 ): Promise<void> {
   const amount = extractAmount(originalText);
-  if (!amount || amount <= 0) return; // No monetary amount found
+  // Validate amount bounds: ignore negative, zero, or absurdly large values
+  if (!amount || amount <= 0 || amount > 999999) return;
+  // (bounds check moved above)
 
   console.log('[Expense Detection] Amount detected:', amount, 'in text:', originalText.substring(0, 80));
 
@@ -852,8 +854,11 @@ async function transcribeAudioWithElevenLabs(audioUrl: string): Promise<string> 
   try {
     console.log('[ElevenLabs] Downloading audio from:', audioUrl);
     
-    // Download the audio file
-    const audioResponse = await fetch(audioUrl);
+    // Download with 30s timeout to prevent hanging
+    const downloadCtrl = new AbortController();
+    const downloadTimeout = setTimeout(() => downloadCtrl.abort(), 30000);
+    const audioResponse = await fetch(audioUrl, { signal: downloadCtrl.signal });
+    clearTimeout(downloadTimeout);
     if (!audioResponse.ok) {
       console.error('[ElevenLabs] Failed to download audio:', audioResponse.status);
       return '';
@@ -870,13 +875,17 @@ async function transcribeAudioWithElevenLabs(audioUrl: string): Promise<string> 
     
     console.log('[ElevenLabs] Sending to transcription API...');
     
+    const transcribeCtrl = new AbortController();
+    const transcribeTimeout = setTimeout(() => transcribeCtrl.abort(), 30000);
     const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
       method: 'POST',
       headers: {
         'xi-api-key': ELEVENLABS_API_KEY,
       },
       body: formData,
+      signal: transcribeCtrl.signal,
     });
+    clearTimeout(transcribeTimeout);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -1017,8 +1026,11 @@ async function analyzeImageWithGemini(genai: GoogleGenAI, imageUrl: string): Pro
   try {
     console.log('[Gemini Vision] Analyzing image:', imageUrl);
     
-    // Download the image
-    const imageResponse = await fetch(imageUrl);
+    // Download the image with 30s timeout
+    const imgCtrl = new AbortController();
+    const imgTimeout = setTimeout(() => imgCtrl.abort(), 30000);
+    const imageResponse = await fetch(imageUrl, { signal: imgCtrl.signal });
+    clearTimeout(imgTimeout);
     if (!imageResponse.ok) {
       console.error('[Gemini Vision] Failed to download image:', imageResponse.status);
       return '';
@@ -1224,8 +1236,11 @@ async function analyzeVideoWithGemini(genai: GoogleGenAI, videoUrl: string): Pro
   try {
     console.log('[Gemini Video] Analyzing video:', videoUrl);
 
-    // Download the video file
-    const videoResponse = await fetch(videoUrl);
+    // Download the video file with 45s timeout (videos are larger)
+    const vidCtrl = new AbortController();
+    const vidTimeout = setTimeout(() => vidCtrl.abort(), 45000);
+    const videoResponse = await fetch(videoUrl, { signal: vidCtrl.signal });
+    clearTimeout(vidTimeout);
     if (!videoResponse.ok) {
       console.error('[Gemini Video] Failed to download video:', videoResponse.status);
       return '';
@@ -1329,8 +1344,11 @@ async function analyzePdfWithGemini(genai: GoogleGenAI, pdfUrl: string): Promise
   try {
     console.log('[Gemini PDF] Analyzing PDF:', pdfUrl);
     
-    // Download the PDF
-    const pdfResponse = await fetch(pdfUrl);
+    // Download the PDF with 30s timeout
+    const pdfCtrl = new AbortController();
+    const pdfTimeout = setTimeout(() => pdfCtrl.abort(), 30000);
+    const pdfResponse = await fetch(pdfUrl, { signal: pdfCtrl.signal });
+    clearTimeout(pdfTimeout);
     if (!pdfResponse.ok) {
       console.error('[Gemini PDF] Failed to download PDF:', pdfResponse.status);
       return '';
