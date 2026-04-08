@@ -30,12 +30,13 @@ export const FloatingNoteButton: React.FC = () => {
     
     try {
       // Process the note with Gemini AI
-      const { data: processedNote, error } = await supabase.functions.invoke('process-note', {
+      const { data: processedData, error } = await supabase.functions.invoke('process-note', {
         body: { 
           text: text.trim(),
           user_id: user.id,
           couple_id: currentCouple?.id || null,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          source: 'web',
         }
       });
 
@@ -44,20 +45,33 @@ export const FloatingNoteButton: React.FC = () => {
         throw new Error('Failed to process note with AI');
       }
       
-      await addNote({
-        originalText: text.trim(),
-        summary: processedNote.summary,
-        category: processedNote.category,
-        dueDate: processedNote.due_date,
-        completed: false,
-        priority: processedNote.priority,
-        tags: processedNote.tags,
-        items: processedNote.items,
-      });
+      // Handle multi-note responses
+      const notesToSave = processedData?.multiple && processedData?.notes 
+        ? processedData.notes 
+        : [processedData];
+
+      let savedCount = 0;
+      for (const notePayload of notesToSave) {
+        const result = await addNote({
+          originalText: text.trim(),
+          summary: notePayload.summary || text.trim(),
+          category: notePayload.category || 'task',
+          dueDate: notePayload.due_date || null,
+          completed: false,
+          priority: notePayload.priority || 'medium',
+          tags: notePayload.tags || [],
+          items: notePayload.items || [],
+          list_id: notePayload.list_id || null,
+          task_owner: notePayload.task_owner || null,
+        });
+        if (result) savedCount++;
+      }
 
       setText("");
       setIsOpen(false);
-      toast.success("Note added and organized!");
+      toast.success(savedCount > 1 
+        ? `${savedCount} notes added and organized!` 
+        : "Note added and organized!");
     } catch (error) {
       console.error("Error processing note:", error);
       toast.error("Failed to process note. Please try again.");

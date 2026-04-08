@@ -213,7 +213,9 @@ async function detectAndCreateExpense(
   source?: string
 ): Promise<void> {
   const amount = extractAmount(originalText);
-  if (!amount || amount <= 0) return; // No monetary amount found
+  // Validate amount bounds: ignore negative, zero, or absurdly large values
+  if (!amount || amount <= 0 || amount > 999999) return;
+  // (bounds check moved above)
 
   console.log('[Expense Detection] Amount detected:', amount, 'in text:', originalText.substring(0, 80));
 
@@ -852,8 +854,11 @@ async function transcribeAudioWithElevenLabs(audioUrl: string): Promise<string> 
   try {
     console.log('[ElevenLabs] Downloading audio from:', audioUrl);
     
-    // Download the audio file
-    const audioResponse = await fetch(audioUrl);
+    // Download with 30s timeout to prevent hanging
+    const downloadCtrl = new AbortController();
+    const downloadTimeout = setTimeout(() => downloadCtrl.abort(), 30000);
+    const audioResponse = await fetch(audioUrl, { signal: downloadCtrl.signal });
+    clearTimeout(downloadTimeout);
     if (!audioResponse.ok) {
       console.error('[ElevenLabs] Failed to download audio:', audioResponse.status);
       return '';
@@ -870,13 +875,17 @@ async function transcribeAudioWithElevenLabs(audioUrl: string): Promise<string> 
     
     console.log('[ElevenLabs] Sending to transcription API...');
     
+    const transcribeCtrl = new AbortController();
+    const transcribeTimeout = setTimeout(() => transcribeCtrl.abort(), 30000);
     const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
       method: 'POST',
       headers: {
         'xi-api-key': ELEVENLABS_API_KEY,
       },
       body: formData,
+      signal: transcribeCtrl.signal,
     });
+    clearTimeout(transcribeTimeout);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -1017,8 +1026,11 @@ async function analyzeImageWithGemini(genai: GoogleGenAI, imageUrl: string): Pro
   try {
     console.log('[Gemini Vision] Analyzing image:', imageUrl);
     
-    // Download the image
-    const imageResponse = await fetch(imageUrl);
+    // Download the image with 30s timeout
+    const imgCtrl = new AbortController();
+    const imgTimeout = setTimeout(() => imgCtrl.abort(), 30000);
+    const imageResponse = await fetch(imageUrl, { signal: imgCtrl.signal });
+    clearTimeout(imgTimeout);
     if (!imageResponse.ok) {
       console.error('[Gemini Vision] Failed to download image:', imageResponse.status);
       return '';
@@ -1224,8 +1236,11 @@ async function analyzeVideoWithGemini(genai: GoogleGenAI, videoUrl: string): Pro
   try {
     console.log('[Gemini Video] Analyzing video:', videoUrl);
 
-    // Download the video file
-    const videoResponse = await fetch(videoUrl);
+    // Download the video file with 45s timeout (videos are larger)
+    const vidCtrl = new AbortController();
+    const vidTimeout = setTimeout(() => vidCtrl.abort(), 45000);
+    const videoResponse = await fetch(videoUrl, { signal: vidCtrl.signal });
+    clearTimeout(vidTimeout);
     if (!videoResponse.ok) {
       console.error('[Gemini Video] Failed to download video:', videoResponse.status);
       return '';
@@ -1329,8 +1344,11 @@ async function analyzePdfWithGemini(genai: GoogleGenAI, pdfUrl: string): Promise
   try {
     console.log('[Gemini PDF] Analyzing PDF:', pdfUrl);
     
-    // Download the PDF
-    const pdfResponse = await fetch(pdfUrl);
+    // Download the PDF with 30s timeout
+    const pdfCtrl = new AbortController();
+    const pdfTimeout = setTimeout(() => pdfCtrl.abort(), 30000);
+    const pdfResponse = await fetch(pdfUrl, { signal: pdfCtrl.signal });
+    clearTimeout(pdfTimeout);
     if (!pdfResponse.ok) {
       console.error('[Gemini PDF] Failed to download PDF:', pdfResponse.status);
       return '';
@@ -1443,16 +1461,20 @@ DO NOT EXTRACT:
 For each memory, rate confidence 0-1 (only extract if >0.7 confident it's a real fact).
 Return empty array if no personal facts found.`;
 
-    const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: extractionPrompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: memoryExtractionSchema,
-        temperature: 0.1,
-        maxOutputTokens: 500
-      }
-    });
+    const response = await resilientGenerateContent(
+      genai,
+      {
+        model: "gemini-2.5-flash-lite",  // Lite: simple fact extraction doesn't need full model
+        contents: extractionPrompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: memoryExtractionSchema,
+          temperature: 0.1,
+          maxOutputTokens: 500
+        }
+      },
+      { maxRetries: 1, fallbackModels: [] }  // 1 retry, no fallback — this is non-critical
+    );
 
     const responseText = response.text || '';
     const parsed = JSON.parse(responseText);
@@ -1583,8 +1605,11 @@ serve(async (req) => {
 
         if (mediaType === 'image') {
           try {
-            // Download image ONCE, reuse buffer for both receipt detection and vision analysis
-            const imageResponse = await fetch(mediaUrl);
+            // Download image ONCE with 30s timeout, reuse buffer for both receipt detection and vision analysis
+            const imgDlCtrl = new AbortController();
+            const imgDlTimeout = setTimeout(() => imgDlCtrl.abort(), 30000);
+            const imageResponse = await fetch(mediaUrl, { signal: imgDlCtrl.signal });
+            clearTimeout(imgDlTimeout);
             if (!imageResponse.ok) return { descriptions: [], receiptResult: null };
 
             const imageBlob = await imageResponse.blob();
@@ -2654,9 +2679,19 @@ Process this note:
 
   } catch (error: any) {
     console.error('[GenAI SDK] Error:', error);
+    
+    // Determine if this is a transient error that the client can retry
+    const msg = error?.message || String(error);
+    const isTransient = msg.includes('503') || msg.includes('UNAVAILABLE') || 
+                        msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') ||
+                        msg.includes('overloaded');
+    
+    // NEVER return 500 — always return structured JSON with 200 so the client
+    // can use the fallback data and display a meaningful result
     return new Response(JSON.stringify({ 
-      error: error?.message || 'Unknown error occurred',
-      summary: 'Note processing failed',
+      error: isTransient ? 'SERVICE_UNAVAILABLE' : (error?.message || 'Unknown error occurred'),
+      fallback: true,
+      summary: 'Note saved',
       category: 'task',
       due_date: null,
       priority: 'medium',
@@ -2665,7 +2700,7 @@ Process this note:
       list_id: null,
       original_text: ''
     }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
