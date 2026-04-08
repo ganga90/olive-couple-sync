@@ -1461,16 +1461,20 @@ DO NOT EXTRACT:
 For each memory, rate confidence 0-1 (only extract if >0.7 confident it's a real fact).
 Return empty array if no personal facts found.`;
 
-    const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: extractionPrompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: memoryExtractionSchema,
-        temperature: 0.1,
-        maxOutputTokens: 500
-      }
-    });
+    const response = await resilientGenerateContent(
+      genai,
+      {
+        model: "gemini-2.5-flash-lite",  // Lite: simple fact extraction doesn't need full model
+        contents: extractionPrompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: memoryExtractionSchema,
+          temperature: 0.1,
+          maxOutputTokens: 500
+        }
+      },
+      { maxRetries: 1, fallbackModels: [] }  // 1 retry, no fallback — this is non-critical
+    );
 
     const responseText = response.text || '';
     const parsed = JSON.parse(responseText);
