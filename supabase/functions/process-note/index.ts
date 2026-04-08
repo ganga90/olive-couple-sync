@@ -1941,16 +1941,20 @@ Process this note:
     let processedResponse_inner: any;
 
     try {
-      const response = await genai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: userPrompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: multiNoteSchema,
-          temperature: 0.1,
-          maxOutputTokens: 2400
-        }
-      });
+      const response = await resilientGenerateContent(
+        genai,
+        {
+          model: "gemini-2.5-flash",
+          contents: userPrompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: multiNoteSchema,
+            temperature: 0.1,
+            maxOutputTokens: 2400
+          }
+        },
+        { maxRetries: 2, fallbackModels: ["gemini-2.5-flash-lite"] }
+      );
 
       const responseText = response.text || '';
       console.log('[GenAI SDK] Raw response:', responseText);
