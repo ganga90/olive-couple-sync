@@ -1987,7 +1987,12 @@ Process this note:
         message.includes('RESOURCE_EXHAUSTED') ||
         message.includes('quota') ||
         message.includes('Too Many Requests') ||
-        (genAiError as any)?.status === 429
+        message.includes('503') ||
+        message.includes('UNAVAILABLE') ||
+        message.includes('Service Unavailable') ||
+        message.includes('overloaded') ||
+        (genAiError as any)?.status === 429 ||
+        (genAiError as any)?.status === 503
       ) {
         console.warn('[GenAI SDK] Quota exceeded, falling back to keyword-based categorization');
         const fallbackSummary = mediaDescriptions.length > 0 
