@@ -640,6 +640,7 @@ SPLIT CRITERIA — CRITICAL: You MUST create SEPARATE notes when input contains:
 - **Bullet points or dashes**: "- buy milk\n- call doctor" → 2 notes  
 - **Comma-separated distinct tasks**: "buy milk, call doctor, book restaurant" → 3 notes
 - **"and" joining distinct tasks**: "buy milk and call doctor" → 2 notes (different actions)
+- **"and" joining distinct recipients/targets**: "reply to RoasterCup and to Meze Labs" → 2 notes (one per recipient, each gets the SAME action verb with their specific target as the summary)
 - **Each grocery item**: "groceries: milk, eggs, bread" → 3 separate notes (one per item)
 - **Multi-line tasks**: Each line with a distinct task → separate note per line
 
@@ -650,6 +651,11 @@ SINGLE NOTE cases (do NOT split):
 - "fix the sink" → 1 note (single task)
 - "doctor appointment at 3pm tomorrow" → 1 note (single task with details)
 - "Sofa measures: 118 width, 60 long" → 1 note (measurements are details, not separate tasks)
+
+SUMMARY CLEANING RULES — CRITICAL:
+- NEVER start summary with a generic category prefix (e.g., "Work reply on..." → just "Reply to [recipient] on LinkedIn")
+- Keep summaries ACTIONABLE and CLEAN: verb + target (e.g., "Reply to RoasterCup on LinkedIn")
+- Remove filler words like "work", "personal" from the beginning of summaries — let the category field handle classification
 
 CORE FIELD RULES:
 1. summary: Concise title (max 100 chars) - EXTRACT THE MAIN ENTITY NAME
