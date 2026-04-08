@@ -2676,9 +2676,19 @@ Process this note:
 
   } catch (error: any) {
     console.error('[GenAI SDK] Error:', error);
+    
+    // Determine if this is a transient error that the client can retry
+    const msg = error?.message || String(error);
+    const isTransient = msg.includes('503') || msg.includes('UNAVAILABLE') || 
+                        msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') ||
+                        msg.includes('overloaded');
+    
+    // NEVER return 500 — always return structured JSON with 200 so the client
+    // can use the fallback data and display a meaningful result
     return new Response(JSON.stringify({ 
-      error: error?.message || 'Unknown error occurred',
-      summary: 'Note processing failed',
+      error: isTransient ? 'SERVICE_UNAVAILABLE' : (error?.message || 'Unknown error occurred'),
+      fallback: true,
+      summary: 'Note saved',
       category: 'task',
       due_date: null,
       priority: 'medium',
@@ -2687,7 +2697,7 @@ Process this note:
       list_id: null,
       original_text: ''
     }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
