@@ -2309,11 +2309,22 @@ Process this note:
           return equivMatch.id;
         }
         
-        // Partial/contains match as fallback
+        // Partial/contains match as fallback — but ONLY if the shorter string
+        // is a COMPLETE word inside the longer one (prevents "Work" → "Workouts")
         const targetNorm = normalizeName(targetList);
         const partialMatch = existingLists.find((l: any) => {
           const listNorm = normalizeName(l.name);
-          return listNorm.includes(targetNorm) || targetNorm.includes(listNorm);
+          if (listNorm === targetNorm) return true; // exact already handled above
+          // Only match if one is a complete word boundary match inside the other
+          const shorter = listNorm.length <= targetNorm.length ? listNorm : targetNorm;
+          const longer = listNorm.length <= targetNorm.length ? targetNorm : listNorm;
+          const escaped = shorter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const wbRegex = new RegExp(`\\b${escaped}\\b`, 'i');
+          // Only accept if the shorter name IS the longer name minus a suffix/prefix
+          // i.e., they share the same root — but NOT if they're completely different words
+          // "Work" should NOT match "Workouts" (different concept)
+          // "Home" CAN match "Home Improvement" (the shorter IS a word in the longer)
+          return wbRegex.test(longer) && shorter.length >= 4 && (longer.split(/\s+/).some(w => normalizeName(w) === shorter));
         });
         if (partialMatch) {
           console.log('[findOrCreateList] AI target_list partial match:', partialMatch.name);
@@ -2393,9 +2404,15 @@ Process this note:
             }
           });
           
-          // Partial match - one contains the other
-          if (listNameNorm.includes(categoryNorm) || categoryNorm.includes(listNameNorm)) {
-            score += 6;
+          // Partial match - only if one is a complete word in the other
+          // Prevents "work" matching "workouts" (different concepts)
+          if (listNameNorm !== categoryNorm) {
+            const shorter = listNameNorm.length <= categoryNorm.length ? listNameNorm : categoryNorm;
+            const longer = listNameNorm.length <= categoryNorm.length ? categoryNorm : listNameNorm;
+            // Only score if the shorter appears as a standalone word in the longer
+            if (longer.split(/\s+/).some(w => normalizeName(w) === shorter)) {
+              score += 6;
+            }
           }
 
           // Tag-based bonus
