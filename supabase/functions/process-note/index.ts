@@ -9,6 +9,71 @@ const corsHeaders = {
 };
 
 // ============================================================================
+// RESILIENT GEMINI CALL WITH RETRY + MODEL FALLBACK
+// ============================================================================
+
+/**
+ * Calls genai.models.generateContent with exponential backoff retry
+ * for transient errors (503 Service Unavailable, 429 Too Many Requests).
+ * Falls back to alternative model tiers before giving up.
+ */
+async function resilientGenerateContent(
+  genai: GoogleGenAI,
+  params: { model: string; contents: any; config?: any },
+  options?: { maxRetries?: number; fallbackModels?: string[] }
+): Promise<any> {
+  const maxRetries = options?.maxRetries ?? 2;
+  const fallbackModels = options?.fallbackModels ?? [];
+  const allModels = [params.model, ...fallbackModels];
+
+  for (let modelIdx = 0; modelIdx < allModels.length; modelIdx++) {
+    const currentModel = allModels[modelIdx];
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await genai.models.generateContent({
+          ...params,
+          model: currentModel,
+        });
+        if (modelIdx > 0 || attempt > 0) {
+          console.log(`[GenAI Retry] Succeeded on model="${currentModel}" attempt=${attempt + 1}`);
+        }
+        return response;
+      } catch (err: any) {
+        const msg = err?.message || String(err);
+        const isTransient =
+          msg.includes('503') ||
+          msg.includes('UNAVAILABLE') ||
+          msg.includes('Service Unavailable') ||
+          msg.includes('overloaded') ||
+          msg.includes('RESOURCE_EXHAUSTED') ||
+          msg.includes('Too Many Requests') ||
+          msg.includes('quota') ||
+          err?.status === 429 ||
+          err?.status === 503;
+
+        if (!isTransient) throw err; // non-transient → bubble up immediately
+
+        const isLastAttempt = attempt === maxRetries;
+        const isLastModel = modelIdx === allModels.length - 1;
+
+        if (isLastAttempt && isLastModel) throw err; // exhausted all retries + models
+
+        if (isLastAttempt) {
+          console.warn(`[GenAI Retry] Model "${currentModel}" exhausted retries, trying fallback model "${allModels[modelIdx + 1]}"`);
+          break; // move to next model
+        }
+
+        const delay = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 500, 8000);
+        console.warn(`[GenAI Retry] Transient error on "${currentModel}" (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${Math.round(delay)}ms...`);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  // Should not reach here, but just in case
+  throw new Error('[GenAI Retry] All retries and fallback models exhausted');
+}
+
+// ============================================================================
 // URL EXTRACTION & LINK SAVING
 // ============================================================================
 
@@ -1876,16 +1941,20 @@ Process this note:
     let processedResponse_inner: any;
 
     try {
-      const response = await genai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: userPrompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: multiNoteSchema,
-          temperature: 0.1,
-          maxOutputTokens: 2400
-        }
-      });
+      const response = await resilientGenerateContent(
+        genai,
+        {
+          model: "gemini-2.5-flash",
+          contents: userPrompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: multiNoteSchema,
+            temperature: 0.1,
+            maxOutputTokens: 2400
+          }
+        },
+        { maxRetries: 2, fallbackModels: ["gemini-2.5-flash-lite"] }
+      );
 
       const responseText = response.text || '';
       console.log('[GenAI SDK] Raw response:', responseText);
@@ -1918,7 +1987,12 @@ Process this note:
         message.includes('RESOURCE_EXHAUSTED') ||
         message.includes('quota') ||
         message.includes('Too Many Requests') ||
-        (genAiError as any)?.status === 429
+        message.includes('503') ||
+        message.includes('UNAVAILABLE') ||
+        message.includes('Service Unavailable') ||
+        message.includes('overloaded') ||
+        (genAiError as any)?.status === 429 ||
+        (genAiError as any)?.status === 503
       ) {
         console.warn('[GenAI SDK] Quota exceeded, falling back to keyword-based categorization');
         const fallbackSummary = mediaDescriptions.length > 0 
