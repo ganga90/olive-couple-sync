@@ -640,6 +640,7 @@ SPLIT CRITERIA — CRITICAL: You MUST create SEPARATE notes when input contains:
 - **Bullet points or dashes**: "- buy milk\n- call doctor" → 2 notes  
 - **Comma-separated distinct tasks**: "buy milk, call doctor, book restaurant" → 3 notes
 - **"and" joining distinct tasks**: "buy milk and call doctor" → 2 notes (different actions)
+- **"and" joining distinct recipients/targets**: "reply to RoasterCup and to Meze Labs" → 2 notes (one per recipient, each gets the SAME action verb with their specific target as the summary)
 - **Each grocery item**: "groceries: milk, eggs, bread" → 3 separate notes (one per item)
 - **Multi-line tasks**: Each line with a distinct task → separate note per line
 
@@ -650,6 +651,11 @@ SINGLE NOTE cases (do NOT split):
 - "fix the sink" → 1 note (single task)
 - "doctor appointment at 3pm tomorrow" → 1 note (single task with details)
 - "Sofa measures: 118 width, 60 long" → 1 note (measurements are details, not separate tasks)
+
+SUMMARY CLEANING RULES — CRITICAL:
+- NEVER start summary with a generic category prefix (e.g., "Work reply on..." → just "Reply to [recipient] on LinkedIn")
+- Keep summaries ACTIONABLE and CLEAN: verb + target (e.g., "Reply to RoasterCup on LinkedIn")
+- Remove filler words like "work", "personal" from the beginning of summaries — let the category field handle classification
 
 CORE FIELD RULES:
 1. summary: Concise title (max 100 chars) - EXTRACT THE MAIN ENTITY NAME
@@ -2309,11 +2315,22 @@ Process this note:
           return equivMatch.id;
         }
         
-        // Partial/contains match as fallback
+        // Partial/contains match as fallback — but ONLY if the shorter string
+        // is a COMPLETE word inside the longer one (prevents "Work" → "Workouts")
         const targetNorm = normalizeName(targetList);
         const partialMatch = existingLists.find((l: any) => {
           const listNorm = normalizeName(l.name);
-          return listNorm.includes(targetNorm) || targetNorm.includes(listNorm);
+          if (listNorm === targetNorm) return true; // exact already handled above
+          // Only match if one is a complete word boundary match inside the other
+          const shorter = listNorm.length <= targetNorm.length ? listNorm : targetNorm;
+          const longer = listNorm.length <= targetNorm.length ? targetNorm : listNorm;
+          const escaped = shorter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const wbRegex = new RegExp(`\\b${escaped}\\b`, 'i');
+          // Only accept if the shorter name IS the longer name minus a suffix/prefix
+          // i.e., they share the same root — but NOT if they're completely different words
+          // "Work" should NOT match "Workouts" (different concept)
+          // "Home" CAN match "Home Improvement" (the shorter IS a word in the longer)
+          return wbRegex.test(longer) && shorter.length >= 4 && (longer.split(/\s+/).some(w => normalizeName(w) === shorter));
         });
         if (partialMatch) {
           console.log('[findOrCreateList] AI target_list partial match:', partialMatch.name);
@@ -2385,17 +2402,23 @@ Process this note:
           Object.entries(categorySynonyms).forEach(([canonical, synonyms]) => {
             const normalizedSynonyms = synonyms.map(s => normalizeName(s));
             const categoryMatchesSynonyms = normalizedSynonyms.includes(categoryNorm) || 
-                                            normalizedSynonyms.some(s => categoryNorm.includes(s));
-            const listMatchesSynonyms = normalizedSynonyms.some(s => listNameNorm.includes(s) || s.includes(listNameNorm));
+                                            normalizedSynonyms.some(s => categoryNorm === s);
+            const listMatchesSynonyms = normalizedSynonyms.some(s => listNameNorm === s || s === listNameNorm);
             
             if (categoryMatchesSynonyms && listMatchesSynonyms) {
               score += 10;
             }
           });
           
-          // Partial match - one contains the other
-          if (listNameNorm.includes(categoryNorm) || categoryNorm.includes(listNameNorm)) {
-            score += 6;
+          // Partial match - only if one is a complete word in the other
+          // Prevents "work" matching "workouts" (different concepts)
+          if (listNameNorm !== categoryNorm) {
+            const shorter = listNameNorm.length <= categoryNorm.length ? listNameNorm : categoryNorm;
+            const longer = listNameNorm.length <= categoryNorm.length ? categoryNorm : listNameNorm;
+            // Only score if the shorter appears as a standalone word in the longer
+            if (longer.split(/\s+/).some(w => normalizeName(w) === shorter)) {
+              score += 6;
+            }
           }
 
           // Tag-based bonus
