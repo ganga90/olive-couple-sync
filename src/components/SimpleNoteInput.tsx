@@ -58,33 +58,50 @@ export const SimpleNoteInput: React.FC<SimpleNoteInputProps> = ({ onNoteAdded })
 
     if (error) throw error;
 
-    // Save through the provider (handles expense linking, RLS, etc.)
-    const noteData: any = {
-      original_text: noteText,
-      summary: data.summary || noteText,
-      category: data.category || 'task',
-      couple_id: currentCouple?.id || null,
-      completed: false,
-      priority: data.priority || 'medium',
-      tags: data.tags || [],
-      items: data.items || [],
-      due_date: data.due_date || null,
-      reminder_time: data.reminder_time || null,
-      is_sensitive: isSensitive,
-      list_id: data.list_id || null,
-      task_owner: data.task_owner || null,
-    };
+    // Handle fallback responses from the edge function (e.g., AI service down)
+    if (data?.fallback) {
+      console.warn('[SimpleNoteInput] AI service returned fallback — saving note with basic categorization');
+    }
 
-    const result = await addNote(noteData);
-    if (!result) throw new Error('Failed to save note');
+    // Handle multi-note responses: save each note individually
+    const notesToSave = data?.multiple && data?.notes 
+      ? data.notes 
+      : [data];
+
+    let savedCount = 0;
+    for (const notePayload of notesToSave) {
+      const noteData: any = {
+        original_text: noteText,
+        summary: notePayload.summary || noteText,
+        category: notePayload.category || 'task',
+        couple_id: currentCouple?.id || null,
+        completed: false,
+        priority: notePayload.priority || 'medium',
+        tags: notePayload.tags || [],
+        items: notePayload.items || [],
+        due_date: notePayload.due_date || null,
+        reminder_time: notePayload.reminder_time || null,
+        is_sensitive: isSensitive,
+        list_id: notePayload.list_id || null,
+        task_owner: notePayload.task_owner || null,
+        recurrence_frequency: notePayload.recurrence_frequency || null,
+        recurrence_interval: notePayload.recurrence_interval || null,
+      };
+
+      const result = await addNote(noteData);
+      if (result) savedCount++;
+    }
+    
+    if (savedCount === 0) throw new Error('Failed to save note');
 
     return {
-      summary: data.summary || noteText,
-      category: data.category || 'task',
-      priority: data.priority || 'medium',
-      tags: data.tags || [],
-      items: data.items || [],
-      due_date: data.due_date,
+      summary: notesToSave[0]?.summary || noteText,
+      category: notesToSave[0]?.category || 'task',
+      priority: notesToSave[0]?.priority || 'medium',
+      tags: notesToSave[0]?.tags || [],
+      items: notesToSave[0]?.items || [],
+      due_date: notesToSave[0]?.due_date,
+      _count: savedCount,
     };
   };
 
@@ -105,7 +122,10 @@ export const SimpleNoteInput: React.FC<SimpleNoteInputProps> = ({ onNoteAdded })
       setShowResult(true);
       refetchNotes?.();
       onNoteAdded?.();
-      toast.success(t('brainDump.noteOrganized', 'Note organized by AI!'));
+      const count = (processed as any)._count || 1;
+      toast.success(count > 1 
+        ? t('brainDump.multiNotesOrganized', '{{count}} notes organized by AI!', { count })
+        : t('brainDump.noteOrganized', 'Note organized by AI!'));
     } catch (error) {
       console.error("Error processing note:", error);
       toast.error(t('brainDump.processingError', 'Failed to process note. Please try again.'));
