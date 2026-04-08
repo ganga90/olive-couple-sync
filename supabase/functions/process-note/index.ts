@@ -1605,8 +1605,11 @@ serve(async (req) => {
 
         if (mediaType === 'image') {
           try {
-            // Download image ONCE, reuse buffer for both receipt detection and vision analysis
-            const imageResponse = await fetch(mediaUrl);
+            // Download image ONCE with 30s timeout, reuse buffer for both receipt detection and vision analysis
+            const imgDlCtrl = new AbortController();
+            const imgDlTimeout = setTimeout(() => imgDlCtrl.abort(), 30000);
+            const imageResponse = await fetch(mediaUrl, { signal: imgDlCtrl.signal });
+            clearTimeout(imgDlTimeout);
             if (!imageResponse.ok) return { descriptions: [], receiptResult: null };
 
             const imageBlob = await imageResponse.blob();
