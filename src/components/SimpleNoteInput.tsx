@@ -22,6 +22,7 @@ interface ProcessedNote {
   tags: string[];
   items: string[];
   due_date?: string;
+  _count?: number;
 }
 
 export const SimpleNoteInput: React.FC<SimpleNoteInputProps> = ({ onNoteAdded }) => {
