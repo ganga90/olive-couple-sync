@@ -353,18 +353,45 @@ async function fetchServerContext(
       ctx.savedItems = savedItemsCtx;
     }
 
-    // Deep profile (memory file)
+    // Deep profile + compiled knowledge (memory files)
     try {
-      const { data: memoryFile } = await supabase
+      const { data: memoryFiles } = await supabase
         .from('olive_memory_files')
-        .select('content')
+        .select('file_type, content, updated_at')
         .eq('user_id', userId)
-        .eq('file_type', 'profile')
-        .maybeSingle();
-      if (memoryFile?.content) {
-        ctx.deepProfile = `\nDEEP PROFILE:\n${memoryFile.content.slice(0, 800)}`;
+        .in('file_type', ['profile', 'patterns', 'relationship', 'household'])
+        .order('updated_at', { ascending: false });
+
+      if (memoryFiles?.length) {
+        const parts: string[] = [];
+        for (const mf of memoryFiles) {
+          if (mf.content && mf.content.trim().length > 0) {
+            const label = mf.file_type.toUpperCase();
+            parts.push(`[${label}]: ${mf.content.slice(0, 600)}`);
+          }
+        }
+        if (parts.length > 0) {
+          ctx.deepProfile = `\nCOMPILED KNOWLEDGE:\n${parts.join('\n\n')}`;
+        }
       }
     } catch { /* non-critical */ }
+
+    // Knowledge entities (if graph populated)
+    try {
+      const { data: entities } = await supabase
+        .from('olive_entities')
+        .select('name, entity_type, metadata, mention_count')
+        .eq('user_id', userId)
+        .order('mention_count', { ascending: false })
+        .limit(20);
+
+      if (entities?.length) {
+        ctx.deepProfile = (ctx.deepProfile || '') + `\n\nKEY ENTITIES:\n${entities.map((e: any) => {
+          const meta = e.metadata ? Object.entries(e.metadata).filter(([k]) => k !== 'aliases').map(([k, v]) => `${k}: ${v}`).join(', ') : '';
+          return `- ${e.name} (${e.entity_type}${meta ? ', ' + meta : ''}) — mentioned ${e.mention_count}x`;
+        }).join('\n')}`;
+      }
+    } catch { /* olive_entities may not exist yet — non-critical */ }
 
     // Agent insights (non-critical)
     try {

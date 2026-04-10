@@ -1549,6 +1549,119 @@ Return empty array if no personal facts found.`;
   }
 }
 
+// ============================================================================
+// OLIVE-MEMORY FLUSH: Persist facts to the compiled knowledge system
+// ============================================================================
+async function flushToOliveMemory(
+  supabase: any,
+  originalText: string,
+  processedResult: any,
+  userId: string,
+) {
+  try {
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+
+    // Build a compact representation of what was captured
+    const summary = processedResult.summary || originalText.slice(0, 200);
+    const category = processedResult.category || 'personal';
+    const items = (processedResult.items || []).map((i: any) =>
+      typeof i === 'string' ? i : i.text || i.content || JSON.stringify(i)
+    );
+
+    const conversationText = [
+      `Note captured (${category}): ${summary}`,
+      items.length > 0 ? `Items: ${items.join('; ')}` : '',
+      processedResult.tags?.length > 0 ? `Tags: ${processedResult.tags.join(', ')}` : '',
+    ].filter(Boolean).join('\n');
+
+    // Call olive-memory edge function with flush_context action
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/olive-memory`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({
+        action: 'flush_context',
+        user_id: userId,
+        conversation: conversationText,
+        source: 'process-note',
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn('[Olive Memory Flush] Response not OK:', response.status, text);
+      return;
+    }
+
+    const data = await response.json();
+    if (data.success && data.extracted > 0) {
+      console.log(`[Olive Memory Flush] Extracted ${data.extracted} facts from note`);
+    }
+  } catch (error) {
+    console.error('[Olive Memory Flush] Error:', error);
+  }
+}
+
+// ============================================================================
+// KNOWLEDGE EXTRACTION: Extract entities and relationships for the knowledge graph
+// Calls olive-knowledge-extract edge function (Phase 1)
+// ============================================================================
+async function extractKnowledge(
+  supabase: any,
+  processedResult: any,
+  originalText: string,
+  userId: string,
+  coupleId?: string,
+) {
+  try {
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+
+    // Only call if the edge function exists (deployed)
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/olive-knowledge-extract`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        couple_id: coupleId || null,
+        original_text: originalText,
+        summary: processedResult.summary || null,
+        category: processedResult.category || null,
+        items: processedResult.items || [],
+        tags: processedResult.tags || [],
+        note_id: processedResult.id || null,
+      }),
+    });
+
+    if (response.status === 404) {
+      // Edge function not deployed yet — silently skip
+      return;
+    }
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn('[Knowledge Extract] Response not OK:', response.status, text);
+      return;
+    }
+
+    const data = await response.json();
+    if (data.success) {
+      console.log(`[Knowledge Extract] Extracted ${data.entities_count || 0} entities, ${data.relationships_count || 0} relationships`);
+    }
+  } catch (error) {
+    // Gracefully handle — this is a non-blocking enhancement
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      // Network error — function likely not deployed
+      return;
+    }
+    console.error('[Knowledge Extract] Error:', error);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -2684,6 +2797,27 @@ Process this note:
     if (safeText.trim()) {
       extractMemoriesFromDump(genai, supabase, safeText, user_id).catch(err => {
         console.warn('[Memory Extraction] Non-blocking error:', err);
+      });
+    }
+
+    // ======================================================================
+    // OLIVE-MEMORY: Flush facts to persistent memory system (async, non-blocking)
+    // This populates olive_memory_files and olive_memory_chunks for the
+    // compiled knowledge system (Karpathy Second Brain pattern).
+    // ======================================================================
+    if (safeText.trim().length >= 20) {
+      flushToOliveMemory(supabase, safeText, result, user_id).catch(err => {
+        console.warn('[Olive Memory Flush] Non-blocking error:', err);
+      });
+    }
+
+    // ======================================================================
+    // KNOWLEDGE EXTRACTION: Extract entities and relationships (async, non-blocking)
+    // Feeds the knowledge graph (olive_entities + olive_relationships)
+    // ======================================================================
+    if (safeText.trim().length >= 10) {
+      extractKnowledge(supabase, result, safeText, user_id, couple_id).catch(err => {
+        console.warn('[Knowledge Extract] Non-blocking error:', err);
       });
     }
 

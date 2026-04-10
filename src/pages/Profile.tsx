@@ -203,6 +203,24 @@ const Profile = () => {
           >
             <OliveAutomationHub />
           </SettingsCard>
+
+          <SettingsCard
+            icon={<Brain className="h-5 w-5 text-[hsl(var(--magic-accent))]" />}
+            iconBg="bg-[hsl(var(--magic-accent))]/10"
+            title="Knowledge Graph"
+            subtitle="Entities & connections extracted from your notes"
+          >
+            <button
+              onClick={() => navigate(getLocalizedPath('/knowledge'))}
+              className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-accent/50 transition-all text-left group"
+            >
+              <div className="flex-1">
+                <p className="text-sm font-medium">View your Knowledge Graph</p>
+                <p className="text-xs text-muted-foreground">People, places, and concepts extracted from your notes</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:translate-x-0.5 transition-all" />
+            </button>
+          </SettingsCard>
         </CollapsibleSection>
 
         {/* SECTION 3: Integrations */}

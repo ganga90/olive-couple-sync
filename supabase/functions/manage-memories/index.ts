@@ -135,8 +135,16 @@ serve(async (req) => {
           throw new Error('Missing required fields: title and content');
         }
 
-        // Generate embedding for semantic search
-        const embedding = await generateEmbedding(`${title}\n${content}`);
+        // Generate embedding for semantic search (retry once on failure)
+        let embedding = await generateEmbedding(`${title}\n${content}`);
+        if (!embedding) {
+          console.warn('[manage-memories] First embedding attempt failed, retrying...');
+          await new Promise(r => setTimeout(r, 500));
+          embedding = await generateEmbedding(`${title}\n${content}`);
+        }
+        if (!embedding) {
+          console.error('[manage-memories] Embedding generation failed after retry — memory will be saved without embedding');
+        }
 
         const insertData: Record<string, any> = {
             user_id: effectiveUserId,
