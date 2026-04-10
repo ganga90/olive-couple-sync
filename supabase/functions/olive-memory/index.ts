@@ -453,52 +453,35 @@ const actions: Record<string, ActionHandler> = {
 
 // Helper: Generate embedding via Lovable proxy or fallback
 async function generateEmbedding(text: string): Promise<number[]> {
-  // Try Lovable's embedding endpoint
-  const LOVABLE_API_URL = Deno.env.get('LOVABLE_API_URL') || 'https://lovable.dev/api';
-
-  try {
-    const response = await fetch(`${LOVABLE_API_URL}/embeddings`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-      },
-      body: JSON.stringify({
-        input: text,
-        model: 'text-embedding-3-small',
-      }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      return data.data?.[0]?.embedding || data.embedding;
-    }
-  } catch (e) {
-    console.error('Lovable embedding failed:', e);
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API') || Deno.env.get('GEMINI_API_KEY');
+  if (!GEMINI_API_KEY) {
+    throw new Error('No Gemini API key configured for embeddings');
   }
 
-  // Fallback: Use OpenAI directly if key available
-  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-  if (OPENAI_API_KEY) {
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_API_KEY}`,
+    {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        input: text,
-        model: 'text-embedding-3-small',
+        content: { parts: [{ text }] },
+        outputDimensionality: 768,
       }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      return data.data[0].embedding;
     }
+  );
+
+  if (!response.ok) {
+    const errText = await response.text();
+    console.error('Gemini embedding API error:', response.status, errText.substring(0, 200));
+    throw new Error(`Gemini embedding failed: ${response.status}`);
   }
 
-  throw new Error('No embedding service available');
+  const data = await response.json();
+  const embedding = data.embedding?.values;
+  if (!embedding) {
+    throw new Error('No embedding values in Gemini response');
+  }
+  return embedding;
 }
 
 // Helper: Extract memorable facts from conversation using AI

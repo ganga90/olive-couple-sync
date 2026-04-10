@@ -67,34 +67,34 @@ serve(async (req) => {
 
     console.log('[manage-memories] Action:', action, 'User:', effectiveUserId);
 
-    // Helper function to generate embeddings using Lovable AI
+    // Helper function to generate embeddings using Gemini Embedding API
     async function generateEmbedding(text: string): Promise<number[] | null> {
-      if (!LOVABLE_API_KEY) {
-        console.warn('[manage-memories] LOVABLE_API_KEY not configured, skipping embedding');
+      const GEMINI_API_KEY = Deno.env.get("GEMINI_API") || Deno.env.get("GEMINI_API_KEY");
+      if (!GEMINI_API_KEY) {
+        console.warn('[manage-memories] No Gemini API key configured, skipping embedding');
         return null;
       }
 
       try {
-        // Use Gemini embedding via Lovable AI gateway
-        const response = await fetch('https://ai.gateway.lovable.dev/v1/embeddings', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'text-embedding-004',
-            input: text,
-          }),
-        });
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              content: { parts: [{ text }] },
+              outputDimensionality: 768,
+            }),
+          }
+        );
 
         if (!response.ok) {
-          console.error('[manage-memories] Embedding API error:', response.status);
+          console.error('[manage-memories] Gemini embedding API error:', response.status);
           return null;
         }
 
         const data = await response.json();
-        return data.data?.[0]?.embedding || null;
+        return data.embedding?.values || null;
       } catch (error) {
         console.error('[manage-memories] Embedding generation error:', error);
         return null;

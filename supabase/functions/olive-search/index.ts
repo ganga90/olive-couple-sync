@@ -44,35 +44,35 @@ interface SearchResult {
 }
 
 /**
- * Generate embedding using Lovable API
+ * Generate embedding using Gemini Embedding API
  */
 async function generateEmbedding(text: string): Promise<number[] | null> {
-  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-  if (!LOVABLE_API_KEY) {
-    console.error('LOVABLE_API_KEY not configured');
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API') || Deno.env.get('GEMINI_API_KEY');
+  if (!GEMINI_API_KEY) {
+    console.error('No Gemini API key configured for embeddings');
     return null;
   }
 
   try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'text-embedding-3-small',
-        input: text
-      })
-    });
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: { parts: [{ text }] },
+          outputDimensionality: 768,
+        }),
+      }
+    );
 
     if (!response.ok) {
-      console.error('Embedding API error:', response.status);
+      console.error('Gemini embedding API error:', response.status);
       return null;
     }
 
     const data = await response.json();
-    return data.data?.[0]?.embedding || null;
+    return data.embedding?.values || null;
   } catch (error) {
     console.error('Error generating embedding:', error);
     return null;
