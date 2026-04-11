@@ -1,11 +1,15 @@
 /**
- * Canonical category definitions.
- * These must match the normalize_category() function in the database.
- * The DB trigger auto-normalizes on insert/update, so the AI can return
- * any variant and it will be mapped to one of these canonical values.
+ * Known category display labels.
+ * Categories are DYNAMIC — the AI can create any category based on user content.
+ * This map provides friendly display labels for well-known categories.
+ * Unknown categories are auto-formatted via dbValueToCategory() fallback
+ * (e.g. "real_estate" → "Real Estate").
+ *
+ * The DB trigger does basic cleanup (lowercase, underscores) and fixes
+ * obvious duplicates (grocery→groceries) but allows any new category through.
  */
 
-// Map from DB value → display label
+// Map from DB value → display label (for known categories)
 export const categoryDisplayMap: Record<string, string> = {
   groceries: "Groceries",
   task: "Task",
