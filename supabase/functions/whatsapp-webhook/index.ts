@@ -2045,11 +2045,16 @@ serve(async (req) => {
       // Save last_outbound_context WITH task_id so follow-up commands resolve correctly
       if (_authenticatedUserId) {
         try {
+          // Detect if this is an error/fallback reply — tag it so context retrieval
+          // can skip stale errors and not confuse the AI in the next turn
+          const isErrorReply = /sorry.*trouble|try again|couldn't process|failed to/i.test(text);
+          
           const outboundCtx: any = {
-            message_type: 'reply',
+            message_type: isErrorReply ? 'error' : 'reply',
             content: text.substring(0, 500),
             sent_at: new Date().toISOString(),
-            status: 'sent'
+            status: 'sent',
+            is_error: isErrorReply,
           };
           // Attach task reference if one was recently created/modified
           if (_lastReferencedTaskId) {
