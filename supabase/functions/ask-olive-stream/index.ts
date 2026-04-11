@@ -384,26 +384,92 @@ async function fetchServerContext(
       }
     }
 
-    // 4c. Relationship graph — entity-aware context
+    // 4c. Relationship graph — entity-aware context with subgraph traversal
     try {
-      const { data: relationships } = await supabase
+      // First, find entities mentioned in the user's message
+      const messageLower = (userMessage || '').toLowerCase();
+      
+      const { data: allEntities } = await supabase
+        .from('olive_entities')
+        .select('id, name, canonical_name, entity_type')
+        .eq('user_id', userId);
+      
+      // Find entities referenced in the current message
+      const mentionedEntityIds = new Set<string>();
+      if (allEntities?.length) {
+        for (const entity of allEntities) {
+          if (messageLower.includes(entity.canonical_name) || 
+              messageLower.includes(entity.name.toLowerCase())) {
+            mentionedEntityIds.add(entity.id);
+          }
+        }
+      }
+
+      // Fetch relationships — prioritize those connected to mentioned entities
+      let relationshipQuery = supabase
         .from('olive_relationships')
         .select(`
-          relationship_type, confidence,
-          source:olive_entities!source_entity_id(name, entity_type),
-          target:olive_entities!target_entity_id(name, entity_type)
+          relationship_type, confidence, confidence_score, rationale,
+          source:olive_entities!source_entity_id(id, name, entity_type),
+          target:olive_entities!target_entity_id(id, name, entity_type)
         `)
         .eq('user_id', userId)
-        .gte('confidence', 0.5)
-        .order('confidence', { ascending: false })
-        .limit(20);
+        .gte('confidence_score', 0.4)
+        .order('confidence_score', { ascending: false })
+        .limit(30);
+
+      const { data: relationships } = await relationshipQuery;
 
       if (relationships?.length) {
-        ctx.relationshipGraph = `\n## KNOWN RELATIONSHIPS:\n${relationships.map((r: any) => {
+        // Separate into directly relevant (connected to mentioned entities) and general
+        const relevant: string[] = [];
+        const general: string[] = [];
+
+        for (const r of relationships as any[]) {
           const src = r.source?.name || '?';
           const tgt = r.target?.name || '?';
-          return `- ${src} → ${r.relationship_type} → ${tgt}`;
-        }).join('\n')}`;
+          const srcId = r.source?.id;
+          const tgtId = r.target?.id;
+          const conf = r.confidence === 'AMBIGUOUS' ? ' ⚠️' : '';
+          const line = `- ${src} → ${r.relationship_type} → ${tgt}${conf}`;
+          
+          if (mentionedEntityIds.has(srcId) || mentionedEntityIds.has(tgtId)) {
+            relevant.push(line);
+          } else {
+            general.push(line);
+          }
+        }
+
+        let graphCtx = '';
+        if (relevant.length > 0) {
+          graphCtx += `\n## RELEVANT CONNECTIONS (entities mentioned in this question):\n${relevant.join('\n')}`;
+        }
+        if (general.length > 0) {
+          graphCtx += `\n## OTHER KNOWN RELATIONSHIPS:\n${general.slice(0, 15).join('\n')}`;
+        }
+        ctx.relationshipGraph = graphCtx;
+      }
+
+      // 4d. Community context — what life domains does this relate to?
+      if (mentionedEntityIds.size > 0) {
+        try {
+          const { data: communities } = await supabase
+            .from('olive_entity_communities')
+            .select('label, entity_ids, cohesion, metadata')
+            .eq('user_id', userId);
+
+          if (communities?.length) {
+            const relevantCommunities = communities.filter((c: any) =>
+              c.entity_ids?.some((id: string) => mentionedEntityIds.has(id))
+            );
+            if (relevantCommunities.length > 0) {
+              ctx.relationshipGraph = (ctx.relationshipGraph || '') + 
+                `\n\n## LIFE DOMAINS (auto-detected clusters):\n${relevantCommunities.map((c: any) => 
+                  `- ${c.label} (${c.metadata?.member_count || 0} entities, cohesion: ${c.cohesion})`
+                ).join('\n')}`;
+            }
+          }
+        } catch { /* communities table may be empty */ }
       }
     } catch { /* non-critical */ }
 
