@@ -2504,6 +2504,22 @@ Process this note:
           .single();
           
         if (createError) {
+          // Handle race condition: if another note in the same batch already created this list,
+          // fetch the existing one instead of returning null
+          if (createError.code === '23505') {
+            console.log('[findOrCreateList] Duplicate detected (race condition), fetching existing list:', listName);
+            const { data: existingList } = await supabase
+              .from('clerk_lists')
+              .select('*')
+              .ilike('name', listName)
+              .or(couple_id ? `couple_id.eq.${couple_id}` : `author_id.eq.${user_id}`)
+              .limit(1)
+              .single();
+            if (existingList) {
+              if (existingLists) existingLists.push(existingList);
+              return existingList.id;
+            }
+          }
           console.error('Error creating list:', createError);
           return null;
         }
