@@ -890,6 +890,9 @@ export function formatContextForPrompt(
   if (ctx.semanticMemoryChunks) parts.push(ctx.semanticMemoryChunks);
   if (ctx.relationshipGraph) parts.push(ctx.relationshipGraph);
   if (ctx.agentInsights) parts.push(ctx.agentInsights);
+  if (ctx.partnerContext) parts.push(ctx.partnerContext);
+  if (ctx.taskAnalytics) parts.push(ctx.taskAnalytics);
+  if (ctx.skills) parts.push(ctx.skills);
 
   if (opts?.savedItemsContext) {
     parts.push(`\nUSER'S SAVED DATA:\n${opts.savedItemsContext}`);
