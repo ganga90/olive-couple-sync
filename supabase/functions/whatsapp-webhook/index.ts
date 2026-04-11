@@ -31,6 +31,7 @@ import {
   sendWhatsAppReply,
   downloadAndUploadMetaMedia,
 } from "../_shared/whatsapp-messaging.ts";
+import { parseExpenseText } from "../_shared/expense-detector.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
