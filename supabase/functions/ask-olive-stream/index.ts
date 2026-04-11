@@ -801,6 +801,9 @@ ${serverCtx.memories}
 ${serverCtx.deepProfile}
 ${serverCtx.relationshipGraph}
 ${serverCtx.agentInsights}
+${serverCtx.partnerContext}
+${serverCtx.taskAnalytics}
+${serverCtx.skills}
 
 ${conversationHistory.length > 0
   ? '\n## RECENT CONVERSATION:\n' + conversationHistory.map(m => `${m.role === 'user' ? 'User' : 'Olive'}: ${m.content}`).join('\n')
