@@ -268,7 +268,7 @@ async function llmExtract(
     ? `\nAlready extracted entities (do NOT repeat these):\n${deterministicEntities.map(e => `- ${e.name} (${e.entity_type})`).join('\n')}`
     : '';
 
-  const prompt = `You are an entity and relationship extraction engine for a personal knowledge graph.
+  const prompt = `You are an entity and relationship extraction engine for a personal knowledge graph that powers an AI assistant for individuals and couples.
 Analyze this note and extract entities (people, places, products, organizations, concepts) and relationships between them.
 
 Note text: "${text}"
@@ -278,16 +278,25 @@ ${existingEntitiesCtx}
 
 Rules:
 - Only extract entities that are SPECIFIC and NAMED (not generic words like "grocery store")
-- For people: include relationship context if mentioned (e.g., "partner", "mom", "coworker")
-- For relationships: describe WHY you inferred the connection
-- Use RICH relationship types that capture the semantic meaning:
+- For people: include relationship context if mentioned (e.g., "partner", "mom", "coworker", "boss")
+- For places: include context like city, neighborhood, or type (restaurant, gym, office)
+- For products: include brand, model, or distinguishing features
+- For relationships: describe WHY you inferred the connection with a brief rationale
+- Extract IMPLICIT relationships too:
+  - "Pick up John's prescription at CVS" → John USES CVS, User HELPS John
+  - "Our anniversary is March 15" → User CELEBRATES_ON March 15
+  - "Meeting with Sarah about project X" → Sarah WORKS_ON project X
+- Use RICH relationship types that capture semantic meaning:
   knows, lives_at, works_at, prefers, owns, scheduled_for, costs, related_to,
   assigned_to, part_of, visited, wants, recommended_by, prescribed_by,
-  competes_with, depends_on, located_in, served_at, authored_by, gifted_to
+  competes_with, depends_on, located_in, served_at, authored_by, gifted_to,
+  allergic_to, dislikes, celebrates_on, enrolled_in, member_of, caring_for,
+  partnered_with, reports_to, mentored_by, shares_with, booked_at, flying_to
 - Confidence levels:
   - EXTRACTED (0.9-1.0): explicitly stated in text
   - INFERRED (0.5-0.8): derived from context
   - AMBIGUOUS (0.1-0.4): uncertain, needs confirmation
+- Prefer more relationships over fewer — the graph benefits from density
 
 Return JSON with this exact structure:
 {
