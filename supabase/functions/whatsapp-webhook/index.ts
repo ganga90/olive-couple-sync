@@ -14,6 +14,17 @@ import {
   WA_WEB_SEARCH_FORMAT_PROMPT_VERSION,
   WA_LIST_RECAP_PROMPT_VERSION,
 } from "../_shared/prompts/whatsapp-prompts.ts";
+import { parseNaturalDate } from "../_shared/natural-date-parser.ts";
+import {
+  isRelativeReference,
+  resolveRelativeReference,
+  searchTaskByKeywords,
+  computeMatchQuality,
+  semanticTaskSearchMulti,
+  semanticTaskSearch,
+  findSimilarNotes,
+  type TaskCandidate,
+} from "../_shared/task-search.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
