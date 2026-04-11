@@ -27,6 +27,12 @@ import {
   WEB_SEARCH_FORMAT_PROMPT as WEB_SEARCH_PROMPT_IMPORTED,
   WEB_SEARCH_FORMAT_PROMPT_VERSION,
 } from "../_shared/prompts/ask-olive-prompts.ts";
+import {
+  assembleFullContext,
+  formatContextForPrompt,
+  cleanupStaleSessions,
+  type UnifiedContext,
+} from "../_shared/orchestrator.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -170,48 +176,11 @@ function detectIntent(message: string, conversationHistory: Array<{ role: string
 }
 
 // ============================================================================
-// SERVER-SIDE CONTEXT FETCHER
+// SERVER-SIDE CONTEXT — delegates to shared orchestrator (P2)
 // ============================================================================
 
-interface ServerContext {
-  profile: string;
-  memories: string;
-  patterns: string;
-  calendar: string;
-  agentInsights: string;
-  deepProfile: string;
-  // Phase 4: Semantic context
-  semanticNotes: string;
-  semanticMemoryChunks: string;
-  relationshipGraph: string;
-  // For contextual_ask:
-  savedItems: string;
-}
-
-/**
- * Generate embedding for semantic search (Phase 4).
- * Uses Gemini embedding API with 768 dimensions.
- */
-async function generateQueryEmbedding(text: string): Promise<number[] | null> {
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: { parts: [{ text }] },
-          outputDimensionality: 768,
-        }),
-      }
-    );
-    if (!response.ok) return null;
-    const data = await response.json();
-    return data.embedding?.values || null;
-  } catch {
-    return null;
-  }
-}
+// Re-export type for backward compatibility
+type ServerContext = UnifiedContext;
 
 async function fetchServerContext(
   userId: string,
@@ -222,410 +191,23 @@ async function fetchServerContext(
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-  const empty: ServerContext = { profile: '', memories: '', patterns: '', calendar: '', agentInsights: '', deepProfile: '', savedItems: '', semanticNotes: '', semanticMemoryChunks: '', relationshipGraph: '' };
-  if (!userId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return empty;
-
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const ctx = { ...empty };
-
-  try {
-    // Phase 4: Generate query embedding in parallel with base fetches
-    const embeddingPromise = userMessage ? generateQueryEmbedding(userMessage) : Promise.resolve(null);
-
-    // Base fetches — always needed
-    // Profile fetch (maybeSingle → returns object, not array) — separate to avoid union type issues
-    const profilePromise = supabase
-      .from('clerk_profiles')
-      .select('display_name, language_preference, timezone, note_style')
-      .eq('id', userId)
-      .maybeSingle();
-
-    // Array-based fetches (all return { data: T[] })
-    const arrayFetches: Promise<{ data: any[] | null; error: any }>[] = [
-      // [0] Memories
-      supabase
-        .from('user_memories')
-        .select('title, content, category, importance')
-        .eq('user_id', userId)
-        .eq('is_active', true)
-        .order('importance', { ascending: false })
-        .limit(15) as any,
-      // [1] Patterns
-      supabase
-        .from('olive_patterns')
-        .select('pattern_type, pattern_data, confidence')
-        .eq('user_id', userId)
-        .eq('is_active', true)
-        .gte('confidence', 0.6)
-        .limit(10) as any,
-      // [2] Calendar events (14 days) — scoped to user's connections for data isolation
-      (async () => {
-        const { data: connections } = await supabase
-          .from('calendar_connections')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('is_active', true);
-
-        if (!connections?.length) return { data: [], error: null };
-
-        const connectionIds = connections.map((c: any) => c.id);
-        return supabase
-          .from('calendar_events')
-          .select('title, start_time, end_time, location')
-          .in('connection_id', connectionIds)
-          .gte('start_time', new Date().toISOString())
-          .lte('start_time', new Date(Date.now() + 14 * 86400000).toISOString())
-          .order('start_time', { ascending: true })
-          .limit(15);
-      })() as any,
-    ];
-
-    // For contextual_ask, also fetch saved items with full details
-    const needsSavedItems = intentType === 'contextual_ask';
-    if (needsSavedItems) {
-      arrayFetches.push(
-        supabase
-          .from('clerk_notes')
-          .select('id, summary, original_text, category, list_id, items, tags, priority, due_date, reminder_time, completed, created_at')
-          .or(coupleId
-            ? `couple_id.eq.${coupleId},and(author_id.eq.${userId},couple_id.is.null)`
-            : `author_id.eq.${userId}`)
-          .order('created_at', { ascending: false })
-          .limit(200) as any
-      );
-      arrayFetches.push(
-        supabase
-          .from('clerk_lists')
-          .select('id, name, description')
-          .or(coupleId
-            ? `author_id.eq.${userId},couple_id.eq.${coupleId}`
-            : `author_id.eq.${userId}`) as any
-      );
-    }
-
-    const [arrayResults, profileRes, queryEmbedding] = await Promise.all([
-      Promise.all(arrayFetches),
-      profilePromise,
-      embeddingPromise,
-    ]);
-
-    const [memoriesRes, patternsRes, calendarRes] = arrayResults;
-
-    // Profile (single object, not array)
-    if (profileRes.data) {
-      const p = profileRes.data as any;
-      ctx.profile = `USER PROFILE: Name: ${p.display_name || 'Unknown'}, Language: ${p.language_preference || 'en'}, Timezone: ${p.timezone || 'UTC'}, Note style: ${p.note_style || 'auto'}`;
-    }
-
-    // Memories
-    if (memoriesRes?.data?.length) {
-      ctx.memories = `\nUSER MEMORIES & PREFERENCES:\n${memoriesRes.data.map((m: any) => `- [${m.category}] ${m.title}: ${m.content}`).join('\n')}`;
-    }
-
-    // Patterns
-    if (patternsRes?.data?.length) {
-      ctx.patterns = `\nBEHAVIORAL PATTERNS:\n${patternsRes.data.map((p: any) =>
-        `- ${p.pattern_type}: ${JSON.stringify(p.pattern_data)} (${(p.confidence * 100).toFixed(0)}%)`
-      ).join('\n')}`;
-    }
-
-    // Calendar
-    if (calendarRes?.data?.length) {
-      ctx.calendar = `\nUPCOMING CALENDAR:\n${calendarRes.data.slice(0, 10).map((e: any) => {
-        const d = new Date(e.start_time);
-        const date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        return `- ${date} ${time}: ${e.title}${e.location ? ` @ ${e.location}` : ''}`;
-      }).join('\n')}`;
-    }
-
-    // ══════════════════════════════════════════════════════════════
-    // PHASE 4: SEMANTIC CONTEXT INJECTION
-    // ══════════════════════════════════════════════════════════════
-
-    // 4a. Semantic note search — for contextual_ask, use hybrid search
-    //     instead of brute-force keyword matching
-    if (needsSavedItems && queryEmbedding && userMessage) {
-      try {
-        const { data: hybridResults } = await supabase.rpc('hybrid_search_notes', {
-          p_user_id: userId,
-          p_couple_id: coupleId || null,
-          p_query: userMessage,
-          p_query_embedding: JSON.stringify(queryEmbedding),
-          p_vector_weight: 0.7,
-          p_limit: 15,
-        });
-
-        if (hybridResults?.length) {
-          ctx.semanticNotes = `\n## SEMANTICALLY RELEVANT NOTES (AI-ranked by relevance to your question):\n`;
-          for (const note of hybridResults.slice(0, 10)) {
-            const status = note.completed ? '✓' : '○';
-            const dueInfo = note.due_date ? ` | Due: ${note.due_date}` : '';
-            const cat = note.category ? ` [${note.category}]` : '';
-            ctx.semanticNotes += `\n📌 ${status} "${note.summary}"${cat}${dueInfo} (relevance: ${(note.score * 100).toFixed(0)}%)\n`;
-            if (note.original_text && note.original_text !== note.summary) {
-              ctx.semanticNotes += `   Full details: ${note.original_text.substring(0, 600)}\n`;
-            }
-          }
-          console.log(`[Phase4] Semantic note search returned ${hybridResults.length} results`);
-        }
-      } catch (e) {
-        console.warn('[Phase4] Hybrid search failed (non-blocking):', e);
-      }
-    }
-
-    // 4b. Memory chunk semantic search — find relevant learned facts
-    if (queryEmbedding) {
-      try {
-        const { data: memChunks } = await supabase.rpc('search_memory_chunks', {
-          p_user_id: userId,
-          p_query_embedding: JSON.stringify(queryEmbedding),
-          p_limit: 8,
-          p_min_importance: 2,
-        });
-
-        if (memChunks?.length) {
-          ctx.semanticMemoryChunks = `\n## RELEVANT LEARNED FACTS (from conversations & notes):\n${memChunks.map((c: any) =>
-            `- ${c.content} (importance: ${c.importance}/5, source: ${c.source || 'auto'})`
-          ).join('\n')}`;
-          console.log(`[Phase4] Memory chunk search returned ${memChunks.length} results`);
-        }
-      } catch {
-        // search_memory_chunks may not have data yet
-      }
-    }
-
-    // 4c. Relationship graph — entity-aware context with subgraph traversal
-    try {
-      // First, find entities mentioned in the user's message
-      const messageLower = (userMessage || '').toLowerCase();
-      
-      const { data: allEntities } = await supabase
-        .from('olive_entities')
-        .select('id, name, canonical_name, entity_type')
-        .eq('user_id', userId);
-      
-      // Find entities referenced in the current message
-      const mentionedEntityIds = new Set<string>();
-      if (allEntities?.length) {
-        for (const entity of allEntities) {
-          if (messageLower.includes(entity.canonical_name) || 
-              messageLower.includes(entity.name.toLowerCase())) {
-            mentionedEntityIds.add(entity.id);
-          }
-        }
-      }
-
-      // Fetch relationships — prioritize those connected to mentioned entities
-      let relationshipQuery = supabase
-        .from('olive_relationships')
-        .select(`
-          relationship_type, confidence, confidence_score, rationale,
-          source:olive_entities!source_entity_id(id, name, entity_type),
-          target:olive_entities!target_entity_id(id, name, entity_type)
-        `)
-        .eq('user_id', userId)
-        .gte('confidence_score', 0.4)
-        .order('confidence_score', { ascending: false })
-        .limit(30);
-
-      const { data: relationships } = await relationshipQuery;
-
-      if (relationships?.length) {
-        // Separate into directly relevant (connected to mentioned entities) and general
-        const relevant: string[] = [];
-        const general: string[] = [];
-
-        for (const r of relationships as any[]) {
-          const src = r.source?.name || '?';
-          const tgt = r.target?.name || '?';
-          const srcId = r.source?.id;
-          const tgtId = r.target?.id;
-          const conf = r.confidence === 'AMBIGUOUS' ? ' ⚠️' : '';
-          const line = `- ${src} → ${r.relationship_type} → ${tgt}${conf}`;
-          
-          if (mentionedEntityIds.has(srcId) || mentionedEntityIds.has(tgtId)) {
-            relevant.push(line);
-          } else {
-            general.push(line);
-          }
-        }
-
-        let graphCtx = '';
-        if (relevant.length > 0) {
-          graphCtx += `\n## RELEVANT CONNECTIONS (entities mentioned in this question):\n${relevant.join('\n')}`;
-        }
-        if (general.length > 0) {
-          graphCtx += `\n## OTHER KNOWN RELATIONSHIPS:\n${general.slice(0, 15).join('\n')}`;
-        }
-        ctx.relationshipGraph = graphCtx;
-      }
-
-      // 4d. Community context — what life domains does this relate to?
-      if (mentionedEntityIds.size > 0) {
-        try {
-          const { data: communities } = await supabase
-            .from('olive_entity_communities')
-            .select('label, entity_ids, cohesion, metadata')
-            .eq('user_id', userId);
-
-          if (communities?.length) {
-            const relevantCommunities = communities.filter((c: any) =>
-              c.entity_ids?.some((id: string) => mentionedEntityIds.has(id))
-            );
-            if (relevantCommunities.length > 0) {
-              ctx.relationshipGraph = (ctx.relationshipGraph || '') + 
-                `\n\n## LIFE DOMAINS (auto-detected clusters):\n${relevantCommunities.map((c: any) => 
-                  `- ${c.label} (${c.metadata?.member_count || 0} entities, cohesion: ${c.cohesion})`
-                ).join('\n')}`;
-            }
-          }
-        } catch { /* communities table may be empty */ }
-      }
-    } catch { /* non-critical */ }
-
-    // Saved items for contextual_ask (keep as fallback alongside semantic)
-    if (needsSavedItems && arrayResults.length >= 5) {
-      const notesRes = arrayResults[3];
-      const listsRes = arrayResults[4];
-      const allTasks = notesRes.data || [];
-      const lists = listsRes.data || [];
-      const listIdToName = new Map(lists.map((l: any) => [l.id, l.name]));
-
-      // Score by relevance to the question (keyword fallback)
-      const questionLower = (userMessage || '').toLowerCase();
-      const questionWords = questionLower.split(/\s+/).filter((w: string) => w.length > 2);
-
-      const scoredTasks = allTasks.map((task: any) => {
-        const combined = `${task.summary.toLowerCase()} ${(task.original_text || '').toLowerCase()}`;
-        let score = 0;
-        questionWords.forEach((w: string) => {
-          if (combined.includes(w)) score += 1;
-          if (task.summary.toLowerCase().includes(w)) score += 1;
-        });
-        return { ...task, relevanceScore: score };
-      });
-
-      const relevant = scoredTasks.filter((t: any) => t.relevanceScore >= 2).sort((a: any, b: any) => b.relevanceScore - a.relevanceScore);
-      const others = scoredTasks.filter((t: any) => t.relevanceScore < 2);
-
-      let savedItemsCtx = '';
-      if (relevant.length > 0) {
-        savedItemsCtx += '\n## MOST RELEVANT SAVED ITEMS (full details):\n';
-        relevant.slice(0, 10).forEach((task: any) => {
-          const listName = task.list_id && listIdToName.has(task.list_id) ? listIdToName.get(task.list_id) : task.category;
-          const status = task.completed ? '✓' : '○';
-          const dueInfo = task.due_date ? ` | Due: ${task.due_date}` : '';
-          const reminderInfo = task.reminder_time ? ` | Reminder: ${task.reminder_time}` : '';
-          savedItemsCtx += `\n📌 ${status} "${task.summary}" [${listName}]${dueInfo}${reminderInfo}\n`;
-          if (task.original_text && task.original_text !== task.summary) {
-            savedItemsCtx += `   Full details: ${task.original_text.substring(0, 800)}\n`;
-          }
-          if (task.items?.length > 0) {
-            task.items.forEach((item: string) => { savedItemsCtx += `   • ${item}\n`; });
-          }
-        });
-      }
-
-      // Summary of all other items grouped by list
-      savedItemsCtx += '\n## ALL LISTS AND SAVED ITEMS:\n';
-      const tasksByList = new Map<string, any[]>();
-      const uncategorized: any[] = [];
-      others.forEach((task: any) => {
-        if (task.list_id && listIdToName.has(task.list_id)) {
-          const ln = listIdToName.get(task.list_id)!;
-          if (!tasksByList.has(ln)) tasksByList.set(ln, []);
-          tasksByList.get(ln)!.push(task);
-        } else {
-          uncategorized.push(task);
-        }
-      });
-      tasksByList.forEach((tasks, listName) => {
-        savedItemsCtx += `\n### ${listName}:\n`;
-        tasks.slice(0, 15).forEach((task: any) => {
-          const status = task.completed ? '✓' : '○';
-          const priority = task.priority === 'high' ? ' 🔥' : '';
-          savedItemsCtx += `- ${status} ${task.summary}${priority}\n`;
-        });
-        if (tasks.length > 15) savedItemsCtx += `  ...and ${tasks.length - 15} more\n`;
-      });
-      if (uncategorized.length > 0) {
-        savedItemsCtx += `\n### Other Items:\n`;
-        uncategorized.slice(0, 10).forEach((task: any) => {
-          savedItemsCtx += `- ${task.completed ? '✓' : '○'} ${task.summary}\n`;
-        });
-      }
-      ctx.savedItems = savedItemsCtx;
-    }
-
-    // Deep profile + compiled knowledge (memory files)
-    // Phase 4: Use full compiled content (up to 2KB per file) instead of truncated 600 chars
-    try {
-      const { data: memoryFiles } = await supabase
-        .from('olive_memory_files')
-        .select('file_type, content, updated_at')
-        .eq('user_id', userId)
-        .in('file_type', ['profile', 'patterns', 'relationship', 'household'])
-        .order('updated_at', { ascending: false });
-
-      if (memoryFiles?.length) {
-        const parts: string[] = [];
-        for (const mf of memoryFiles) {
-          if (mf.content && mf.content.trim().length > 0) {
-            const label = mf.file_type.toUpperCase();
-            // Phase 4: Allow up to 2KB per file (was 600 chars)
-            const maxLen = mf.file_type === 'profile' ? 2500 : 1500;
-            const content = mf.content.length > maxLen
-              ? mf.content.slice(0, maxLen) + '\n...(truncated)'
-              : mf.content;
-            parts.push(`[${label}]:\n${content}`);
-          }
-        }
-        if (parts.length > 0) {
-          ctx.deepProfile = `\n## COMPILED KNOWLEDGE (AI-synthesized from your history):\n${parts.join('\n\n')}`;
-        }
-      }
-    } catch { /* non-critical */ }
-
-    // Knowledge entities (if graph populated)
-    try {
-      const { data: entities } = await supabase
-        .from('olive_entities')
-        .select('name, entity_type, metadata, mention_count')
-        .eq('user_id', userId)
-        .order('mention_count', { ascending: false })
-        .limit(25);
-
-      if (entities?.length) {
-        ctx.deepProfile = (ctx.deepProfile || '') + `\n\n## KEY PEOPLE, PLACES & THINGS:\n${entities.map((e: any) => {
-          const meta = e.metadata ? Object.entries(e.metadata).filter(([k]) => k !== 'aliases').map(([k, v]) => `${k}: ${v}`).join(', ') : '';
-          return `- ${e.name} (${e.entity_type}${meta ? ', ' + meta : ''}) — mentioned ${e.mention_count}x`;
-        }).join('\n')}`;
-      }
-    } catch { /* olive_entities may not exist yet — non-critical */ }
-
-    // Agent insights (non-critical)
-    try {
-      const { data: agentRuns } = await supabase
-        .from('olive_agent_runs')
-        .select('agent_id, result, completed_at')
-        .eq('user_id', userId)
-        .eq('status', 'completed')
-        .gte('completed_at', new Date(Date.now() - 48 * 3600000).toISOString())
-        .order('completed_at', { ascending: false })
-        .limit(5);
-      if (agentRuns?.length) {
-        ctx.agentInsights = `\nRECENT AGENT INSIGHTS:\n${agentRuns.map((r: any) =>
-          `- [${r.agent_id}]: ${typeof r.result === 'string' ? r.result.substring(0, 200) : JSON.stringify(r.result).substring(0, 200)}`
-        ).join('\n')}`;
-      }
-    } catch { /* non-critical */ }
-
-  } catch (err) {
-    console.error('[ask-olive-stream] Context fetch error:', err);
+  if (!userId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return { profile: '', memories: '', patterns: '', calendar: '', agentInsights: '', deepProfile: '', savedItems: '', semanticNotes: '', semanticMemoryChunks: '', relationshipGraph: '' };
   }
 
-  return ctx;
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  // Opportunistic session cleanup (~5% of requests)
+  if (Math.random() < 0.05) {
+    cleanupStaleSessions(supabase, userId).catch(() => {});
+  }
+
+  return assembleFullContext(supabase, userId, {
+    coupleId,
+    intentType,
+    userMessage,
+    geminiKey: GEMINI_KEY,
+  });
 }
 
 // ============================================================================
@@ -1064,7 +646,12 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
 
     // ── CHAT / ASSISTANT / HELP ───────────────────────────────────
     const serverCtx = await serverCtxPromise;
-    const fullContext = buildFullContext(serverCtx, context, message, conversationHistory);
+    const fullContext = formatContextForPrompt(serverCtx, {
+      userMessage: message,
+      userName: context?.user_name,
+      conversationHistory,
+      savedItemsContext: context?.saved_items_context,
+    });
     return streamGeminiResponse(OLIVE_CHAT_PROMPT, fullContext, route.responseTier);
 
   } catch (error: any) {
@@ -1075,50 +662,3 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
     );
   }
 });
-
-// ============================================================================
-// CONTEXT BUILDER
-// ============================================================================
-
-function buildFullContext(
-  serverCtx: ServerContext,
-  frontendCtx: any,
-  message: string,
-  conversationHistory: Array<{ role: string; content: string }>
-): string {
-  const parts: string[] = [];
-
-  // Server-side context
-  if (serverCtx.profile) parts.push(serverCtx.profile);
-  if (serverCtx.memories) parts.push(serverCtx.memories);
-  if (serverCtx.patterns) parts.push(serverCtx.patterns);
-  if (serverCtx.calendar) parts.push(serverCtx.calendar);
-  if (serverCtx.deepProfile) parts.push(serverCtx.deepProfile);
-
-  // Phase 4: Semantic context — learned facts & relationships
-  if (serverCtx.semanticMemoryChunks) parts.push(serverCtx.semanticMemoryChunks);
-  if (serverCtx.relationshipGraph) parts.push(serverCtx.relationshipGraph);
-
-  if (serverCtx.agentInsights) parts.push(serverCtx.agentInsights);
-
-  // Frontend-provided saved items context
-  if (frontendCtx?.saved_items_context) {
-    parts.push(`\nUSER'S SAVED DATA:\n${frontendCtx.saved_items_context}`);
-  }
-
-  // User name
-  if (frontendCtx?.user_name) {
-    parts.push(`\nUser's name: ${frontendCtx.user_name}`);
-  }
-
-  // Conversation history
-  if (conversationHistory.length > 0) {
-    parts.push('\nCONVERSATION HISTORY:\n' +
-      conversationHistory.map(m => `${m.role === 'user' ? 'User' : 'Olive'}: ${m.content}`).join('\n')
-    );
-  }
-
-  parts.push(`\nUSER MESSAGE: ${message}`);
-
-  return parts.join('\n');
-}
