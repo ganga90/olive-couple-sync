@@ -483,19 +483,115 @@ async function handleAction(
     }
   }
 
+  // ── ASSIGN TASK (P4) ──
+  if (intent === 'assign') {
+    const taskName = classifiedIntent.target_task_name;
+    if (!taskName || !coupleId) return null;
+
+    // Find partner
+    const { data: members } = await supabase.rpc('get_space_members', { p_couple_id: coupleId });
+    const partner = members?.find((m: any) => m.user_id !== userId);
+    if (!partner) return null;
+
+    let query = supabase
+      .from('clerk_notes')
+      .select('id, summary')
+      .eq('completed', false)
+      .ilike('summary', `%${taskName.substring(0, 40)}%`)
+      .or(`author_id.eq.${userId},couple_id.eq.${coupleId}`)
+      .limit(1);
+
+    const { data: tasks } = await query;
+    if (!tasks?.length) return null;
+
+    const { error } = await supabase
+      .from('clerk_notes')
+      .update({ task_owner: partner.user_id, updated_at: new Date().toISOString() })
+      .eq('id', tasks[0].id);
+
+    if (error) return null;
+    return { action: 'task_assigned', id: tasks[0].id, summary: tasks[0].summary, assignee: partner.display_name };
+  }
+
+  // ── MOVE TASK (P4) ──
+  if (intent === 'move') {
+    const taskName = classifiedIntent.target_task_name;
+    const listName = classifiedIntent.parameters?.list_name;
+    if (!taskName || !listName) return null;
+
+    // Find or create list
+    let listQuery = supabase
+      .from('clerk_lists')
+      .select('id, name')
+      .ilike('name', `%${listName}%`)
+      .or(coupleId ? `author_id.eq.${userId},couple_id.eq.${coupleId}` : `author_id.eq.${userId}`)
+      .limit(1);
+
+    const { data: lists } = await listQuery;
+    let targetListId: string;
+    let targetListName: string;
+
+    if (lists?.length) {
+      targetListId = lists[0].id;
+      targetListName = lists[0].name;
+    } else {
+      // Create list
+      const { data: newList, error: listErr } = await supabase
+        .from('clerk_lists')
+        .insert({ name: listName, author_id: userId, couple_id: coupleId })
+        .select('id, name')
+        .single();
+      if (listErr || !newList) return null;
+      targetListId = newList.id;
+      targetListName = newList.name;
+    }
+
+    // Find task
+    let taskQuery = supabase
+      .from('clerk_notes')
+      .select('id, summary')
+      .eq('completed', false)
+      .ilike('summary', `%${taskName.substring(0, 40)}%`)
+      .limit(1);
+
+    if (coupleId) {
+      taskQuery = taskQuery.or(`author_id.eq.${userId},couple_id.eq.${coupleId}`);
+    } else {
+      taskQuery = taskQuery.eq('author_id', userId);
+    }
+
+    const { data: tasks } = await taskQuery;
+    if (!tasks?.length) return null;
+
+    const { error } = await supabase
+      .from('clerk_notes')
+      .update({ list_id: targetListId, updated_at: new Date().toISOString() })
+      .eq('id', tasks[0].id);
+
+    if (error) return null;
+    return { action: 'task_moved', id: tasks[0].id, summary: tasks[0].summary, list: targetListName };
+  }
+
   return null;
 }
 
 // ============================================================================
-// MEMORY EVOLUTION (fire-and-forget after streaming completes)
+// MEMORY EVOLUTION + DAILY LOG (fire-and-forget after streaming completes)
 // ============================================================================
 
 function scheduleMemoryEvolution(userId: string, userMessage: string, responsePreview: string): void {
-  // Fire-and-forget — do NOT await
   const supabase = getServiceSupabase();
+  // Memory evolution
   evolveProfileFromConversation(supabase, userId, userMessage, responsePreview).catch((err) => {
     console.warn('[ask-olive-stream] Memory evolution error (non-blocking):', err);
   });
+  // Daily log append (P4 parity with WhatsApp)
+  supabase.rpc('append_to_daily_log', {
+    p_user_id: userId,
+    p_content: `[web_chat] User: ${userMessage.substring(0, 120)} → Olive responded`,
+    p_source: 'web_chat',
+  }).then(() => console.log('[ask-olive-stream] Daily log appended'))
+    .catch(() => { /* non-blocking */ });
 }
 
 // ============================================================================
@@ -705,6 +801,9 @@ ${serverCtx.memories}
 ${serverCtx.deepProfile}
 ${serverCtx.relationshipGraph}
 ${serverCtx.agentInsights}
+${serverCtx.partnerContext}
+${serverCtx.taskAnalytics}
+${serverCtx.skills}
 
 ${conversationHistory.length > 0
   ? '\n## RECENT CONVERSATION:\n' + conversationHistory.map(m => `${m.role === 'user' ? 'User' : 'Olive'}: ${m.content}`).join('\n')

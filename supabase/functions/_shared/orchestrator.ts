@@ -333,6 +333,10 @@ export interface UnifiedContext {
   relationshipGraph: string;
   // For contextual_ask:
   savedItems: string;
+  // P4: Partner, task analytics, skills
+  partnerContext: string;
+  taskAnalytics: string;
+  skills: string;
 }
 
 const EMPTY_CTX: UnifiedContext = {
@@ -346,6 +350,9 @@ const EMPTY_CTX: UnifiedContext = {
   semanticMemoryChunks: "",
   relationshipGraph: "",
   savedItems: "",
+  partnerContext: "",
+  taskAnalytics: "",
+  skills: "",
 };
 
 /**
@@ -467,6 +474,35 @@ export async function assembleFullContext(
         .limit(25);
       return data || [];
     }, []),
+    // [7] Partner context (P4)
+    safeFetch("partner_context", async () => {
+      if (!coupleId) return null;
+      const { data: members } = await supabase.rpc("get_space_members", { p_couple_id: coupleId });
+      if (!members?.length) return null;
+      const others = members.filter((m: any) => m.user_id !== userId);
+      if (others.length === 0) return null;
+      const partnerNames = others.map((m: any) => m.display_name).join(", ") || "Partner";
+      const otherIds = others.map((m: any) => m.user_id);
+      const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+      const [recentRes, assignedByRes, assignedToRes] = await Promise.all([
+        supabase.from("clerk_notes").select("summary").in("author_id", otherIds).eq("couple_id", coupleId).gte("created_at", twoDaysAgo).order("created_at", { ascending: false }).limit(3),
+        supabase.from("clerk_notes").select("summary").eq("couple_id", coupleId).in("author_id", otherIds).eq("task_owner", userId).eq("completed", false).limit(3),
+        supabase.from("clerk_notes").select("summary").eq("couple_id", coupleId).eq("author_id", userId).in("task_owner", otherIds).eq("completed", false).limit(3),
+      ]);
+      return { partnerNames, recent: recentRes.data || [], assignedToYou: assignedByRes.data || [], youAssigned: assignedToRes.data || [] };
+    }, null),
+    // [8] Task analytics (P4)
+    safeFetch("task_analytics", async () => {
+      const { data: tasks } = await supabase
+        .from("clerk_notes")
+        .select("id, summary, due_date, completed, priority, category, list_id, author_id, task_owner, created_at, updated_at")
+        .or(coupleId ? `author_id.eq.${userId},couple_id.eq.${coupleId}` : `author_id.eq.${userId}`)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      return tasks || [];
+    }, []),
+    // [9] Skills (P4)
+    fetchUserSkills(supabase, userId),
   ];
 
   // Saved items (only for contextual_ask)
@@ -506,8 +542,8 @@ export async function assembleFullContext(
     savedItemsPromise,
   ]);
 
-  const [profileData, memories, patterns, calendarEvents, memoryFiles, agentInsights, entities] =
-    baseResults as [any, any[], any[], any[], any[], string, any[]];
+  const [profileData, memories, patterns, calendarEvents, memoryFiles, agentInsights, entities, partnerData, tasksList, userSkills] =
+    baseResults as [any, any[], any[], any[], any[], string, any[], any, any[], any[]];
 
   // ─── FORMAT: Profile ──────────────────────────────────────────
   if (profileData) {
@@ -588,6 +624,35 @@ export async function assembleFullContext(
           return `- ${e.name} (${e.entity_type}${meta ? ", " + meta : ""}) — mentioned ${e.mention_count}x`;
         })
         .join("\n")}`;
+  }
+
+  // ─── FORMAT: Partner Context (P4) ─────────────────────────────
+  if (partnerData) {
+    const pParts: string[] = [`## Partner (${partnerData.partnerNames}):`];
+    if (partnerData.recent?.length) pParts.push(`Recently added: ${partnerData.recent.map((t: any) => t.summary).join(", ")}`);
+    if (partnerData.assignedToYou?.length) pParts.push(`Assigned to you: ${partnerData.assignedToYou.map((t: any) => t.summary).join(", ")}`);
+    if (partnerData.youAssigned?.length) pParts.push(`You assigned: ${partnerData.youAssigned.map((t: any) => t.summary).join(", ")}`);
+    if (pParts.length > 1) ctx.partnerContext = "\n" + pParts.join("\n");
+  }
+
+  // ─── FORMAT: Task Analytics (P4) ──────────────────────────────
+  if (tasksList?.length) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today.getTime() + 86400000);
+    const active = tasksList.filter((t: any) => !t.completed);
+    const yourActive = active.filter((t: any) => t.author_id === userId || t.task_owner === userId);
+    const urgent = active.filter((t: any) => t.priority === "high");
+    const overdue = active.filter((t: any) => t.due_date && new Date(t.due_date) < today);
+    const dueToday = active.filter((t: any) => { if (!t.due_date) return false; const d = new Date(t.due_date); return d >= today && d < tomorrow; });
+    const dueTomorrow = active.filter((t: any) => { if (!t.due_date) return false; const d = new Date(t.due_date); return d >= tomorrow && d < new Date(tomorrow.getTime() + 86400000); });
+
+    ctx.taskAnalytics = `\n## Task Analytics:\n- Your active: ${yourActive.length} | Total space: ${active.length}\n- Urgent: ${urgent.length} | Overdue: ${overdue.length}\n- Due today: ${dueToday.length} | Due tomorrow: ${dueTomorrow.length}${urgent.length > 0 ? `\n- Urgent: ${urgent.slice(0, 3).map((t: any) => t.summary).join(", ")}` : ""}${overdue.length > 0 ? `\n- Overdue: ${overdue.slice(0, 3).map((t: any) => t.summary).join(", ")}` : ""}${dueToday.length > 0 ? `\n- Today: ${dueToday.slice(0, 3).map((t: any) => t.summary).join(", ")}` : ""}`;
+  }
+
+  // ─── FORMAT: Skills (P4) ──────────────────────────────────────
+  if (userSkills?.length) {
+    ctx.skills = `\n## Active Skills:\n${userSkills.map((s: any) => `- ${s.name}: ${(s.content || "").substring(0, 200)}`).join("\n")}`;
   }
 
   // ─── LAYER 4: Semantic Search (with circuit breakers) ─────────
@@ -825,6 +890,9 @@ export function formatContextForPrompt(
   if (ctx.semanticMemoryChunks) parts.push(ctx.semanticMemoryChunks);
   if (ctx.relationshipGraph) parts.push(ctx.relationshipGraph);
   if (ctx.agentInsights) parts.push(ctx.agentInsights);
+  if (ctx.partnerContext) parts.push(ctx.partnerContext);
+  if (ctx.taskAnalytics) parts.push(ctx.taskAnalytics);
+  if (ctx.skills) parts.push(ctx.skills);
 
   if (opts?.savedItemsContext) {
     parts.push(`\nUSER'S SAVED DATA:\n${opts.savedItemsContext}`);
