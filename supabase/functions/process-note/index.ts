@@ -116,13 +116,6 @@ const EXPENSE_CATEGORY_ICONS: Record<string, string> = {
 // detectCurrency, extractAmount, mapCategoryToExpenseCategory, detectAndCreateExpense
 // are now imported from _shared/expense-detector.ts
 
-const EXPENSE_CATEGORY_ICONS: Record<string, string> = {
-  Groceries: '🛒', Entertainment: '🎬', Travel: '✈️',
-  Transportation: '🚗', Health: '🏥', Shopping: '🛍️',
-  Personal: '👤', Home: '🏠', Utilities: '💡',
-  Finance: '💰', Education: '📚', Other: '📄',
-};
-
 // Define the JSON schema for structured output
 const singleNoteSchema = {
   type: Type.OBJECT,
