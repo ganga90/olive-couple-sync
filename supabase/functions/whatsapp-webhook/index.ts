@@ -3010,19 +3010,18 @@ Description: "${parsedExpense.description}"`;
         // Fetch today's calendar events (matching the pattern used in 'tomorrow' and 'this_week')
         let todayCalendarEvents: string[] = [];
         try {
-          const { data: calConnection } = await supabase
+          const { data: calConnections } = await supabase
             .from('calendar_connections')
             .select('id')
             .eq('user_id', userId)
-            .eq('is_active', true)
-            .limit(1)
-            .single();
+            .eq('is_active', true);
           
-          if (calConnection) {
+          if (calConnections && calConnections.length > 0) {
+            const connIds = calConnections.map(c => c.id);
             const { data: events } = await supabase
               .from('calendar_events')
               .select('title, start_time, all_day')
-              .eq('connection_id', calConnection.id)
+              .in('connection_id', connIds)
               .gte('start_time', today.toISOString())
               .lt('start_time', tomorrow.toISOString())
               .order('start_time', { ascending: true })
@@ -3082,19 +3081,18 @@ Description: "${parsedExpense.description}"`;
         
         let tomorrowCalendarEvents: string[] = [];
         try {
-          const { data: calConnection } = await supabase
+          const { data: calConnections } = await supabase
             .from('calendar_connections')
             .select('id')
             .eq('user_id', userId)
-            .eq('is_active', true)
-            .limit(1)
-            .single();
+            .eq('is_active', true);
           
-          if (calConnection) {
+          if (calConnections && calConnections.length > 0) {
+            const connIds = calConnections.map(c => c.id);
             const { data: events } = await supabase
               .from('calendar_events')
               .select('title, start_time, all_day')
-              .eq('connection_id', calConnection.id)
+              .in('connection_id', connIds)
               .gte('start_time', tomorrow.toISOString())
               .lt('start_time', dayAfterTomorrow.toISOString())
               .order('start_time', { ascending: true })
@@ -3157,19 +3155,18 @@ Description: "${parsedExpense.description}"`;
         
         let weekCalendarEvents: string[] = [];
         try {
-          const { data: calConnection } = await supabase
+          const { data: calConnections } = await supabase
             .from('calendar_connections')
             .select('id')
             .eq('user_id', userId)
-            .eq('is_active', true)
-            .limit(1)
-            .single();
+            .eq('is_active', true);
           
-          if (calConnection) {
+          if (calConnections && calConnections.length > 0) {
+            const connIds = calConnections.map(c => c.id);
             const { data: events } = await supabase
               .from('calendar_events')
               .select('title, start_time, all_day')
-              .eq('connection_id', calConnection.id)
+              .in('connection_id', connIds)
               .gte('start_time', today.toISOString())
               .lt('start_time', endOfWeek.toISOString())
               .order('start_time', { ascending: true })
@@ -4936,22 +4933,21 @@ ${myAssignments.length > 0 ? `- You assigned to them: ${myAssignments.join(', ')
       
       if (chatType === 'briefing') {
         try {
-          const { data: calConnection } = await supabase
+          const { data: calConnections } = await supabase
             .from('calendar_connections')
             .select('id, calendar_name')
             .eq('user_id', userId)
-            .eq('is_active', true)
-            .limit(1)
-            .single();
+            .eq('is_active', true);
           
-          if (calConnection) {
+          if (calConnections && calConnections.length > 0) {
+            const connIds = calConnections.map(c => c.id);
             const todayStart = today.toISOString();
             const todayEnd = tomorrow.toISOString();
             
             const { data: events } = await supabase
               .from('calendar_events')
               .select('title, start_time, end_time, all_day, location')
-              .eq('connection_id', calConnection.id)
+              .in('connection_id', connIds)
               .gte('start_time', todayStart)
               .lt('start_time', todayEnd)
               .order('start_time', { ascending: true })
@@ -4963,7 +4959,7 @@ ${myAssignments.length > 0 ? `- You assigned to them: ${myAssignments.join(', ')
             const { data: tmrwEvents } = await supabase
               .from('calendar_events')
               .select('title, start_time, end_time, all_day, location')
-              .eq('connection_id', calConnection.id)
+              .in('connection_id', connIds)
               .gte('start_time', tomorrow.toISOString())
               .lt('start_time', dayAfterTomorrow.toISOString())
               .order('start_time', { ascending: true })
