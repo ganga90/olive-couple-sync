@@ -27,6 +27,12 @@ import {
   WEB_SEARCH_FORMAT_PROMPT as WEB_SEARCH_PROMPT_IMPORTED,
   WEB_SEARCH_FORMAT_PROMPT_VERSION,
 } from "../_shared/prompts/ask-olive-prompts.ts";
+import {
+  assembleFullContext,
+  formatContextForPrompt,
+  cleanupStaleSessions,
+  type UnifiedContext,
+} from "../_shared/orchestrator.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
