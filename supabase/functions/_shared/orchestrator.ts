@@ -474,6 +474,35 @@ export async function assembleFullContext(
         .limit(25);
       return data || [];
     }, []),
+    // [7] Partner context (P4)
+    safeFetch("partner_context", async () => {
+      if (!coupleId) return null;
+      const { data: members } = await supabase.rpc("get_space_members", { p_couple_id: coupleId });
+      if (!members?.length) return null;
+      const others = members.filter((m: any) => m.user_id !== userId);
+      if (others.length === 0) return null;
+      const partnerNames = others.map((m: any) => m.display_name).join(", ") || "Partner";
+      const otherIds = others.map((m: any) => m.user_id);
+      const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+      const [recentRes, assignedByRes, assignedToRes] = await Promise.all([
+        supabase.from("clerk_notes").select("summary").in("author_id", otherIds).eq("couple_id", coupleId).gte("created_at", twoDaysAgo).order("created_at", { ascending: false }).limit(3),
+        supabase.from("clerk_notes").select("summary").eq("couple_id", coupleId).in("author_id", otherIds).eq("task_owner", userId).eq("completed", false).limit(3),
+        supabase.from("clerk_notes").select("summary").eq("couple_id", coupleId).eq("author_id", userId).in("task_owner", otherIds).eq("completed", false).limit(3),
+      ]);
+      return { partnerNames, recent: recentRes.data || [], assignedToYou: assignedByRes.data || [], youAssigned: assignedToRes.data || [] };
+    }, null),
+    // [8] Task analytics (P4)
+    safeFetch("task_analytics", async () => {
+      const { data: tasks } = await supabase
+        .from("clerk_notes")
+        .select("id, summary, due_date, completed, priority, category, list_id, author_id, task_owner, created_at, updated_at")
+        .or(coupleId ? `author_id.eq.${userId},couple_id.eq.${coupleId}` : `author_id.eq.${userId}`)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      return tasks || [];
+    }, []),
+    // [9] Skills (P4)
+    fetchUserSkills(supabase, userId),
   ];
 
   // Saved items (only for contextual_ask)
