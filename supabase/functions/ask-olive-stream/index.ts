@@ -1,17 +1,24 @@
 /**
- * ASK-OLIVE-STREAM Edge Function — Multi-Agent Router
+ * ASK-OLIVE-STREAM Edge Function — Multi-Agent Router (P3 Upgrade)
  * ============================================================================
  * World-class streaming chat for the Olive web app.
  *
+ * P3 upgrades:
+ *   - Shared intent classifier (parity with WhatsApp)
+ *   - Full action execution via process-note (not inline)
+ *   - Memory evolution post-response
+ *   - Unified context pipeline (P2)
+ *
  * Architecture:
- *   1. Lightweight intent classification (lite model, <200ms)
+ *   1. Shared intent classification (Gemini structured JSON, <200ms)
  *   2. Route to the right agent:
+ *      - ACTION → process-note / task mutation → confirmation stream
  *      - WEB_SEARCH → Perplexity API → Gemini formatting stream
  *      - CONTEXTUAL_ASK → Fetch relevant saved data → Gemini answer stream
- *      - CHAT (assistant/general/briefing/etc.) → Rich context → Gemini stream
+ *      - CHAT → Rich context → Gemini stream
  *   3. All routes use model-router for cost-optimized tier selection
- *   4. Server-side context: memories, profile, patterns, calendar, agent insights
- *   5. Conversation history for multi-turn awareness
+ *   4. Server-side context via shared orchestrator
+ *   5. Post-response memory evolution (fire-and-forget)
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -31,8 +38,14 @@ import {
   assembleFullContext,
   formatContextForPrompt,
   cleanupStaleSessions,
+  evolveProfileFromConversation,
   type UnifiedContext,
 } from "../_shared/orchestrator.ts";
+import {
+  classifyIntent,
+  type ClassifiedIntent,
+} from "../_shared/intent-classifier.ts";
+import { parseNaturalDate } from "../_shared/natural-date-parser.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,143 +56,68 @@ const corsHeaders = {
 // SYSTEM PROMPTS — imported from _shared/prompts/ (versioned)
 // ============================================================================
 
-// Re-export under original names for backward compatibility
 const OLIVE_CHAT_PROMPT = CHAT_PROMPT_IMPORTED;
 const CONTEXTUAL_ASK_PROMPT = CTX_ASK_PROMPT_IMPORTED;
 const WEB_SEARCH_FORMAT_PROMPT = WEB_SEARCH_PROMPT_IMPORTED;
 
-// Legacy inline prompt kept as reference (now lives in _shared/prompts/ask-olive-prompts.ts)
-const _LEGACY_OLIVE_CHAT_PROMPT = `You are Olive, a world-class AI personal assistant. You are the user's trusted, intelligent companion — like a brilliant friend who knows their life, their preferences, their tasks, and their world.
-
-## CORE PHILOSOPHY — PRODUCE, DON'T JUST DESCRIBE:
-When the user asks for help, DELIVER results immediately. Don't describe what you could do — DO IT.
-- Asked to draft an email? → Write the full email (Subject, Body, Sign-off)
-- Asked to plan a trip? → Produce a structured itinerary with steps
-- Asked for ideas? → Give specific, personalized suggestions
-- Asked for advice? → Give your honest, well-reasoned recommendation
-- Asked a question about their data? → Reference their actual tasks, lists, and memories
-
-## HELP & HOW-TO — OLIVE FEATURE GUIDE:
-When the user asks HOW to use Olive features (e.g., "how do I invite a partner?"), provide accurate step-by-step answers:
-
-**Creating notes/tasks**: Tap + on home screen, type anything. On WhatsApp, just send a message. Olive AI auto-categorizes, sets dates, splits multi-item lists. Voice notes supported.
-**Due dates/reminders**: Open note → tap date chip or bell icon. Or include naturally: "Call dentist tomorrow 3pm".
-**Complete/delete**: Swipe right (complete) or left (delete). Or open task → tap Complete/Delete.
-**Multiple tasks**: Brain dumps work — "Buy milk, call dentist, book flights" → auto-split.
-**Lists**: Lists tab → + button. WhatsApp: "create a list called [name]". Tasks auto-route by content.
-**Invite partner**: Settings → My Profile & Household → Partner Connection → Invite Partner. Share link.
-**Shared vs private**: Default follows privacy setting (Settings → Default Privacy). Toggle per-note with lock icon.
-**Connect WhatsApp**: Settings → Integrations → WhatsApp.
-**Connect Google Calendar**: Settings → Integrations → Google Services → Connect Google Calendar.
-**Expenses**: WhatsApp: "$45 lunch". App: Expenses tab. Photo receipts auto-extracted.
-**Background Agents**: Settings → Olive's Intelligence → Automation Hub.
-**Memories**: Settings → Olive's Intelligence → Memories. Add personal facts for better AI.
-
-## PERSONALITY:
-- Warm, intelligent, direct — like texting a smart friend who has your back
-- Match the depth and tone of their message
-- Use their name, reference their specific tasks and memories
-- Use emojis naturally but sparingly 🫒
-- Minimal preamble — go straight to the content
-
-## CAPABILITIES:
-- Help draft emails, messages, letters, posts, and any written content
-- Plan trips, events, projects, meals, and schedules
-- Brainstorm ideas personalized to their life and preferences
-- Analyze options, compare choices, give strategic advice
-- Answer questions about their saved tasks, lists, and data
-- Search the web for external information when needed
-- Reference memories, partner info, calendar events, and behavioral patterns
-
-## FORMATTING:
-- Use **bold** for emphasis, bullet points for lists, numbered lists for steps
-- For emails: format with **Subject:** / greeting / body / sign-off
-- For plans: use clear headings and numbered steps
-- Keep responses focused — don't pad with unnecessary text
-
-## CRITICAL RULES:
-1. When user context is provided, ALWAYS mine it for relevant details
-2. Track conversation history for continuity — never repeat or ask what's already answered
-3. If the user asks for something creative or compositional, produce the FULL output
-4. Be proactively helpful — if you notice something relevant in their data, mention it
-5. After producing substantial content, end with a brief note like "Want me to save this to your notes?"
-6. End long outputs with a brief offer to refine or iterate`;
-// End of legacy reference block — active prompts are imported from _shared/prompts/
-
 // ============================================================================
-// LIGHTWEIGHT INTENT DETECTION (no Gemini call — regex + heuristics)
+// FAST REGEX PRE-FILTER (avoids Gemini call for obvious intents)
 // ============================================================================
 
-interface DetectedIntent {
-  type: 'chat' | 'contextual_ask' | 'web_search' | 'assistant' | 'help' | 'action';
+interface PreFilterResult {
+  type: 'chat' | 'contextual_ask' | 'web_search' | 'action' | 'help' | null;
   chatType?: string;
   confidence: number;
 }
 
-function detectIntent(message: string, conversationHistory: Array<{ role: string; content: string }>): DetectedIntent {
+function preFilterIntent(message: string, conversationHistory: Array<{ role: string; content: string }>): PreFilterResult {
   const lower = message.toLowerCase().trim();
 
-  // Action signals — user wants to DO something (create task, complete task, set reminder)
-  if (/\b(add|create|make)\s+(?:a\s+)?(?:task|note|reminder|item|to[- ]?do)\b/i.test(lower) ||
-      /\b(?:add|put)\s+["'].+["']\s+(?:to|on|in)\s+(?:my|the)\b/i.test(lower) ||
-      /\b(mark|complete|finish|done|check\s+off)\s+(?:the\s+)?["']?.+["']?\s+(?:as\s+)?(?:done|complete|finished)?\b/i.test(lower) ||
-      /\b(remind\s+me|set\s+(?:a\s+)?reminder)\b/i.test(lower) ||
-      /\b(?:add|save)\s+.+\s+(?:to|on)\s+(?:my|the)\s+(?:list|grocery|shopping|to[- ]?do)\b/i.test(lower)) {
-    return { type: 'action', confidence: 0.85 };
-  }
-
   // Help questions about Olive features
-  if (/\b(how\s+(?:do\s+i|can\s+i|to)\s+(?:use|connect|invite|create|add|delete|remove|share|export|change|set|enable|disable|link|track|save|send|assign|complete|view|see|find|manage|configure|setup))\b/i.test(lower) ||
+  if (/\b(how\s+(?:do\s+i|can\s+i|to)\s+(?:use|connect|invite|create|add|delete|remove|share|export|change|set|enable|disable|link|track|save))\b/i.test(lower) ||
       /\b(come\s+(?:faccio|posso|si\s+fa)\s+(?:a|per)\s+)/i.test(lower) ||
       /\b(como\s+(?:hago|puedo|se\s+hace)\s+(?:para\s+)?)/i.test(lower)) {
     return { type: 'help', confidence: 0.9 };
   }
 
-  // Web search signals — user wants external info OR general knowledge
-  if ((/\b(search|google|look\s*up|find\s+(?:me|us)?\s*(?:a|the|some)?|best\s+(?:restaurants?|hotels?|places?|things?|cities|towns|activities|spots?|bars?|cafes?|shops?|neighborhoods?|beaches?|parks?|museums?|attractions?|destinations?)|top\s+\d+|recommend\s+(?:a|some|me)|what\s+(?:are|is)\s+the\s+(?:best|top|most|greatest|popular|famous|nicest)|where\s+(?:can|should)\s+(?:I|we)\s+(?:go|visit|eat|stay|travel)|reviews?\s+(?:for|of)|directions?\s+to|near\s+(?:me|us|here)|what's\s+(?:the\s+)?(?:weather|news|price|cost|time\s+(?:in|at))|what\s+(?:should|can|do)\s+(?:i|we)\s+(?:do|see|visit|try|eat|cook|watch|read|buy)\s+(?:in|at|near|around|for)|good\s+(?:places?|things?|restaurants?|cities|spots?|ideas?|activities)\s+(?:in|at|near|around|for|to))\b/i.test(lower) ||
-      // General knowledge "what are" / "how much" patterns
-      /\b(what\s+(?:are|is)\s+(?:the\s+)?(?:best|top|main|biggest|famous|popular|capital|most)|how\s+(?:much|many|far|long)\s+(?:does|do|is|are)\b)/i.test(lower)) &&
+  // Web search signals
+  if ((/\b(search|google|look\s*up|find\s+(?:me|us)?\s*(?:a|the|some)?|best\s+(?:restaurants?|hotels?|places?|things?|cities|activities|spots?)|top\s+\d+|recommend\s+(?:a|some|me)|what\s+(?:are|is)\s+the\s+(?:best|top|most|popular)|where\s+(?:can|should)\s+(?:I|we)\s+(?:go|visit|eat|stay)|what's\s+(?:the\s+)?(?:weather|news|price|time\s+(?:in|at)))\b/i.test(lower)) &&
       !/\b(my\s+(?:tasks?|notes?|lists?|items?|saved|data))\b/i.test(lower)) {
     return { type: 'web_search', confidence: 0.85 };
   }
 
   // Contextual ask — questions about user's saved data
-  if (/\b(my\s+(?:tasks?|notes?|lists?|items?|groceries?|shopping|travel|appointments?)|what\s+(?:do\s+)?i\s+have|show\s+(?:me\s+)?my|when\s+(?:is|are)\s+(?:my|the)|where\s+(?:is|are)\s+(?:my|the)|did\s+i\s+(?:save|add|create)|any\s+(?:tasks?|notes?|reminders?))\b/i.test(lower)) {
+  if (/\b(my\s+(?:tasks?|notes?|lists?|items?|groceries?|shopping|travel|appointments?)|what\s+(?:do\s+)?i\s+have|show\s+(?:me\s+)?my|when\s+(?:is|are)\s+(?:my|the)|did\s+i\s+(?:save|add|create)|any\s+(?:tasks?|notes?|reminders?))\b/i.test(lower)) {
     return { type: 'contextual_ask', confidence: 0.85 };
   }
 
-  // Pronoun follow-ups referencing data ("what about it", "when is it")
-  if (conversationHistory.length > 0 && /^(what|when|where|how|which|who|is\s+it|is\s+that|and\s+the|what\s+about)\b/i.test(lower) && lower.length < 60) {
-    // Check if last exchange was contextual
+  // Pronoun follow-ups referencing data
+  if (conversationHistory.length > 0 && /^(what|when|where|how|which|who|is\s+it|what\s+about)\b/i.test(lower) && lower.length < 60) {
     const lastAssistant = [...conversationHistory].reverse().find(m => m.role === 'assistant');
     if (lastAssistant?.content && /\b(task|note|list|item|saved|due|reminder|calendar)\b/i.test(lastAssistant.content)) {
       return { type: 'contextual_ask', confidence: 0.75 };
     }
   }
 
-  // Assistant signals — user wants Olive to produce content
-  if (/\b(help\s+me\s+(?:draft|write|compose|plan|brainstorm|think|figure|organize|prepare|create\s+a\s+(?:plan|list|email|message|letter))|draft\s+(?:a|an|the)|write\s+(?:a|an|the)|compose\s+(?:a|an)|can\s+you\s+(?:help|draft|write|plan|brainstorm|prepare|create)|what\s+(?:do\s+you\s+think|would\s+you\s+(?:suggest|recommend))|compare|pros?\s+and\s+cons?|should\s+i|advice\s+(?:on|about|for)|opinion\s+(?:on|about)|prepare\s+(?:a|an|the))\b/i.test(lower) ||
-      /\b(aiutami\s+a|puoi\s+(?:aiutarmi|prepararmi|scrivermi)|preparami|scrivimi|bozza|redigi)\b/i.test(lower) ||
-      /\b(ayudame\s+a|puedes\s+(?:ayudarme|prepararme|escribirme)|preparame|escribeme|borrador)\b/i.test(lower) ||
-      lower.length > 120) {
-    // Long messages are likely assistant requests
-    if (lower.length > 120 && /[?]/.test(lower)) {
-      return { type: 'assistant', chatType: 'assistant', confidence: 0.8 };
-    }
-    if (/\b(draft|write|compose|plan|brainstorm|help\s+me|prepare|bozza|aiutami|ayudame)\b/i.test(lower)) {
-      return { type: 'assistant', chatType: 'assistant', confidence: 0.9 };
-    }
-  }
+  // No strong signal — return null to trigger full AI classification
+  return { type: null, confidence: 0 };
+}
 
-  // Default: general chat
-  return { type: 'chat', chatType: 'general', confidence: 0.6 };
+// ============================================================================
+// HELPER: create supabase client
+// ============================================================================
+
+function getServiceSupabase() {
+  return createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  );
 }
 
 // ============================================================================
 // SERVER-SIDE CONTEXT — delegates to shared orchestrator (P2)
 // ============================================================================
 
-// Re-export type for backward compatibility
 type ServerContext = UnifiedContext;
 
 async function fetchServerContext(
@@ -221,7 +159,6 @@ async function performWebSearch(query: string, conversationHistory: Array<{ role
     return { content: '', citations: [] };
   }
 
-  // Resolve pronouns from conversation history
   let searchQuery = query;
   let userQuestion = query;
 
@@ -288,7 +225,7 @@ async function performWebSearch(query: string, conversationHistory: Array<{ role
 }
 
 // ============================================================================
-// STREAMING RESPONSE GENERATOR
+// STREAMING RESPONSE GENERATOR (with response capture for memory evolution)
 // ============================================================================
 
 async function streamGeminiResponse(
@@ -334,82 +271,75 @@ async function streamGeminiResponse(
 }
 
 // ============================================================================
-// ACTION HANDLER (create/complete task, set reminder)
+// ACTION HANDLER (P3: upgraded to use process-note + shared classifier)
 // ============================================================================
 
-async function handleActionRequest(
+async function handleAction(
   supabase: any,
   userId: string,
   coupleId: string | null,
   message: string,
-  serverCtx: ServerContext,
-  context: any
+  classifiedIntent: ClassifiedIntent
 ): Promise<Record<string, any> | null> {
-  const lower = message.toLowerCase();
+  const intent = classifiedIntent.intent;
 
-  // ── CREATE TASK ──
-  if (/\b(add|create|make|put|save)\b/i.test(lower) && !/\b(mark|complete|finish|done|check\s*off)\b/i.test(lower)) {
-    const extractKey = Deno.env.get("GEMINI_API") || Deno.env.get("GEMINI_API_KEY") || "";
-    const extractResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${extractKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `Extract task details from this message. Return JSON only.\nMessage: "${message}"\n\nReturn: {"summary": "task text", "category": "best category", "due_date": "ISO date or null", "priority": "high/medium/low", "list_name": "target list or null"}` }] }],
-          generationConfig: { temperature: 0, maxOutputTokens: 200, responseMimeType: "application/json" },
-        }),
-      }
-    );
-
-    if (!extractResponse.ok) return null;
-    const extractData = await extractResponse.json();
-    const text = extractData?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return null;
-
+  // ── CREATE TASK (delegate to process-note for full AI categorization) ──
+  if (intent === 'create' || intent === 'remind' || intent === 'create_list') {
     try {
-      const task = JSON.parse(text);
-      const { data: note, error } = await supabase
-        .from('clerk_notes')
-        .insert({
-          author_id: userId,
-          couple_id: coupleId || null,
-          summary: task.summary,
-          original_text: message,
-          category: task.category || 'general',
-          priority: task.priority || 'medium',
-          due_date: task.due_date || null,
-          completed: false,
-        })
-        .select('id, summary, category, due_date')
-        .single();
+      const { data, error } = await supabase.functions.invoke('process-note', {
+        body: {
+          text: message,
+          user_id: userId,
+          couple_id: coupleId,
+          source: 'web_chat',
+        },
+      });
 
       if (error) {
-        console.error('[ask-olive-stream] Create task error:', error);
+        console.error('[ask-olive-stream] process-note error:', error);
         return null;
       }
 
-      return { action: 'task_created', ...note };
+      const noteId = data?.id || data?.note?.id;
+      const summary = data?.summary || data?.note?.summary || message;
+      const category = data?.category || data?.note?.category;
+      const dueDate = data?.due_date || data?.note?.due_date;
+      const reminderTime = data?.reminder_time || data?.note?.reminder_time;
+
+      if (intent === 'create_list') {
+        return { action: 'list_created', name: classifiedIntent.parameters?.list_name || summary };
+      }
+
+      if (intent === 'remind' || reminderTime) {
+        return { action: 'reminder_set', id: noteId, summary, reminder_time: reminderTime, due_date: dueDate };
+      }
+
+      return { action: 'task_created', id: noteId, summary, category, due_date: dueDate };
     } catch (e) {
-      console.error('[ask-olive-stream] Parse action error:', e);
+      console.error('[ask-olive-stream] Action create error:', e);
       return null;
     }
   }
 
   // ── COMPLETE TASK ──
-  if (/\b(mark|complete|finish|done|check\s*off)\b/i.test(lower)) {
-    const taskMatch = lower.match(/(?:mark|complete|finish|done|check\s*off)\s+(?:the\s+)?["']?(.+?)["']?\s*(?:as\s+(?:done|complete|finished))?$/i);
-    const taskName = taskMatch?.[1]?.trim();
+  if (intent === 'complete') {
+    const taskName = classifiedIntent.target_task_name;
     if (!taskName) return null;
 
-    const { data: tasks } = await supabase
+    let query = supabase
       .from('clerk_notes')
       .select('id, summary')
-      .eq('author_id', userId)
       .eq('completed', false)
-      .ilike('summary', `%${taskName.substring(0, 30)}%`)
+      .ilike('summary', `%${taskName.substring(0, 40)}%`)
       .limit(1);
 
+    if (coupleId) {
+      query = query.or(`author_id.eq.${userId},couple_id.eq.${coupleId}`);
+    } else {
+      query = query.eq('author_id', userId);
+    }
+
+    const { data: tasks } = await query;
     if (!tasks || tasks.length === 0) return null;
 
     const { error } = await supabase
@@ -421,52 +351,151 @@ async function handleActionRequest(
     return { action: 'task_completed', id: tasks[0].id, summary: tasks[0].summary };
   }
 
-  // ── SET REMINDER ──
-  if (/\b(remind\s+me|set\s+(?:a\s+)?reminder)\b/i.test(lower)) {
-    const extractKey = Deno.env.get("GEMINI_API") || Deno.env.get("GEMINI_API_KEY") || "";
-    const extractResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${extractKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `Extract reminder details from this message. Today is ${new Date().toISOString().split('T')[0]}. Return JSON only.\nMessage: "${message}"\n\nReturn: {"summary": "what to remember", "reminder_time": "ISO datetime", "due_date": "ISO date or null"}` }] }],
-          generationConfig: { temperature: 0, maxOutputTokens: 200, responseMimeType: "application/json" },
-        }),
-      }
-    );
+  // ── DELETE TASK ──
+  if (intent === 'delete') {
+    const taskName = classifiedIntent.target_task_name;
+    if (!taskName) return null;
 
-    if (!extractResponse.ok) return null;
-    const extractData = await extractResponse.json();
-    const text = extractData?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return null;
+    let query = supabase
+      .from('clerk_notes')
+      .select('id, summary')
+      .ilike('summary', `%${taskName.substring(0, 40)}%`)
+      .limit(1);
 
+    if (coupleId) {
+      query = query.or(`author_id.eq.${userId},couple_id.eq.${coupleId}`);
+    } else {
+      query = query.eq('author_id', userId);
+    }
+
+    const { data: tasks } = await query;
+    if (!tasks || tasks.length === 0) return null;
+
+    const { error } = await supabase
+      .from('clerk_notes')
+      .delete()
+      .eq('id', tasks[0].id);
+
+    if (error) return null;
+    return { action: 'task_deleted', id: tasks[0].id, summary: tasks[0].summary };
+  }
+
+  // ── SET PRIORITY ──
+  if (intent === 'set_priority') {
+    const taskName = classifiedIntent.target_task_name;
+    const rawPriority = (classifiedIntent.parameters?.priority || '').toLowerCase();
+    const priority = rawPriority === 'low' ? 'low' : rawPriority === 'medium' ? 'medium' : 'high';
+    if (!taskName) return null;
+
+    let query = supabase
+      .from('clerk_notes')
+      .select('id, summary')
+      .eq('completed', false)
+      .ilike('summary', `%${taskName.substring(0, 40)}%`)
+      .limit(1);
+
+    if (coupleId) {
+      query = query.or(`author_id.eq.${userId},couple_id.eq.${coupleId}`);
+    } else {
+      query = query.eq('author_id', userId);
+    }
+
+    const { data: tasks } = await query;
+    if (!tasks || tasks.length === 0) return null;
+
+    const { error } = await supabase
+      .from('clerk_notes')
+      .update({ priority, updated_at: new Date().toISOString() })
+      .eq('id', tasks[0].id);
+
+    if (error) return null;
+    return { action: 'priority_set', id: tasks[0].id, summary: tasks[0].summary, priority };
+  }
+
+  // ── SET DUE DATE ──
+  if (intent === 'set_due') {
+    const taskName = classifiedIntent.target_task_name;
+    const dateExpr = classifiedIntent.parameters?.due_date_expression;
+    if (!taskName || !dateExpr) return null;
+
+    // Parse the date
+    let userTimezone = 'America/New_York';
     try {
-      const reminder = JSON.parse(text);
-      const { data: note, error } = await supabase
-        .from('clerk_notes')
-        .insert({
-          author_id: userId,
-          couple_id: coupleId || null,
-          summary: reminder.summary,
-          original_text: message,
-          category: 'reminder',
-          priority: 'medium',
-          due_date: reminder.due_date || reminder.reminder_time || null,
-          reminder_time: reminder.reminder_time || null,
-          completed: false,
-        })
-        .select('id, summary, reminder_time, due_date')
-        .single();
+      const { data: profile } = await supabase
+        .from('clerk_profiles')
+        .select('timezone')
+        .eq('id', userId)
+        .maybeSingle();
+      if (profile?.timezone) userTimezone = profile.timezone;
+    } catch {}
 
+    const parsed = parseNaturalDate(dateExpr, { timezone: userTimezone });
+    if (!parsed) return null;
+
+    let query = supabase
+      .from('clerk_notes')
+      .select('id, summary')
+      .eq('completed', false)
+      .ilike('summary', `%${taskName.substring(0, 40)}%`)
+      .limit(1);
+
+    if (coupleId) {
+      query = query.or(`author_id.eq.${userId},couple_id.eq.${coupleId}`);
+    } else {
+      query = query.eq('author_id', userId);
+    }
+
+    const { data: tasks } = await query;
+    if (!tasks || tasks.length === 0) return null;
+
+    const updateFields: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (parsed.hasTime) {
+      updateFields.reminder_time = parsed.iso;
+      updateFields.due_date = parsed.iso.split('T')[0];
+    } else {
+      updateFields.due_date = parsed.iso.split('T')[0];
+    }
+
+    const { error } = await supabase
+      .from('clerk_notes')
+      .update(updateFields)
+      .eq('id', tasks[0].id);
+
+    if (error) return null;
+    return { action: 'due_date_set', id: tasks[0].id, summary: tasks[0].summary, due_date: updateFields.due_date, reminder_time: updateFields.reminder_time };
+  }
+
+  // ── EXPENSE ──
+  if (intent === 'expense') {
+    try {
+      const { data, error } = await supabase.functions.invoke('process-note', {
+        body: {
+          text: message,
+          user_id: userId,
+          couple_id: coupleId,
+          source: 'web_chat',
+        },
+      });
       if (error) return null;
-      return { action: 'reminder_set', ...note };
+      return { action: 'expense_created', id: data?.id || data?.note?.id, summary: data?.summary || message };
     } catch {
       return null;
     }
   }
 
-  return null; // Not recognized
+  return null;
+}
+
+// ============================================================================
+// MEMORY EVOLUTION (fire-and-forget after streaming completes)
+// ============================================================================
+
+function scheduleMemoryEvolution(userId: string, userMessage: string, responsePreview: string): void {
+  // Fire-and-forget — do NOT await
+  const supabase = getServiceSupabase();
+  evolveProfileFromConversation(supabase, userId, userMessage, responsePreview).catch((err) => {
+    console.warn('[ask-olive-stream] Memory evolution error (non-blocking):', err);
+  });
 }
 
 // ============================================================================
@@ -484,51 +513,117 @@ serve(async (req) => {
     if (!GEMINI_KEY) throw new Error('GEMINI_API key not configured');
     if (!message?.trim()) throw new Error('Empty message');
 
-    // ── Step 1: Detect intent ────────────────────────────────────
     const conversationHistory: Array<{ role: string; content: string }> =
       context?.conversation_history || [];
 
-    const detected = detectIntent(message, conversationHistory);
-    console.log(`[ask-olive-stream] Intent: ${detected.type} (confidence: ${detected.confidence})`);
+    // ── Step 1: Fast regex pre-filter ────────────────────────────
+    const preFilter = preFilterIntent(message, conversationHistory);
+
+    // Determine effective intent type
+    let effectiveType = preFilter.type;
+    let classifiedIntent: ClassifiedIntent | null = null;
+
+    // For actions or ambiguous cases, use the shared AI classifier
+    const isLikelyAction = /\b(add|create|make|put|save|mark|complete|finish|done|check\s*off|remind|delete|remove|set\s+(?:priority|due)|assign)\b/i.test(message.toLowerCase());
+
+    if (isLikelyAction || !effectiveType) {
+      try {
+        // Fetch minimal context for classifier
+        const supabase = getServiceSupabase();
+        const [tasksResult, memoriesResult] = await Promise.all([
+          supabase
+            .from('clerk_notes')
+            .select('id, summary, due_date, priority')
+            .or(couple_id ? `author_id.eq.${user_id},couple_id.eq.${couple_id}` : `author_id.eq.${user_id}`)
+            .eq('completed', false)
+            .order('created_at', { ascending: false })
+            .limit(20),
+          supabase
+            .from('user_memories')
+            .select('title, content, category')
+            .eq('user_id', user_id)
+            .eq('is_active', true)
+            .limit(10),
+        ]);
+
+        const result = await classifyIntent({
+          message,
+          conversationHistory,
+          activeTasks: (tasksResult.data || []).map((t: any) => ({
+            id: t.id,
+            summary: t.summary,
+            due_date: t.due_date,
+            priority: t.priority || 'medium',
+          })),
+          userMemories: memoriesResult.data || [],
+          activatedSkills: [],
+          userLanguage: context?.language || 'en',
+        });
+
+        if (result.intent) {
+          classifiedIntent = result.intent;
+          console.log(`[ask-olive-stream] AI classified: ${classifiedIntent.intent} (conf: ${classifiedIntent.confidence})`);
+
+          // Map classified intent to effective type
+          const actionIntents = ['create', 'complete', 'delete', 'set_priority', 'set_due', 'remind', 'move', 'assign', 'expense', 'create_list'];
+          if (actionIntents.includes(classifiedIntent.intent)) {
+            effectiveType = 'action';
+          } else if (classifiedIntent.intent === 'web_search') {
+            effectiveType = 'web_search';
+          } else if (classifiedIntent.intent === 'contextual_ask' || classifiedIntent.intent === 'search') {
+            effectiveType = 'contextual_ask';
+          } else {
+            effectiveType = 'chat';
+          }
+        }
+      } catch (classifyErr) {
+        console.warn('[ask-olive-stream] Classification failed, falling back to regex:', classifyErr);
+        if (!effectiveType) effectiveType = 'chat';
+      }
+    }
+
+    if (!effectiveType) effectiveType = 'chat';
+
+    console.log(`[ask-olive-stream] Effective intent: ${effectiveType}`);
 
     // ── Step 2: Route to model tier ──────────────────────────────
     const intentMap: Record<string, string> = {
       'web_search': 'web_search',
       'contextual_ask': 'contextual_ask',
-      'assistant': 'chat',
       'chat': 'chat',
       'help': 'chat',
       'action': 'chat',
     };
-    const chatTypeMap: Record<string, string> = {
-      'assistant': 'planning',
-      'help': 'general',
-    };
     const route = routeIntent(
-      intentMap[detected.type] || 'chat',
-      detected.chatType || chatTypeMap[detected.type] || 'general'
+      intentMap[effectiveType] || 'chat',
+      classifiedIntent?.parameters?.chat_type || 'general'
     );
     console.log(`[ask-olive-stream] Route: tier=${route.responseTier}, reason=${route.reason}`);
 
     // ── Step 3: Fetch context (parallel with intent-specific work) ─
-    const serverCtxPromise = fetchServerContext(user_id, couple_id, detected.type, message);
+    const serverCtxPromise = fetchServerContext(user_id, couple_id, effectiveType, message);
 
     // ── Step 4: Intent-specific handling ──────────────────────────
 
     // ── WEB SEARCH ────────────────────────────────────────────────
-    if (detected.type === 'web_search') {
+    if (effectiveType === 'web_search') {
       const [serverCtx, searchResult] = await Promise.all([
         serverCtxPromise,
         performWebSearch(message, conversationHistory),
       ]);
 
       if (!searchResult.content) {
-        // Fallback: just answer with Gemini
-        const fullContext = buildFullContext(serverCtx, context, message, conversationHistory);
+        const fullContext = formatContextForPrompt(serverCtx, {
+          userMessage: message,
+          userName: context?.user_name,
+          conversationHistory,
+          savedItemsContext: context?.saved_items_context,
+        });
+        // Schedule memory evolution
+        scheduleMemoryEvolution(user_id, message, '(web search fallback to chat)');
         return streamGeminiResponse(OLIVE_CHAT_PROMPT, fullContext, route.responseTier);
       }
 
-      // Stream Gemini formatting of the search results + personal context
       const citationsList = searchResult.citations.length > 0
         ? '\n\nSOURCES:\n' + searchResult.citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join('\n')
         : '';
@@ -562,14 +657,14 @@ Answer comprehensively using web knowledge, then naturally connect to any releva
         ? '\n\nCONVERSATION HISTORY:\n' + conversationHistory.map(m => `${m.role}: ${m.content}`).join('\n')
         : '';
 
+      scheduleMemoryEvolution(user_id, message, searchResult.content.substring(0, 200));
       return streamGeminiResponse(searchContext, searchContext + historyCtx, 'standard');
     }
 
     // ── CONTEXTUAL ASK ────────────────────────────────────────────
-    if (detected.type === 'contextual_ask') {
+    if (effectiveType === 'contextual_ask') {
       const serverCtx = await serverCtxPromise;
 
-      // Check if this is also a general knowledge question that needs web augmentation
       const msgLower = message.toLowerCase();
       const isGeneralKnowledge = (
         /\b(what\s+(?:are|is)\s+the\s+(?:best|top|most|greatest|popular|famous)|best\s+(?:cities|restaurants?|hotels?|places?|things?|activities|spots?)|top\s+\d+|recommend\s+(?:a|some)|where\s+(?:should|can)\s+(?:i|we)\s+(?:go|visit|eat|stay))\b/i.test(msgLower) ||
@@ -619,32 +714,30 @@ ${context?.user_name ? `User's name: ${context.user_name}` : ''}
 
 USER'S QUESTION: ${message}
 
-${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect to personal context.' : 'Respond with helpful, specific information extracted from their saved data. Use the semantically matched notes and learned facts above as your primary source.'}`;
+${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect to personal context.' : 'Respond with helpful, specific information extracted from their saved data.'}`;
 
+      scheduleMemoryEvolution(user_id, message, '(contextual ask)');
       return streamGeminiResponse(hybridPrompt, ctxAskContent, isHybrid ? 'standard' : route.responseTier);
     }
 
-    // ── ACTION (create/complete task, set reminder) ──────────────
-    if (detected.type === 'action') {
+    // ── ACTION (P3: full action parity via shared classifier + process-note) ──
+    if (effectiveType === 'action' && classifiedIntent) {
       const serverCtx = await serverCtxPromise;
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-      );
+      const supabase = getServiceSupabase();
 
-      const actionResult = await handleActionRequest(supabase, user_id, couple_id, message, serverCtx, context);
+      const actionResult = await handleAction(supabase, user_id, couple_id, message, classifiedIntent);
 
       if (actionResult) {
-        // Stream a confirmation response that includes the action result
         const confirmPrompt = `You are Olive. You just performed an action for the user. Confirm what you did warmly and briefly. Include the specific details. ${OLIVE_CHAT_PROMPT}`;
         const confirmContent = `ACTION PERFORMED:\n${JSON.stringify(actionResult)}\n\nUser's original request: ${message}\n\n${context?.user_name ? `User's name: ${context.user_name}` : ''}\n\nConfirm what you did in 1-2 sentences. Be specific about what was created/completed.`;
+        scheduleMemoryEvolution(user_id, message, `Action: ${actionResult.action} - ${actionResult.summary || ''}`);
         return streamGeminiResponse(confirmPrompt, confirmContent, 'lite');
       }
 
-      // Action failed or not recognized — fall through to chat
+      // Action failed — fall through to chat
     }
 
-    // ── CHAT / ASSISTANT / HELP ───────────────────────────────────
+    // ── CHAT / HELP ───────────────────────────────────────────────
     const serverCtx = await serverCtxPromise;
     const fullContext = formatContextForPrompt(serverCtx, {
       userMessage: message,
@@ -652,6 +745,7 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
       conversationHistory,
       savedItemsContext: context?.saved_items_context,
     });
+    scheduleMemoryEvolution(user_id, message, '(chat response)');
     return streamGeminiResponse(OLIVE_CHAT_PROMPT, fullContext, route.responseTier);
 
   } catch (error: any) {
