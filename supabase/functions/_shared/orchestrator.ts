@@ -542,8 +542,8 @@ export async function assembleFullContext(
     savedItemsPromise,
   ]);
 
-  const [profileData, memories, patterns, calendarEvents, memoryFiles, agentInsights, entities] =
-    baseResults as [any, any[], any[], any[], any[], string, any[]];
+  const [profileData, memories, patterns, calendarEvents, memoryFiles, agentInsights, entities, partnerData, tasksList, userSkills] =
+    baseResults as [any, any[], any[], any[], any[], string, any[], any, any[], any[]];
 
   // ─── FORMAT: Profile ──────────────────────────────────────────
   if (profileData) {
