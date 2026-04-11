@@ -7,7 +7,7 @@
  * All logging is non-blocking (fire-and-forget).
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 export interface RouterLogEntry {
   userId: string;
