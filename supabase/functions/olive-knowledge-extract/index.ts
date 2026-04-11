@@ -201,10 +201,14 @@ Rules:
 - Only extract entities that are SPECIFIC and NAMED (not generic words like "grocery store")
 - For people: include relationship context if mentioned (e.g., "partner", "mom", "coworker")
 - For relationships: describe WHY you inferred the connection
+- Use RICH relationship types that capture the semantic meaning:
+  knows, lives_at, works_at, prefers, owns, scheduled_for, costs, related_to,
+  assigned_to, part_of, visited, wants, recommended_by, prescribed_by,
+  competes_with, depends_on, located_in, served_at, authored_by, gifted_to
 - Confidence levels:
-  - EXTRACTED (1.0): explicitly stated in text
+  - EXTRACTED (0.9-1.0): explicitly stated in text
   - INFERRED (0.5-0.8): derived from context
-  - AMBIGUOUS (≤0.4): uncertain, needs confirmation
+  - AMBIGUOUS (0.1-0.4): uncertain, needs confirmation
 
 Return JSON with this exact structure:
 {
@@ -221,7 +225,7 @@ Return JSON with this exact structure:
     {
       "source_name": "entity A",
       "target_name": "entity B",
-      "relationship_type": "knows|lives_at|works_at|prefers|owns|scheduled_for|costs|related_to|assigned_to|part_of|visited|wants",
+      "relationship_type": "one of the types above",
       "confidence": "EXTRACTED|INFERRED|AMBIGUOUS",
       "confidence_score": 0.0-1.0,
       "rationale": "why this relationship exists"
