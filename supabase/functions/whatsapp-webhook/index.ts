@@ -279,8 +279,11 @@ async function getRecentOutboundMessages(supabase: any, userId: string): Promise
     if (profile?.last_outbound_context) {
       const ctx = profile.last_outbound_context;
       const sentAt = ctx.sent_at || '';
-      // Only use if sent within last 60 minutes
-      if (sentAt && new Date(sentAt).getTime() > Date.now() - 60 * 60 * 1000) {
+      // Skip error replies — they carry no useful conversational context
+      // and would confuse the AI in the next turn (e.g., "Sorry, I had trouble...")
+      if (ctx.is_error || ctx.message_type === 'error') {
+        console.log('[Context] Skipping error reply from outbound context');
+      } else if (sentAt && new Date(sentAt).getTime() > Date.now() - 60 * 60 * 1000) {
         console.log('[Context] Found outbound context in profile:', ctx.message_type, ctx.content?.substring(0, 80));
         results.push({
           type: ctx.message_type || 'unknown',
