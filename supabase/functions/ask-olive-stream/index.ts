@@ -576,15 +576,22 @@ async function handleAction(
 }
 
 // ============================================================================
-// MEMORY EVOLUTION (fire-and-forget after streaming completes)
+// MEMORY EVOLUTION + DAILY LOG (fire-and-forget after streaming completes)
 // ============================================================================
 
 function scheduleMemoryEvolution(userId: string, userMessage: string, responsePreview: string): void {
-  // Fire-and-forget — do NOT await
   const supabase = getServiceSupabase();
+  // Memory evolution
   evolveProfileFromConversation(supabase, userId, userMessage, responsePreview).catch((err) => {
     console.warn('[ask-olive-stream] Memory evolution error (non-blocking):', err);
   });
+  // Daily log append (P4 parity with WhatsApp)
+  supabase.rpc('append_to_daily_log', {
+    p_user_id: userId,
+    p_content: `[web_chat] User: ${userMessage.substring(0, 120)} → Olive responded`,
+    p_source: 'web_chat',
+  }).then(() => console.log('[ask-olive-stream] Daily log appended'))
+    .catch(() => { /* non-blocking */ });
 }
 
 // ============================================================================
