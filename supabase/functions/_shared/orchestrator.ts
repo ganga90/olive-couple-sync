@@ -293,9 +293,14 @@ export async function fetchDynamicMemoryContext(
 }
 
 /**
- * Auto-evolve the profile memory file after a conversation.
- * Appends new facts/preferences extracted from the conversation.
- * Non-blocking — fire-and-forget to avoid slowing responses.
+ * Auto-evolve memory from conversations — Phase 3 (Option D).
+ *
+ * Two-tier extraction:
+ *  Tier 1 (fast, regex): Detect fact-signal keywords → quick append to profile
+ *  Tier 2 (AI, Gemini): Extract structured facts → store as memory chunks
+ *
+ * Both tiers are non-blocking fire-and-forget to avoid slowing responses.
+ * Tier 2 only runs for substantive conversations (user msg > 30 chars).
  */
 export async function evolveProfileFromConversation(
   supabase: ReturnType<typeof createClient<any>>,
@@ -304,10 +309,10 @@ export async function evolveProfileFromConversation(
   oliveResponse: string
 ): Promise<void> {
   try {
-    // Only evolve for substantive conversations (not greetings or short queries)
-    if (userMessage.length < 20 && oliveResponse.length < 50) return;
+    // Skip trivial exchanges
+    if (userMessage.length < 15) return;
 
-    // Check if the message reveals preferences, facts, or personal info
+    // ─── Tier 1: Regex-based quick profile append ───────────────
     const factSignals = [
       /\b(i prefer|i like|i hate|i love|i always|i never|i usually|my favorite|i'm allergic|i don't eat|we always|we prefer)\b/i,
       /\b(mi piace|preferisco|odio|amo|sempre|mai|il mio preferito|sono allergic|non mangio)\b/i,
@@ -315,12 +320,201 @@ export async function evolveProfileFromConversation(
       /\b(my (?:wife|husband|partner|dog|cat|kid|son|daughter|baby|mom|dad|brother|sister) (?:is|likes|hates|prefers|needs|has))\b/i,
       /\b(we live|we moved|our house|our apartment|our home|my office|my work)\b/i,
       /\b(my birthday|my anniversary|born on|born in)\b/i,
+      /\b(remember that|don't forget|important:)\b/i,
     ];
 
     const hasFactSignal = factSignals.some((r) => r.test(userMessage));
-    if (!hasFactSignal) return;
 
-    // Read current profile
+    // ─── Tier 2: AI-powered fact extraction ─────────────────────
+    // Runs when message is substantive (>= 30 chars)
+    // Short fact signals (<30 chars) use Tier 1 instead (faster, cheaper)
+    if (userMessage.length >= 30) {
+      await extractAndStoreConversationFacts(
+        supabase,
+        userId,
+        userMessage,
+        oliveResponse
+      );
+    } else if (hasFactSignal) {
+      // ─── Tier 1: quick profile append for short fact-signal messages
+      await quickProfileAppend(supabase, userId, userMessage);
+    }
+  } catch (err) {
+    console.warn("[Orchestrator] Profile evolution error (non-blocking):", err);
+  }
+}
+
+/**
+ * Extract structured facts from a conversation turn using Gemini AI.
+ * Stores each extracted fact as an olive_memory_chunk with source='conversation'.
+ * Also appends high-importance facts to the profile memory file.
+ */
+async function extractAndStoreConversationFacts(
+  supabase: ReturnType<typeof createClient<any>>,
+  userId: string,
+  userMessage: string,
+  oliveResponse: string
+): Promise<void> {
+  const GEMINI_API_KEY =
+    Deno.env.get("GEMINI_API") ||
+    Deno.env.get("GEMINI_API_KEY") ||
+    Deno.env.get("VITE_GEMINI_API_KEY");
+
+  if (!GEMINI_API_KEY) {
+    console.log("[ConvMemory] No Gemini API key, skipping extraction");
+    return;
+  }
+
+  const prompt = `Analyze this conversation turn and extract memorable facts worth storing in long-term memory.
+
+User said: "${userMessage.substring(0, 500)}"
+Olive replied: "${oliveResponse.substring(0, 300)}"
+
+Extract facts that are:
+- User preferences (food likes/dislikes, habits, routines, style preferences)
+- Personal information (names, dates, locations, relationships, allergies)
+- Decisions made (chose something, committed to something)
+- Patterns (recurring behaviors, schedules, tendencies)
+- Important context (life events, goals, concerns)
+
+Rules:
+- Only extract facts explicitly stated or strongly implied by the USER
+- Do NOT extract facts about Olive or generic advice Olive gave
+- Each fact should be a self-contained statement (understandable without context)
+- Deduplicate: if two facts say the same thing, keep only the more specific one
+
+Return a JSON array. If no memorable facts, return [].
+Each item: {"content":"concise fact statement","type":"preference|fact|pattern|personal_info|decision","importance":1-5}
+
+Example: [{"content":"Allergic to shellfish","type":"personal_info","importance":5}]`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error("[ConvMemory] Gemini error:", response.status);
+      return;
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return;
+
+    const facts: Array<{
+      content: string;
+      type: string;
+      importance: number;
+    }> = JSON.parse(jsonMatch[0]);
+
+    if (!facts || facts.length === 0) return;
+
+    console.log(`[ConvMemory] Extracted ${facts.length} facts from conversation`);
+
+    // Generate embeddings for each fact (batch-friendly)
+    const embeddingPromises = facts.map(async (fact) => {
+      try {
+        const embResp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_API_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              content: { parts: [{ text: fact.content }] },
+              outputDimensionality: 768,
+            }),
+          }
+        );
+        if (!embResp.ok) return null;
+        const embData = await embResp.json();
+        return embData.embedding?.values || null;
+      } catch {
+        return null;
+      }
+    });
+
+    const embeddings = await Promise.all(embeddingPromises);
+
+    // Store each fact as a memory chunk
+    let stored = 0;
+    for (let i = 0; i < facts.length; i++) {
+      const fact = facts[i];
+      const embedding = embeddings[i];
+
+      // Dedup check: search for very similar existing chunks
+      if (embedding) {
+        try {
+          const { data: similar } = await supabase.rpc("find_similar_chunks", {
+            p_user_id: userId,
+            p_embedding: embedding,
+            p_threshold: 0.95, // Very high threshold = near-duplicate
+            p_limit: 1,
+          });
+
+          if (similar && similar.length > 0) {
+            console.log(`[ConvMemory] Skipping duplicate: "${fact.content.substring(0, 50)}..."`);
+            continue; // Skip near-duplicate
+          }
+        } catch (dedupErr: any) {
+          // RPC might not exist yet (migration pending) — log and proceed
+          console.warn("[ConvMemory] Dedup check failed (non-blocking):", dedupErr?.message || dedupErr);
+        }
+      }
+
+      const { error } = await supabase.from("olive_memory_chunks").insert({
+        user_id: userId,
+        memory_file_id: null, // Standalone chunk, linked during compilation
+        chunk_index: 0,
+        content: fact.content,
+        chunk_type: fact.type === "pattern" ? "pattern" : "fact",
+        importance: Math.min(5, Math.max(1, fact.importance)),
+        embedding,
+        source: "conversation",
+        is_active: true,
+        decay_factor: 1.0,
+        metadata: {
+          extraction_type: "ai_conversation",
+          fact_type: fact.type,
+          extracted_at: new Date().toISOString(),
+          source_message_preview: userMessage.substring(0, 100),
+        },
+      });
+
+      if (!error) stored++;
+    }
+
+    console.log(`[ConvMemory] Stored ${stored}/${facts.length} new facts`);
+
+    // Also append high-importance facts to profile file (for immediate context)
+    const highImportanceFacts = facts.filter((f) => f.importance >= 4);
+    if (highImportanceFacts.length > 0) {
+      await appendFactsToProfile(supabase, userId, highImportanceFacts);
+    }
+  } catch (err) {
+    console.warn("[ConvMemory] Extraction error (non-blocking):", err);
+  }
+}
+
+/**
+ * Append high-importance facts to the profile memory file.
+ * Includes dedup check against existing content.
+ */
+async function appendFactsToProfile(
+  supabase: ReturnType<typeof createClient<any>>,
+  userId: string,
+  facts: Array<{ content: string; type: string; importance: number }>
+): Promise<void> {
+  try {
     const { data: profileFile } = await supabase
       .from("olive_memory_files")
       .select("content")
@@ -330,18 +524,72 @@ export async function evolveProfileFromConversation(
       .maybeSingle();
 
     const currentContent = profileFile?.content || "";
+    const today = new Date().toISOString().split("T")[0];
 
-    // Simple dedup: don't append if the exact sentence is already there
+    const newLines: string[] = [];
+    for (const fact of facts) {
+      // Simple dedup: skip if content already in profile
+      if (currentContent.toLowerCase().includes(fact.content.toLowerCase().substring(0, 30))) {
+        continue;
+      }
+      newLines.push(`- [${today}] ${fact.content}`);
+    }
+
+    if (newLines.length === 0) return;
+
+    const appendText = "\n" + newLines.join("\n");
+
+    // Cap profile at 5000 chars
+    if (currentContent.length + appendText.length > 5000) {
+      console.log("[ConvMemory] Profile at capacity, skipping append");
+      return;
+    }
+
+    await supabase
+      .from("olive_memory_files")
+      .upsert(
+        {
+          user_id: userId,
+          file_type: "profile",
+          file_date: null,
+          content: currentContent + appendText,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,file_type,file_date" }
+      );
+
+    console.log(`[ConvMemory] Appended ${newLines.length} facts to profile`);
+  } catch (err) {
+    console.warn("[ConvMemory] Profile append error:", err);
+  }
+}
+
+/**
+ * Quick profile append for short messages with clear fact signals.
+ * No AI call — just regex-detected facts appended directly.
+ */
+async function quickProfileAppend(
+  supabase: ReturnType<typeof createClient<any>>,
+  userId: string,
+  userMessage: string
+): Promise<void> {
+  try {
+    const { data: profileFile } = await supabase
+      .from("olive_memory_files")
+      .select("content")
+      .eq("user_id", userId)
+      .eq("file_type", "profile")
+      .is("file_date", null)
+      .maybeSingle();
+
+    const currentContent = profileFile?.content || "";
     const newFact = userMessage.substring(0, 200);
+
     if (currentContent.includes(newFact)) return;
 
     const appendLine = `\n- [${new Date().toISOString().split("T")[0]}] ${newFact}`;
 
-    // Cap profile at 5000 chars to prevent unbounded growth
-    if (currentContent.length + appendLine.length > 5000) {
-      console.log("[Orchestrator] Profile at capacity, skipping append");
-      return;
-    }
+    if (currentContent.length + appendLine.length > 5000) return;
 
     await supabase
       .from("olive_memory_files")
@@ -356,8 +604,8 @@ export async function evolveProfileFromConversation(
         { onConflict: "user_id,file_type,file_date" }
       );
 
-    console.log("[Orchestrator] Profile evolved with new fact");
+    console.log("[ConvMemory] Quick profile append");
   } catch (err) {
-    console.warn("[Orchestrator] Profile evolution error (non-blocking):", err);
+    console.warn("[ConvMemory] Quick append error:", err);
   }
 }

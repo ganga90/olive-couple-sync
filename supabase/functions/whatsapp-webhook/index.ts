@@ -6508,11 +6508,23 @@ If the user's message is long and conversational — asking for help with someth
           console.warn(`[CHAT/${chatType}] Failed to store output (non-blocking):`, storeErr);
         }
 
-        // Auto-evolve profile from conversation (non-blocking, fire-and-forget)
+        // Phase 3: Auto-evolve memory from conversation (non-blocking, fire-and-forget)
+        // Tier 1 (regex) + Tier 2 (AI) fact extraction runs in background
         try {
           const { evolveProfileFromConversation } = await import("../_shared/orchestrator.ts");
           evolveProfileFromConversation(supabase, userId, effectiveMessage || '', chatResponse)
-            .catch(e => console.warn('[ProfileEvolution] Non-blocking error:', e));
+            .catch(e => console.warn('[ConvMemory] Non-blocking error:', e));
+        } catch {}
+
+        // Also log this conversation turn to daily memory for compilation (fire-and-forget, no await)
+        try {
+          const turnSummary = `[${chatType}] User: ${(effectiveMessage || '').substring(0, 120)} → Olive responded`;
+          supabase.rpc('append_to_daily_log', {
+            p_user_id: userId,
+            p_content: turnSummary,
+            p_source: 'chat',
+          }).then(() => console.log('[ConvMemory] Daily log appended'))
+            .catch((e: any) => console.warn('[ConvMemory] Daily log append failed:', e));
         } catch {}
 
         return reply(chatResponse.slice(0, chatType === 'assistant' ? 2000 : 1500));
