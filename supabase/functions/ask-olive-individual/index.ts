@@ -1562,8 +1562,8 @@ serve(async (req) => {
         try {
           const { fetchDynamicMemoryContext, fetchAgentInsightsContext } = await import("../_shared/orchestrator.ts");
           const [dynamicCtx, agentCtx] = await Promise.all([
-            fetchDynamicMemoryContext(supabase, actualUserId, actualCoupleId),
-            fetchAgentInsightsContext(supabase, actualUserId),
+            fetchDynamicMemoryContext(supabase as any, actualUserId, actualCoupleId),
+            fetchAgentInsightsContext(supabase as any, actualUserId),
           ]);
           if (dynamicCtx) {
             fullContext += `\n${dynamicCtx}\n`;

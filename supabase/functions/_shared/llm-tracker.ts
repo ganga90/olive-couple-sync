@@ -123,25 +123,25 @@ export function createLLMTracker(
     // Fire-and-forget — never block the response
     const costUsd = estimateCost(model, tokensIn, tokensOut);
 
-    supabase
-      .from("olive_llm_calls")
-      .insert({
-        user_id: userId || null,
-        function_name: functionName,
-        model,
-        prompt_version: opts?.promptVersion || null,
-        tokens_in: tokensIn,
-        tokens_out: tokensOut,
-        latency_ms: latencyMs,
-        cost_usd: costUsd,
-        status,
-        error_message: opts?.error || null,
-        metadata: opts?.metadata || {},
-      })
-      .then(() => {})
-      .catch((err: any) => {
-        console.warn("[LLMTracker] Non-blocking log error:", err?.message);
-      });
+    Promise.resolve(
+      supabase
+        .from("olive_llm_calls")
+        .insert({
+          user_id: userId || null,
+          function_name: functionName,
+          model,
+          prompt_version: opts?.promptVersion || null,
+          tokens_in: tokensIn,
+          tokens_out: tokensOut,
+          latency_ms: latencyMs,
+          cost_usd: costUsd,
+          status,
+          error_message: opts?.error || null,
+          metadata: opts?.metadata || {},
+        })
+    ).then(() => {}).catch((err: any) => {
+      console.warn("[LLMTracker] Non-blocking log error:", err?.message);
+    });
   };
 
   return {

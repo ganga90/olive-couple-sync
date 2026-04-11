@@ -233,40 +233,41 @@ async function fetchServerContext(
     const embeddingPromise = userMessage ? generateQueryEmbedding(userMessage) : Promise.resolve(null);
 
     // Base fetches — always needed
-    const baseFetches = [
-      // Memories
+    // Profile fetch (maybeSingle → returns object, not array) — separate to avoid union type issues
+    const profilePromise = supabase
+      .from('clerk_profiles')
+      .select('display_name, language_preference, timezone, note_style')
+      .eq('id', userId)
+      .maybeSingle();
+
+    // Array-based fetches (all return { data: T[] })
+    const arrayFetches: Promise<{ data: any[] | null; error: any }>[] = [
+      // [0] Memories
       supabase
         .from('user_memories')
         .select('title, content, category, importance')
         .eq('user_id', userId)
         .eq('is_active', true)
         .order('importance', { ascending: false })
-        .limit(15),
-      // Profile
-      supabase
-        .from('clerk_profiles')
-        .select('display_name, language_preference, timezone, note_style')
-        .eq('id', userId)
-        .maybeSingle(),
-      // Patterns
+        .limit(15) as any,
+      // [1] Patterns
       supabase
         .from('olive_patterns')
         .select('pattern_type, pattern_data, confidence')
         .eq('user_id', userId)
         .eq('is_active', true)
         .gte('confidence', 0.6)
-        .limit(10),
-      // Calendar events (14 days) — scoped to user's connections for data isolation
+        .limit(10) as any,
+      // [2] Calendar events (14 days) — scoped to user's connections for data isolation
       (async () => {
-        // First get user's calendar connection IDs
         const { data: connections } = await supabase
           .from('calendar_connections')
           .select('id')
           .eq('user_id', userId)
           .eq('is_active', true);
-        
+
         if (!connections?.length) return { data: [], error: null };
-        
+
         const connectionIds = connections.map((c: any) => c.id);
         return supabase
           .from('calendar_events')
@@ -276,13 +277,13 @@ async function fetchServerContext(
           .lte('start_time', new Date(Date.now() + 14 * 86400000).toISOString())
           .order('start_time', { ascending: true })
           .limit(15);
-      })(),
+      })() as any,
     ];
 
     // For contextual_ask, also fetch saved items with full details
     const needsSavedItems = intentType === 'contextual_ask';
     if (needsSavedItems) {
-      baseFetches.push(
+      arrayFetches.push(
         supabase
           .from('clerk_notes')
           .select('id, summary, original_text, category, list_id, items, tags, priority, due_date, reminder_time, completed, created_at')
@@ -292,7 +293,7 @@ async function fetchServerContext(
           .order('created_at', { ascending: false })
           .limit(200) as any
       );
-      baseFetches.push(
+      arrayFetches.push(
         supabase
           .from('clerk_lists')
           .select('id, name, description')
@@ -302,33 +303,34 @@ async function fetchServerContext(
       );
     }
 
-    const [results, queryEmbedding] = await Promise.all([
-      Promise.all(baseFetches),
+    const [arrayResults, profileRes, queryEmbedding] = await Promise.all([
+      Promise.all(arrayFetches),
+      profilePromise,
       embeddingPromise,
     ]);
 
-    const [memoriesRes, profileRes, patternsRes, calendarRes] = results;
+    const [memoriesRes, patternsRes, calendarRes] = arrayResults;
 
-    // Profile
+    // Profile (single object, not array)
     if (profileRes.data) {
-      const p = profileRes.data;
+      const p = profileRes.data as any;
       ctx.profile = `USER PROFILE: Name: ${p.display_name || 'Unknown'}, Language: ${p.language_preference || 'en'}, Timezone: ${p.timezone || 'UTC'}, Note style: ${p.note_style || 'auto'}`;
     }
 
     // Memories
-    if (memoriesRes.data?.length) {
+    if (memoriesRes?.data?.length) {
       ctx.memories = `\nUSER MEMORIES & PREFERENCES:\n${memoriesRes.data.map((m: any) => `- [${m.category}] ${m.title}: ${m.content}`).join('\n')}`;
     }
 
     // Patterns
-    if (patternsRes.data?.length) {
+    if (patternsRes?.data?.length) {
       ctx.patterns = `\nBEHAVIORAL PATTERNS:\n${patternsRes.data.map((p: any) =>
         `- ${p.pattern_type}: ${JSON.stringify(p.pattern_data)} (${(p.confidence * 100).toFixed(0)}%)`
       ).join('\n')}`;
     }
 
     // Calendar
-    if (calendarRes.data?.length) {
+    if (calendarRes?.data?.length) {
       ctx.calendar = `\nUPCOMING CALENDAR:\n${calendarRes.data.slice(0, 10).map((e: any) => {
         const d = new Date(e.start_time);
         const date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
