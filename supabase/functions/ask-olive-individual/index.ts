@@ -1150,7 +1150,7 @@ serve(async (req) => {
         try {
           const { logRouterDecision } = await import("../_shared/router-logger.ts");
           const { getModel } = await import("../_shared/gemini.ts");
-          logRouterDecision(supabase as any, {
+          logRouterDecision(supabase, {
             userId: actualUserId,
             source: "in_app_chat",
             rawText: actualMessage,
