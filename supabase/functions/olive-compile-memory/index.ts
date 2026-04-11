@@ -16,6 +16,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createLLMTracker } from "../_shared/llm-tracker.ts";
+import { getCompilePromptVersion } from "../_shared/prompts/compile-prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -127,7 +129,7 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content: { parts: [{ text: text.slice(0, 2000) }] },
-          outputDimensionality: 1536,
+          outputDimensionality: 768,
         }),
       }
     );
@@ -510,8 +512,13 @@ async function compileFile(
     return { fileType, status: "skipped_no_data", changed: false };
   }
 
-  // Generate compiled content
-  const compiled = await generateWithGemini(prompt, 2048);
+  // Generate compiled content via tracked LLM call
+  const tracker = createLLMTracker(supabase, "olive-compile-memory", userId);
+  const trackerResponse = await tracker.generate(
+    { model: "gemini-2.0-flash", contents: prompt, config: { temperature: 0.2, maxOutputTokens: 2048 } },
+    { promptVersion: getCompilePromptVersion(fileType as any) }
+  );
+  const compiled = trackerResponse?.candidates?.[0]?.content?.parts?.[0]?.text || null;
   if (!compiled || compiled.trim().length < 20) {
     return { fileType, status: "gemini_failed", changed: false };
   }

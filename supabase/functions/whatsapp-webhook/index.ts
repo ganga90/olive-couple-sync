@@ -2,6 +2,18 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.0.0";
 import { encryptNoteFields, isEncryptionAvailable } from "../_shared/encryption.ts";
+import { createLLMTracker, type LLMTracker } from "../_shared/llm-tracker.ts";
+import {
+  getWAChatPromptVersion,
+  WA_CONTEXTUAL_ASK_PROMPT_VERSION,
+  WA_HYBRID_ASK_PROMPT_VERSION,
+  WA_CLASSIFICATION_PROMPT_VERSION,
+  WA_EXPENSE_CATEGORIZATION_PROMPT_VERSION,
+  WA_REWRITER_PROMPT_VERSION,
+  WA_STT_PROMPT_VERSION,
+  WA_WEB_SEARCH_FORMAT_PROMPT_VERSION,
+  WA_LIST_RECAP_PROMPT_VERSION,
+} from "../_shared/prompts/whatsapp-prompts.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -857,13 +869,22 @@ function formatFriendlyDate(dateStr: string, includeTime: boolean = true, timezo
 
 // Call Gemini AI — uses GEMINI_API directly via GoogleGenAI SDK
 // Supports dynamic model tier selection: "lite" | "standard" | "pro"
-async function callAI(systemPrompt: string, userMessage: string, temperature = 0.7, tier: string = "standard"): Promise<string> {
+// Phase 6F: Added optional LLM tracker + prompt version for observability
+async function callAI(
+  systemPrompt: string,
+  userMessage: string,
+  temperature = 0.7,
+  tier: string = "standard",
+  tracker?: LLMTracker | null,
+  promptVersion?: string,
+): Promise<string> {
   const { GEMINI_KEY, getModel } = await import("../_shared/gemini.ts");
   if (!GEMINI_KEY) throw new Error('GEMINI_API not configured');
 
   const model = getModel(tier as any);
-  console.log(`[callAI] Using ${model} (tier=${tier})`);
+  console.log(`[callAI] Using ${model} (tier=${tier})${promptVersion ? ` [${promptVersion}]` : ''}`);
 
+  const startTime = performance.now();
   const genai = new GoogleGenAI({ apiKey: GEMINI_KEY });
   const response = await genai.models.generateContent({
     model,
@@ -874,6 +895,13 @@ async function callAI(systemPrompt: string, userMessage: string, temperature = 0
       maxOutputTokens: tier === "pro" ? 2000 : 1000,
     },
   });
+
+  // Phase 6F: Track the LLM call (fire-and-forget)
+  if (tracker) {
+    tracker.trackRawCall(model, startTime, response, {
+      promptVersion: promptVersion || undefined,
+    });
+  }
 
   const text = response.text;
   if (!text) throw new Error('No response from AI');
@@ -2239,6 +2267,9 @@ serve(async (req) => {
 
           const geminiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
+          // Phase 6F: Track STT call (user not yet authenticated, so no userId)
+          const sttTracker = createLLMTracker(supabase, "whatsapp-webhook-stt");
+          const sttStartTime = performance.now();
           const geminiResult = await geminiClient.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: [{
@@ -2255,6 +2286,9 @@ serve(async (req) => {
                 }
               ]
             }]
+          });
+          sttTracker.trackRawCall('gemini-2.5-flash', sttStartTime, geminiResult, {
+            promptVersion: WA_STT_PROMPT_VERSION,
           });
 
           transcribedText = (geminiResult as any)?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() 
@@ -2545,6 +2579,9 @@ serve(async (req) => {
     console.log('Authenticated user:', profile.id, profile.display_name);
     const userId = profile.id;
     _authenticatedUserId = userId; // Enable reply() to save outbound context
+
+    // Phase 6F: Create LLM tracker for observability on all AI calls in this request
+    const tracker = createLLMTracker(supabase, "whatsapp-webhook", userId);
     // Detect language: prefer profile setting, then auto-detect from message content
     let userLang = profile.language_preference || '';
     if (!userLang || userLang === 'en') {
@@ -3283,7 +3320,7 @@ Respond with ONLY valid JSON: {"merchant": "name", "category": "one_of_these"}
 Categories: food, transport, shopping, entertainment, utilities, health, groceries, travel, personal, education, subscriptions, other
 
 Description: "${parsedExpense.description}"`;
-          const categResult = await callAI(categorizationPrompt, parsedExpense.description, 0.3, "lite");
+          const categResult = await callAI(categorizationPrompt, parsedExpense.description, 0.3, "lite", tracker, WA_EXPENSE_CATEGORIZATION_PROMPT_VERSION);
           const parsed = JSON.parse(categResult.replace(/```json?|```/g, '').trim());
           if (parsed.merchant) merchant = parsed.merchant;
           if (parsed.category) category = parsed.category;
@@ -4952,7 +4989,7 @@ Respond with ONLY valid JSON: {"merchant": "name", "category": "one_of_these"}
 Categories: food, transport, shopping, entertainment, utilities, health, groceries, travel, personal, education, subscriptions, other
 
 Description: "${parsedExpense.description}"`;
-        const categResult = await callAI(categorizationPrompt, parsedExpense.description, 0.3, "lite");
+        const categResult = await callAI(categorizationPrompt, parsedExpense.description, 0.3, "lite", tracker, WA_EXPENSE_CATEGORIZATION_PROMPT_VERSION);
         const parsed = JSON.parse(categResult.replace(/```json?|```/g, '').trim());
         if (parsed.merchant) merchant = parsed.merchant;
         if (parsed.category) category = parsed.category;
@@ -5323,12 +5360,13 @@ Respond with helpful, specific information extracted from their saved data. Answ
       try {
         let response: string;
         const effectiveTier = isHybridResponse ? 'standard' : route.responseTier;
+        const ctxAskPromptVersion = isHybridResponse ? WA_HYBRID_ASK_PROMPT_VERSION : WA_CONTEXTUAL_ASK_PROMPT_VERSION;
         try {
-          response = await callAI(systemPrompt, effectiveMessage || '', 0.7, effectiveTier);
+          response = await callAI(systemPrompt, effectiveMessage || '', 0.7, effectiveTier, tracker, ctxAskPromptVersion);
         } catch (escalationErr) {
           if (effectiveTier === 'pro') {
             console.warn('[Router] Pro failed for CONTEXTUAL_ASK, falling back to standard:', escalationErr);
-            response = await callAI(systemPrompt, effectiveMessage || '', 0.7, 'standard');
+            response = await callAI(systemPrompt, effectiveMessage || '', 0.7, 'standard', tracker, ctxAskPromptVersion);
           } else {
             throw escalationErr;
           }
@@ -5449,7 +5487,9 @@ USER'S LATEST MESSAGE: "${searchQuery}"
 Respond with exactly two lines starting with SEARCH_QUERY: and USER_QUESTION:`,
               searchQuery,
               0.1,
-              'lite'
+              'lite',
+              tracker,
+              WA_REWRITER_PROMPT_VERSION,
             );
             if (rewriterResult) {
               const sqMatch = rewriterResult.match(/SEARCH_QUERY:\s*(.+)/i);
@@ -5571,7 +5611,9 @@ ${citations.length > 0 ? 'SOURCES:\n' + citations.map((c: string, i: number) => 
 Answer the question thoroughly, then briefly mention any relevant personal connections. End with "Want me to save this?" if the response contains useful recommendations.`,
             searchResult,
             0.5,
-            'lite'
+            'lite',
+            tracker,
+            WA_WEB_SEARCH_FORMAT_PROMPT_VERSION,
           );
         } catch (formatErr) {
           console.warn('[WebSearch] Formatting failed, using raw result');
@@ -6480,13 +6522,14 @@ If the user's message is long and conversational — asking for help with someth
         }
 
         // Dynamic model selection — Pro for weekly_summary/planning, standard for rest
+        const chatPromptVersion = getWAChatPromptVersion(chatType);
         let chatResponse: string;
         try {
-          chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7, route.responseTier);
+          chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7, route.responseTier, tracker, chatPromptVersion);
         } catch (escalationErr) {
           if (route.responseTier === 'pro') {
             console.warn('[Router] Pro failed for CHAT, falling back to standard:', escalationErr);
-            chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7, 'standard');
+            chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7, 'standard', tracker, chatPromptVersion);
           } else {
             throw escalationErr;
           }
@@ -7005,7 +7048,9 @@ If the user's message is long and conversational — asking for help with someth
 Return ONLY valid JSON, no markdown.`,
           `USER REQUEST: "${artifactRequest.substring(0, 500)}"\n\nFULL ARTIFACT CONTENT:\n${artifactContent.substring(0, 2000)}`,
           0.1,
-          'lite'
+          'lite',
+          tracker,
+          WA_CLASSIFICATION_PROMPT_VERSION,
         );
         
         let title = 'Saved draft';
@@ -7366,7 +7411,7 @@ FORMAT for WhatsApp (max 1500 chars):
         : recapPrompt;
 
       try {
-        const recapResponse = await callAI(fullRecapPrompt, `Recap my ${matchedList.name} list`, 0.7, 'standard');
+        const recapResponse = await callAI(fullRecapPrompt, `Recap my ${matchedList.name} list`, 0.7, 'standard', tracker, WA_LIST_RECAP_PROMPT_VERSION);
 
         // Save context for follow-ups
         const displayedItems = activeItems.slice(0, 10);

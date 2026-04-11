@@ -571,6 +571,134 @@ async function repairMissingEmbeddings(
   return { repaired };
 }
 
+// ─── Ritual Detection ──────────────────────────────────────────────
+
+/**
+ * 5. RITUAL DETECTION
+ * Scan completed clerk_notes (last 60 days) for recurring patterns.
+ * Groups by category + summary keyword overlap. When 3+ occurrences
+ * span 4+ weeks, creates a user_memory with category='ritual'.
+ * No external API calls — pure string matching.
+ */
+async function detectRituals(
+  supabase: any,
+  userId: string
+): Promise<{ detected: number; skipped_duplicates: number }> {
+  try {
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: notes } = await supabase
+      .from("clerk_notes")
+      .select("id, category, summary, completed_at")
+      .eq("author_id", userId)
+      .eq("completed", true)
+      .gte("completed_at", sixtyDaysAgo)
+      .order("completed_at", { ascending: true });
+
+    if (!notes || notes.length < 3) {
+      return { detected: 0, skipped_duplicates: 0 };
+    }
+
+    // Stop words to exclude from keyword extraction
+    const stopWords = new Set([
+      "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+      "have", "has", "had", "do", "does", "did", "will", "would", "could",
+      "should", "may", "might", "shall", "can", "to", "of", "in", "for",
+      "on", "with", "at", "by", "from", "as", "into", "about", "and", "or",
+      "but", "not", "no", "so", "if", "then", "than", "too", "very", "just",
+      "it", "its", "my", "me", "we", "our", "you", "your", "he", "she",
+      "his", "her", "they", "them", "their", "this", "that", "i",
+    ]);
+
+    // Extract first 3 significant words from a summary
+    function extractKeywords(summary: string): string {
+      if (!summary) return "";
+      const words = summary
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, "")
+        .split(/\s+/)
+        .filter((w) => w.length > 2 && !stopWords.has(w));
+      return words.slice(0, 3).sort().join("|");
+    }
+
+    // Group notes by (category, keyword_group)
+    const groups = new Map<string, Array<{ id: string; summary: string; completed_at: string }>>();
+
+    for (const note of notes) {
+      const cat = (note.category || "uncategorized").toLowerCase().trim();
+      const kw = extractKeywords(note.summary || "");
+      if (!kw) continue; // Skip notes with no meaningful keywords
+
+      const key = `${cat}::${kw}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(note);
+    }
+
+    let detected = 0;
+    let skipped_duplicates = 0;
+
+    for (const [key, entries] of groups) {
+      // Need 3+ occurrences
+      if (entries.length < 3) continue;
+
+      // Check date spread: must span 4+ weeks (28 days)
+      const dates = entries.map((e) => new Date(e.completed_at).getTime());
+      const earliest = Math.min(...dates);
+      const latest = Math.max(...dates);
+      const spreadDays = (latest - earliest) / (1000 * 60 * 60 * 24);
+      if (spreadDays < 28) continue;
+
+      const spreadWeeks = Math.round(spreadDays / 7);
+      const [category] = key.split("::");
+
+      // Build a human-readable description from the most common summary
+      const summaryWords = entries[0].summary || category;
+      // Use first ~50 chars of the most representative summary
+      const description = summaryWords.length > 50
+        ? summaryWords.substring(0, 50).trim()
+        : summaryWords.trim();
+
+      const ritualTitle = `Ritual: ${description}`;
+
+      // Check for existing ritual memory to prevent duplicates
+      const { data: existing } = await supabase
+        .from("user_memories")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("category", "ritual")
+        .ilike("title", `%${description.substring(0, 30)}%`)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        skipped_duplicates++;
+        continue;
+      }
+
+      // Insert new ritual memory
+      const { error } = await supabase.from("user_memories").insert({
+        user_id: userId,
+        title: ritualTitle,
+        content: `${description} — detected ${entries.length} times over the past ${spreadWeeks} weeks`,
+        category: "ritual",
+        importance: 4,
+        is_active: true,
+      });
+
+      if (!error) {
+        detected++;
+        console.log(`[Ritual] Detected: "${ritualTitle}" (${entries.length} occurrences over ${spreadWeeks} weeks)`);
+      } else {
+        console.error("[Ritual] Insert failed:", error);
+      }
+    }
+
+    return { detected, skipped_duplicates };
+  } catch (e) {
+    console.error("[Ritual] Detection failed:", e);
+    return { detected: 0, skipped_duplicates: 0 };
+  }
+}
+
 // ─── Main handler ───────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -691,6 +819,15 @@ serve(async (req) => {
           stats.entity_dedup = dedupResult;
           console.log(
             `[Maintenance] Entity dedup: ${dedupResult.duplicates_found} found, ${dedupResult.merged} merged`
+          );
+        }
+
+        // Step 5: Ritual Detection
+        if (runType === "full" || runType === "ritual_detection") {
+          const ritualResult = await detectRituals(supabase, userId);
+          stats.rituals = ritualResult;
+          console.log(
+            `[Maintenance] Rituals: ${ritualResult.detected} detected, ${ritualResult.skipped_duplicates} duplicates skipped`
           );
         }
 

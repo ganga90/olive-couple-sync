@@ -365,8 +365,27 @@ async function extractAndStoreConversationFacts(
     return;
   }
 
-  const prompt = `Analyze this conversation turn and extract memorable facts worth storing in long-term memory.
+  // Fetch compiled profile to avoid re-extracting already-known facts
+  let knownFactsBlock = "";
+  try {
+    const { data: profileData } = await supabase
+      .from("olive_memory_files")
+      .select("content")
+      .eq("user_id", userId)
+      .eq("file_type", "profile")
+      .is("file_date", null)
+      .maybeSingle();
 
+    if (profileData?.content && profileData.content.trim().length > 5) {
+      const truncated = profileData.content.substring(0, 400);
+      knownFactsBlock = `\n[ALREADY KNOWN FACTS]:\n${truncated}\n\nFocus on extracting NEW facts not already covered above. Skip facts that simply repeat known information.\n`;
+    }
+  } catch (err) {
+    console.warn("[ConvMemory] Profile fetch for dedup failed (non-blocking):", err);
+  }
+
+  const prompt = `Analyze this conversation turn and extract memorable facts worth storing in long-term memory.
+${knownFactsBlock}
 User said: "${userMessage.substring(0, 500)}"
 Olive replied: "${oliveResponse.substring(0, 300)}"
 
@@ -494,6 +513,67 @@ Example: [{"content":"Allergic to shellfish","type":"personal_info","importance"
     }
 
     console.log(`[ConvMemory] Stored ${stored}/${facts.length} new facts`);
+
+    // ─── Decision Detection (regex-based, no API calls) ──────────
+    try {
+      // Patterns that indicate a real decision (require "we" or coupled subject)
+      const decisionPatterns = [
+        /\bwe decided\b/i,
+        /\blet'?s go with\b/i,
+        /\bfinal answer\b/i,
+        /\bwe agreed\b/i,
+        /\bdecision made\b/i,
+        /\bgoing to go with\b/i,
+        /\bsettled on\b/i,
+        /\bchose to\b/i,
+        /\bmade up (?:our|my) mind\b/i,
+      ];
+
+      // Casual / low-value patterns to exclude (personal trivial decisions)
+      const casualExclusions = [
+        /\bdecided to (?:have|eat|get|grab|order|make|cook) (?:a |some |the )?(?:pizza|lunch|dinner|breakfast|coffee|snack|food|sandwich|burger|salad|drink|beer|wine|tea|water)\b/i,
+        /\bdecided to (?:watch|see|play|read|listen)\b/i,
+        /\bdecided to (?:go to bed|take a nap|sleep|rest|relax|chill)\b/i,
+      ];
+
+      const combinedText = userMessage + " " + oliveResponse;
+      const matchedPattern = decisionPatterns.find((p) => p.test(combinedText));
+
+      if (matchedPattern) {
+        const isCasual = casualExclusions.some((p) => p.test(combinedText));
+
+        if (!isCasual) {
+          // Extract the sentence containing the decision
+          const sentences = combinedText.split(/[.!?\n]+/).filter((s) => s.trim().length > 5);
+          const decisionSentence = sentences.find((s) => matchedPattern.test(s));
+          const decisionContent = decisionSentence
+            ? decisionSentence.trim().substring(0, 300)
+            : userMessage.substring(0, 300);
+
+          await supabase.from("olive_memory_chunks").insert({
+            user_id: userId,
+            memory_file_id: null,
+            chunk_index: 0,
+            content: decisionContent,
+            chunk_type: "fact",
+            importance: 5,
+            source: "conversation",
+            is_active: true,
+            decay_factor: 1.0,
+            metadata: {
+              type: "decision",
+              detected_at: new Date().toISOString(),
+              extraction_type: "decision_detection",
+              source_message_preview: userMessage.substring(0, 100),
+            },
+          });
+
+          console.log(`[ConvMemory] Decision detected and stored: "${decisionContent.substring(0, 60)}..."`);
+        }
+      }
+    } catch (decisionErr) {
+      console.warn("[ConvMemory] Decision detection error (non-blocking):", decisionErr);
+    }
 
     // Also append high-importance facts to profile file (for immediate context)
     const highImportanceFacts = facts.filter((f) => f.importance >= 4);

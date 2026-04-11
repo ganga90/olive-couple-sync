@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.0.0";
+import { createLLMTracker, type LLMTracker } from "../_shared/llm-tracker.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,6 +23,7 @@ interface AgentContext {
   previousState: Record<string, unknown>;
   runId: string;
   isManualTrigger?: boolean; // true when user clicks "Run Now" in the UI
+  tracker: LLMTracker;
 }
 
 // ─── Agent Result ───────────────────────────────────────────────
@@ -293,6 +295,7 @@ async function runStaleTaskStrategist(ctx: AgentContext): Promise<AgentResult> {
 
   let analysis: string;
   try {
+    const startTime = performance.now();
     const response = await ctx.genai.models.generateContent({
       model: "gemini-2.5-flash", // Flash: structured analysis with clear instructions
       contents: `You are a productivity coach for a couples app called Olive.
@@ -315,6 +318,7 @@ Reply in this format for a WhatsApp message (keep it concise, max 1000 chars tot
 End with a motivational one-liner.`,
       config: { temperature: 0.3, maxOutputTokens: 1200 },
     });
+    ctx.tracker.trackRawCall("gemini-2.5-flash", startTime, response, { promptVersion: "stale-task-v1" });
 
     analysis = response.text?.trim() || "";
     if (!analysis || analysis.length < 10) {
@@ -472,6 +476,7 @@ async function runEnergyTaskSuggester(ctx: AgentContext): Promise<AgentResult> {
 
   let energyMessage: string;
   try {
+    const startTime = performance.now();
     const response = await ctx.genai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: `You are an energy-aware productivity coach.
@@ -486,6 +491,7 @@ ${taskList}
 Based on their energy level, suggest the optimal order to tackle these tasks. Keep it under 600 characters total for a WhatsApp message. Start with an energy emoji (🔋/⚡/😴) based on readiness score. End with a complete motivational sentence. IMPORTANT: Always finish every sentence completely. Never stop mid-sentence.`,
       config: { temperature: 0.3, maxOutputTokens: 1200 },
     });
+    ctx.tracker.trackRawCall("gemini-2.5-flash", startTime, response, { promptVersion: "energy-task-v1" });
 
     energyMessage = response.text?.trim() || "";
     // Detect truncated responses (ends mid-sentence without punctuation)
@@ -551,6 +557,7 @@ async function runSleepOptimizationCoach(ctx: AgentContext): Promise<AgentResult
 
   let tip: string;
   try {
+    const startTime = performance.now();
     const response = await ctx.genai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: `You are a sleep optimization coach. Analyze this 7-day sleep data and provide ONE actionable tip.
@@ -570,6 +577,7 @@ Rules:
 - End with a complete sentence. IMPORTANT: Always finish every sentence completely. Never stop mid-sentence or mid-word.`,
       config: { temperature: 0.3, maxOutputTokens: 1200 },
     });
+    ctx.tracker.trackRawCall("gemini-2.5-flash", startTime, response, { promptVersion: "sleep-optimization-v1" });
 
     tip = response.text?.trim() || "";
     // Detect truncated responses (ends mid-sentence without punctuation)
@@ -722,6 +730,7 @@ async function runBirthdayGiftAgent(ctx: AgentContext): Promise<AgentResult> {
     if (date.daysUntil >= 25 && !previousSuggestions[dateKey]) {
       let suggestion: string;
       try {
+        const startTime = performance.now();
         const response = await ctx.genai.models.generateContent({
           model: "gemini-2.5-flash", // Flash: structured gift suggestions
           contents: `You are a thoughtful gift advisor for a couples app.
@@ -740,6 +749,7 @@ Suggest 3 gift ideas. Format for WhatsApp:
 Keep it warm and personal. IMPORTANT: Always write your COMPLETE response.`,
           config: { temperature: 0.7, maxOutputTokens: 600 },
         });
+        ctx.tracker.trackRawCall("gemini-2.5-flash", startTime, response, { promptVersion: "birthday-gift-v1" });
         suggestion = response.text?.trim() || `🎁 ${date.name} is in ${date.daysUntil} days! Time to start thinking about a gift.`;
       } catch (err) {
         console.error("[Birthday Agent] Gemini call failed:", err);
@@ -837,6 +847,7 @@ async function runWeeklyCoupleSyncAgent(ctx: AgentContext): Promise<AgentResult>
 
   let syncMessage: string;
   try {
+    const startTime = performance.now();
     const response = await ctx.genai.models.generateContent({
       model: "gemini-2.5-flash", // Flash: structured summary
       contents: `You are a couples coordination assistant. Generate a brief weekly sync summary.
@@ -854,6 +865,7 @@ Generate a warm, brief WhatsApp message (max 600 chars) that:
 Start with 💑 Weekly Sync. IMPORTANT: Always write your COMPLETE response.`,
       config: { temperature: 0.5, maxOutputTokens: 700 },
     });
+    ctx.tracker.trackRawCall("gemini-2.5-flash", startTime, response, { promptVersion: "weekly-couple-sync-v1" });
     syncMessage = response.text?.trim() || "";
     if (!syncMessage || syncMessage.length < 10) {
       syncMessage = `💑 Weekly Sync\n\n✅ Completed: ${(completed || []).length} tasks\n⏳ Pending: ${(pending || []).length} tasks\n\nOpen Olive to review together!`;
@@ -1075,6 +1087,7 @@ async function runProactiveIntelligence(ctx: AgentContext): Promise<AgentResult>
 
   let nudges: string;
   try {
+    const startTime = performance.now();
     const response = await ctx.genai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: `You are a proactive life assistant for a couples app called Olive.
@@ -1109,6 +1122,7 @@ Format for WhatsApp (max 800 chars total):
 Keep it concise and conversational. End with a complete sentence. IMPORTANT: Always finish every sentence completely. Never stop mid-sentence or mid-word.`,
       config: { temperature: 0.4, maxOutputTokens: 1200 },
     });
+    ctx.tracker.trackRawCall("gemini-2.5-flash", startTime, response, { promptVersion: "proactive-intelligence-v1" });
 
     nudges = response.text?.trim() || "";
 
@@ -1208,6 +1222,7 @@ serve(async (req: Request) => {
         .single();
 
       const isManual = !!(config_override); // Manual runs always pass config_override from the UI
+      const tracker = createLLMTracker(supabase, "olive-agent-runner", user_id);
       const ctx: AgentContext = {
         supabase,
         genai,
@@ -1218,6 +1233,7 @@ serve(async (req: Request) => {
         previousState: prevRun?.state || {},
         runId: run!.id,
         isManualTrigger: isManual,
+        tracker,
       };
 
       const result = await runAgent(ctx);

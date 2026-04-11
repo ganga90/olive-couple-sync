@@ -257,6 +257,7 @@ async function llmExtract(
   summary: string,
   category: string,
   deterministicEntities: ExtractedEntity[],
+  existingKnownEntities?: Array<{ name: string; entity_type: string; mention_count: number }>,
 ): Promise<ExtractionResult> {
   const GEMINI_API_KEY = Deno.env.get("GEMINI_API") || Deno.env.get("GEMINI_API_KEY");
   if (!GEMINI_API_KEY) {
@@ -268,9 +269,16 @@ async function llmExtract(
     ? `\nAlready extracted entities (do NOT repeat these):\n${deterministicEntities.map(e => `- ${e.name} (${e.entity_type})`).join('\n')}`
     : '';
 
+  // Inject existing known entities from the knowledge graph for dedup + pronoun resolution
+  let knownEntitiesCtx = '';
+  if (existingKnownEntities && existingKnownEntities.length > 0) {
+    const lines = existingKnownEntities.map(e => `- ${e.name} (${e.entity_type}, ${e.mention_count} mentions)`);
+    knownEntitiesCtx = `\n[EXISTING KNOWN ENTITIES]:\n${lines.join('\n')}\n\nIf an entity above already exists, DO NOT create a duplicate. Only extract NEW entities or update existing ones with new attributes.\n`;
+  }
+
   const prompt = `You are an entity and relationship extraction engine for a personal knowledge graph that powers an AI assistant for individuals and couples.
 Analyze this note and extract entities (people, places, products, organizations, concepts) and relationships between them.
-
+${knownEntitiesCtx}
 Note text: "${text}"
 ${summary ? `Summary: "${summary}"` : ''}
 Category: ${category || 'unknown'}
@@ -567,7 +575,25 @@ serve(async (req) => {
     // ====================================================================
     let pass2: ExtractionResult = { entities: [], relationships: [] };
     if (original_text.length >= 15) {
-      pass2 = await llmExtract(original_text, summary || "", category || "", pass1.entities);
+      // Fetch top existing entities for dedup + pronoun resolution
+      let existingKnownEntities: Array<{ name: string; entity_type: string; mention_count: number }> = [];
+      try {
+        const { data: topEntities } = await supabase
+          .from("olive_entities")
+          .select("name, entity_type, mention_count")
+          .eq("user_id", user_id)
+          .order("mention_count", { ascending: false })
+          .limit(15);
+
+        if (topEntities && topEntities.length > 0) {
+          existingKnownEntities = topEntities;
+          console.log(`[knowledge-extract] Loaded ${topEntities.length} existing entities for context`);
+        }
+      } catch (err) {
+        console.warn("[knowledge-extract] Existing entity fetch failed (non-blocking):", err);
+      }
+
+      pass2 = await llmExtract(original_text, summary || "", category || "", pass1.entities, existingKnownEntities);
       console.log(`[knowledge-extract] Pass 2: ${pass2.entities.length} entities, ${pass2.relationships.length} relationships`);
     }
 
