@@ -1562,8 +1562,8 @@ serve(async (req) => {
         try {
           const { fetchDynamicMemoryContext, fetchAgentInsightsContext } = await import("../_shared/orchestrator.ts");
           const [dynamicCtx, agentCtx] = await Promise.all([
-            fetchDynamicMemoryContext(supabase as any, actualUserId, actualCoupleId),
-            fetchAgentInsightsContext(supabase as any, actualUserId),
+            fetchDynamicMemoryContext(supabase, actualUserId, actualCoupleId),
+            fetchAgentInsightsContext(supabase, actualUserId),
           ]);
           if (dynamicCtx) {
             fullContext += `\n${dynamicCtx}\n`;
@@ -1756,7 +1756,7 @@ User's Question: ${actualMessage}`;
     if (actualUserId && supabase && actualMessage && assistantReply) {
       try {
         const { evolveProfileFromConversation } = await import("../_shared/orchestrator.ts");
-        evolveProfileFromConversation(supabase as any, actualUserId, actualMessage, assistantReply)
+        evolveProfileFromConversation(supabase, actualUserId, actualMessage, assistantReply)
           .catch(e => console.warn('[ProfileEvolution] Non-blocking error:', e));
       } catch {}
     }
