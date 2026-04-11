@@ -1396,6 +1396,54 @@ export type Database = {
         }
         Relationships: []
       }
+      olive_llm_calls: {
+        Row: {
+          cost_usd: number | null
+          created_at: string
+          error_message: string | null
+          function_name: string
+          id: string
+          latency_ms: number | null
+          metadata: Json | null
+          model: string
+          prompt_version: string | null
+          status: string
+          tokens_in: number | null
+          tokens_out: number | null
+          user_id: string | null
+        }
+        Insert: {
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          function_name: string
+          id?: string
+          latency_ms?: number | null
+          metadata?: Json | null
+          model: string
+          prompt_version?: string | null
+          status?: string
+          tokens_in?: number | null
+          tokens_out?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          function_name?: string
+          id?: string
+          latency_ms?: number | null
+          metadata?: Json | null
+          model?: string
+          prompt_version?: string | null
+          status?: string
+          tokens_in?: number | null
+          tokens_out?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       olive_memory_chunks: {
         Row: {
           chunk_index: number | null
@@ -2257,7 +2305,21 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      olive_llm_analytics: {
+        Row: {
+          avg_latency_ms: number | null
+          call_count: number | null
+          day: string | null
+          error_count: number | null
+          function_name: string | null
+          model: string | null
+          p95_latency_ms: number | null
+          total_cost_usd: number | null
+          total_tokens_in: number | null
+          total_tokens_out: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       accept_invite: { Args: { p_token: string }; Returns: string }
