@@ -536,7 +536,7 @@ type ClassifiedIntent = import("../_shared/intent-classifier.ts").ClassifiedInte
 // Bridge: Convert AI ClassifiedIntent → existing IntentResult format
 function mapAIResultToIntentResult(
   ai: ClassifiedIntent
-): IntentResult & { queryType?: string; chatType?: string; actionType?: string; actionTarget?: string; cleanMessage?: string; _aiTaskId?: string; _aiSkillId?: string; _listName?: string; _partnerAction?: string } {
+): IntentResult & { queryType?: string; chatType?: string; actionType?: string; actionTarget?: string; cleanMessage?: string; _aiTaskId?: string; _aiSkillId?: string; _listName?: string; _partnerAction?: string; _initialItems?: string } {
   const params = ai.parameters || {};
 
   switch (ai.intent) {
@@ -2018,7 +2018,7 @@ serve(async (req) => {
             es: `✅ ¡Hecho! Te recordaré "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`,
             it: `✅ Fatto! Ti ricorderò "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`,
           };
-          return reply(reminderSetLocalized[sl] || reminderSetLocalized.en);
+          return reply(reminderSetLocalized[userLang.split('-')[0]] || reminderSetLocalized[userLang] || reminderSetLocalized.en);
         } else if (pendingAction?.type === 'delete') {
           await supabase
             .from('clerk_notes')
@@ -3010,19 +3010,18 @@ Description: "${parsedExpense.description}"`;
         // Fetch today's calendar events (matching the pattern used in 'tomorrow' and 'this_week')
         let todayCalendarEvents: string[] = [];
         try {
-          const { data: calConnection } = await supabase
+          const { data: calConnections } = await supabase
             .from('calendar_connections')
             .select('id')
             .eq('user_id', userId)
-            .eq('is_active', true)
-            .limit(1)
-            .single();
+            .eq('is_active', true);
           
-          if (calConnection) {
+          if (calConnections && calConnections.length > 0) {
+            const connIds = calConnections.map(c => c.id);
             const { data: events } = await supabase
               .from('calendar_events')
               .select('title, start_time, all_day')
-              .eq('connection_id', calConnection.id)
+              .in('connection_id', connIds)
               .gte('start_time', today.toISOString())
               .lt('start_time', tomorrow.toISOString())
               .order('start_time', { ascending: true })
@@ -3082,19 +3081,18 @@ Description: "${parsedExpense.description}"`;
         
         let tomorrowCalendarEvents: string[] = [];
         try {
-          const { data: calConnection } = await supabase
+          const { data: calConnections } = await supabase
             .from('calendar_connections')
             .select('id')
             .eq('user_id', userId)
-            .eq('is_active', true)
-            .limit(1)
-            .single();
+            .eq('is_active', true);
           
-          if (calConnection) {
+          if (calConnections && calConnections.length > 0) {
+            const connIds = calConnections.map(c => c.id);
             const { data: events } = await supabase
               .from('calendar_events')
               .select('title, start_time, all_day')
-              .eq('connection_id', calConnection.id)
+              .in('connection_id', connIds)
               .gte('start_time', tomorrow.toISOString())
               .lt('start_time', dayAfterTomorrow.toISOString())
               .order('start_time', { ascending: true })
@@ -3157,19 +3155,18 @@ Description: "${parsedExpense.description}"`;
         
         let weekCalendarEvents: string[] = [];
         try {
-          const { data: calConnection } = await supabase
+          const { data: calConnections } = await supabase
             .from('calendar_connections')
             .select('id')
             .eq('user_id', userId)
-            .eq('is_active', true)
-            .limit(1)
-            .single();
+            .eq('is_active', true);
           
-          if (calConnection) {
+          if (calConnections && calConnections.length > 0) {
+            const connIds = calConnections.map(c => c.id);
             const { data: events } = await supabase
               .from('calendar_events')
               .select('title, start_time, all_day')
-              .eq('connection_id', calConnection.id)
+              .in('connection_id', connIds)
               .gte('start_time', today.toISOString())
               .lt('start_time', endOfWeek.toISOString())
               .order('start_time', { ascending: true })
@@ -4936,22 +4933,21 @@ ${myAssignments.length > 0 ? `- You assigned to them: ${myAssignments.join(', ')
       
       if (chatType === 'briefing') {
         try {
-          const { data: calConnection } = await supabase
+          const { data: calConnections } = await supabase
             .from('calendar_connections')
             .select('id, calendar_name')
             .eq('user_id', userId)
-            .eq('is_active', true)
-            .limit(1)
-            .single();
+            .eq('is_active', true);
           
-          if (calConnection) {
+          if (calConnections && calConnections.length > 0) {
+            const connIds = calConnections.map(c => c.id);
             const todayStart = today.toISOString();
             const todayEnd = tomorrow.toISOString();
             
             const { data: events } = await supabase
               .from('calendar_events')
               .select('title, start_time, end_time, all_day, location')
-              .eq('connection_id', calConnection.id)
+              .in('connection_id', connIds)
               .gte('start_time', todayStart)
               .lt('start_time', todayEnd)
               .order('start_time', { ascending: true })
@@ -4963,7 +4959,7 @@ ${myAssignments.length > 0 ? `- You assigned to them: ${myAssignments.join(', ')
             const { data: tmrwEvents } = await supabase
               .from('calendar_events')
               .select('title, start_time, end_time, all_day, location')
-              .eq('connection_id', calConnection.id)
+              .in('connection_id', connIds)
               .gte('start_time', tomorrow.toISOString())
               .lt('start_time', dayAfterTomorrow.toISOString())
               .order('start_time', { ascending: true })
@@ -5446,7 +5442,7 @@ Be natural and personable.`;
           // Return help text directly — no AI call needed
           return reply(t('help_text', userLang));
           
-        case 'help_about_olive':
+        case 'general':
           // User is asking HOW to use Olive features — inject help KB into AI context
           systemPrompt = `You are Olive, helping the user understand how to use your features.
 
@@ -5682,12 +5678,11 @@ If the user's message is long and conversational — asking for help with someth
         // Also log this conversation turn to daily memory for compilation (fire-and-forget, no await)
         try {
           const turnSummary = `[${chatType}] User: ${(effectiveMessage || '').substring(0, 120)} → Olive responded`;
-          supabase.rpc('append_to_daily_log', {
+          void supabase.rpc('append_to_daily_log', {
             p_user_id: userId,
             p_content: turnSummary,
             p_source: 'chat',
-          }).then(() => console.log('[ConvMemory] Daily log appended'))
-            .catch((e: any) => console.warn('[ConvMemory] Daily log append failed:', e));
+          }).then(() => console.log('[ConvMemory] Daily log appended'), (e: any) => console.warn('[ConvMemory] Daily log append failed:', e));
         } catch {}
 
         return reply(chatResponse.slice(0, chatType === 'assistant' ? 2000 : 1500));
@@ -6331,7 +6326,7 @@ Return ONLY valid JSON, no markdown.`,
       // Format list name to Title Case
       const formattedName = listName.trim()
         .split(/\s+/)
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(' ');
 
       // Create the list
