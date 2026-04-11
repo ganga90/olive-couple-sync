@@ -10,70 +10,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, prefer, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// ============================================================================
-// RESILIENT GEMINI CALL WITH RETRY + MODEL FALLBACK
-// ============================================================================
-
-/**
- * Calls genai.models.generateContent with exponential backoff retry
- * for transient errors (503 Service Unavailable, 429 Too Many Requests).
- * Falls back to alternative model tiers before giving up.
- */
-async function resilientGenerateContent(
-  genai: GoogleGenAI,
-  params: { model: string; contents: any; config?: any },
-  options?: { maxRetries?: number; fallbackModels?: string[] }
-): Promise<any> {
-  const maxRetries = options?.maxRetries ?? 2;
-  const fallbackModels = options?.fallbackModels ?? [];
-  const allModels = [params.model, ...fallbackModels];
-
-  for (let modelIdx = 0; modelIdx < allModels.length; modelIdx++) {
-    const currentModel = allModels[modelIdx];
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const response = await genai.models.generateContent({
-          ...params,
-          model: currentModel,
-        });
-        if (modelIdx > 0 || attempt > 0) {
-          console.log(`[GenAI Retry] Succeeded on model="${currentModel}" attempt=${attempt + 1}`);
-        }
-        return response;
-      } catch (err: any) {
-        const msg = err?.message || String(err);
-        const isTransient =
-          msg.includes('503') ||
-          msg.includes('UNAVAILABLE') ||
-          msg.includes('Service Unavailable') ||
-          msg.includes('overloaded') ||
-          msg.includes('RESOURCE_EXHAUSTED') ||
-          msg.includes('Too Many Requests') ||
-          msg.includes('quota') ||
-          err?.status === 429 ||
-          err?.status === 503;
-
-        if (!isTransient) throw err; // non-transient → bubble up immediately
-
-        const isLastAttempt = attempt === maxRetries;
-        const isLastModel = modelIdx === allModels.length - 1;
-
-        if (isLastAttempt && isLastModel) throw err; // exhausted all retries + models
-
-        if (isLastAttempt) {
-          console.warn(`[GenAI Retry] Model "${currentModel}" exhausted retries, trying fallback model "${allModels[modelIdx + 1]}"`);
-          break; // move to next model
-        }
-
-        const delay = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 500, 8000);
-        console.warn(`[GenAI Retry] Transient error on "${currentModel}" (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${Math.round(delay)}ms...`);
-        await new Promise((r) => setTimeout(r, delay));
-      }
-    }
-  }
-  // Should not reach here, but just in case
-  throw new Error('[GenAI Retry] All retries and fallback models exhausted');
-}
+// resilientGenerateContent is now imported from _shared/resilient-genai.ts
 
 // ============================================================================
 // URL EXTRACTION & LINK SAVING
@@ -176,94 +113,15 @@ const EXPENSE_CATEGORY_ICONS: Record<string, string> = {
   'Electronics': '📱', 'Other': '📄', 'Finance': '💰',
 };
 
-function detectCurrency(text: string): string {
-  if (text.includes('€')) return 'EUR';
-  if (text.includes('£')) return 'GBP';
-  return 'USD';
-}
+// detectCurrency, extractAmount, mapCategoryToExpenseCategory, detectAndCreateExpense
+// are now imported from _shared/expense-detector.ts
 
-function extractAmount(text: string): number | null {
-  const matches = [...text.matchAll(AMOUNT_REGEX)];
-  if (matches.length === 0) return null;
-  const raw = matches[0][1] || matches[0][2];
-  if (!raw) return null;
-  return parseFloat(raw.replace(',', '.'));
-}
-
-function mapCategoryToExpenseCategory(noteCategory: string): string {
-  const lower = noteCategory.toLowerCase().replace(/[_\s]+/g, '');
-  const map: Record<string, string> = {
-    groceries: 'Groceries', shopping: 'Shopping', dining: 'Dining',
-    restaurant: 'Restaurant', restaurants: 'Restaurant', travel: 'Travel',
-    health: 'Health', entertainment: 'Entertainment', finance: 'Finance',
-    homeimprovement: 'Home', personal: 'Personal Care', work: 'Other',
-    task: 'Other', transportation: 'Transportation', gas: 'Gas',
-    utilities: 'Utilities', subscriptions: 'Subscriptions',
-    education: 'Education', fitness: 'Fitness', clothing: 'Clothing',
-    gifts: 'Gifts', pets: 'Pets', coffee: 'Coffee', drinks: 'Drinks',
-  };
-  return map[lower] || 'Other';
-}
-
-async function detectAndCreateExpense(
-  supabase: SupabaseClient,
-  result: any,
-  originalText: string,
-  userId: string,
-  coupleId?: string,
-  receiptUrl?: string | null,
-  source?: string
-): Promise<void> {
-  const amount = extractAmount(originalText);
-  // Validate amount bounds: ignore negative, zero, or absurdly large values
-  if (!amount || amount <= 0 || amount > 999999) return;
-  // (bounds check moved above)
-
-  console.log('[Expense Detection] Amount detected:', amount, 'in text:', originalText.substring(0, 80));
-
-  const currency = detectCurrency(originalText);
-  const noteCategory = result.category || (result.notes?.[0]?.category) || 'Other';
-  const expenseCategory = mapCategoryToExpenseCategory(noteCategory);
-  const expenseName = result.summary || (result.notes?.[0]?.summary) || originalText.substring(0, 100);
-
-  // Check user's expense preferences
-  const { data: profile } = await supabase
-    .from('clerk_profiles')
-    .select('expense_tracking_mode, expense_default_split, expense_default_currency')
-    .eq('id', userId)
-    .single();
-
-  const trackingMode = profile?.expense_tracking_mode || 'individual';
-  const defaultSplit = profile?.expense_default_split || 'you_paid_split';
-  const isShared = trackingMode === 'shared' && !!coupleId;
-
-  // Determine the note_id if available (from insert result or result.id)
-  const noteId = result.id || result.notes?.[0]?.id || null;
-
-  const expenseData = {
-    user_id: userId,
-    couple_id: isShared ? coupleId : null,
-    note_id: noteId,
-    name: expenseName,
-    amount,
-    currency: currency,
-    category: expenseCategory,
-    category_icon: EXPENSE_CATEGORY_ICONS[expenseCategory] || '📄',
-    split_type: isShared ? defaultSplit : 'individual',
-    paid_by: userId,
-    is_shared: isShared,
-    receipt_url: receiptUrl || null,
-    expense_date: new Date().toISOString(),
-    original_text: originalText.substring(0, 500),
-  };
-
-  const { error } = await supabase.from('expenses').insert(expenseData);
-  if (error) {
-    console.error('[Expense Detection] Failed to create expense:', error);
-  } else {
-    console.log('[Expense Detection] ✅ Expense created:', expenseName, amount, currency);
-  }
-}
+const EXPENSE_CATEGORY_ICONS: Record<string, string> = {
+  Groceries: '🛒', Entertainment: '🎬', Travel: '✈️',
+  Transportation: '🚗', Health: '🏥', Shopping: '🛍️',
+  Personal: '👤', Home: '🏠', Utilities: '💡',
+  Finance: '💰', Education: '📚', Other: '📄',
+};
 
 // Define the JSON schema for structured output
 const singleNoteSchema = {
