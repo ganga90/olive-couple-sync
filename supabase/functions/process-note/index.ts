@@ -1490,6 +1490,18 @@ async function extractKnowledge(
     const data = await response.json();
     if (data.success) {
       console.log(`[Knowledge Extract] Extracted ${data.entities_count || 0} entities, ${data.relationships_count || 0} relationships`);
+      
+      // Trigger community detection asynchronously if we have enough entities
+      if ((data.entities_count || 0) >= 3) {
+        fetch(`${SUPABASE_URL}/functions/v1/olive-community-detect`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          },
+          body: JSON.stringify({ user_id: userId, couple_id: coupleId || null }),
+        }).catch(e => console.warn('[Community Detect] Fire-and-forget error:', e));
+      }
     }
   } catch (error) {
     // Gracefully handle — this is a non-blocking enhancement
