@@ -333,6 +333,10 @@ export interface UnifiedContext {
   relationshipGraph: string;
   // For contextual_ask:
   savedItems: string;
+  // P4: Partner, task analytics, skills
+  partnerContext: string;
+  taskAnalytics: string;
+  skills: string;
 }
 
 const EMPTY_CTX: UnifiedContext = {
@@ -346,6 +350,9 @@ const EMPTY_CTX: UnifiedContext = {
   semanticMemoryChunks: "",
   relationshipGraph: "",
   savedItems: "",
+  partnerContext: "",
+  taskAnalytics: "",
+  skills: "",
 };
 
 /**
