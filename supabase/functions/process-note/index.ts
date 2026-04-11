@@ -99,22 +99,8 @@ async function autoAddToCalendar(
 // EXPENSE DETECTION & AUTO-CREATION
 // ============================================================================
 
-// Currency/amount regex: matches $160, €50.99, £30, 160$, etc.
-const AMOUNT_REGEX = /(?:[$€£]\s*(\d+(?:[.,]\d{1,2})?))|(?:(\d+(?:[.,]\d{1,2})?)\s*[$€£])/gi;
-
-// Category icon mapping for expenses
-const EXPENSE_CATEGORY_ICONS: Record<string, string> = {
-  'Groceries': '🛒', 'Dining': '🍽️', 'Restaurant': '🍽️', 'Travel': '✈️',
-  'Utilities': '💡', 'Entertainment': '🎬', 'Shopping': '🛍️', 'Health': '💊',
-  'Transportation': '🚗', 'Gas': '⛽', 'Subscriptions': '📱', 'Cable & Internet': '📡',
-  'Rent': '🏠', 'Insurance': '🛡️', 'Education': '📚', 'Personal Care': '💇',
-  'Clothing': '👕', 'Gifts': '🎁', 'Pets': '🐾', 'Coffee': '☕',
-  'Drinks': '🍺', 'Fitness': '💪', 'Pharmacy': '💊', 'Home': '🏡',
-  'Electronics': '📱', 'Other': '📄', 'Finance': '💰',
-};
-
-// detectCurrency, extractAmount, mapCategoryToExpenseCategory, detectAndCreateExpense
-// are now imported from _shared/expense-detector.ts
+// Expense detection functions (detectCurrency, extractAmount, mapCategoryToExpenseCategory,
+// detectAndCreateExpense) are imported from _shared/expense-detector.ts
 
 // Define the JSON schema for structured output
 const singleNoteSchema = {
