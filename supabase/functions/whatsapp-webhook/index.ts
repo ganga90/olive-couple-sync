@@ -25,6 +25,12 @@ import {
   findSimilarNotes,
   type TaskCandidate,
 } from "../_shared/task-search.ts";
+import {
+  standardizePhoneNumber,
+  formatFriendlyDate,
+  sendWhatsAppReply,
+  downloadAndUploadMetaMedia,
+} from "../_shared/whatsapp-messaging.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
