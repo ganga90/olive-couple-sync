@@ -2018,7 +2018,7 @@ serve(async (req) => {
             es: `✅ ¡Hecho! Te recordaré "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`,
             it: `✅ Fatto! Ti ricorderò "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`,
           };
-          return reply(reminderSetLocalized[sl] || reminderSetLocalized.en);
+          return reply(reminderSetLocalized[userLang.split('-')[0]] || reminderSetLocalized[userLang] || reminderSetLocalized.en);
         } else if (pendingAction?.type === 'delete') {
           await supabase
             .from('clerk_notes')
@@ -5442,7 +5442,7 @@ Be natural and personable.`;
           // Return help text directly — no AI call needed
           return reply(t('help_text', userLang));
           
-        case 'help_about_olive':
+        case 'general':
           // User is asking HOW to use Olive features — inject help KB into AI context
           systemPrompt = `You are Olive, helping the user understand how to use your features.
 
@@ -5678,12 +5678,11 @@ If the user's message is long and conversational — asking for help with someth
         // Also log this conversation turn to daily memory for compilation (fire-and-forget, no await)
         try {
           const turnSummary = `[${chatType}] User: ${(effectiveMessage || '').substring(0, 120)} → Olive responded`;
-          supabase.rpc('append_to_daily_log', {
+          void supabase.rpc('append_to_daily_log', {
             p_user_id: userId,
             p_content: turnSummary,
             p_source: 'chat',
-          }).then(() => console.log('[ConvMemory] Daily log appended'))
-            .catch((e: any) => console.warn('[ConvMemory] Daily log append failed:', e));
+          }).then(() => console.log('[ConvMemory] Daily log appended'), (e: any) => console.warn('[ConvMemory] Daily log append failed:', e));
         } catch {}
 
         return reply(chatResponse.slice(0, chatType === 'assistant' ? 2000 : 1500));
@@ -6327,7 +6326,7 @@ Return ONLY valid JSON, no markdown.`,
       // Format list name to Title Case
       const formattedName = listName.trim()
         .split(/\s+/)
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(' ');
 
       // Create the list
