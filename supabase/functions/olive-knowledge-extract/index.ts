@@ -65,22 +65,24 @@ function deterministicExtract(text: string, summary: string, items: string[], ta
   }
 
   // --- Monetary amounts ---
-  const amountRegex = /\$\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b/g;
+  const amountRegex = /(?:\$\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)|(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:€|EUR|GBP|£))\b/g;
   let match;
   while ((match = amountRegex.exec(combined)) !== null) {
+    const value = match[1] || match[2];
+    const currency = match[0].includes('€') || match[0].includes('EUR') ? 'EUR' :
+                     match[0].includes('£') || match[0].includes('GBP') ? 'GBP' : 'USD';
     addEntity({
-      name: match[0],
+      name: match[0].trim(),
       entity_type: "amount",
       confidence: "EXTRACTED",
       confidence_score: 1.0,
-      metadata: { value: parseFloat(match[1].replace(/,/g, "")), currency: "USD" },
+      metadata: { value: parseFloat(value.replace(/,/g, "")), currency },
     });
   }
 
   // --- URLs ---
   const urlRegex = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/gi;
   while ((match = urlRegex.exec(combined)) !== null) {
-    // Extract domain as an organization entity
     try {
       const url = new URL(match[0]);
       const domain = url.hostname.replace(/^www\./, "");
@@ -92,6 +94,29 @@ function deterministicExtract(text: string, summary: string, items: string[], ta
         metadata: { url: match[0], source: "url_extraction" },
       });
     } catch { /* invalid URL */ }
+  }
+
+  // --- Email addresses ---
+  const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
+  while ((match = emailRegex.exec(combined)) !== null) {
+    addEntity({
+      name: match[0],
+      entity_type: "concept",
+      confidence: "EXTRACTED",
+      confidence_score: 1.0,
+      metadata: { type: "email_address" },
+    });
+    // Also extract the domain as an organization
+    const domain = match[0].split('@')[1];
+    if (domain && !['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com'].includes(domain)) {
+      addEntity({
+        name: domain,
+        entity_type: "organization",
+        confidence: "INFERRED",
+        confidence_score: 0.7,
+        metadata: { source: "email_domain" },
+      });
+    }
   }
 
   // --- Phone numbers ---
@@ -125,12 +150,41 @@ function deterministicExtract(text: string, summary: string, items: string[], ta
     }
   }
 
-  // --- Items as potential entities (products, places from structured data) ---
+  // --- Time expressions ---
+  const timeRegex = /\b(\d{1,2}:\d{2}\s*(?:AM|PM|am|pm)?)\b/g;
+  while ((match = timeRegex.exec(combined)) !== null) {
+    addEntity({
+      name: match[0].trim(),
+      entity_type: "date_event",
+      confidence: "EXTRACTED",
+      confidence_score: 0.85,
+      metadata: { type: "time", raw_time: match[0] },
+    });
+  }
+
+  // --- Proper nouns (capitalized multi-word phrases, likely names/places) ---
+  const properNounRegex = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g;
+  while ((match = properNounRegex.exec(text)) !== null) {
+    const name = match[1].trim();
+    // Filter out common false positives
+    const skipPhrases = ['Good Morning', 'Thank You', 'Let Me', 'I Would', 'Please Note', 'For Example', 'In The', 'The Next'];
+    if (name.length >= 4 && name.length <= 40 && !skipPhrases.some(s => name.startsWith(s))) {
+      addEntity({
+        name,
+        entity_type: "concept",
+        confidence: "INFERRED",
+        confidence_score: 0.6,
+        metadata: { source: "proper_noun_detection" },
+      });
+    }
+  }
+
+  // --- Items as potential entities ---
   for (const item of items) {
     const itemStr = typeof item === 'string' ? item : String(item);
-    // "Website: url" → already captured
+    
     // "Venue: X" or "Restaurant: X" → place
-    const venueMatch = itemStr.match(/^(?:Venue|Restaurant|Location|Address|Place|Store|Clinic|Hospital):\s*(.+)/i);
+    const venueMatch = itemStr.match(/^(?:Venue|Restaurant|Location|Address|Place|Store|Clinic|Hospital|Airport|Hotel|Gym|Park):\s*(.+)/i);
     if (venueMatch) {
       addEntity({
         name: venueMatch[1].trim(),
@@ -142,7 +196,7 @@ function deterministicExtract(text: string, summary: string, items: string[], ta
     }
 
     // "Provider: Dr. X" or "Doctor: X" → person
-    const personMatch = itemStr.match(/^(?:Provider|Doctor|Contact|Instructor|Trainer|Agent):\s*(.+)/i);
+    const personMatch = itemStr.match(/^(?:Provider|Doctor|Contact|Instructor|Trainer|Agent|Manager|Therapist|Dentist|Vet|Accountant|Lawyer|Realtor):\s*(.+)/i);
     if (personMatch) {
       addEntity({
         name: personMatch[1].trim(),
@@ -154,7 +208,7 @@ function deterministicExtract(text: string, summary: string, items: string[], ta
     }
 
     // "Brand: X" or "Product: X" → product
-    const productMatch = itemStr.match(/^(?:Brand|Product|Model|Item|Code):\s*(.+)/i);
+    const productMatch = itemStr.match(/^(?:Brand|Product|Model|Item|Code|Medication|Supplement|App|Tool|Software|Service):\s*(.+)/i);
     if (productMatch) {
       addEntity({
         name: productMatch[1].trim(),
@@ -162,6 +216,31 @@ function deterministicExtract(text: string, summary: string, items: string[], ta
         confidence: "EXTRACTED",
         confidence_score: 0.9,
         metadata: { source: "item_extraction" },
+      });
+    }
+
+    // "Company: X" or "Organization: X" → organization
+    const orgMatch = itemStr.match(/^(?:Company|Organization|School|University|Insurance|Bank|Airline|Carrier):\s*(.+)/i);
+    if (orgMatch) {
+      addEntity({
+        name: orgMatch[1].trim(),
+        entity_type: "organization",
+        confidence: "EXTRACTED",
+        confidence_score: 0.9,
+        metadata: { source: "item_extraction" },
+      });
+    }
+  }
+
+  // --- Tags as concept entities ---
+  for (const tag of tags) {
+    if (tag && tag.length >= 3 && !tag.startsWith('_')) {
+      addEntity({
+        name: tag,
+        entity_type: "concept",
+        confidence: "INFERRED",
+        confidence_score: 0.65,
+        metadata: { source: "tag" },
       });
     }
   }
