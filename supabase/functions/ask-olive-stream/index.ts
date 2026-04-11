@@ -485,9 +485,9 @@ async function fetchServerContext(
     } catch { /* non-critical */ }
 
     // Saved items for contextual_ask (keep as fallback alongside semantic)
-    if (needsSavedItems && results.length >= 6) {
-      const notesRes = results[4];
-      const listsRes = results[5];
+    if (needsSavedItems && arrayResults.length >= 5) {
+      const notesRes = arrayResults[3];
+      const listsRes = arrayResults[4];
       const allTasks = notesRes.data || [];
       const lists = listsRes.data || [];
       const listIdToName = new Map(lists.map((l: any) => [l.id, l.name]));
