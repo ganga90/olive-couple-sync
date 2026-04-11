@@ -7,6 +7,71 @@
 
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
+// ─── Expense Text Parser ──────────────────────────────────────
+/**
+ * Robust multi-format amount extraction from natural language text.
+ * Supports: "$57.85 Amazon", "Amazon $57.85", "57.85 Amazon", "€45 groceries",
+ *           "lunch at Chipotle 25", "25 lunch", "coffee £4.50", etc.
+ */
+export function parseExpenseText(text: string): { amount: number; description: string; currency: string } | null {
+  const cleaned = text.trim();
+  if (!cleaned) return null;
+
+  let amount: number | null = null;
+  let description = '';
+  let currency = 'USD';
+
+  // Pattern 1: Currency symbol + amount at the START: "$57.85 Amazon", "€45 groceries"
+  const startMatch = cleaned.match(/^([£€$])\s*(\d+\.?\d*)\s+(.+)$/);
+  if (startMatch) {
+    currency = startMatch[1] === '€' ? 'EUR' : startMatch[1] === '£' ? 'GBP' : 'USD';
+    amount = parseFloat(startMatch[2]);
+    description = startMatch[3].trim();
+  }
+
+  // Pattern 2: Amount (no symbol) at the START: "57.85 Amazon", "25 lunch at Chipotle"
+  if (amount === null) {
+    const numStartMatch = cleaned.match(/^(\d+\.?\d*)\s+(.+)$/);
+    if (numStartMatch) {
+      amount = parseFloat(numStartMatch[1]);
+      description = numStartMatch[2].trim();
+    }
+  }
+
+  // Pattern 3: Currency symbol + amount at the END or MIDDLE: "Amazon $57.85", "coffee €4.50"
+  if (amount === null) {
+    const endMatch = cleaned.match(/^(.+?)\s+([£€$])\s*(\d+\.?\d*)\s*$/);
+    if (endMatch) {
+      description = endMatch[1].trim();
+      currency = endMatch[2] === '€' ? 'EUR' : endMatch[2] === '£' ? 'GBP' : 'USD';
+      amount = parseFloat(endMatch[3]);
+    }
+  }
+
+  // Pattern 4: Amount (no symbol) at the END: "Amazon 57.85", "lunch 25"
+  if (amount === null) {
+    const numEndMatch = cleaned.match(/^(.+?)\s+(\d+\.?\d*)$/);
+    if (numEndMatch && parseFloat(numEndMatch[2]) > 0) {
+      description = numEndMatch[1].trim();
+      amount = parseFloat(numEndMatch[2]);
+    }
+  }
+
+  // Pattern 5: Inline currency+amount: "Bought coffee for $4.50 at Starbucks"
+  if (amount === null) {
+    const inlineMatch = cleaned.match(/([£€$])\s*(\d+\.?\d*)/);
+    if (inlineMatch) {
+      currency = inlineMatch[1] === '€' ? 'EUR' : inlineMatch[1] === '£' ? 'GBP' : 'USD';
+      amount = parseFloat(inlineMatch[2]);
+      description = cleaned.replace(inlineMatch[0], '').replace(/\s{2,}/g, ' ').trim();
+    }
+  }
+
+  if (amount === null || amount <= 0 || !description) return null;
+
+  return { amount, description, currency };
+}
+
 // Currency detection from text
 export function detectCurrency(text: string): string {
   if (/€|EUR/i.test(text)) return 'EUR';
