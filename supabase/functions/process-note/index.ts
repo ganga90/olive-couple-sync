@@ -99,22 +99,8 @@ async function autoAddToCalendar(
 // EXPENSE DETECTION & AUTO-CREATION
 // ============================================================================
 
-// Currency/amount regex: matches $160, €50.99, £30, 160$, etc.
-const AMOUNT_REGEX = /(?:[$€£]\s*(\d+(?:[.,]\d{1,2})?))|(?:(\d+(?:[.,]\d{1,2})?)\s*[$€£])/gi;
-
-// Category icon mapping for expenses
-const EXPENSE_CATEGORY_ICONS: Record<string, string> = {
-  'Groceries': '🛒', 'Dining': '🍽️', 'Restaurant': '🍽️', 'Travel': '✈️',
-  'Utilities': '💡', 'Entertainment': '🎬', 'Shopping': '🛍️', 'Health': '💊',
-  'Transportation': '🚗', 'Gas': '⛽', 'Subscriptions': '📱', 'Cable & Internet': '📡',
-  'Rent': '🏠', 'Insurance': '🛡️', 'Education': '📚', 'Personal Care': '💇',
-  'Clothing': '👕', 'Gifts': '🎁', 'Pets': '🐾', 'Coffee': '☕',
-  'Drinks': '🍺', 'Fitness': '💪', 'Pharmacy': '💊', 'Home': '🏡',
-  'Electronics': '📱', 'Other': '📄', 'Finance': '💰',
-};
-
-// detectCurrency, extractAmount, mapCategoryToExpenseCategory, detectAndCreateExpense
-// are now imported from _shared/expense-detector.ts
+// Expense detection functions (detectCurrency, extractAmount, mapCategoryToExpenseCategory,
+// detectAndCreateExpense) are imported from _shared/expense-detector.ts
 
 // Define the JSON schema for structured output
 const singleNoteSchema = {
@@ -2518,6 +2504,22 @@ Process this note:
           .single();
           
         if (createError) {
+          // Handle race condition: if another note in the same batch already created this list,
+          // fetch the existing one instead of returning null
+          if (createError.code === '23505') {
+            console.log('[findOrCreateList] Duplicate detected (race condition), fetching existing list:', listName);
+            const { data: existingList } = await supabase
+              .from('clerk_lists')
+              .select('*')
+              .ilike('name', listName)
+              .or(couple_id ? `couple_id.eq.${couple_id}` : `author_id.eq.${user_id}`)
+              .limit(1)
+              .single();
+            if (existingList) {
+              if (existingLists) existingLists.push(existingList);
+              return existingList.id;
+            }
+          }
           console.error('Error creating list:', createError);
           return null;
         }
