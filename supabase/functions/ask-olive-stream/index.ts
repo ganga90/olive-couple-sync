@@ -247,14 +247,27 @@ async function fetchServerContext(
         .eq('is_active', true)
         .gte('confidence', 0.6)
         .limit(10),
-      // Calendar events (14 days)
-      supabase
-        .from('calendar_events')
-        .select('title, start_time, end_time, location')
-        .gte('start_time', new Date().toISOString())
-        .lte('start_time', new Date(Date.now() + 14 * 86400000).toISOString())
-        .order('start_time', { ascending: true })
-        .limit(15),
+      // Calendar events (14 days) — scoped to user's connections for data isolation
+      (async () => {
+        // First get user's calendar connection IDs
+        const { data: connections } = await supabase
+          .from('calendar_connections')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('is_active', true);
+        
+        if (!connections?.length) return { data: [], error: null };
+        
+        const connectionIds = connections.map((c: any) => c.id);
+        return supabase
+          .from('calendar_events')
+          .select('title, start_time, end_time, location')
+          .in('connection_id', connectionIds)
+          .gte('start_time', new Date().toISOString())
+          .lte('start_time', new Date(Date.now() + 14 * 86400000).toISOString())
+          .order('start_time', { ascending: true })
+          .limit(15);
+      })(),
     ];
 
     // For contextual_ask, also fetch saved items with full details

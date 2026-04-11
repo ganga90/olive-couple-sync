@@ -33,7 +33,7 @@ async function deriveUserKey(userId: string): Promise<CryptoKey> {
   const masterKeyBytes = hexToBytes(masterKeyHex);
   const baseKey = await crypto.subtle.importKey(
     'raw',
-    masterKeyBytes,
+    masterKeyBytes.buffer as ArrayBuffer,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
