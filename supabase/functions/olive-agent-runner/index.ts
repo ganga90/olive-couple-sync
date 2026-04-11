@@ -249,6 +249,8 @@ async function runAgent(ctx: AgentContext): Promise<AgentResult> {
       return runWeeklyCoupleSyncAgent(ctx);
     case "email-triage-agent":
       return runEmailTriageAgent(ctx);
+    case "proactive-intelligence":
+      return runProactiveIntelligence(ctx);
     default:
       return { success: false, message: `Unknown agent: ${ctx.agentId}` };
   }
@@ -964,6 +966,193 @@ async function runEmailTriageAgent(ctx: AgentContext): Promise<AgentResult> {
       // Cap processed_ids at 500 to prevent unbounded state growth (Phase 3d)
       processed_ids: (data.processed_ids || previouslyProcessedIds).slice(-500),
     },
+  };
+}
+
+// ─── Agent 8: Proactive Intelligence ─────────────────────────────
+async function runProactiveIntelligence(ctx: AgentContext): Promise<AgentResult> {
+  // Throttle: skip if last run was < 20 hours ago (unless manual trigger)
+  const lastRunAt = ctx.previousState.last_run_at as string;
+  if (lastRunAt && !ctx.isManualTrigger) {
+    const hoursSinceLastRun = (Date.now() - new Date(lastRunAt).getTime()) / (1000 * 60 * 60);
+    if (hoursSinceLastRun < 20) {
+      return { success: true, message: `Too soon (${Math.round(hoursSinceLastRun)}h since last run)`, notifyUser: false };
+    }
+  }
+
+  // 1. Read compiled memory files (profile, patterns, household)
+  const { data: memoryFiles } = await ctx.supabase
+    .from("olive_memory_files")
+    .select("file_type, content")
+    .eq("user_id", ctx.userId)
+    .is("file_date", null)
+    .in("file_type", ["profile", "patterns", "household"]);
+
+  const profileContent = memoryFiles?.find((f: any) => f.file_type === "profile")?.content || "";
+  const patternsContent = memoryFiles?.find((f: any) => f.file_type === "patterns")?.content || "";
+  const householdContent = memoryFiles?.find((f: any) => f.file_type === "household")?.content || "";
+
+  // 2. If couple exists, read partner's compiled files
+  let partnerContext = "";
+  let partnerTaskPatterns = "";
+  if (ctx.coupleId) {
+    try {
+      const { data: partnerFiles } = await ctx.supabase
+        .rpc("get_couple_compiled_files", { p_couple_id: ctx.coupleId });
+      if (partnerFiles && partnerFiles.length > 0) {
+        partnerContext = partnerFiles
+          .map((f: any) => `[Partner ${f.file_type}]: ${f.content}`)
+          .join("\n\n");
+      }
+    } catch (err) {
+      console.error("[Proactive Intelligence] Failed to fetch partner files:", err);
+    }
+
+    // 4. Read partner task delegation patterns
+    try {
+      const { data: taskPatterns } = await ctx.supabase
+        .rpc("get_partner_task_patterns", { p_couple_id: ctx.coupleId });
+      if (taskPatterns) {
+        partnerTaskPatterns = typeof taskPatterns === "string" ? taskPatterns : JSON.stringify(taskPatterns);
+      }
+    } catch (err) {
+      console.error("[Proactive Intelligence] Failed to fetch partner task patterns:", err);
+    }
+  }
+
+  // 3. Read recent task activity (last 7 days completed + pending tasks)
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  let completedQuery = ctx.supabase
+    .from("clerk_notes")
+    .select("summary, category, updated_at")
+    .eq("completed", true)
+    .gte("updated_at", sevenDaysAgo.toISOString())
+    .order("updated_at", { ascending: false })
+    .limit(15);
+
+  let pendingQuery = ctx.supabase
+    .from("clerk_notes")
+    .select("summary, category, priority, due_date")
+    .eq("completed", false)
+    .order("created_at", { ascending: false })
+    .limit(15);
+
+  if (ctx.coupleId) {
+    completedQuery = completedQuery.or(`author_id.eq.${ctx.userId},couple_id.eq.${ctx.coupleId}`);
+    pendingQuery = pendingQuery.or(`author_id.eq.${ctx.userId},couple_id.eq.${ctx.coupleId}`);
+  } else {
+    completedQuery = completedQuery.eq("author_id", ctx.userId);
+    pendingQuery = pendingQuery.eq("author_id", ctx.userId);
+  }
+
+  const [{ data: completedTasks }, { data: pendingTasks }] = await Promise.all([
+    completedQuery,
+    pendingQuery,
+  ]);
+
+  const completedSummary = (completedTasks || [])
+    .map((t: any) => `• "${t.summary}" (${t.category || "general"}) — completed ${t.updated_at?.split("T")[0] || "recently"}`)
+    .join("\n") || "No recently completed tasks.";
+
+  const pendingSummary = (pendingTasks || [])
+    .map((t: any) => `• "${t.summary}" (${t.category || "general"}, priority: ${t.priority || "normal"})${t.due_date ? ` — due ${t.due_date.split("T")[0]}` : ""}`)
+    .join("\n") || "No pending tasks.";
+
+  // If we have no memory files and no tasks, there's nothing to work with
+  if (!profileContent && !patternsContent && !householdContent && (!completedTasks || completedTasks.length === 0) && (!pendingTasks || pendingTasks.length === 0)) {
+    return { success: true, message: "Not enough data for proactive nudges", notifyUser: false };
+  }
+
+  // 5. Generate proactive nudges with Gemini
+  const coupleSection = ctx.coupleId
+    ? `\n\nCOUPLE CONTEXT (partner info):\n${partnerContext || "No partner data available."}\n\nPARTNER TASK DELEGATION PATTERNS:\n${partnerTaskPatterns || "No delegation patterns available."}\n\nWhen relevant, suggest task delegation based on each partner's strengths and patterns.`
+    : "";
+
+  const dayOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][new Date().getDay()];
+  const todayDate = new Date().toISOString().split("T")[0];
+
+  let nudges: string;
+  try {
+    const response = await ctx.genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `You are a proactive life assistant for a couples app called Olive.
+Today is ${dayOfWeek}, ${todayDate}.
+
+USER PROFILE:
+${profileContent || "No profile data yet."}
+
+ROUTINE PATTERNS:
+${patternsContent || "No patterns detected yet."}
+
+HOUSEHOLD RHYTHMS:
+${householdContent || "No household data yet."}
+
+RECENTLY COMPLETED TASKS (last 7 days):
+${completedSummary}
+
+PENDING TASKS:
+${pendingSummary}${coupleSection}
+
+Based on the above context, generate 1-3 personalized proactive nudges. Each nudge should be:
+- Actionable and specific (e.g., "You usually grocery shop on Saturdays — want to start your list?" not "plan your week")
+- Based on detected patterns, routines, or upcoming needs
+- Tied to the current day of the week when relevant
+- Warm and helpful, not pushy
+
+Format for WhatsApp (max 800 chars total):
+🧠 Proactive Nudges
+
+[1-3 nudges, each on its own line starting with a relevant emoji]
+
+Keep it concise and conversational. End with a complete sentence. IMPORTANT: Always finish every sentence completely. Never stop mid-sentence or mid-word.`,
+      config: { temperature: 0.4, maxOutputTokens: 1200 },
+    });
+
+    nudges = response.text?.trim() || "";
+
+    // Detect truncated responses
+    if (nudges && nudges.length > 20 && !/[.!?)\n🎉💪✨🌟]$/.test(nudges)) {
+      const lastPunctuation = Math.max(
+        nudges.lastIndexOf('. '),
+        nudges.lastIndexOf('! '),
+        nudges.lastIndexOf('? '),
+        nudges.lastIndexOf('.\n'),
+        nudges.lastIndexOf('!\n'),
+      );
+      if (lastPunctuation > nudges.length * 0.4) {
+        nudges = nudges.substring(0, lastPunctuation + 1);
+      }
+    }
+
+    if (!nudges || nudges.length < 10) {
+      console.error("[Proactive Intelligence] Gemini returned empty/short response");
+      nudges = `🧠 Proactive Nudges\n\nYou have ${(pendingTasks || []).length} pending tasks. Open Olive to review and plan your day!`;
+    }
+  } catch (err) {
+    console.error("[Proactive Intelligence] Gemini call failed:", err);
+    const pendingCount = (pendingTasks || []).length;
+    const completedCount = (completedTasks || []).length;
+    nudges = `🧠 Proactive Nudges\n\n📊 You completed ${completedCount} tasks this week and have ${pendingCount} pending. Open Olive to stay on track!`;
+  }
+
+  return {
+    success: true,
+    message: nudges,
+    data: {
+      completedTaskCount: (completedTasks || []).length,
+      pendingTaskCount: (pendingTasks || []).length,
+      hasProfile: !!profileContent,
+      hasPatterns: !!patternsContent,
+      hasHousehold: !!householdContent,
+      hasCoupleContext: !!ctx.coupleId,
+    },
+    state: {
+      last_run_at: new Date().toISOString(),
+    },
+    notifyUser: true,
+    notificationMessage: nudges,
   };
 }
 

@@ -135,6 +135,50 @@ async function sendWhatsAppMessage(
   }
 }
 
+// ─── Compiled knowledge helpers ──────────────────────────────────────────────
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/**
+ * Extract lines from compiled patterns content that mention a specific day name.
+ * Returns up to `max` matching bullet points / lines.
+ */
+function extractDayInsights(patternsContent: string, dayName: string, max = 2): string[] {
+  const lines = patternsContent.split('\n');
+  const results: string[] = [];
+  const dayLower = dayName.toLowerCase();
+  for (const line of lines) {
+    if (results.length >= max) break;
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.length < 10) continue;
+    if (trimmed.toLowerCase().includes(dayLower)) {
+      // Clean up markdown bullet prefixes
+      const cleaned = trimmed.replace(/^[-*•]\s*/, '').trim();
+      if (cleaned.length > 5 && cleaned.length <= 120) {
+        results.push(cleaned);
+      }
+    }
+  }
+  return results;
+}
+
+/**
+ * Extract the user's preferred name from a compiled profile content string.
+ * Falls back to null if not found.
+ */
+function extractNameFromProfile(profileContent: string): string | null {
+  // Try common patterns: "Name: X", "name is X", "goes by X", "preferred name: X"
+  const patterns = [
+    /(?:preferred\s+name|name|goes\s+by|called)\s*[:=]\s*["']?(\w+)/i,
+    /(?:their|the user(?:'s)?)\s+name\s+is\s+["']?(\w+)/i,
+  ];
+  for (const pat of patterns) {
+    const m = profileContent.match(pat);
+    if (m?.[1] && m[1].length >= 2 && m[1].length <= 20) return m[1];
+  }
+  return null;
+}
+
 // ─── Content generators ───────────────────────────────────────────────────────
 
 async function generateMorningBriefing(supabase: any, userId: string): Promise<string> {
@@ -368,6 +412,57 @@ async function generateMorningBriefing(supabase: any, userId: string): Promise<s
     console.error('[Heartbeat] Agent highlights fetch error (non-blocking):', agentErr);
   }
 
+  // ── Compiled knowledge: patterns & profile for personalized insights ──
+  try {
+    const [{ data: patternsFile }, { data: profileFile }] = await Promise.all([
+      supabase
+        .from('olive_memory_files')
+        .select('content')
+        .eq('user_id', userId)
+        .eq('file_type', 'patterns')
+        .is('file_date', null)
+        .single(),
+      supabase
+        .from('olive_memory_files')
+        .select('content')
+        .eq('user_id', userId)
+        .eq('file_type', 'profile')
+        .is('file_date', null)
+        .single(),
+    ]);
+
+    // Try to use a richer name from profile
+    if (profileFile?.content) {
+      const profileName = extractNameFromProfile(profileFile.content);
+      if (profileName) {
+        briefing = briefing.replace(
+          `Good morning, ${userName}!`,
+          `Good morning, ${profileName}!`
+        );
+      }
+    }
+
+    // Surface day-relevant pattern insights (use user's timezone)
+    if (patternsFile?.content) {
+      const { data: userPrefs } = await supabase
+        .from('olive_user_preferences')
+        .select('timezone')
+        .eq('user_id', userId)
+        .single();
+      const userTz = userPrefs?.timezone || 'UTC';
+      const { dayOfWeek: userDayOfWeek } = getUserLocalTime(userTz);
+      const todayDayName = DAY_NAMES[userDayOfWeek];
+      const insights = extractDayInsights(patternsFile.content, todayDayName);
+      if (insights.length > 0) {
+        briefing += `\n💡 Based on your patterns:\n`;
+        insights.forEach(insight => { briefing += `• ${insight}\n`; });
+        briefing += '\n';
+      }
+    }
+  } catch (compiledErr) {
+    console.warn('[Heartbeat] Compiled knowledge fetch error (non-blocking):', compiledErr);
+  }
+
   briefing += `💬 Reply with your plan for the day or "what's urgent" to see more.`;
 
   return briefing;
@@ -453,6 +548,35 @@ async function generateEveningReview(supabase: any, userId: string): Promise<str
       review += `• ${task.summary}\n`;
     });
     review += '\n';
+  }
+
+  // ── Compiled knowledge: tomorrow tip from patterns ──
+  try {
+    const { data: patternsFile } = await supabase
+      .from('olive_memory_files')
+      .select('content')
+      .eq('user_id', userId)
+      .eq('file_type', 'patterns')
+      .is('file_date', null)
+      .single();
+
+    if (patternsFile?.content) {
+      const { data: userPrefsEv } = await supabase
+        .from('olive_user_preferences')
+        .select('timezone')
+        .eq('user_id', userId)
+        .single();
+      const userTzEv = userPrefsEv?.timezone || 'UTC';
+      const { dayOfWeek: userDayEv } = getUserLocalTime(userTzEv);
+      const tomorrowDayName = DAY_NAMES[(userDayEv + 1) % 7];
+      const tomorrowInsights = extractDayInsights(patternsFile.content, tomorrowDayName, 1);
+      if (tomorrowInsights.length > 0) {
+        review += `\n📝 Tomorrow tip: ${tomorrowInsights[0]}\n`;
+        review += '\n';
+      }
+    }
+  } catch (compiledErr) {
+    console.warn('[Heartbeat] Compiled patterns fetch error in evening review (non-blocking):', compiledErr);
   }
 
   if (completedToday && completedToday.length >= 3) {

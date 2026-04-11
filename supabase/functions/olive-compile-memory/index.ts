@@ -63,6 +63,9 @@ interface RawContext {
   }>;
   existingFiles: Record<FileType, { content: string; content_hash: string } | null>;
   coupleId: string | null;
+  partnerEntities: Array<{ name: string; entity_type: string; mention_count: number; user_id: string }>;
+  partnerRelationships: Array<{ source_name: string; target_name: string; relationship_type: string; strength: number }>;
+  partnerName: string | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -235,13 +238,86 @@ async function gatherRawContext(
       strength: r.strength,
     }));
 
+  const coupleId = profileRes.data?.couple_id || null;
+
+  // Fetch partner data if couple exists
+  let partnerEntities: RawContext["partnerEntities"] = [];
+  let partnerRelationships: RawContext["partnerRelationships"] = [];
+  let partnerName: string | null = null;
+
+  if (coupleId) {
+    try {
+      // Find partner user_ids via couple members
+      const { data: coupleMembers } = await supabase
+        .from("clerk_couple_members")
+        .select("user_id")
+        .eq("couple_id", coupleId)
+        .neq("user_id", userId);
+
+      const partnerIds = (coupleMembers || []).map((m: any) => m.user_id);
+
+      if (partnerIds.length > 0) {
+        const [pEntitiesRes, pRelsRes, pProfileRes] = await Promise.all([
+          supabase
+            .from("olive_entities")
+            .select("name, entity_type, mention_count, user_id")
+            .in("user_id", partnerIds)
+            .order("mention_count", { ascending: false })
+            .limit(50),
+
+          supabase
+            .from("olive_relationships")
+            .select(
+              "source:source_entity_id(name), target:target_entity_id(name), relationship_type, strength"
+            )
+            .in("user_id", partnerIds)
+            .order("strength", { ascending: false })
+            .limit(30),
+
+          supabase
+            .from("clerk_profiles")
+            .select("first_name, last_name")
+            .eq("id", partnerIds[0])
+            .single(),
+        ]);
+
+        partnerEntities = (pEntitiesRes.data || []).map((e: any) => ({
+          name: e.name,
+          entity_type: e.entity_type,
+          mention_count: e.mention_count,
+          user_id: e.user_id,
+        }));
+
+        partnerRelationships = (pRelsRes.data || [])
+          .filter((r: any) => r.source?.name && r.target?.name)
+          .map((r: any) => ({
+            source_name: r.source.name,
+            target_name: r.target.name,
+            relationship_type: r.relationship_type,
+            strength: r.strength,
+          }));
+
+        if (pProfileRes.data) {
+          partnerName = [pProfileRes.data.first_name, pProfileRes.data.last_name]
+            .filter(Boolean)
+            .join(" ") || null;
+        }
+      }
+    } catch (err) {
+      console.error("[compile-memory] Partner data fetch failed (non-fatal):", err);
+    }
+  }
+
   return {
     notes: notesRes.data || [],
     memories: memoriesRes.data || [],
     entities: entitiesRes.data || [],
     relationships,
     existingFiles,
-    coupleId: profileRes.data?.couple_id || null,
+    coupleId,
+    partnerEntities,
+    partnerRelationships,
+    partnerName,
   };
 }
 
@@ -338,7 +414,19 @@ ${baseContext}
 
 OUTPUT (markdown only, no preamble):`;
 
-    case "relationship":
+    case "relationship": {
+      let partnerSection = "";
+      if (raw.partnerEntities.length > 0) {
+        const partnerEntitiesSummary = raw.partnerEntities
+          .map((e) => `${e.name} (${e.entity_type}, mentioned ${e.mention_count}x)`)
+          .join("\n");
+        partnerSection = `
+
+=== PARTNER'S KNOWN ENTITIES ===
+${raw.partnerName ? `Partner name: ${raw.partnerName}` : ""}
+${partnerEntitiesSummary}`;
+      }
+
       return `You are compiling a relationship dynamics file from raw data. Extract and organize:
 - Partner information (if couple data exists)
 - Shared activities and interests
@@ -347,17 +435,40 @@ OUTPUT (markdown only, no preamble):`;
 - Task delegation patterns (who does what)
 - Date ideas and shared experiences
 - Gift ideas and occasions
+- Cross-referenced entities (things both partners track or mention)
 
 If no partner/couple data exists, note that and focus on social relationships.
 Write as concise structured markdown with sections and bullet points.
 If the current compiled file exists, UPDATE it with new information.
 Max 400 words.
 
-${baseContext}
+${baseContext}${partnerSection}
 
 OUTPUT (markdown only, no preamble):`;
+    }
 
-    case "household":
+    case "household": {
+      let partnerHouseholdSection = "";
+      if (raw.partnerEntities.length > 0) {
+        const partnerEntitiesSummary = raw.partnerEntities
+          .map((e) => `${e.name} (${e.entity_type}, mentioned ${e.mention_count}x)`)
+          .join("\n");
+        const partnerRelsSummary = raw.partnerRelationships
+          .map(
+            (r) =>
+              `${r.source_name} --[${r.relationship_type}]--> ${r.target_name} (strength: ${r.strength})`
+          )
+          .join("\n");
+        partnerHouseholdSection = `
+
+=== PARTNER'S KNOWN ENTITIES ===
+${raw.partnerName ? `Partner name: ${raw.partnerName}` : ""}
+${partnerEntitiesSummary}
+
+=== PARTNER'S RELATIONSHIPS ===
+${partnerRelsSummary || "(none)"}`;
+      }
+
       return `You are compiling a household management file from raw data. Extract and organize:
 - Home-related tasks and their frequency
 - Shopping patterns and preferred stores
@@ -367,15 +478,18 @@ OUTPUT (markdown only, no preamble):`;
 - Automotive maintenance
 - Meal planning and recipes
 - Recurring expenses and budget categories
+- Shared household responsibilities across both partners (if couple data available)
 
 Write as concise structured markdown with sections and bullet points.
 Only include information clearly supported by the data.
+If partner data is available, cross-reference to build a complete household picture.
 If the current compiled file exists, UPDATE it with new information.
 Max 500 words.
 
-${baseContext}
+${baseContext}${partnerHouseholdSection}
 
 OUTPUT (markdown only, no preamble):`;
+    }
 
     default:
       return null;
@@ -440,6 +554,11 @@ async function compileFile(
 
   if (embedding) {
     writeData.embedding = JSON.stringify(embedding);
+  }
+
+  // For household files, store couple_id so both partners can access
+  if (fileType === "household" && raw.coupleId) {
+    writeData.couple_id = raw.coupleId;
   }
 
   let error;
@@ -511,7 +630,107 @@ async function compileAllForUser(
     }
   }
 
+  // Cross-user entity resolution for couples
+  if (raw.coupleId) {
+    try {
+      const resolution = await resolveSharedEntities(supabase, raw.coupleId);
+      console.log(
+        `[compile-memory] Entity resolution for couple ${raw.coupleId}: ${resolution.resolved} resolved, ${resolution.errors.length} errors`
+      );
+    } catch (err) {
+      console.error("[compile-memory] Entity resolution failed (non-fatal):", err);
+    }
+  }
+
   return { user_id: userId, results };
+}
+
+// ─── Cross-User Entity Resolution ───────────────────────────────────────────
+
+async function resolveSharedEntities(
+  supabase: any,
+  coupleId: string
+): Promise<{ resolved: number; errors: string[] }> {
+  const errors: string[] = [];
+  let resolved = 0;
+
+  try {
+    const { data: sharedEntities, error: rpcError } = await supabase.rpc(
+      "find_shared_entities",
+      { p_couple_id: coupleId }
+    );
+
+    if (rpcError) {
+      errors.push(`RPC error: ${rpcError.message}`);
+      return { resolved, errors };
+    }
+
+    if (!sharedEntities || sharedEntities.length === 0) {
+      return { resolved, errors };
+    }
+
+    // Fetch mention counts for the entities we need to merge
+    const entityIds = sharedEntities
+      .filter((p: any) => p.name_similarity >= 0.9)
+      .flatMap((p: any) => [p.entity_a_id, p.entity_b_id]);
+
+    if (entityIds.length === 0) return { resolved, errors };
+
+    const { data: entityDetails } = await supabase
+      .from("olive_entities")
+      .select("id, mention_count, couple_id")
+      .in("id", entityIds);
+
+    const mentionMap = new Map<string, number>();
+    const alreadyMerged = new Set<string>();
+    for (const e of entityDetails || []) {
+      mentionMap.set(e.id, e.mention_count || 1);
+      // Skip entities already marked with couple_id (already resolved)
+      if (e.couple_id) alreadyMerged.add(e.id);
+    }
+
+    for (const pair of sharedEntities) {
+      try {
+        if (pair.name_similarity < 0.9) continue;
+        // Skip if already resolved in a previous run
+        if (alreadyMerged.has(pair.entity_a_id) && alreadyMerged.has(pair.entity_b_id)) continue;
+
+        const countA = mentionMap.get(pair.entity_a_id) || 1;
+        const countB = mentionMap.get(pair.entity_b_id) || 1;
+        const keepId = countA >= countB ? pair.entity_a_id : pair.entity_b_id;
+        const mergeId = keepId === pair.entity_a_id ? pair.entity_b_id : pair.entity_a_id;
+        const totalMentions = countA + countB;
+
+        // Update the keep entity with merged count and mark with couple_id
+        const { error: updateError } = await supabase
+          .from("olive_entities")
+          .update({ mention_count: totalMentions, couple_id: coupleId })
+          .eq("id", keepId);
+
+        if (updateError) {
+          errors.push(`Failed to update entity ${keepId}: ${updateError.message}`);
+          continue;
+        }
+
+        // Mark the merge entity with couple_id so it's skipped next run
+        await supabase
+          .from("olive_entities")
+          .update({ couple_id: coupleId })
+          .eq("id", mergeId);
+
+        resolved++;
+        console.log(
+          `[compile-memory] Resolved shared entity: "${pair.entity_a_name}" + "${pair.entity_b_name}" → merged mentions to ${totalMentions}`
+        );
+      } catch (err) {
+        errors.push(`Entity pair merge failed: ${String(err)}`);
+      }
+    }
+  } catch (err) {
+    errors.push(`resolveSharedEntities failed: ${String(err)}`);
+  }
+
+  return { resolved, errors };
 }
 
 // ─── Lint / Health Check ─────────────────────────────────────────────────────
