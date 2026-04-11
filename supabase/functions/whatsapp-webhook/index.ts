@@ -3007,21 +3007,69 @@ Description: "${parsedExpense.description}"`;
       }
       
       if (queryType === 'today') {
-        if (dueTodayTasks.length === 0) {
+        // Fetch today's calendar events (matching the pattern used in 'tomorrow' and 'this_week')
+        let todayCalendarEvents: string[] = [];
+        try {
+          const { data: calConnection } = await supabase
+            .from('calendar_connections')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .limit(1)
+            .single();
+          
+          if (calConnection) {
+            const { data: events } = await supabase
+              .from('calendar_events')
+              .select('title, start_time, all_day')
+              .eq('connection_id', calConnection.id)
+              .gte('start_time', today.toISOString())
+              .lt('start_time', tomorrow.toISOString())
+              .order('start_time', { ascending: true })
+              .limit(10);
+            
+            todayCalendarEvents = (events || []).map(e => {
+              if (e.all_day) return `• ${e.title} (all day)`;
+              const time = new Date(e.start_time).toLocaleTimeString('en-US', { 
+                hour: 'numeric', minute: '2-digit', hour12: true 
+              });
+              return `• ${time}: ${e.title}`;
+            });
+          }
+        } catch (calErr) {
+          console.warn('[WhatsApp] Calendar fetch error for today:', calErr);
+        }
+        
+        if (dueTodayTasks.length === 0 && todayCalendarEvents.length === 0) {
           return reply('📅 Nothing due today! You\'re all caught up.\n\n💡 Try "what\'s urgent" to see high-priority tasks');
         }
         
-        const todayList = dueTodayTasks.slice(0, 8).map((t, i) => {
-          const priority = t.priority === 'high' ? ' 🔥' : '';
-          return `${i + 1}. ${t.summary}${priority}`;
-        }).join('\n');
+        let response = `📅 Today's Agenda:\n`;
         
-        const moreText = dueTodayTasks.length > 8 ? `\n\n...and ${dueTodayTasks.length - 8} more` : '';
+        if (todayCalendarEvents.length > 0) {
+          response += `\n🗓️ Calendar (${todayCalendarEvents.length}):\n${todayCalendarEvents.join('\n')}\n`;
+        }
         
-        const todayResponse = `📅 ${dueTodayTasks.length} Task${dueTodayTasks.length === 1 ? '' : 's'} Due Today:\n\n${todayList}${moreText}\n\n🔗 Manage: https://witholive.app`;
+        if (dueTodayTasks.length > 0) {
+          const todayList = dueTodayTasks.slice(0, 8).map((t, i) => {
+            const priority = t.priority === 'high' ? ' 🔥' : '';
+            return `${i + 1}. ${t.summary}${priority}`;
+          }).join('\n');
+          const moreText = dueTodayTasks.length > 8 ? `\n...and ${dueTodayTasks.length - 8} more` : '';
+          response += `\n📋 Tasks Due (${dueTodayTasks.length}):\n${todayList}${moreText}\n`;
+        }
+        
+        if (overdueTasks.length > 0) {
+          response += `\n⚠️ Also: ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''} to catch up on`;
+        }
+        
+        response += '\n\n🔗 Manage: https://witholive.app';
+        
         const displayedToday = dueTodayTasks.slice(0, 8);
-        await saveReferencedEntity(displayedToday[0], todayResponse, displayedToday.map(t => ({ id: t.id, summary: t.summary })));
-        return reply(todayResponse);
+        if (displayedToday.length > 0) {
+          await saveReferencedEntity(displayedToday[0], response, displayedToday.map(t => ({ id: t.id, summary: t.summary })));
+        }
+        return reply(response);
       }
       
       if (queryType === 'tomorrow') {
@@ -4160,13 +4208,15 @@ Description: "${parsedExpense.description}"`;
         if (calConnections && calConnections.length > 0) {
           const connIds = calConnections.map(c => c.id);
           const now = new Date();
+          // Use start of today so we include events earlier today (not just future)
+          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
           const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
           
           const { data: calEvents } = await supabase
             .from('calendar_events')
             .select('title, start_time, end_time, location, description, all_day')
             .in('connection_id', connIds)
-            .gte('start_time', now.toISOString())
+            .gte('start_time', startOfToday.toISOString())
             .lte('start_time', thirtyDaysFromNow.toISOString())
             .order('start_time', { ascending: true })
             .limit(30);

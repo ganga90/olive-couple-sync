@@ -442,11 +442,14 @@ export async function assembleFullContext(
         .eq("is_active", true);
       if (!connections?.length) return [];
       const ids = connections.map((c: any) => c.id);
+      // Use start of today so we include events earlier today (not just future)
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const { data: events } = await supabase
         .from("calendar_events")
         .select("title, start_time, end_time, location")
         .in("connection_id", ids)
-        .gte("start_time", new Date().toISOString())
+        .gte("start_time", startOfToday.toISOString())
         .lte("start_time", new Date(Date.now() + 14 * 86400000).toISOString())
         .order("start_time", { ascending: true })
         .limit(15);
