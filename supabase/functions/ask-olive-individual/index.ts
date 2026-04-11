@@ -1150,7 +1150,7 @@ serve(async (req) => {
         try {
           const { logRouterDecision } = await import("../_shared/router-logger.ts");
           const { getModel } = await import("../_shared/gemini.ts");
-          logRouterDecision(supabase, {
+          logRouterDecision(supabase as any, {
             userId: actualUserId,
             source: "in_app_chat",
             rawText: actualMessage,
@@ -1756,7 +1756,7 @@ User's Question: ${actualMessage}`;
     if (actualUserId && supabase && actualMessage && assistantReply) {
       try {
         const { evolveProfileFromConversation } = await import("../_shared/orchestrator.ts");
-        evolveProfileFromConversation(supabase, actualUserId, actualMessage, assistantReply)
+        evolveProfileFromConversation(supabase as any, actualUserId, actualMessage, assistantReply)
           .catch(e => console.warn('[ProfileEvolution] Non-blocking error:', e));
       } catch {}
     }
