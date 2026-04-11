@@ -20,7 +20,7 @@
  *   }, { promptVersion: "chat-v2.1" });
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 // ─── Model Pricing (USD per 1M tokens) ─────────────────────────
 // Updated for April 2026 pricing
