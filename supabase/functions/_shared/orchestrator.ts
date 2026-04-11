@@ -626,6 +626,35 @@ export async function assembleFullContext(
         .join("\n")}`;
   }
 
+  // ─── FORMAT: Partner Context (P4) ─────────────────────────────
+  if (partnerData) {
+    const pParts: string[] = [`## Partner (${partnerData.partnerNames}):`];
+    if (partnerData.recent?.length) pParts.push(`Recently added: ${partnerData.recent.map((t: any) => t.summary).join(", ")}`);
+    if (partnerData.assignedToYou?.length) pParts.push(`Assigned to you: ${partnerData.assignedToYou.map((t: any) => t.summary).join(", ")}`);
+    if (partnerData.youAssigned?.length) pParts.push(`You assigned: ${partnerData.youAssigned.map((t: any) => t.summary).join(", ")}`);
+    if (pParts.length > 1) ctx.partnerContext = "\n" + pParts.join("\n");
+  }
+
+  // ─── FORMAT: Task Analytics (P4) ──────────────────────────────
+  if (tasksList?.length) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today.getTime() + 86400000);
+    const active = tasksList.filter((t: any) => !t.completed);
+    const yourActive = active.filter((t: any) => t.author_id === userId || t.task_owner === userId);
+    const urgent = active.filter((t: any) => t.priority === "high");
+    const overdue = active.filter((t: any) => t.due_date && new Date(t.due_date) < today);
+    const dueToday = active.filter((t: any) => { if (!t.due_date) return false; const d = new Date(t.due_date); return d >= today && d < tomorrow; });
+    const dueTomorrow = active.filter((t: any) => { if (!t.due_date) return false; const d = new Date(t.due_date); return d >= tomorrow && d < new Date(tomorrow.getTime() + 86400000); });
+
+    ctx.taskAnalytics = `\n## Task Analytics:\n- Your active: ${yourActive.length} | Total space: ${active.length}\n- Urgent: ${urgent.length} | Overdue: ${overdue.length}\n- Due today: ${dueToday.length} | Due tomorrow: ${dueTomorrow.length}${urgent.length > 0 ? `\n- Urgent: ${urgent.slice(0, 3).map((t: any) => t.summary).join(", ")}` : ""}${overdue.length > 0 ? `\n- Overdue: ${overdue.slice(0, 3).map((t: any) => t.summary).join(", ")}` : ""}${dueToday.length > 0 ? `\n- Today: ${dueToday.slice(0, 3).map((t: any) => t.summary).join(", ")}` : ""}`;
+  }
+
+  // ─── FORMAT: Skills (P4) ──────────────────────────────────────
+  if (userSkills?.length) {
+    ctx.skills = `\n## Active Skills:\n${userSkills.map((s: any) => `- ${s.name}: ${(s.content || "").substring(0, 200)}`).join("\n")}`;
+  }
+
   // ─── LAYER 4: Semantic Search (with circuit breakers) ─────────
   if (queryEmbedding && userMessage) {
     // 4a: Hybrid note search
