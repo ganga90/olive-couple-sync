@@ -646,7 +646,12 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
 
     // ── CHAT / ASSISTANT / HELP ───────────────────────────────────
     const serverCtx = await serverCtxPromise;
-    const fullContext = buildFullContext(serverCtx, context, message, conversationHistory);
+    const fullContext = formatContextForPrompt(serverCtx, {
+      userMessage: message,
+      userName: context?.user_name,
+      conversationHistory,
+      savedItemsContext: context?.saved_items_context,
+    });
     return streamGeminiResponse(OLIVE_CHAT_PROMPT, fullContext, route.responseTier);
 
   } catch (error: any) {
@@ -657,50 +662,3 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
     );
   }
 });
-
-// ============================================================================
-// CONTEXT BUILDER
-// ============================================================================
-
-function buildFullContext(
-  serverCtx: ServerContext,
-  frontendCtx: any,
-  message: string,
-  conversationHistory: Array<{ role: string; content: string }>
-): string {
-  const parts: string[] = [];
-
-  // Server-side context
-  if (serverCtx.profile) parts.push(serverCtx.profile);
-  if (serverCtx.memories) parts.push(serverCtx.memories);
-  if (serverCtx.patterns) parts.push(serverCtx.patterns);
-  if (serverCtx.calendar) parts.push(serverCtx.calendar);
-  if (serverCtx.deepProfile) parts.push(serverCtx.deepProfile);
-
-  // Phase 4: Semantic context — learned facts & relationships
-  if (serverCtx.semanticMemoryChunks) parts.push(serverCtx.semanticMemoryChunks);
-  if (serverCtx.relationshipGraph) parts.push(serverCtx.relationshipGraph);
-
-  if (serverCtx.agentInsights) parts.push(serverCtx.agentInsights);
-
-  // Frontend-provided saved items context
-  if (frontendCtx?.saved_items_context) {
-    parts.push(`\nUSER'S SAVED DATA:\n${frontendCtx.saved_items_context}`);
-  }
-
-  // User name
-  if (frontendCtx?.user_name) {
-    parts.push(`\nUser's name: ${frontendCtx.user_name}`);
-  }
-
-  // Conversation history
-  if (conversationHistory.length > 0) {
-    parts.push('\nCONVERSATION HISTORY:\n' +
-      conversationHistory.map(m => `${m.role === 'user' ? 'User' : 'Olive'}: ${m.content}`).join('\n')
-    );
-  }
-
-  parts.push(`\nUSER MESSAGE: ${message}`);
-
-  return parts.join('\n');
-}
