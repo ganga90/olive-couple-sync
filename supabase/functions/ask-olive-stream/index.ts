@@ -171,8 +171,37 @@ interface ServerContext {
   calendar: string;
   agentInsights: string;
   deepProfile: string;
+  // Phase 4: Semantic context
+  semanticNotes: string;
+  semanticMemoryChunks: string;
+  relationshipGraph: string;
   // For contextual_ask:
   savedItems: string;
+}
+
+/**
+ * Generate embedding for semantic search (Phase 4).
+ * Uses Gemini embedding API with 768 dimensions.
+ */
+async function generateQueryEmbedding(text: string): Promise<number[] | null> {
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: { parts: [{ text }] },
+          outputDimensionality: 768,
+        }),
+      }
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.embedding?.values || null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchServerContext(
@@ -184,13 +213,16 @@ async function fetchServerContext(
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-  const empty: ServerContext = { profile: '', memories: '', patterns: '', calendar: '', agentInsights: '', deepProfile: '', savedItems: '' };
+  const empty: ServerContext = { profile: '', memories: '', patterns: '', calendar: '', agentInsights: '', deepProfile: '', savedItems: '', semanticNotes: '', semanticMemoryChunks: '', relationshipGraph: '' };
   if (!userId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return empty;
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const ctx = { ...empty };
 
   try {
+    // Phase 4: Generate query embedding in parallel with base fetches
+    const embeddingPromise = userMessage ? generateQueryEmbedding(userMessage) : Promise.resolve(null);
+
     // Base fetches — always needed
     const baseFetches = [
       // Memories
@@ -248,7 +280,11 @@ async function fetchServerContext(
       );
     }
 
-    const results = await Promise.all(baseFetches);
+    const [results, queryEmbedding] = await Promise.all([
+      Promise.all(baseFetches),
+      embeddingPromise,
+    ]);
+
     const [memoriesRes, profileRes, patternsRes, calendarRes] = results;
 
     // Profile
@@ -279,7 +315,86 @@ async function fetchServerContext(
       }).join('\n')}`;
     }
 
-    // Saved items for contextual_ask
+    // ══════════════════════════════════════════════════════════════
+    // PHASE 4: SEMANTIC CONTEXT INJECTION
+    // ══════════════════════════════════════════════════════════════
+
+    // 4a. Semantic note search — for contextual_ask, use hybrid search
+    //     instead of brute-force keyword matching
+    if (needsSavedItems && queryEmbedding && userMessage) {
+      try {
+        const { data: hybridResults } = await supabase.rpc('hybrid_search_notes', {
+          p_user_id: userId,
+          p_couple_id: coupleId || null,
+          p_query: userMessage,
+          p_query_embedding: JSON.stringify(queryEmbedding),
+          p_vector_weight: 0.7,
+          p_limit: 15,
+        });
+
+        if (hybridResults?.length) {
+          ctx.semanticNotes = `\n## SEMANTICALLY RELEVANT NOTES (AI-ranked by relevance to your question):\n`;
+          for (const note of hybridResults.slice(0, 10)) {
+            const status = note.completed ? '✓' : '○';
+            const dueInfo = note.due_date ? ` | Due: ${note.due_date}` : '';
+            const cat = note.category ? ` [${note.category}]` : '';
+            ctx.semanticNotes += `\n📌 ${status} "${note.summary}"${cat}${dueInfo} (relevance: ${(note.score * 100).toFixed(0)}%)\n`;
+            if (note.original_text && note.original_text !== note.summary) {
+              ctx.semanticNotes += `   Full details: ${note.original_text.substring(0, 600)}\n`;
+            }
+          }
+          console.log(`[Phase4] Semantic note search returned ${hybridResults.length} results`);
+        }
+      } catch (e) {
+        console.warn('[Phase4] Hybrid search failed (non-blocking):', e);
+      }
+    }
+
+    // 4b. Memory chunk semantic search — find relevant learned facts
+    if (queryEmbedding) {
+      try {
+        const { data: memChunks } = await supabase.rpc('search_memory_chunks', {
+          p_user_id: userId,
+          p_query_embedding: JSON.stringify(queryEmbedding),
+          p_limit: 8,
+          p_min_importance: 2,
+        });
+
+        if (memChunks?.length) {
+          ctx.semanticMemoryChunks = `\n## RELEVANT LEARNED FACTS (from conversations & notes):\n${memChunks.map((c: any) =>
+            `- ${c.content} (importance: ${c.importance}/5, source: ${c.source || 'auto'})`
+          ).join('\n')}`;
+          console.log(`[Phase4] Memory chunk search returned ${memChunks.length} results`);
+        }
+      } catch {
+        // search_memory_chunks may not have data yet
+      }
+    }
+
+    // 4c. Relationship graph — entity-aware context
+    try {
+      const { data: relationships } = await supabase
+        .from('olive_relationships')
+        .select(`
+          relationship_type, confidence,
+          source:olive_entities!source_entity_id(name, entity_type),
+          target:olive_entities!target_entity_id(name, entity_type)
+        `)
+        .eq('user_id', userId)
+        .gte('confidence', 0.5)
+        .order('confidence', { ascending: false })
+        .limit(20);
+
+      if (relationships?.length) {
+        ctx.relationshipGraph = `\n## KNOWN RELATIONSHIPS:\n${relationships.map((r: any) => {
+          const src = r.source?.name || '?';
+          const tgt = r.target?.name || '?';
+          return `- ${src} → ${r.relationship_type} → ${tgt}`;
+        }).join('\n')}`;
+      }
+    } catch { /* non-critical */ }
+
+    // Saved items for contextual_ask (keep as fallback alongside semantic)
     if (needsSavedItems && results.length >= 6) {
       const notesRes = results[4];
       const listsRes = results[5];
@@ -287,7 +402,7 @@ async function fetchServerContext(
       const lists = listsRes.data || [];
       const listIdToName = new Map(lists.map((l: any) => [l.id, l.name]));
 
-      // Score by relevance to the question
+      // Score by relevance to the question (keyword fallback)
       const questionLower = (userMessage || '').toLowerCase();
       const questionWords = questionLower.split(/\s+/).filter((w: string) => w.length > 2);
 
@@ -354,6 +469,7 @@ async function fetchServerContext(
     }
 
     // Deep profile + compiled knowledge (memory files)
+    // Phase 4: Use full compiled content (up to 2KB per file) instead of truncated 600 chars
     try {
       const { data: memoryFiles } = await supabase
         .from('olive_memory_files')
@@ -367,11 +483,16 @@ async function fetchServerContext(
         for (const mf of memoryFiles) {
           if (mf.content && mf.content.trim().length > 0) {
             const label = mf.file_type.toUpperCase();
-            parts.push(`[${label}]: ${mf.content.slice(0, 600)}`);
+            // Phase 4: Allow up to 2KB per file (was 600 chars)
+            const maxLen = mf.file_type === 'profile' ? 2500 : 1500;
+            const content = mf.content.length > maxLen
+              ? mf.content.slice(0, maxLen) + '\n...(truncated)'
+              : mf.content;
+            parts.push(`[${label}]:\n${content}`);
           }
         }
         if (parts.length > 0) {
-          ctx.deepProfile = `\nCOMPILED KNOWLEDGE:\n${parts.join('\n\n')}`;
+          ctx.deepProfile = `\n## COMPILED KNOWLEDGE (AI-synthesized from your history):\n${parts.join('\n\n')}`;
         }
       }
     } catch { /* non-critical */ }
@@ -383,10 +504,10 @@ async function fetchServerContext(
         .select('name, entity_type, metadata, mention_count')
         .eq('user_id', userId)
         .order('mention_count', { ascending: false })
-        .limit(20);
+        .limit(25);
 
       if (entities?.length) {
-        ctx.deepProfile = (ctx.deepProfile || '') + `\n\nKEY ENTITIES:\n${entities.map((e: any) => {
+        ctx.deepProfile = (ctx.deepProfile || '') + `\n\n## KEY PEOPLE, PLACES & THINGS:\n${entities.map((e: any) => {
           const meta = e.metadata ? Object.entries(e.metadata).filter(([k]) => k !== 'aliases').map(([k, v]) => `${k}: ${v}`).join(', ') : '';
           return `- ${e.name} (${e.entity_type}${meta ? ', ' + meta : ''}) — mentioned ${e.mention_count}x`;
         }).join('\n')}`;
@@ -615,6 +736,8 @@ CRITICAL INSTRUCTIONS:
 ${serverCtx.profile}
 ${serverCtx.memories}
 ${serverCtx.deepProfile}
+${serverCtx.semanticMemoryChunks}
+${serverCtx.relationshipGraph}
 
 USER'S QUESTION: ${message}
 
@@ -671,10 +794,12 @@ CRITICAL INSTRUCTIONS:
       const ctxAskContent = `${hybridPrompt}
 
 ${webSearchContext}
-${serverCtx.savedItems}
+${serverCtx.semanticNotes || serverCtx.savedItems}
+${serverCtx.semanticMemoryChunks}
 ${serverCtx.calendar}
 ${serverCtx.memories}
 ${serverCtx.deepProfile}
+${serverCtx.relationshipGraph}
 ${serverCtx.agentInsights}
 
 ${conversationHistory.length > 0
@@ -685,7 +810,7 @@ ${context?.user_name ? `User's name: ${context.user_name}` : ''}
 
 USER'S QUESTION: ${message}
 
-${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect to personal context.' : 'Respond with helpful, specific information extracted from their saved data.'}`;
+${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect to personal context.' : 'Respond with helpful, specific information extracted from their saved data. Use the semantically matched notes and learned facts above as your primary source.'}`;
 
       return streamGeminiResponse(hybridPrompt, ctxAskContent, isHybrid ? 'standard' : route.responseTier);
     }
@@ -722,6 +847,11 @@ function buildFullContext(
   if (serverCtx.patterns) parts.push(serverCtx.patterns);
   if (serverCtx.calendar) parts.push(serverCtx.calendar);
   if (serverCtx.deepProfile) parts.push(serverCtx.deepProfile);
+
+  // Phase 4: Semantic context — learned facts & relationships
+  if (serverCtx.semanticMemoryChunks) parts.push(serverCtx.semanticMemoryChunks);
+  if (serverCtx.relationshipGraph) parts.push(serverCtx.relationshipGraph);
+
   if (serverCtx.agentInsights) parts.push(serverCtx.agentInsights);
 
   // Frontend-provided saved items context
