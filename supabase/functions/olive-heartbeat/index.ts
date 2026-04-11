@@ -94,10 +94,44 @@ function isInQuietHours(
   }
 }
 
+// ─── Rate limit tracking ──────────────────────────────────────────────────────
+
+/**
+ * In-memory rate limit tracker for the current tick.
+ * Tracks consecutive failures and applies exponential backoff.
+ */
+const rateLimitState = {
+  consecutiveFailures: 0,
+  lastFailureAt: 0,
+  backoffUntil: 0,
+};
+
+function shouldBackOff(): boolean {
+  if (rateLimitState.backoffUntil <= 0) return false;
+  return Date.now() < rateLimitState.backoffUntil;
+}
+
+function recordSuccess() {
+  rateLimitState.consecutiveFailures = 0;
+  rateLimitState.backoffUntil = 0;
+}
+
+function recordFailure(isRateLimit: boolean) {
+  rateLimitState.consecutiveFailures++;
+  rateLimitState.lastFailureAt = Date.now();
+
+  if (isRateLimit) {
+    // Exponential backoff: 2s, 4s, 8s, 16s, 30s max
+    const backoffMs = Math.min(2000 * Math.pow(2, rateLimitState.consecutiveFailures - 1), 30000);
+    rateLimitState.backoffUntil = Date.now() + backoffMs;
+    console.warn(`[Heartbeat] Rate limited — backing off for ${backoffMs}ms (failures: ${rateLimitState.consecutiveFailures})`);
+  }
+}
+
 // ─── WhatsApp delivery ────────────────────────────────────────────────────────
 
 /**
- * Send a WhatsApp message via the gateway (handles 24h window, templates, etc.)
+ * Send a WhatsApp message via the gateway with rate-limit backoff.
  */
 async function sendWhatsAppMessage(
   supabase: any,
@@ -106,6 +140,18 @@ async function sendWhatsAppMessage(
   content: string,
   priority: string = 'normal'
 ): Promise<boolean> {
+  // Skip if we're in a backoff window (unless high priority)
+  if (priority !== 'high' && shouldBackOff()) {
+    console.log(`[Heartbeat] Skipping send to ${userId} — in backoff window (${rateLimitState.consecutiveFailures} failures)`);
+    return false;
+  }
+
+  // If too many consecutive failures (5+), abort remaining sends for this tick
+  if (rateLimitState.consecutiveFailures >= 5) {
+    console.warn(`[Heartbeat] Circuit breaker open — skipping all sends (${rateLimitState.consecutiveFailures} consecutive failures)`);
+    return false;
+  }
+
   try {
     const response = await supabase.functions.invoke('whatsapp-gateway', {
       body: {
@@ -120,16 +166,27 @@ async function sendWhatsAppMessage(
     });
 
     if (response.error) {
-      console.error(`[Heartbeat] Gateway invoke error for ${userId}:`, response.error.message);
+      const errMsg = response.error.message || '';
+      const isRateLimit = errMsg.includes('429') || errMsg.includes('rate') || errMsg.includes('throttl');
+      recordFailure(isRateLimit);
+      console.error(`[Heartbeat] Gateway invoke error for ${userId}:`, errMsg);
       return false;
     }
 
-    const success = response.data?.success === true;
-    if (!success) {
-      console.error(`[Heartbeat] Gateway returned failure for ${userId}:`, response.data?.error);
+    const data = response.data;
+    const success = data?.success === true;
+
+    if (success) {
+      recordSuccess();
+    } else {
+      const errStr = data?.error || '';
+      const isRateLimit = typeof errStr === 'string' && (errStr.includes('429') || errStr.includes('rate') || errStr.includes('throttl'));
+      recordFailure(isRateLimit);
+      console.error(`[Heartbeat] Gateway returned failure for ${userId}:`, errStr);
     }
     return success;
   } catch (error) {
+    recordFailure(false);
     console.error(`[Heartbeat] Failed to send WhatsApp message to ${userId}:`, error);
     return false;
   }
@@ -1290,6 +1347,63 @@ serve(async (req) => {
         const agentsInvoked = await processBackgroundAgents(supabase);
         console.log(`[Heartbeat] Invoked ${agentsInvoked} background agents`);
 
+        // Weekly community detection (runs on Sundays at the heartbeat tick)
+        let communitiesDetected = 0;
+        try {
+          const now = new Date();
+          if (now.getUTCDay() === 0) {
+            // Check if already ran this week
+            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const { data: recentCommunity } = await supabase
+              .from('olive_heartbeat_log')
+              .select('id')
+              .eq('job_type', 'community_detection')
+              .gte('created_at', sevenDaysAgo.toISOString())
+              .limit(1);
+
+            if (!recentCommunity || recentCommunity.length === 0) {
+              // Get all active users with enough entities
+              const { data: activeUsers } = await supabase
+                .from('olive_entities')
+                .select('user_id')
+                .limit(500);
+
+              if (activeUsers) {
+                const uniqueUsers = [...new Set(activeUsers.map((e: any) => e.user_id))];
+                for (const uid of uniqueUsers) {
+                  try {
+                    const { data: entityCount } = await supabase
+                      .from('olive_entities')
+                      .select('id', { count: 'exact', head: true })
+                      .eq('user_id', uid);
+
+                    // Only run for users with 5+ entities
+                    if (entityCount && (entityCount as any).length >= 5) {
+                      await supabase.functions.invoke('olive-community-detect', {
+                        body: { user_id: uid },
+                      });
+                      communitiesDetected++;
+                    }
+                  } catch (cdErr) {
+                    console.warn(`[Heartbeat] Community detection failed for ${uid}:`, cdErr);
+                  }
+                }
+
+                await supabase.from('olive_heartbeat_log').insert({
+                  user_id: 'system',
+                  job_type: 'community_detection',
+                  status: 'completed',
+                  message_preview: `Ran for ${communitiesDetected} users`,
+                  channel: 'internal',
+                });
+              }
+            }
+          }
+        } catch (cdErr) {
+          console.error('[Heartbeat] Community detection error (non-blocking):', cdErr);
+        }
+        console.log(`[Heartbeat] Community detection: ${communitiesDetected} users processed`);
+
         // Process queued outbound messages
         const queueResponse = await supabase.functions.invoke('whatsapp-gateway', {
           body: { action: 'process_queue' },
@@ -1307,7 +1421,12 @@ serve(async (req) => {
               reminders_sent: reminders,
               nudges_sent: nudges,
               agents_invoked: agentsInvoked,
+              communities_detected: communitiesDetected,
               queue_processed: queueResult.processed,
+              rate_limit_state: {
+                consecutive_failures: rateLimitState.consecutiveFailures,
+                backed_off: shouldBackOff(),
+              },
             },
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
