@@ -2384,7 +2384,7 @@ serve(async (req) => {
           console.log('[Context] Bare reply detected, matching to recent reminder task:', extractedTask);
 
           // Search for the task using semantic search
-          const foundTask = await semanticTaskSearch(supabase, userId, coupleId, extractedTask);
+          const foundTask = await semanticTaskSearch(supabase, userId, coupleId, extractedTask, generateEmbedding);
 
           if (foundTask) {
             const { error } = await supabase
@@ -2407,7 +2407,7 @@ serve(async (req) => {
         const extractedTask = extractTaskFromOutbound(recentBriefing);
         if (extractedTask) {
           console.log('[Context] Bare reply — trying briefing task:', extractedTask);
-          const foundTask = await semanticTaskSearch(supabase, userId, coupleId, extractedTask);
+          const foundTask = await semanticTaskSearch(supabase, userId, coupleId, extractedTask, generateEmbedding);
           if (foundTask) {
             const { error } = await supabase
               .from('clerk_notes')
@@ -3672,7 +3672,7 @@ Description: "${parsedExpense.description}"`;
 
       // 2. If no direct match, use semantic search WITH ambiguity detection
       if (!foundTask && actionTarget && !isPronoun && !isRelativeReference(actionTarget)) {
-        const candidates = await semanticTaskSearchMulti(supabase, userId, coupleId, actionTarget, 5);
+        const candidates = await semanticTaskSearchMulti(supabase, userId, coupleId, actionTarget, generateEmbedding, 5);
         
         if (candidates.length > 0) {
           const best = candidates[0];
@@ -3758,7 +3758,7 @@ Description: "${parsedExpense.description}"`;
         for (const outMsg of recentOutbound) {
           const extracted = extractTaskFromOutbound(outMsg);
           if (extracted) {
-            const contextTask = await semanticTaskSearch(supabase, userId, coupleId, extracted);
+            const contextTask = await semanticTaskSearch(supabase, userId, coupleId, extracted, generateEmbedding);
             if (contextTask) {
               console.log('[Context] Found task via outbound context:', contextTask.summary);
               foundTask = contextTask;
