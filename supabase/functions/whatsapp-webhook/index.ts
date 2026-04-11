@@ -536,7 +536,7 @@ type ClassifiedIntent = import("../_shared/intent-classifier.ts").ClassifiedInte
 // Bridge: Convert AI ClassifiedIntent → existing IntentResult format
 function mapAIResultToIntentResult(
   ai: ClassifiedIntent
-): IntentResult & { queryType?: string; chatType?: string; actionType?: string; actionTarget?: string; cleanMessage?: string; _aiTaskId?: string; _aiSkillId?: string; _listName?: string; _partnerAction?: string } {
+): IntentResult & { queryType?: string; chatType?: string; actionType?: string; actionTarget?: string; cleanMessage?: string; _aiTaskId?: string; _aiSkillId?: string; _listName?: string; _partnerAction?: string; _initialItems?: string } {
   const params = ai.parameters || {};
 
   switch (ai.intent) {
