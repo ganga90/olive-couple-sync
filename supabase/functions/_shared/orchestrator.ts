@@ -1,14 +1,78 @@
 /**
  * Shared Context Assembly & Orchestration Helpers
  * =================================================
- * Extracted from whatsapp-webhook and ask-olive-individual to provide
- * a single source of truth for context assembly.
+ * Single source of truth for context assembly used by:
+ *   - ask-olive-stream (web chat)
+ *   - ask-olive-individual (web assistant)
+ *   - whatsapp-webhook (WhatsApp)
  *
- * Both WhatsApp and in-app chat import these helpers instead of
- * duplicating memory/task/agent queries.
+ * P2: Unified context pipeline with circuit breaker + graceful degradation.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+// ─── Circuit Breaker ───────────────────────────────────────────
+// Tracks failures per subsystem to skip flaky calls for a cooldown period.
+
+interface CircuitState {
+  failures: number;
+  lastFailure: number;
+  open: boolean;
+}
+
+const circuits = new Map<string, CircuitState>();
+const CIRCUIT_THRESHOLD = 3;
+const CIRCUIT_COOLDOWN_MS = 60_000; // 1 minute
+
+function isCircuitOpen(name: string): boolean {
+  const state = circuits.get(name);
+  if (!state || !state.open) return false;
+  if (Date.now() - state.lastFailure > CIRCUIT_COOLDOWN_MS) {
+    // Half-open: allow one attempt
+    state.open = false;
+    state.failures = 0;
+    return false;
+  }
+  return true;
+}
+
+function recordSuccess(name: string): void {
+  circuits.set(name, { failures: 0, lastFailure: 0, open: false });
+}
+
+function recordFailure(name: string): void {
+  const state = circuits.get(name) || { failures: 0, lastFailure: 0, open: false };
+  state.failures++;
+  state.lastFailure = Date.now();
+  if (state.failures >= CIRCUIT_THRESHOLD) {
+    state.open = true;
+    console.warn(`[CircuitBreaker] "${name}" opened after ${state.failures} failures`);
+  }
+  circuits.set(name, state);
+}
+
+/**
+ * Safe fetch wrapper: returns fallback on circuit-open or error.
+ */
+async function safeFetch<T>(
+  name: string,
+  fn: () => Promise<T>,
+  fallback: T
+): Promise<T> {
+  if (isCircuitOpen(name)) {
+    console.log(`[CircuitBreaker] Skipping "${name}" (circuit open)`);
+    return fallback;
+  }
+  try {
+    const result = await fn();
+    recordSuccess(name);
+    return result;
+  } catch (err) {
+    recordFailure(name);
+    console.warn(`[Orchestrator] "${name}" failed (non-blocking):`, err);
+    return fallback;
+  }
+}
 
 // ─── Trivial agent messages to filter out ──────────────────────
 const TRIVIAL_PREFIXES = [
@@ -33,13 +97,12 @@ const TRIVIAL_PREFIXES = [
 
 /**
  * Fetch recent agent insights (last 48h, deduplicated per agent, trivial filtered).
- * Returns a formatted context string for LLM injection.
  */
 export async function fetchAgentInsightsContext(
   supabase: ReturnType<typeof createClient<any>>,
   userId: string
 ): Promise<string> {
-  try {
+  return safeFetch("agent_insights", async () => {
     const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     const { data: agentRuns } = await supabase
       .from("olive_agent_runs")
@@ -71,12 +134,8 @@ export async function fetchAgentInsightsContext(
     }
 
     if (insights.length === 0) return "";
-
     return "## Recent Agent Insights (Background AI analysis):\n" + insights.join("\n") + "\n";
-  } catch (err) {
-    console.warn("[Orchestrator] Agent insights fetch error (non-blocking):", err);
-    return "";
-  }
+  }, "");
 }
 
 /**
@@ -87,7 +146,7 @@ export async function fetchUserMemories(
   userId: string,
   limit = 15
 ): Promise<Array<{ title: string; content: string; category: string; importance?: number }>> {
-  try {
+  return safeFetch("user_memories", async () => {
     const { data: memories } = await supabase
       .from("user_memories")
       .select("title, content, category, importance")
@@ -96,9 +155,7 @@ export async function fetchUserMemories(
       .order("importance", { ascending: false })
       .limit(limit);
     return memories || [];
-  } catch {
-    return [];
-  }
+  }, []);
 }
 
 /**
@@ -108,7 +165,7 @@ export async function fetchUserSkills(
   supabase: ReturnType<typeof createClient<any>>,
   userId: string
 ): Promise<Array<{ skill_id: string; name: string; content: string; category: string }>> {
-  try {
+  return safeFetch("user_skills", async () => {
     const { data: userSkills } = await supabase
       .from("olive_user_skills")
       .select("skill_id, olive_skills(skill_id, name, content, category)")
@@ -126,9 +183,7 @@ export async function fetchUserSkills(
         content: us.olive_skills.content,
         category: us.olive_skills.category || "general",
       }));
-  } catch {
-    return [];
-  }
+  }, []);
 }
 
 /**
@@ -138,7 +193,7 @@ export async function fetchPatterns(
   supabase: ReturnType<typeof createClient<any>>,
   userId: string
 ): Promise<Array<{ pattern_type: string; pattern_data: any; confidence: number }>> {
-  try {
+  return safeFetch("patterns", async () => {
     const { data: patterns } = await supabase
       .from("olive_patterns")
       .select("pattern_type, pattern_data, confidence")
@@ -147,23 +202,16 @@ export async function fetchPatterns(
       .gte("confidence", 0.6)
       .limit(5);
     return patterns || [];
-  } catch {
-    return [];
-  }
+  }, []);
 }
 
 // ─── Dynamic Memory Files ──────────────────────────────────────
 
-/**
- * Fetch the user's evolving profile memory file (profile.md equivalent).
- * This is a living document that grows with every conversation,
- * capturing preferences, facts, routines, and personality.
- */
 export async function fetchProfileMemoryFile(
   supabase: ReturnType<typeof createClient<any>>,
   userId: string
 ): Promise<string> {
-  try {
+  return safeFetch("profile_memory", async () => {
     const { data } = await supabase
       .from("olive_memory_files")
       .select("content, updated_at")
@@ -173,28 +221,18 @@ export async function fetchProfileMemoryFile(
       .maybeSingle();
 
     if (!data?.content || data.content.trim().length < 5) return "";
-
-    // Truncate to ~2000 chars to keep prompt size manageable
     const content = data.content.length > 2000
       ? data.content.substring(0, 2000) + "\n...(profile truncated)"
       : data.content;
-
     return `## 🧠 Olive's Knowledge About You (evolving profile):\n${content}\n`;
-  } catch {
-    return "";
-  }
+  }, "");
 }
 
-/**
- * Fetch recent daily memory logs (last 2 days).
- * These capture what happened yesterday and today —
- * agent results, completed tasks, conversations.
- */
 export async function fetchRecentDailyLogs(
   supabase: ReturnType<typeof createClient<any>>,
   userId: string
 ): Promise<string> {
-  try {
+  return safeFetch("daily_logs", async () => {
     const twoDaysAgo = new Date();
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
     const startDate = twoDaysAgo.toISOString().split("T")[0];
@@ -213,7 +251,6 @@ export async function fetchRecentDailyLogs(
     const sections = data
       .filter((d: any) => d.content && d.content.trim().length > 10)
       .map((d: any) => {
-        // Truncate each day to ~800 chars
         const content = d.content.length > 800
           ? d.content.substring(0, 800) + "\n..."
           : d.content;
@@ -221,18 +258,10 @@ export async function fetchRecentDailyLogs(
       });
 
     if (sections.length === 0) return "";
-
     return `## 📅 Recent Activity Log:\n${sections.join("\n\n")}\n`;
-  } catch {
-    return "";
-  }
+  }, "");
 }
 
-/**
- * Fetch the household/relationship memory file (shared context).
- * Contains couple-specific knowledge like partner preferences,
- * shared routines, household info.
- */
 export async function fetchHouseholdMemoryFile(
   supabase: ReturnType<typeof createClient<any>>,
   userId: string,
@@ -240,7 +269,7 @@ export async function fetchHouseholdMemoryFile(
 ): Promise<string> {
   if (!coupleId) return "";
 
-  try {
+  return safeFetch("household_memory", async () => {
     const { data } = await supabase
       .from("olive_memory_files")
       .select("content, file_type")
@@ -262,11 +291,8 @@ export async function fetchHouseholdMemoryFile(
       });
 
     if (sections.length === 0) return "";
-
     return `## 🏠 Shared Context:\n${sections.join("\n\n")}\n`;
-  } catch {
-    return "";
-  }
+  }, "");
 }
 
 /**
@@ -285,23 +311,591 @@ export async function fetchDynamicMemoryContext(
     fetchHouseholdMemoryFile(supabase, userId, coupleId),
   ]);
 
-  const combined = [profile, dailyLogs, household]
-    .filter((s) => s.length > 0)
-    .join("\n");
+  return [profile, dailyLogs, household].filter((s) => s.length > 0).join("\n");
+}
 
-  return combined;
+// ══════════════════════════════════════════════════════════════════
+// UNIFIED CONTEXT PIPELINE (P2)
+// ══════════════════════════════════════════════════════════════════
+// Single entry point for assembling all server-side context.
+// Used by ask-olive-stream, ask-olive-individual, and whatsapp-webhook.
+
+export interface UnifiedContext {
+  profile: string;
+  memories: string;
+  patterns: string;
+  calendar: string;
+  agentInsights: string;
+  deepProfile: string;
+  // Semantic (Phase 4)
+  semanticNotes: string;
+  semanticMemoryChunks: string;
+  relationshipGraph: string;
+  // For contextual_ask:
+  savedItems: string;
+}
+
+const EMPTY_CTX: UnifiedContext = {
+  profile: "",
+  memories: "",
+  patterns: "",
+  calendar: "",
+  agentInsights: "",
+  deepProfile: "",
+  semanticNotes: "",
+  semanticMemoryChunks: "",
+  relationshipGraph: "",
+  savedItems: "",
+};
+
+/**
+ * Generate an embedding for semantic search.
+ */
+export async function generateEmbedding(
+  text: string,
+  geminiKey: string
+): Promise<number[] | null> {
+  return safeFetch("embedding", async () => {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${geminiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: { parts: [{ text }] },
+          outputDimensionality: 768,
+        }),
+      }
+    );
+    if (!response.ok) {
+      await response.text();
+      return null;
+    }
+    const data = await response.json();
+    return data.embedding?.values || null;
+  }, null);
 }
 
 /**
- * Auto-evolve memory from conversations — Phase 3 (Option D).
+ * assembleFullContext — unified context pipeline
  *
- * Two-tier extraction:
- *  Tier 1 (fast, regex): Detect fact-signal keywords → quick append to profile
- *  Tier 2 (AI, Gemini): Extract structured facts → store as memory chunks
+ * Fetches ALL layers in parallel with circuit breakers:
+ *   Layer 1: Profile + preferences
+ *   Layer 2: Memories + patterns + calendar
+ *   Layer 3: Deep profile (memory files) + agent insights
+ *   Layer 4: Semantic search (notes + memory chunks + knowledge graph)
+ *   Layer 5: Saved items (for contextual_ask only)
  *
- * Both tiers are non-blocking fire-and-forget to avoid slowing responses.
- * Tier 2 only runs for substantive conversations (user msg > 30 chars).
+ * @param supabase - Service-role Supabase client
+ * @param userId - Authenticated user ID
+ * @param opts - Configuration options
  */
+export async function assembleFullContext(
+  supabase: ReturnType<typeof createClient<any>>,
+  userId: string,
+  opts: {
+    coupleId?: string;
+    intentType?: string;
+    userMessage?: string;
+    geminiKey?: string;
+  } = {}
+): Promise<UnifiedContext> {
+  if (!userId) return { ...EMPTY_CTX };
+
+  const ctx = { ...EMPTY_CTX };
+  const { coupleId, intentType, userMessage, geminiKey } = opts;
+  const needsSavedItems = intentType === "contextual_ask";
+
+  // ─── LAYER 1-3: All base fetches in parallel ───────────────────
+  const embeddingPromise =
+    userMessage && geminiKey
+      ? generateEmbedding(userMessage, geminiKey)
+      : Promise.resolve(null);
+
+  const basePromises = [
+    // [0] Profile
+    safeFetch("profile", async () => {
+      const { data } = await supabase
+        .from("clerk_profiles")
+        .select("display_name, language_preference, timezone, note_style")
+        .eq("id", userId)
+        .maybeSingle();
+      return data;
+    }, null),
+    // [1] Memories
+    fetchUserMemories(supabase, userId),
+    // [2] Patterns
+    fetchPatterns(supabase, userId),
+    // [3] Calendar (14-day window)
+    safeFetch("calendar", async () => {
+      const { data: connections } = await supabase
+        .from("calendar_connections")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("is_active", true);
+      if (!connections?.length) return [];
+      const ids = connections.map((c: any) => c.id);
+      const { data: events } = await supabase
+        .from("calendar_events")
+        .select("title, start_time, end_time, location")
+        .in("connection_id", ids)
+        .gte("start_time", new Date().toISOString())
+        .lte("start_time", new Date(Date.now() + 14 * 86400000).toISOString())
+        .order("start_time", { ascending: true })
+        .limit(15);
+      return events || [];
+    }, []),
+    // [4] Deep profile (memory files)
+    safeFetch("deep_profile", async () => {
+      const { data } = await supabase
+        .from("olive_memory_files")
+        .select("file_type, content, updated_at")
+        .eq("user_id", userId)
+        .in("file_type", ["profile", "patterns", "relationship", "household"])
+        .order("updated_at", { ascending: false });
+      return data || [];
+    }, []),
+    // [5] Agent insights
+    fetchAgentInsightsContext(supabase, userId),
+    // [6] Knowledge entities
+    safeFetch("entities", async () => {
+      const { data } = await supabase
+        .from("olive_entities")
+        .select("id, name, canonical_name, entity_type, metadata, mention_count")
+        .eq("user_id", userId)
+        .order("mention_count", { ascending: false })
+        .limit(25);
+      return data || [];
+    }, []),
+  ];
+
+  // Saved items (only for contextual_ask)
+  const savedItemsPromise = needsSavedItems
+    ? Promise.all([
+        safeFetch("saved_notes", async () => {
+          const { data } = await supabase
+            .from("clerk_notes")
+            .select("id, summary, original_text, category, list_id, items, tags, priority, due_date, reminder_time, completed, created_at")
+            .or(
+              coupleId
+                ? `couple_id.eq.${coupleId},and(author_id.eq.${userId},couple_id.is.null)`
+                : `author_id.eq.${userId}`
+            )
+            .order("created_at", { ascending: false })
+            .limit(200);
+          return data || [];
+        }, []),
+        safeFetch("saved_lists", async () => {
+          const { data } = await supabase
+            .from("clerk_lists")
+            .select("id, name, description")
+            .or(
+              coupleId
+                ? `author_id.eq.${userId},couple_id.eq.${coupleId}`
+                : `author_id.eq.${userId}`
+            );
+          return data || [];
+        }, []),
+      ])
+    : Promise.resolve(null);
+
+  // Await all base fetches + embedding in parallel
+  const [baseResults, queryEmbedding, savedItemsData] = await Promise.all([
+    Promise.all(basePromises),
+    embeddingPromise,
+    savedItemsPromise,
+  ]);
+
+  const [profileData, memories, patterns, calendarEvents, memoryFiles, agentInsights, entities] =
+    baseResults as [any, any[], any[], any[], any[], string, any[]];
+
+  // ─── FORMAT: Profile ──────────────────────────────────────────
+  if (profileData) {
+    ctx.profile = `USER PROFILE: Name: ${profileData.display_name || "Unknown"}, Language: ${profileData.language_preference || "en"}, Timezone: ${profileData.timezone || "UTC"}, Note style: ${profileData.note_style || "auto"}`;
+  }
+
+  // ─── FORMAT: Memories ─────────────────────────────────────────
+  if (memories?.length) {
+    ctx.memories = `\nUSER MEMORIES & PREFERENCES:\n${memories
+      .map((m: any) => `- [${m.category}] ${m.title}: ${m.content}`)
+      .join("\n")}`;
+  }
+
+  // ─── FORMAT: Patterns ─────────────────────────────────────────
+  if (patterns?.length) {
+    ctx.patterns = `\nBEHAVIORAL PATTERNS:\n${patterns
+      .map(
+        (p: any) =>
+          `- ${p.pattern_type}: ${JSON.stringify(p.pattern_data)} (${(p.confidence * 100).toFixed(0)}%)`
+      )
+      .join("\n")}`;
+  }
+
+  // ─── FORMAT: Calendar ─────────────────────────────────────────
+  if (calendarEvents?.length) {
+    ctx.calendar = `\nUPCOMING CALENDAR:\n${calendarEvents
+      .slice(0, 10)
+      .map((e: any) => {
+        const d = new Date(e.start_time);
+        const date = d.toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+        });
+        const time = d.toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        return `- ${date} ${time}: ${e.title}${e.location ? ` @ ${e.location}` : ""}`;
+      })
+      .join("\n")}`;
+  }
+
+  // ─── FORMAT: Deep Profile (memory files) ──────────────────────
+  if (memoryFiles?.length) {
+    const parts: string[] = [];
+    for (const mf of memoryFiles) {
+      if (mf.content && mf.content.trim().length > 0) {
+        const label = mf.file_type.toUpperCase();
+        const maxLen = mf.file_type === "profile" ? 2500 : 1500;
+        const content =
+          mf.content.length > maxLen
+            ? mf.content.slice(0, maxLen) + "\n...(truncated)"
+            : mf.content;
+        parts.push(`[${label}]:\n${content}`);
+      }
+    }
+    if (parts.length > 0) {
+      ctx.deepProfile = `\n## COMPILED KNOWLEDGE (AI-synthesized from your history):\n${parts.join("\n\n")}`;
+    }
+  }
+
+  // ─── FORMAT: Agent Insights ───────────────────────────────────
+  ctx.agentInsights = agentInsights;
+
+  // ─── FORMAT: Knowledge entities ───────────────────────────────
+  if (entities?.length) {
+    ctx.deepProfile =
+      (ctx.deepProfile || "") +
+      `\n\n## KEY PEOPLE, PLACES & THINGS:\n${entities
+        .map((e: any) => {
+          const meta = e.metadata
+            ? Object.entries(e.metadata)
+                .filter(([k]) => k !== "aliases")
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(", ")
+            : "";
+          return `- ${e.name} (${e.entity_type}${meta ? ", " + meta : ""}) — mentioned ${e.mention_count}x`;
+        })
+        .join("\n")}`;
+  }
+
+  // ─── LAYER 4: Semantic Search (with circuit breakers) ─────────
+  if (queryEmbedding && userMessage) {
+    // 4a: Hybrid note search
+    if (needsSavedItems) {
+      const semanticNotes = await safeFetch("semantic_notes", async () => {
+        const { data } = await supabase.rpc("hybrid_search_notes", {
+          p_user_id: userId,
+          p_couple_id: coupleId || null,
+          p_query: userMessage,
+          p_query_embedding: JSON.stringify(queryEmbedding),
+          p_vector_weight: 0.7,
+          p_limit: 15,
+        });
+        return data;
+      }, null);
+
+      if (semanticNotes?.length) {
+        ctx.semanticNotes = `\n## SEMANTICALLY RELEVANT NOTES (AI-ranked):\n`;
+        for (const note of semanticNotes.slice(0, 10)) {
+          const status = note.completed ? "✓" : "○";
+          const dueInfo = note.due_date ? ` | Due: ${note.due_date}` : "";
+          const cat = note.category ? ` [${note.category}]` : "";
+          ctx.semanticNotes += `\n📌 ${status} "${note.summary}"${cat}${dueInfo} (relevance: ${(note.score * 100).toFixed(0)}%)\n`;
+          if (note.original_text && note.original_text !== note.summary) {
+            ctx.semanticNotes += `   Full details: ${note.original_text.substring(0, 600)}\n`;
+          }
+        }
+      }
+    }
+
+    // 4b: Memory chunk semantic search
+    const memChunks = await safeFetch("memory_chunks", async () => {
+      const { data } = await supabase.rpc("search_memory_chunks", {
+        p_user_id: userId,
+        p_query_embedding: JSON.stringify(queryEmbedding),
+        p_limit: 8,
+        p_min_importance: 2,
+      });
+      return data;
+    }, null);
+
+    if (memChunks?.length) {
+      ctx.semanticMemoryChunks = `\n## RELEVANT LEARNED FACTS (from conversations & notes):\n${memChunks
+        .map(
+          (c: any) =>
+            `- ${c.content} (importance: ${c.importance}/5, source: ${c.source || "auto"})`
+        )
+        .join("\n")}`;
+    }
+
+    // 4c: Relationship graph — entity-aware context
+    const messageLower = userMessage.toLowerCase();
+    const mentionedEntityIds = new Set<string>();
+    if (entities?.length) {
+      for (const entity of entities) {
+        if (
+          messageLower.includes(entity.canonical_name) ||
+          messageLower.includes(entity.name.toLowerCase())
+        ) {
+          mentionedEntityIds.add(entity.id);
+        }
+      }
+    }
+
+    const relationships = await safeFetch("relationships", async () => {
+      const { data } = await supabase
+        .from("olive_relationships")
+        .select(
+          `relationship_type, confidence, confidence_score, rationale,
+           source:olive_entities!source_entity_id(id, name, entity_type),
+           target:olive_entities!target_entity_id(id, name, entity_type)`
+        )
+        .eq("user_id", userId)
+        .gte("confidence_score", 0.4)
+        .order("confidence_score", { ascending: false })
+        .limit(30);
+      return data;
+    }, null);
+
+    if (relationships?.length) {
+      const relevant: string[] = [];
+      const general: string[] = [];
+
+      for (const r of relationships as any[]) {
+        const src = r.source?.name || "?";
+        const tgt = r.target?.name || "?";
+        const conf = r.confidence === "AMBIGUOUS" ? " ⚠️" : "";
+        const line = `- ${src} → ${r.relationship_type} → ${tgt}${conf}`;
+
+        if (mentionedEntityIds.has(r.source?.id) || mentionedEntityIds.has(r.target?.id)) {
+          relevant.push(line);
+        } else {
+          general.push(line);
+        }
+      }
+
+      let graphCtx = "";
+      if (relevant.length > 0) {
+        graphCtx += `\n## RELEVANT CONNECTIONS:\n${relevant.join("\n")}`;
+      }
+      if (general.length > 0) {
+        graphCtx += `\n## OTHER KNOWN RELATIONSHIPS:\n${general.slice(0, 15).join("\n")}`;
+      }
+      ctx.relationshipGraph = graphCtx;
+    }
+
+    // 4d: Community context
+    if (mentionedEntityIds.size > 0) {
+      const communities = await safeFetch("communities", async () => {
+        const { data } = await supabase
+          .from("olive_entity_communities")
+          .select("label, entity_ids, cohesion, metadata")
+          .eq("user_id", userId);
+        return data;
+      }, null);
+
+      if (communities?.length) {
+        const relevantCommunities = communities.filter((c: any) =>
+          c.entity_ids?.some((id: string) => mentionedEntityIds.has(id))
+        );
+        if (relevantCommunities.length > 0) {
+          ctx.relationshipGraph =
+            (ctx.relationshipGraph || "") +
+            `\n\n## LIFE DOMAINS:\n${relevantCommunities
+              .map(
+                (c: any) =>
+                  `- ${c.label} (${c.metadata?.member_count || 0} entities, cohesion: ${c.cohesion})`
+              )
+              .join("\n")}`;
+        }
+      }
+    }
+  }
+
+  // ─── LAYER 5: Saved Items (keyword fallback for contextual_ask) ─
+  if (needsSavedItems && savedItemsData) {
+    const [allTasks, lists] = savedItemsData;
+    const listIdToName = new Map((lists as any[]).map((l: any) => [l.id, l.name]));
+    const questionLower = (userMessage || "").toLowerCase();
+    const questionWords = questionLower.split(/\s+/).filter((w: string) => w.length > 2);
+
+    const scoredTasks = (allTasks as any[]).map((task: any) => {
+      const combined = `${task.summary.toLowerCase()} ${(task.original_text || "").toLowerCase()}`;
+      let score = 0;
+      questionWords.forEach((w: string) => {
+        if (combined.includes(w)) score += 1;
+        if (task.summary.toLowerCase().includes(w)) score += 1;
+      });
+      return { ...task, relevanceScore: score };
+    });
+
+    const relevant = scoredTasks
+      .filter((t: any) => t.relevanceScore >= 2)
+      .sort((a: any, b: any) => b.relevanceScore - a.relevanceScore);
+    const others = scoredTasks.filter((t: any) => t.relevanceScore < 2);
+
+    let savedItemsCtx = "";
+    if (relevant.length > 0) {
+      savedItemsCtx += "\n## MOST RELEVANT SAVED ITEMS (full details):\n";
+      relevant.slice(0, 10).forEach((task: any) => {
+        const listName =
+          task.list_id && listIdToName.has(task.list_id)
+            ? listIdToName.get(task.list_id)
+            : task.category;
+        const status = task.completed ? "✓" : "○";
+        const dueInfo = task.due_date ? ` | Due: ${task.due_date}` : "";
+        const reminderInfo = task.reminder_time ? ` | Reminder: ${task.reminder_time}` : "";
+        savedItemsCtx += `\n📌 ${status} "${task.summary}" [${listName}]${dueInfo}${reminderInfo}\n`;
+        if (task.original_text && task.original_text !== task.summary) {
+          savedItemsCtx += `   Full details: ${task.original_text.substring(0, 800)}\n`;
+        }
+        if (task.items?.length > 0) {
+          task.items.forEach((item: string) => {
+            savedItemsCtx += `   • ${item}\n`;
+          });
+        }
+      });
+    }
+
+    savedItemsCtx += "\n## ALL LISTS AND SAVED ITEMS:\n";
+    const tasksByList = new Map<string, any[]>();
+    const uncategorized: any[] = [];
+    others.forEach((task: any) => {
+      if (task.list_id && listIdToName.has(task.list_id)) {
+        const ln = listIdToName.get(task.list_id)!;
+        if (!tasksByList.has(ln)) tasksByList.set(ln, []);
+        tasksByList.get(ln)!.push(task);
+      } else {
+        uncategorized.push(task);
+      }
+    });
+    tasksByList.forEach((tasks, listName) => {
+      savedItemsCtx += `\n### ${listName}:\n`;
+      tasks.slice(0, 15).forEach((task: any) => {
+        const status = task.completed ? "✓" : "○";
+        const priority = task.priority === "high" ? " 🔥" : "";
+        savedItemsCtx += `- ${status} ${task.summary}${priority}\n`;
+      });
+      if (tasks.length > 15)
+        savedItemsCtx += `  ...and ${tasks.length - 15} more\n`;
+    });
+    if (uncategorized.length > 0) {
+      savedItemsCtx += `\n### Other Items:\n`;
+      uncategorized.slice(0, 10).forEach((task: any) => {
+        savedItemsCtx += `- ${task.completed ? "✓" : "○"} ${task.summary}\n`;
+      });
+    }
+    ctx.savedItems = savedItemsCtx;
+  }
+
+  return ctx;
+}
+
+/**
+ * Format a UnifiedContext into a single string for LLM prompt injection.
+ */
+export function formatContextForPrompt(
+  ctx: UnifiedContext,
+  opts?: {
+    userMessage?: string;
+    userName?: string;
+    conversationHistory?: Array<{ role: string; content: string }>;
+    savedItemsContext?: string; // frontend-provided
+  }
+): string {
+  const parts: string[] = [];
+
+  if (ctx.profile) parts.push(ctx.profile);
+  if (ctx.memories) parts.push(ctx.memories);
+  if (ctx.patterns) parts.push(ctx.patterns);
+  if (ctx.calendar) parts.push(ctx.calendar);
+  if (ctx.deepProfile) parts.push(ctx.deepProfile);
+  if (ctx.semanticMemoryChunks) parts.push(ctx.semanticMemoryChunks);
+  if (ctx.relationshipGraph) parts.push(ctx.relationshipGraph);
+  if (ctx.agentInsights) parts.push(ctx.agentInsights);
+
+  if (opts?.savedItemsContext) {
+    parts.push(`\nUSER'S SAVED DATA:\n${opts.savedItemsContext}`);
+  }
+
+  if (opts?.userName) {
+    parts.push(`\nUser's name: ${opts.userName}`);
+  }
+
+  if (opts?.conversationHistory?.length) {
+    parts.push(
+      "\nCONVERSATION HISTORY:\n" +
+        opts.conversationHistory
+          .map((m) => `${m.role === "user" ? "User" : "Olive"}: ${m.content}`)
+          .join("\n")
+    );
+  }
+
+  if (opts?.userMessage) {
+    parts.push(`\nUSER MESSAGE: ${opts.userMessage}`);
+  }
+
+  return parts.join("\n");
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SESSION MANAGEMENT (P2)
+// ══════════════════════════════════════════════════════════════════
+
+/**
+ * Clean up stale sessions older than 24 hours.
+ * Called opportunistically (not on every request).
+ */
+export async function cleanupStaleSessions(
+  supabase: ReturnType<typeof createClient<any>>,
+  userId: string
+): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    await supabase
+      .from("olive_gateway_sessions")
+      .update({ is_active: false })
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .lt("last_activity", cutoff);
+  } catch (err) {
+    console.warn("[Session] Cleanup error (non-blocking):", err);
+  }
+}
+
+/**
+ * Touch session — update last_activity timestamp.
+ */
+export async function touchSession(
+  supabase: ReturnType<typeof createClient<any>>,
+  sessionId: string
+): Promise<void> {
+  try {
+    await supabase
+      .from("olive_gateway_sessions")
+      .update({ last_activity: new Date().toISOString() })
+      .eq("id", sessionId);
+  } catch {
+    // non-blocking
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// AUTO-EVOLUTION ENGINE (unchanged from v1)
+// ══════════════════════════════════════════════════════════════════
+
 export async function evolveProfileFromConversation(
   supabase: ReturnType<typeof createClient<any>>,
   userId: string,
@@ -309,10 +903,8 @@ export async function evolveProfileFromConversation(
   oliveResponse: string
 ): Promise<void> {
   try {
-    // Skip trivial exchanges
     if (userMessage.length < 15) return;
 
-    // ─── Tier 1: Regex-based quick profile append ───────────────
     const factSignals = [
       /\b(i prefer|i like|i hate|i love|i always|i never|i usually|my favorite|i'm allergic|i don't eat|we always|we prefer)\b/i,
       /\b(mi piace|preferisco|odio|amo|sempre|mai|il mio preferito|sono allergic|non mangio)\b/i,
@@ -325,18 +917,9 @@ export async function evolveProfileFromConversation(
 
     const hasFactSignal = factSignals.some((r) => r.test(userMessage));
 
-    // ─── Tier 2: AI-powered fact extraction ─────────────────────
-    // Runs when message is substantive (>= 30 chars)
-    // Short fact signals (<30 chars) use Tier 1 instead (faster, cheaper)
     if (userMessage.length >= 30) {
-      await extractAndStoreConversationFacts(
-        supabase,
-        userId,
-        userMessage,
-        oliveResponse
-      );
+      await extractAndStoreConversationFacts(supabase, userId, userMessage, oliveResponse);
     } else if (hasFactSignal) {
-      // ─── Tier 1: quick profile append for short fact-signal messages
       await quickProfileAppend(supabase, userId, userMessage);
     }
   } catch (err) {
@@ -344,11 +927,6 @@ export async function evolveProfileFromConversation(
   }
 }
 
-/**
- * Extract structured facts from a conversation turn using Gemini AI.
- * Stores each extracted fact as an olive_memory_chunk with source='conversation'.
- * Also appends high-importance facts to the profile memory file.
- */
 async function extractAndStoreConversationFacts(
   supabase: ReturnType<typeof createClient<any>>,
   userId: string,
@@ -360,12 +938,8 @@ async function extractAndStoreConversationFacts(
     Deno.env.get("GEMINI_API_KEY") ||
     Deno.env.get("VITE_GEMINI_API_KEY");
 
-  if (!GEMINI_API_KEY) {
-    console.log("[ConvMemory] No Gemini API key, skipping extraction");
-    return;
-  }
+  if (!GEMINI_API_KEY) return;
 
-  // Fetch compiled profile to avoid re-extracting already-known facts
   let knownFactsBlock = "";
   try {
     const { data: profileData } = await supabase
@@ -377,12 +951,9 @@ async function extractAndStoreConversationFacts(
       .maybeSingle();
 
     if (profileData?.content && profileData.content.trim().length > 5) {
-      const truncated = profileData.content.substring(0, 400);
-      knownFactsBlock = `\n[ALREADY KNOWN FACTS]:\n${truncated}\n\nFocus on extracting NEW facts not already covered above. Skip facts that simply repeat known information.\n`;
+      knownFactsBlock = `\n[ALREADY KNOWN FACTS]:\n${profileData.content.substring(0, 400)}\n\nFocus on extracting NEW facts not already covered above.\n`;
     }
-  } catch (err) {
-    console.warn("[ConvMemory] Profile fetch for dedup failed (non-blocking):", err);
-  }
+  } catch {}
 
   const prompt = `Analyze this conversation turn and extract memorable facts worth storing in long-term memory.
 ${knownFactsBlock}
@@ -399,13 +970,11 @@ Extract facts that are:
 Rules:
 - Only extract facts explicitly stated or strongly implied by the USER
 - Do NOT extract facts about Olive or generic advice Olive gave
-- Each fact should be a self-contained statement (understandable without context)
+- Each fact should be a self-contained statement
 - Deduplicate: if two facts say the same thing, keep only the more specific one
 
 Return a JSON array. If no memorable facts, return [].
-Each item: {"content":"concise fact statement","type":"preference|fact|pattern|personal_info|decision","importance":1-5}
-
-Example: [{"content":"Allergic to shellfish","type":"personal_info","importance":5}]`;
+Each item: {"content":"concise fact statement","type":"preference|fact|pattern|personal_info|decision","importance":1-5}`;
 
   try {
     const response = await fetch(
@@ -421,7 +990,7 @@ Example: [{"content":"Allergic to shellfish","type":"personal_info","importance"
     );
 
     if (!response.ok) {
-      console.error("[ConvMemory] Gemini error:", response.status);
+      await response.text();
       return;
     }
 
@@ -430,69 +999,37 @@ Example: [{"content":"Allergic to shellfish","type":"personal_info","importance"
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return;
 
-    const facts: Array<{
-      content: string;
-      type: string;
-      importance: number;
-    }> = JSON.parse(jsonMatch[0]);
-
+    const facts: Array<{ content: string; type: string; importance: number }> = JSON.parse(jsonMatch[0]);
     if (!facts || facts.length === 0) return;
 
     console.log(`[ConvMemory] Extracted ${facts.length} facts from conversation`);
 
-    // Generate embeddings for each fact (batch-friendly)
     const embeddingPromises = facts.map(async (fact) => {
-      try {
-        const embResp = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              content: { parts: [{ text: fact.content }] },
-              outputDimensionality: 768,
-            }),
-          }
-        );
-        if (!embResp.ok) return null;
-        const embData = await embResp.json();
-        return embData.embedding?.values || null;
-      } catch {
-        return null;
-      }
+      return generateEmbedding(fact.content, GEMINI_API_KEY);
     });
 
     const embeddings = await Promise.all(embeddingPromises);
 
-    // Store each fact as a memory chunk
     let stored = 0;
     for (let i = 0; i < facts.length; i++) {
       const fact = facts[i];
       const embedding = embeddings[i];
 
-      // Dedup check: search for very similar existing chunks
       if (embedding) {
         try {
           const { data: similar } = await supabase.rpc("find_similar_chunks", {
             p_user_id: userId,
             p_embedding: embedding,
-            p_threshold: 0.95, // Very high threshold = near-duplicate
+            p_threshold: 0.95,
             p_limit: 1,
           });
-
-          if (similar && similar.length > 0) {
-            console.log(`[ConvMemory] Skipping duplicate: "${fact.content.substring(0, 50)}..."`);
-            continue; // Skip near-duplicate
-          }
-        } catch (dedupErr: any) {
-          // RPC might not exist yet (migration pending) — log and proceed
-          console.warn("[ConvMemory] Dedup check failed (non-blocking):", dedupErr?.message || dedupErr);
-        }
+          if (similar && similar.length > 0) continue;
+        } catch {}
       }
 
       const { error } = await supabase.from("olive_memory_chunks").insert({
         user_id: userId,
-        memory_file_id: null, // Standalone chunk, linked during compilation
+        memory_file_id: null,
         chunk_index: 0,
         content: fact.content,
         chunk_type: fact.type === "pattern" ? "pattern" : "fact",
@@ -514,22 +1051,14 @@ Example: [{"content":"Allergic to shellfish","type":"personal_info","importance"
 
     console.log(`[ConvMemory] Stored ${stored}/${facts.length} new facts`);
 
-    // ─── Decision Detection (regex-based, no API calls) ──────────
+    // Decision detection
     try {
-      // Patterns that indicate a real decision (require "we" or coupled subject)
       const decisionPatterns = [
-        /\bwe decided\b/i,
-        /\blet'?s go with\b/i,
-        /\bfinal answer\b/i,
-        /\bwe agreed\b/i,
-        /\bdecision made\b/i,
-        /\bgoing to go with\b/i,
-        /\bsettled on\b/i,
-        /\bchose to\b/i,
-        /\bmade up (?:our|my) mind\b/i,
+        /\bwe decided\b/i, /\blet'?s go with\b/i, /\bfinal answer\b/i,
+        /\bwe agreed\b/i, /\bdecision made\b/i, /\bgoing to go with\b/i,
+        /\bsettled on\b/i, /\bchose to\b/i, /\bmade up (?:our|my) mind\b/i,
       ];
 
-      // Casual / low-value patterns to exclude (personal trivial decisions)
       const casualExclusions = [
         /\bdecided to (?:have|eat|get|grab|order|make|cook) (?:a |some |the )?(?:pizza|lunch|dinner|breakfast|coffee|snack|food|sandwich|burger|salad|drink|beer|wine|tea|water)\b/i,
         /\bdecided to (?:watch|see|play|read|listen)\b/i,
@@ -541,9 +1070,7 @@ Example: [{"content":"Allergic to shellfish","type":"personal_info","importance"
 
       if (matchedPattern) {
         const isCasual = casualExclusions.some((p) => p.test(combinedText));
-
         if (!isCasual) {
-          // Extract the sentence containing the decision
           const sentences = combinedText.split(/[.!?\n]+/).filter((s) => s.trim().length > 5);
           const decisionSentence = sentences.find((s) => matchedPattern.test(s));
           const decisionContent = decisionSentence
@@ -567,15 +1094,10 @@ Example: [{"content":"Allergic to shellfish","type":"personal_info","importance"
               source_message_preview: userMessage.substring(0, 100),
             },
           });
-
-          console.log(`[ConvMemory] Decision detected and stored: "${decisionContent.substring(0, 60)}..."`);
         }
       }
-    } catch (decisionErr) {
-      console.warn("[ConvMemory] Decision detection error (non-blocking):", decisionErr);
-    }
+    } catch {}
 
-    // Also append high-importance facts to profile file (for immediate context)
     const highImportanceFacts = facts.filter((f) => f.importance >= 4);
     if (highImportanceFacts.length > 0) {
       await appendFactsToProfile(supabase, userId, highImportanceFacts);
@@ -585,10 +1107,6 @@ Example: [{"content":"Allergic to shellfish","type":"personal_info","importance"
   }
 }
 
-/**
- * Append high-importance facts to the profile memory file.
- * Includes dedup check against existing content.
- */
 async function appendFactsToProfile(
   supabase: ReturnType<typeof createClient<any>>,
   userId: string,
@@ -608,7 +1126,6 @@ async function appendFactsToProfile(
 
     const newLines: string[] = [];
     for (const fact of facts) {
-      // Simple dedup: skip if content already in profile
       if (currentContent.toLowerCase().includes(fact.content.toLowerCase().substring(0, 30))) {
         continue;
       }
@@ -619,11 +1136,7 @@ async function appendFactsToProfile(
 
     const appendText = "\n" + newLines.join("\n");
 
-    // Cap profile at 5000 chars
-    if (currentContent.length + appendText.length > 5000) {
-      console.log("[ConvMemory] Profile at capacity, skipping append");
-      return;
-    }
+    if (currentContent.length + appendText.length > 5000) return;
 
     await supabase
       .from("olive_memory_files")
@@ -637,17 +1150,9 @@ async function appendFactsToProfile(
         },
         { onConflict: "user_id,file_type,file_date" }
       );
-
-    console.log(`[ConvMemory] Appended ${newLines.length} facts to profile`);
-  } catch (err) {
-    console.warn("[ConvMemory] Profile append error:", err);
-  }
+  } catch {}
 }
 
-/**
- * Quick profile append for short messages with clear fact signals.
- * No AI call — just regex-detected facts appended directly.
- */
 async function quickProfileAppend(
   supabase: ReturnType<typeof createClient<any>>,
   userId: string,
@@ -683,9 +1188,5 @@ async function quickProfileAppend(
         },
         { onConflict: "user_id,file_type,file_date" }
       );
-
-    console.log("[ConvMemory] Quick profile append");
-  } catch (err) {
-    console.warn("[ConvMemory] Quick append error:", err);
-  }
+  } catch {}
 }
