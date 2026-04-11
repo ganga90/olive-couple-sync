@@ -2228,11 +2228,14 @@ Process this note:
       
       // ================================================================
       // PRIORITY 0: Direct text-to-list-name match
-      // Check if any word/phrase in the original note text or summary matches a list name exactly
-      // This catches cases like "LLC check account" when a list "LLC" exists
+      // Check if any word/phrase in the NOTE's OWN summary/targetList matches a list name
+      // IMPORTANT: We use only the individual note's summary, NOT safeText (the full brain dump),
+      // to prevent cross-contamination when a brain dump is split into multiple notes.
+      // e.g., "Buy groceries. Also pick up dry cleaning" → the "dry cleaning" note
+      // should NOT match "Groceries" just because the full text mentions "grocery".
       // ================================================================
       if (existingLists && existingLists.length > 0) {
-        const textToCheck = [safeText, summary, targetList].filter(Boolean).join(' ').toLowerCase();
+        const textToCheck = [summary, targetList].filter(Boolean).join(' ').toLowerCase();
         
         // Sort lists by name length descending so longer names are matched first
         // (prevents "Home" matching before "Home Improvement")
@@ -2414,7 +2417,9 @@ Process this note:
       // If the note content strongly matches a category's keywords,
       // override the AI's category (which often defaults to "task").
       // ================================================================
-      const allContentForOverride = [safeText, summary, ...mediaDescriptions].filter(Boolean).join(' ').toLowerCase();
+      // Use only individual note content for override — NOT safeText (full brain dump)
+      // to prevent cross-contamination in multi-note splits
+      const allContentForOverride = [summary, category, ...(tags || []), ...mediaDescriptions].filter(Boolean).join(' ').toLowerCase();
       let effectiveCategory = category;
       
       // Override if current category is generic ("task" or "personal")
