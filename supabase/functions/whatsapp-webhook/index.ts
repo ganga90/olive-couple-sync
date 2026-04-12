@@ -31,6 +31,15 @@ import {
   sendWhatsAppReply,
   downloadAndUploadMetaMedia,
 } from "../_shared/whatsapp-messaging.ts";
+import {
+  formatDateForZone,
+  formatTimeForZone,
+  getNextWeekBoundaryUtc,
+  getRelativeDayWindowUtc,
+  isBeforeUtc,
+  isInUtcRange,
+  parseStoredTimestamp,
+} from "../_shared/timezone-calendar.ts";
 import { parseExpenseText } from "../_shared/expense-detector.ts";
 
 const corsHeaders = {
@@ -2966,19 +2975,16 @@ Description: "${parsedExpense.description}"`;
       const activeTasks = tasks.filter(t => !t.completed);
       const urgentTasks = activeTasks.filter(t => t.priority === 'high');
       const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+      const userTimezone = profile.timezone || 'UTC';
+      const todayWindow = getRelativeDayWindowUtc(now, userTimezone, 0);
+      const tomorrowWindow = getRelativeDayWindowUtc(now, userTimezone, 1);
       
       const dueTodayTasks = activeTasks.filter(t => {
-        if (!t.due_date) return false;
-        const dueDate = new Date(t.due_date);
-        return dueDate >= today && dueDate < tomorrow;
+        return isInUtcRange(t.due_date, todayWindow.start, todayWindow.end);
       });
       
       const overdueTasks = activeTasks.filter(t => {
-        if (!t.due_date) return false;
-        const dueDate = new Date(t.due_date);
-        return dueDate < today;
+        return isBeforeUtc(t.due_date, todayWindow.start);
       });
       
       const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -3022,16 +3028,14 @@ Description: "${parsedExpense.description}"`;
               .from('calendar_events')
               .select('title, start_time, all_day')
               .in('connection_id', connIds)
-              .gte('start_time', today.toISOString())
-              .lt('start_time', tomorrow.toISOString())
+              .gte('start_time', todayWindow.start.toISOString())
+              .lt('start_time', todayWindow.end.toISOString())
               .order('start_time', { ascending: true })
               .limit(10);
             
             todayCalendarEvents = (events || []).map(e => {
               if (e.all_day) return `• ${e.title} (all day)`;
-              const time = new Date(e.start_time).toLocaleTimeString('en-US', { 
-                hour: 'numeric', minute: '2-digit', hour12: true 
-              });
+              const time = formatTimeForZone(e.start_time, userTimezone);
               return `• ${time}: ${e.title}`;
             });
           }
@@ -3072,11 +3076,8 @@ Description: "${parsedExpense.description}"`;
       }
       
       if (queryType === 'tomorrow') {
-        const dayAfterTomorrow = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000);
         const dueTomorrowTasks = activeTasks.filter(t => {
-          if (!t.due_date) return false;
-          const dueDate = new Date(t.due_date);
-          return dueDate >= tomorrow && dueDate < dayAfterTomorrow;
+          return isInUtcRange(t.due_date, tomorrowWindow.start, tomorrowWindow.end);
         });
         
         let tomorrowCalendarEvents: string[] = [];
@@ -3093,16 +3094,14 @@ Description: "${parsedExpense.description}"`;
               .from('calendar_events')
               .select('title, start_time, all_day')
               .in('connection_id', connIds)
-              .gte('start_time', tomorrow.toISOString())
-              .lt('start_time', dayAfterTomorrow.toISOString())
+              .gte('start_time', tomorrowWindow.start.toISOString())
+              .lt('start_time', tomorrowWindow.end.toISOString())
               .order('start_time', { ascending: true })
               .limit(10);
             
             tomorrowCalendarEvents = (events || []).map(e => {
               if (e.all_day) return `• ${e.title} (all day)`;
-              const time = new Date(e.start_time).toLocaleTimeString('en-US', { 
-                hour: 'numeric', minute: '2-digit', hour12: true 
-              });
+              const time = formatTimeForZone(e.start_time, userTimezone);
               return `• ${time}: ${e.title}`;
             });
           }
@@ -3143,14 +3142,10 @@ Description: "${parsedExpense.description}"`;
       }
       
       if (queryType === 'this_week') {
-        const endOfWeek = new Date(today);
-        const daysUntilSunday = 7 - endOfWeek.getDay();
-        endOfWeek.setDate(endOfWeek.getDate() + (daysUntilSunday === 0 ? 7 : daysUntilSunday) + 1);
+        const endOfWeek = getNextWeekBoundaryUtc(now, userTimezone);
         
         const dueThisWeekTasks = activeTasks.filter(t => {
-          if (!t.due_date) return false;
-          const dueDate = new Date(t.due_date);
-          return dueDate >= today && dueDate < endOfWeek;
+          return isInUtcRange(t.due_date, todayWindow.start, endOfWeek);
         });
         
         let weekCalendarEvents: string[] = [];
@@ -3167,18 +3162,15 @@ Description: "${parsedExpense.description}"`;
               .from('calendar_events')
               .select('title, start_time, all_day')
               .in('connection_id', connIds)
-              .gte('start_time', today.toISOString())
+              .gte('start_time', todayWindow.start.toISOString())
               .lt('start_time', endOfWeek.toISOString())
               .order('start_time', { ascending: true })
               .limit(15);
             
             weekCalendarEvents = (events || []).map(e => {
-              const eventDate = new Date(e.start_time);
-              const dayName = eventDate.toLocaleDateString('en-US', { weekday: 'short' });
+              const dayName = formatDateForZone(e.start_time, userTimezone, { weekday: 'short' });
               if (e.all_day) return `• ${dayName}: ${e.title} (all day)`;
-              const time = eventDate.toLocaleTimeString('en-US', { 
-                hour: 'numeric', minute: '2-digit', hour12: true 
-              });
+              const time = formatTimeForZone(e.start_time, userTimezone);
               return `• ${dayName} ${time}: ${e.title}`;
             });
           }
@@ -3255,8 +3247,10 @@ Description: "${parsedExpense.description}"`;
         }
         
         const overdueList = overdueTasks.slice(0, 8).map((t, i) => {
-          const dueDate = new Date(t.due_date!);
-          const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000));
+          const dueDate = parseStoredTimestamp(t.due_date);
+          const daysOverdue = dueDate
+            ? Math.max(1, Math.floor((todayWindow.start.getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000)))
+            : 1;
           return `${i + 1}. ${t.summary} (${daysOverdue}d overdue)`;
         }).join('\n');
         
@@ -4196,6 +4190,7 @@ Description: "${parsedExpense.description}"`;
       // Fetch calendar events for the next 30 days
       let calendarContext = '';
       try {
+        const userTimezone = profile.timezone || 'UTC';
         const { data: calConnections } = await supabase
           .from('calendar_connections')
           .select('id')
@@ -4205,27 +4200,25 @@ Description: "${parsedExpense.description}"`;
         if (calConnections && calConnections.length > 0) {
           const connIds = calConnections.map(c => c.id);
           const now = new Date();
-          // Use start of today so we include events earlier today (not just future)
-          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+          const startOfToday = getRelativeDayWindowUtc(now, userTimezone, 0).start;
+          const thirtyDaysFromNow = getRelativeDayWindowUtc(now, userTimezone, 30).end;
           
           const { data: calEvents } = await supabase
             .from('calendar_events')
-            .select('title, start_time, end_time, location, description, all_day')
+            .select('title, start_time, end_time, location, description, all_day, timezone')
             .in('connection_id', connIds)
             .gte('start_time', startOfToday.toISOString())
-            .lte('start_time', thirtyDaysFromNow.toISOString())
+            .lt('start_time', thirtyDaysFromNow.toISOString())
             .order('start_time', { ascending: true })
             .limit(30);
           
           if (calEvents && calEvents.length > 0) {
             calendarContext = '\n## UPCOMING CALENDAR EVENTS:\n';
             calEvents.forEach(ev => {
-              const start = new Date(ev.start_time);
-              const end = ev.end_time ? new Date(ev.end_time) : null;
-              const dayStr = start.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-              const timeStr = ev.all_day ? 'All day' : start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-              const endStr = end && !ev.all_day ? ` - ${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : '';
+              const eventTimeZone = ev.timezone || userTimezone;
+              const dayStr = formatDateForZone(ev.start_time, eventTimeZone, { weekday: 'long', month: 'long', day: 'numeric' });
+              const timeStr = ev.all_day ? 'All day' : formatTimeForZone(ev.start_time, eventTimeZone);
+              const endStr = ev.end_time && !ev.all_day ? ` - ${formatTimeForZone(ev.end_time, eventTimeZone)}` : '';
               const loc = ev.location ? ` | 📍 ${ev.location}` : '';
               calendarContext += `- ${ev.title}: ${dayStr} at ${timeStr}${endStr}${loc}\n`;
               if (ev.description) calendarContext += `  Details: ${ev.description}\n`;
@@ -4770,9 +4763,10 @@ Answer the question thoroughly, then briefly mention any relevant personal conne
       console.log('[WhatsApp] Processing CHAT intent, type:', chatType, 'message:', effectiveMessage?.substring(0, 50));
       
       const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+      const userTimezone = profile.timezone || 'UTC';
+      const todayWindow = getRelativeDayWindowUtc(now, userTimezone, 0);
+      const tomorrowWindow = getRelativeDayWindowUtc(now, userTimezone, 1);
       
       const { data: allTasks } = await supabase
         .from('clerk_notes')
@@ -4941,12 +4935,12 @@ ${myAssignments.length > 0 ? `- You assigned to them: ${myAssignments.join(', ')
           
           if (calConnections && calConnections.length > 0) {
             const connIds = calConnections.map(c => c.id);
-            const todayStart = today.toISOString();
-            const todayEnd = tomorrow.toISOString();
+            const todayStart = todayWindow.start.toISOString();
+            const todayEnd = todayWindow.end.toISOString();
             
             const { data: events } = await supabase
               .from('calendar_events')
-              .select('title, start_time, end_time, all_day, location')
+              .select('title, start_time, end_time, all_day, location, timezone')
               .in('connection_id', connIds)
               .gte('start_time', todayStart)
               .lt('start_time', todayEnd)
@@ -4955,13 +4949,12 @@ ${myAssignments.length > 0 ? `- You assigned to them: ${myAssignments.join(', ')
             
             todayEvents = events || [];
             
-            const dayAfterTomorrow = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000);
             const { data: tmrwEvents } = await supabase
               .from('calendar_events')
-              .select('title, start_time, end_time, all_day, location')
+              .select('title, start_time, end_time, all_day, location, timezone')
               .in('connection_id', connIds)
-              .gte('start_time', tomorrow.toISOString())
-              .lt('start_time', dayAfterTomorrow.toISOString())
+              .gte('start_time', tomorrowWindow.start.toISOString())
+              .lt('start_time', tomorrowWindow.end.toISOString())
               .order('start_time', { ascending: true })
               .limit(10);
             
@@ -4969,9 +4962,7 @@ ${myAssignments.length > 0 ? `- You assigned to them: ${myAssignments.join(', ')
             
             const formatEvents = (evts: typeof todayEvents) => evts.map(e => {
               if (e.all_day) return `• ${e.title} (all day)`;
-              const time = new Date(e.start_time).toLocaleTimeString('en-US', { 
-                hour: 'numeric', minute: '2-digit', hour12: true 
-              });
+              const time = formatTimeForZone(e.start_time, (e as any).timezone || userTimezone);
               return `• ${time}: ${e.title}`;
             }).join('\n');
             
@@ -5099,18 +5090,9 @@ ${myAssignments.length > 0 ? `- You assigned to them: ${myAssignments.join(', ')
       const activeTasks = allTasks?.filter(t => !t.completed) || [];
       const completedTasks = allTasks?.filter(t => t.completed) || [];
       const urgentTasks = activeTasks.filter(t => t.priority === 'high');
-      const overdueTasks = activeTasks.filter(t => t.due_date && new Date(t.due_date) < today);
-      const dueTodayTasks = activeTasks.filter(t => {
-        if (!t.due_date) return false;
-        const dueDate = new Date(t.due_date);
-        return dueDate >= today && dueDate < tomorrow;
-      });
-      const dueTomorrowTasks = activeTasks.filter(t => {
-        if (!t.due_date) return false;
-        const dueDate = new Date(t.due_date);
-        const dayAfterTomorrow = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000);
-        return dueDate >= tomorrow && dueDate < dayAfterTomorrow;
-      });
+      const overdueTasks = activeTasks.filter(t => isBeforeUtc(t.due_date, todayWindow.start));
+      const dueTodayTasks = activeTasks.filter(t => isInUtcRange(t.due_date, todayWindow.start, todayWindow.end));
+      const dueTomorrowTasks = activeTasks.filter(t => isInUtcRange(t.due_date, tomorrowWindow.start, tomorrowWindow.end));
       
       const tasksCreatedThisWeek = allTasks?.filter(t => new Date(t.created_at) >= oneWeekAgo) || [];
       const tasksCompletedThisWeek = completedTasks.filter(t => 
