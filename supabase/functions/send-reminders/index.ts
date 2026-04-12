@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { dedupeReminders } from "../_shared/reminder-dedup.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -288,7 +289,7 @@ serve(async (req) => {
 
     console.log(`Found ${autoReminders.length} notes needing automatic due date reminders`);
 
-    const allReminders = [...filteredReminders, ...autoReminders];
+    const allReminders = dedupeReminders([...filteredReminders, ...autoReminders]);
 
     if (allReminders.length === 0) {
       return new Response(
@@ -300,7 +301,8 @@ serve(async (req) => {
     let sentCount = 0;
     const errors: string[] = [];
 
-    // Group notes by author
+    // Group notes by author after task-level deduplication so a note with both
+    // reminder_time and due_date only appears once in a single outbound message.
     const notesByAuthor = allReminders.reduce((acc, note) => {
       if (!note.author_id) return acc;
       if (!acc[note.author_id]) acc[note.author_id] = [];
