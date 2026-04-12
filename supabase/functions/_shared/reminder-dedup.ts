@@ -11,8 +11,10 @@ export interface ReminderLike {
 }
 
 function getReminderRank(reminder: ReminderLike): number {
+  if (reminder.reminder_time) return 100;
+
   const dueType = reminder.reminder_type ?? reminder._reminderType;
-  if (!dueType) return 3;
+  if (!dueType) return 0;
 
   switch (dueType) {
     case "15min":
