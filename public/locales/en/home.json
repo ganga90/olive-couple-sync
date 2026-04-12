@@ -36,6 +36,18 @@
     "title": "Connect Calendar",
     "subtitle": "Sync with Google Calendar"
   },
+  "timezonePrompt": {
+    "missingTitle": "Set your timezone",
+    "missingDescription": "Olive detected {{timezone}} on this device. Save it so reminders, calendar checks, and daily planning stay accurate.",
+    "mismatchTitle": "Your device timezone changed",
+    "mismatchDescription": "Olive is currently set to {{savedTimezone}}, but this device is now in {{currentTimezone}}. Update it so tasks, reminders, and calendar events match where you are.",
+    "useDevice": "Use {{timezone}}",
+    "updateToDevice": "Update to {{timezone}}",
+    "keepCurrent": "Keep {{timezone}}",
+    "reviewSettings": "Review settings",
+    "updated": "Timezone updated",
+    "updatedDescription": "Olive will now use your current device timezone."
+  },
   "tabs": {
     "sectionLabel": "Your Tasks",
     "priority": "🔥 Priority",

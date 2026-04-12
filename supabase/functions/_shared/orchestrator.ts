@@ -10,6 +10,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { formatDateForZone, formatTimeForZone, getRelativeDayWindowUtc } from "./timezone-calendar.ts";
 
 // ─── Circuit Breaker ───────────────────────────────────────────
 // Tracks failures per subsystem to skip flaky calls for a cooldown period.
@@ -412,6 +413,14 @@ export async function assembleFullContext(
   const ctx = { ...EMPTY_CTX };
   const { coupleId, intentType, userMessage, geminiKey } = opts;
   const needsSavedItems = intentType === "contextual_ask";
+  const profilePromise = safeFetch("profile", async () => {
+    const { data } = await supabase
+      .from("clerk_profiles")
+      .select("display_name, language_preference, timezone, note_style")
+      .eq("id", userId)
+      .maybeSingle();
+    return data;
+  }, null);
 
   // ─── LAYER 1-3: All base fetches in parallel ───────────────────
   const embeddingPromise =
@@ -421,20 +430,15 @@ export async function assembleFullContext(
 
   const basePromises = [
     // [0] Profile
-    safeFetch("profile", async () => {
-      const { data } = await supabase
-        .from("clerk_profiles")
-        .select("display_name, language_preference, timezone, note_style")
-        .eq("id", userId)
-        .maybeSingle();
-      return data;
-    }, null),
+    profilePromise,
     // [1] Memories
     fetchUserMemories(supabase, userId),
     // [2] Patterns
     fetchPatterns(supabase, userId),
     // [3] Calendar (14-day window)
     safeFetch("calendar", async () => {
+      const profileData = await profilePromise;
+      const userTimezone = profileData?.timezone || "UTC";
       const { data: connections } = await supabase
         .from("calendar_connections")
         .select("id")
@@ -442,15 +446,15 @@ export async function assembleFullContext(
         .eq("is_active", true);
       if (!connections?.length) return [];
       const ids = connections.map((c: any) => c.id);
-      // Use start of today so we include events earlier today (not just future)
       const now = new Date();
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startOfToday = getRelativeDayWindowUtc(now, userTimezone, 0).start;
+      const endOfWindow = getRelativeDayWindowUtc(now, userTimezone, 14).end;
       const { data: events } = await supabase
         .from("calendar_events")
-        .select("title, start_time, end_time, location")
+        .select("title, start_time, end_time, location, timezone")
         .in("connection_id", ids)
         .gte("start_time", startOfToday.toISOString())
-        .lte("start_time", new Date(Date.now() + 14 * 86400000).toISOString())
+        .lt("start_time", endOfWindow.toISOString())
         .order("start_time", { ascending: true })
         .limit(15);
       return events || [];
@@ -575,16 +579,13 @@ export async function assembleFullContext(
     ctx.calendar = `\nUPCOMING CALENDAR:\n${calendarEvents
       .slice(0, 10)
       .map((e: any) => {
-        const d = new Date(e.start_time);
-        const date = d.toLocaleDateString("en-US", {
+        const eventTimeZone = e.timezone || profileData?.timezone || "UTC";
+        const date = formatDateForZone(e.start_time, eventTimeZone, {
           weekday: "short",
           month: "short",
           day: "numeric",
         });
-        const time = d.toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+        const time = formatTimeForZone(e.start_time, eventTimeZone);
         return `- ${date} ${time}: ${e.title}${e.location ? ` @ ${e.location}` : ""}`;
       })
       .join("\n")}`;
