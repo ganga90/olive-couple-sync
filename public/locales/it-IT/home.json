@@ -36,6 +36,18 @@
     "title": "Collega Calendario",
     "subtitle": "Sincronizza con Google Calendar"
   },
+  "timezonePrompt": {
+    "missingTitle": "Imposta il tuo fuso orario",
+    "missingDescription": "Olive ha rilevato {{timezone}} su questo dispositivo. Salvalo per mantenere precisi promemoria, calendario e pianificazione giornaliera.",
+    "mismatchTitle": "Il fuso orario del dispositivo è cambiato",
+    "mismatchDescription": "Olive è impostato su {{savedTimezone}}, ma questo dispositivo ora è in {{currentTimezone}}. Aggiornalo così attività, promemoria ed eventi restano allineati a dove ti trovi.",
+    "useDevice": "Usa {{timezone}}",
+    "updateToDevice": "Aggiorna a {{timezone}}",
+    "keepCurrent": "Mantieni {{timezone}}",
+    "reviewSettings": "Rivedi impostazioni",
+    "updated": "Fuso orario aggiornato",
+    "updatedDescription": "Olive ora userà il fuso orario attuale del tuo dispositivo."
+  },
   "tabs": {
     "sectionLabel": "Le tue attività",
     "priority": "🔥 Priorità",

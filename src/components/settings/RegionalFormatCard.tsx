@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/providers/AuthProvider';
 import { useLanguage } from '@/providers/LanguageProvider';
@@ -46,6 +46,14 @@ export const RegionalFormatCard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasTimezoneChanged, setHasTimezoneChanged] = useState(false);
+
+  const timezoneOptions = useMemo(() => {
+    if (!timezone || TIMEZONES.some((tz) => tz.value === timezone)) {
+      return TIMEZONES;
+    }
+
+    return [{ value: timezone, label: timezone }, ...TIMEZONES];
+  }, [timezone]);
 
   useEffect(() => {
     const fetchTimezone = async () => {
@@ -220,7 +228,7 @@ export const RegionalFormatCard: React.FC = () => {
             <SelectValue placeholder={t('profile:timezoneField.placeholder')} />
           </SelectTrigger>
           <SelectContent>
-            {TIMEZONES.map((tz) => (
+            {timezoneOptions.map((tz) => (
               <SelectItem key={tz.value} value={tz.value}>
                 {tz.label}
               </SelectItem>
