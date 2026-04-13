@@ -1,84 +1,78 @@
-import { Capacitor } from '@capacitor/core';
-import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
-
 /**
- * Hook for providing haptic feedback on iOS/Android via Capacitor
- * Falls back gracefully on web
+ * useHaptics — Lightweight wrapper around Capacitor Haptics for native iOS feel.
+ *
+ * Provides impact, notification, and selection feedback.
+ * No-ops gracefully on web (no errors, no console noise).
  */
-export const useHaptics = () => {
+import { useCallback } from "react";
+import { Capacitor } from "@capacitor/core";
+
+let hapticsModule: typeof import("@capacitor/haptics") | null = null;
+
+// Lazy-load to avoid bundling on web
+async function getHaptics() {
+  if (!Capacitor.isNativePlatform()) return null;
+  if (!hapticsModule) {
+    hapticsModule = await import("@capacitor/haptics");
+  }
+  return hapticsModule.Haptics;
+}
+
+export function useHaptics() {
   const isNative = Capacitor.isNativePlatform();
 
-  const impactLight = async () => {
-    if (!isNative) return;
-    try {
-      await Haptics.impact({ style: ImpactStyle.Light });
-    } catch (e) {
-      // Silently fail on unsupported platforms
-    }
-  };
+  /** Light tap — button press, toggle, selection change */
+  const impactLight = useCallback(async () => {
+    const h = await getHaptics();
+    h?.impact({ style: (await import("@capacitor/haptics")).ImpactStyle.Light });
+  }, []);
 
-  const impactMedium = async () => {
-    if (!isNative) return;
-    try {
-      await Haptics.impact({ style: ImpactStyle.Medium });
-    } catch (e) {
-      // Silently fail
-    }
-  };
+  /** Medium tap — confirming an action, dragging */
+  const impactMedium = useCallback(async () => {
+    const h = await getHaptics();
+    h?.impact({ style: (await import("@capacitor/haptics")).ImpactStyle.Medium });
+  }, []);
 
-  const impactHeavy = async () => {
-    if (!isNative) return;
-    try {
-      await Haptics.impact({ style: ImpactStyle.Heavy });
-    } catch (e) {
-      // Silently fail
-    }
-  };
+  /** Heavy tap — destructive action, significant state change */
+  const impactHeavy = useCallback(async () => {
+    const h = await getHaptics();
+    h?.impact({ style: (await import("@capacitor/haptics")).ImpactStyle.Heavy });
+  }, []);
 
-  const notificationSuccess = async () => {
-    if (!isNative) return;
-    try {
-      await Haptics.notification({ type: NotificationType.Success });
-    } catch (e) {
-      // Silently fail
-    }
-  };
+  /** Success — task completed, action confirmed */
+  const notifySuccess = useCallback(async () => {
+    const h = await getHaptics();
+    h?.notification({ type: (await import("@capacitor/haptics")).NotificationType.Success });
+  }, []);
 
-  const notificationWarning = async () => {
-    if (!isNative) return;
-    try {
-      await Haptics.notification({ type: NotificationType.Warning });
-    } catch (e) {
-      // Silently fail
-    }
-  };
+  /** Warning — overdue, approaching limit */
+  const notifyWarning = useCallback(async () => {
+    const h = await getHaptics();
+    h?.notification({ type: (await import("@capacitor/haptics")).NotificationType.Warning });
+  }, []);
 
-  const notificationError = async () => {
-    if (!isNative) return;
-    try {
-      await Haptics.notification({ type: NotificationType.Error });
-    } catch (e) {
-      // Silently fail
-    }
-  };
+  /** Error — failed action */
+  const notifyError = useCallback(async () => {
+    const h = await getHaptics();
+    h?.notification({ type: (await import("@capacitor/haptics")).NotificationType.Error });
+  }, []);
 
-  const selectionChanged = async () => {
-    if (!isNative) return;
-    try {
-      await Haptics.selectionChanged();
-    } catch (e) {
-      // Silently fail
-    }
-  };
+  /** Selection changed — picker, toggle option */
+  const selectionChanged = useCallback(async () => {
+    const h = await getHaptics();
+    h?.selectionChanged();
+  }, []);
 
   return {
     isNative,
     impactLight,
     impactMedium,
     impactHeavy,
-    notificationSuccess,
-    notificationWarning,
-    notificationError,
+    notifySuccess,
+    notifyWarning,
+    notifyError,
     selectionChanged,
   };
-};
+}
+
+export default useHaptics;

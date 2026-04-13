@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -318,7 +319,8 @@ const Onboarding = () => {
     if (!user?.id) { goToNextStep(); return; }
     setLoading(true);
     try {
-      const origin = window.location.origin.replace("://www.", "://");
+      const isNative = Capacitor.isNativePlatform();
+      const origin = isNative ? 'https://witholive.app' : window.location.origin.replace("://www.", "://");
       const { data, error } = await supabase.functions.invoke("calendar-auth-url", {
         body: { user_id: user.id, redirect_origin: origin },
       });

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2, Bell, Mail, CalendarDays, Undo2, Search, Coffee } from "lucide-react";
+import { TrendingUp, Sparkles, CalendarPlus, Brain, Clock, Wand2, Loader2, Bell, Mail, CalendarDays, Undo2, Search, Coffee, AlertTriangle } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/providers/AuthProvider";
@@ -22,7 +22,14 @@ import { OptimizationReviewModal } from "@/components/OptimizationReviewModal";
 import { useOnboardingTooltip } from "@/hooks/useOnboardingTooltip";
 import { OnboardingTooltip } from "@/components/OnboardingTooltip";
 import { PartnerActivityWidget } from "@/components/PartnerActivityWidget";
+import { SpaceActivityFeed } from "@/components/SpaceActivityFeed";
+import { TrustApprovalCard } from "@/components/settings/TrustApprovalCard";
 import { InsightDiscoveryCard } from "@/components/InsightDiscoveryCard";
+import { DelegationCard } from "@/components/DelegationCard";
+import { DailyBriefingView } from "@/components/DailyBriefingView";
+import { ClientPipelineCard } from "@/components/settings/ClientPipelineCard";
+import { ConflictCard } from "@/components/settings/ConflictCard";
+import { useSpace } from "@/providers/SpaceProvider";
 import { useCalendarEvents } from "@/hooks/useCalendarEvents";
 import { PrivacyFilterPills } from "@/components/PrivacyFilterPills";
 import { useDefaultPrivacyFilter } from "@/hooks/useDefaultPrivacyFilter";
@@ -57,6 +64,7 @@ const Home = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const { you, partner, currentCouple, members, getMemberName } = useSupabaseCouple();
+  const { currentSpace } = useSpace();
   const { notes, loading: notesLoading, updateNote, refetch: refetchNotes } = useSupabaseNotesContext();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [defaultHomeTab] = useState(() => localStorage.getItem('olive_default_home_tab') || 'weekly');
@@ -445,6 +453,49 @@ const Home = () => {
             </div>
           )}
 
+          {/* Delegation Card — tasks delegated to me */}
+          {currentSpace && (currentSpace.member_count ?? 0) > 1 && (
+            <DelegationCard compact />
+          )}
+
+          {/* Daily Briefing — personalized overview */}
+          <DailyBriefingView compact />
+
+          {/* Client Pipeline — for business spaces */}
+          {currentSpace?.type === 'business' && (
+            <div className="bg-white rounded-3xl shadow-xl border border-stone-100/50 overflow-hidden animate-fade-up p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                  <span className="text-emerald-500 text-lg">📊</span>
+                </div>
+                <div>
+                  <h3 className="font-serif font-semibold text-[#2A3C24]">Client Pipeline</h3>
+                  <p className="text-xs text-stone-500">Track your clients</p>
+                </div>
+              </div>
+              <ClientPipelineCard />
+            </div>
+          )}
+
+          {/* Conflict Detection — for multi-member spaces */}
+          {currentSpace && (currentSpace.member_count ?? 0) > 1 && (
+            <div className="card-glass p-5 animate-fade-up" style={{ animationDelay: '110ms' }}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="icon-squircle w-10 h-10 bg-red-500/10 flex items-center justify-center">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-semibold text-[#2A3C24]">Conflicts & Insights</h3>
+                  <p className="text-xs text-stone-500">Schedule overlaps & cross-space patterns</p>
+                </div>
+              </div>
+              <ConflictCard />
+            </div>
+          )}
+
+          {/* Trust Approval Card — pending actions from Olive */}
+          <TrustApprovalCard />
+
           {/* Insight Discovery Card - Shows AI-discovered patterns */}
           <InsightDiscoveryCard />
 
@@ -452,6 +503,13 @@ const Home = () => {
           <div className="xl:hidden">
             <PartnerActivityWidget notes={notes} />
           </div>
+
+          {/* Space Activity Feed - Shows for multi-member spaces */}
+          {currentSpace && (currentSpace.member_count ?? 0) > 1 && (
+            <div className="bg-white rounded-3xl shadow-xl border border-stone-100/50 overflow-hidden animate-fade-up p-6">
+              <SpaceActivityFeed limit={10} />
+            </div>
+          )}
 
           {/* Tabs Widget - PREMIUM CARD: Subtle shadow, generous padding */}
           <div className="bg-card rounded-3xl shadow-xl border border-border/50 overflow-hidden animate-fade-up stagger-3">

@@ -31,6 +31,7 @@ import { AuthProvider } from "./providers/AuthProvider";
 import { SupabaseCoupleProvider } from "./providers/SupabaseCoupleProvider";
 import { SupabaseNotesProvider } from "./providers/SupabaseNotesProvider";
 import { LanguageProvider } from "./providers/LanguageProvider";
+import { SpaceProvider } from "./providers/SpaceProvider";
 import SignInPage from "./pages/SignIn";
 import SignUpPage from "./pages/SignUp";
 import AuthPage from "./pages/Auth";
@@ -87,6 +88,7 @@ const App = () => (
       <Sonner />
       <AuthProvider>
         <SupabaseCoupleProvider>
+          <SpaceProvider>
           <SupabaseNotesProvider>
             <BrowserRouter>
               <LanguageProvider>
@@ -105,6 +107,7 @@ const App = () => (
               </LanguageProvider>
             </BrowserRouter>
           </SupabaseNotesProvider>
+          </SpaceProvider>
         </SupabaseCoupleProvider>
       </AuthProvider>
     </QueryClientProvider>

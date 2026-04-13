@@ -4,10 +4,12 @@ import { SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 import { Home, ListTodo, Calendar, Bell, User, Settings, Sun, Wallet, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OliveLogoWithText } from "@/components/OliveLogo";
+import { SpaceSwitcher } from "@/components/SpaceSwitcher";
+import { CreateSpaceDialog } from "@/components/CreateSpaceDialog";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 import { cn } from "@/lib/utils";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { addHours, isBefore } from "date-fns";
 
 const DesktopSidebar = () => {
@@ -15,6 +17,7 @@ const DesktopSidebar = () => {
   const { t } = useTranslation('common');
   const getLocalizedPath = useLocalizedHref();
   const { notes } = useSupabaseNotesContext();
+  const [showCreateSpace, setShowCreateSpace] = useState(false);
 
   // Calculate badge counts
   const upcomingRemindersCount = useMemo(() => {
@@ -58,6 +61,11 @@ const DesktopSidebar = () => {
         <Link to={getLocalizedPath("/")} className="hover:opacity-80 transition-opacity">
           <OliveLogoWithText size="md" />
         </Link>
+      </div>
+
+      {/* Space Switcher */}
+      <div className="px-6">
+        <SpaceSwitcher onCreateSpace={() => setShowCreateSpace(true)} />
       </div>
 
       {/* Navigation - RADICAL TYPOGRAPHY: text-lg, py-5, icons 28px */}
@@ -126,6 +134,7 @@ const DesktopSidebar = () => {
           </div>
         </SignedIn>
       </div>
+      <CreateSpaceDialog open={showCreateSpace} onOpenChange={setShowCreateSpace} />
     </aside>
   );
 };

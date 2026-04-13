@@ -37,6 +37,9 @@ import { OliveTipsSection } from "@/components/OliveTipsSection";
 import { DueDateChip } from "@/components/DueDateChip";
 import { useOnboardingTooltip } from "@/hooks/useOnboardingTooltip";
 import { OnboardingTooltip } from "@/components/OnboardingTooltip";
+import { NoteReactions } from "@/components/NoteReactions";
+import { NoteThreads } from "@/components/NoteThreads";
+import { useSpace } from "@/providers/SpaceProvider";
 
 const NoteDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -47,6 +50,7 @@ const NoteDetails = () => {
   const { notes, deleteNote, updateNote } = useSupabaseNotesContext();
   const { currentCouple, you, partner } = useSupabaseCouple();
   const { lists } = useSupabaseLists(currentCouple?.id);
+  const { currentSpace, getMembers } = useSpace();
   const askOliveOnboarding = useOnboardingTooltip('ask-olive-chat');
   const { connection: calendarConnection } = useCalendarEvents();
   const note = useMemo(() => notes.find((n) => n.id === id), [notes, id]);
@@ -103,9 +107,27 @@ const NoteDetails = () => {
     }
   }, [note?.task_owner, note?.dueDate, note?.items, note?.tags, note?.category, note?.summary, note?.priority]);
 
+  // Multi-member owners: fetch space members if in a space, fall back to couple
+  const [spaceMembers, setSpaceMembers] = useState<Array<{user_id: string; display_name?: string; role?: string}>>([]);
+  useEffect(() => {
+    if (currentSpace?.id && currentSpace.member_count && currentSpace.member_count > 0) {
+      getMembers(currentSpace.id).then((members) => {
+        setSpaceMembers(members.map(m => ({ user_id: m.user_id, display_name: m.display_name, role: m.role })));
+      });
+    }
+  }, [currentSpace?.id, currentSpace?.member_count, getMembers]);
+
   const availableOwners = useMemo(() => {
+    // If we have space members, use those for richer multi-member assignment
+    if (spaceMembers.length > 0) {
+      return spaceMembers.map((m) => ({
+        id: m.user_id,
+        name: m.display_name || m.user_id,
+        isCurrentUser: m.user_id === user?.id,
+      }));
+    }
+    // Fall back to couple-based owners
     const owners = [];
-    // Use resolved names (dynamically swapped based on logged-in user)
     if (you) {
       owners.push({ id: user?.id || 'you', name: you, isCurrentUser: true });
     } else if (user?.fullName) {
@@ -115,7 +137,7 @@ const NoteDetails = () => {
       owners.push({ id: 'partner', name: partner, isCurrentUser: false });
     }
     return owners;
-  }, [user, you, partner]);
+  }, [user, you, partner, spaceMembers]);
 
   const isOverdue = note?.dueDate && !note.completed && isPast(parseISO(note.dueDate));
 
@@ -809,6 +831,20 @@ const NoteDetails = () => {
               </span>
             </div>
           </div>
+
+          {/* Collaboration: Reactions */}
+          {(note.isShared || note.coupleId) && (
+            <div className="animate-fade-up" style={{ animationDelay: '475ms' }}>
+              <NoteReactions noteId={note.id} />
+            </div>
+          )}
+
+          {/* Collaboration: Threads / Comments */}
+          {(note.isShared || note.coupleId) && (
+            <div className="card-glass p-5 animate-fade-up" style={{ animationDelay: '500ms' }}>
+              <NoteThreads noteId={note.id} collapsible />
+            </div>
+          )}
         </div>
       </section>
 

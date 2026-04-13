@@ -9,6 +9,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { useSearchParams } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 
 interface OuraConnection {
   connected: boolean;
@@ -83,7 +84,8 @@ export function OuraConnect() {
     if (!userId) return;
     try {
       setConnecting(true);
-      const origin = window.location.origin;
+      const isNative = Capacitor.isNativePlatform();
+      const origin = isNative ? 'https://witholive.app' : window.location.origin;
       const { data, error } = await supabase.functions.invoke('oura-auth-url', {
         body: { user_id: userId, redirect_origin: origin }
       });

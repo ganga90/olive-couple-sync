@@ -738,7 +738,7 @@ async function executeTaskAction(
           .select('id, name')
           .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
 
-        const listMatch = userLists?.find((l: any) => 
+        const listMatch = userLists?.find((l: any) =>
           l.name.toLowerCase().includes(targetListName.toLowerCase()) ||
           targetListName.toLowerCase().includes(l.name.toLowerCase())
         );
@@ -916,6 +916,8 @@ serve(async (req) => {
       user_id,
       couple_id,
       context,
+      // Media support (Epic 5)
+      media_urls,
       // Old note-specific format
       noteContent,
       userMessage,
@@ -931,9 +933,13 @@ serve(async (req) => {
     const actualMessage = message || userMessage;
     const actualUserId = user_id || body.user_id;
     const actualCoupleId = couple_id || body.couple_id || null;
+    const actualMediaUrls: string[] = media_urls || [];
 
     console.log('[Ask Olive Individual] Mode:', isGlobalChat ? 'global_chat' : 'note_specific');
     console.log('[Ask Olive Individual] User ID:', actualUserId);
+    if (actualMediaUrls.length > 0) {
+      console.log('[Ask Olive Individual] Media attached:', actualMediaUrls.length, 'files');
+    }
     console.log('[Ask Olive Individual] Message:', actualMessage?.slice(0, 100));
     console.log('[Ask Olive Individual] RAG enabled:', enable_rag);
 
@@ -1138,13 +1144,14 @@ serve(async (req) => {
         const aiResult = classificationResult.intent;
         const classificationLatencyMs = classificationResult.latencyMs;
 
-        // Route intent → model tier
+        // Route intent → model tier (with media escalation)
         const { routeIntent } = await import("../_shared/model-router.ts");
         const route = routeIntent(
           aiResult?.intent || 'chat',
-          aiResult?.parameters?.chat_type || undefined
+          aiResult?.parameters?.chat_type || undefined,
+          actualMediaUrls.length > 0
         );
-        console.log(`[Router] intent=${aiResult?.intent} → tier=${route.responseTier} reason=${route.reason}`);
+        console.log(`[Router] intent=${aiResult?.intent} → tier=${route.responseTier} reason=${route.reason}${actualMediaUrls.length > 0 ? ' (media attached)' : ''}`);
 
         // Router telemetry — non-blocking
         try {
@@ -1168,7 +1175,7 @@ serve(async (req) => {
           console.warn('[RouterLogger] Non-blocking error:', logErr);
         }
 
-        // Execute task actions server-side (complete, set_priority, set_due, delete)
+        // Execute task actions server-side via shared executor
         if (aiResult && aiResult.confidence >= 0.5) {
             const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind', 'move', 'assign'];
             if (taskActions.includes(aiResult.intent)) {
@@ -1463,7 +1470,7 @@ serve(async (req) => {
 
               // Build server-side context for relevant items with FULL details
               let serverContext = '\n\nSERVER-ENRICHED SAVED DATA (full details for answering questions):\n';
-              
+
               if (relevantTasks.length > 0) {
                 serverContext += '## MOST RELEVANT ITEMS:\n';
                 relevantTasks.slice(0, 10).forEach((task: any) => {
@@ -1653,8 +1660,8 @@ serve(async (req) => {
           })(),
           create: `saved a new item "${actionResult.task_summary}" to ${actionResult.details?.list_name || 'Tasks'}${actionResult.details?.is_urgent ? ' with high priority 🔥' : ''}`,
           move: `moved the task "${actionResult.task_summary}" to the "${actionResult.details?.target_list}" list${actionResult.details?.created_list ? ' (created new list)' : ''}`,
-          assign: actionResult.success 
-            ? `assigned the task "${actionResult.task_summary}" to ${actionResult.details?.partner_name || 'your partner'}` 
+          assign: actionResult.success
+            ? `assigned the task "${actionResult.task_summary}" to ${actionResult.details?.partner_name || 'your partner'}`
             : actionResult.details?.error === 'no_couple' ? 'couldn\'t assign — you\'re not in a shared space' : 'couldn\'t find a partner to assign to',
           search: (() => {
             const d = actionResult.details;
@@ -1670,9 +1677,11 @@ serve(async (req) => {
             }
             return ctx;
           })(),
+          save_memory: `saved a memory: "${actionResult.details?.saved || ''}"`,
         };
         const verb = actionVerbs[actionResult.type] || actionResult.type;
-        fullContext += `\n\nACTION PERFORMED: You just ${verb}${!['partner_message', 'list_recap', 'search'].includes(actionResult.type) ? ` the task "${actionResult.task_summary}"` : ''}. Acknowledge this naturally in your response and confirm what you did. Be concise and friendly.`;
+        const noTaskTypes = ['partner_message', 'list_recap', 'search', 'save_memory'];
+        fullContext += `\n\nACTION PERFORMED: You just ${verb}${!noTaskTypes.includes(actionResult.type) ? ` the task "${actionResult.task_summary}"` : ''}. Acknowledge this naturally in your response and confirm what you did. Be concise and friendly.`;
       }
 
       console.log('[Ask Olive Individual] Built global chat context, length:', fullContext.length);
@@ -1709,17 +1718,49 @@ User's Question: ${actualMessage}`;
     }
     console.log('[Ask Olive Individual] Calling Gemini API...');
 
+    // Build multimodal parts if media is attached
+    const userParts: any[] = [{ text: fullContext }];
+    let effectiveSystemPrompt = OLIVE_SYSTEM_PROMPT;
+
+    if (actualMediaUrls.length > 0) {
+      try {
+        const { downloadMediaToBase64, MULTIMODAL_SYSTEM_PROMPT_SUFFIX } = await import("../_shared/media-utils.ts");
+        for (const url of actualMediaUrls) {
+          const media = await downloadMediaToBase64(url);
+          if (media) {
+            userParts.push({ inlineData: { mimeType: media.mimeType, data: media.base64 } });
+            console.log(`[Ask Olive Individual] Added media: ${media.mimeType} (${(media.sizeBytes / 1024).toFixed(0)}KB)`);
+          }
+        }
+        if (userParts.length > 1) {
+          effectiveSystemPrompt += MULTIMODAL_SYSTEM_PROMPT_SUFFIX;
+        }
+      } catch (mediaErr) {
+        console.warn('[Ask Olive Individual] Media encoding error (non-fatal):', mediaErr);
+      }
+    }
+
+    // Import skills registry for function calling
+    const { getSkillDeclarations, executeSkill, MAX_TOOL_CALLS } = await import("../_shared/skills/registry.ts");
+    const skillDeclarations = getSkillDeclarations();
+
+    // Build tools array: Google Search + Olive Skills (function calling)
+    const toolsConfig: any[] = [
+      { googleSearch: {} } // Enable real-time Google Search for up-to-date information
+    ];
+    if (skillDeclarations.length > 0) {
+      toolsConfig.push({ functionDeclarations: skillDeclarations });
+    }
+
     // Use Gemini Interactions API for stateful multi-turn conversations
     const interactionPayload: any = {
       model: responseModelName,
       config: {
-        systemInstruction: OLIVE_SYSTEM_PROMPT,
-        tools: [
-          { googleSearch: {} } // Enable real-time Google Search for up-to-date information
-        ]
+        systemInstruction: effectiveSystemPrompt,
+        tools: toolsConfig
       },
       userContent: {
-        parts: [{ text: fullContext }]
+        parts: userParts  // Supports text + optional media inlineData
       }
     };
 
@@ -1742,15 +1783,61 @@ User's Question: ${actualMessage}`;
 
       // Fallback to standard generateContent if Interactions API fails
       console.log('[Ask Olive Individual] Falling back to standard generateContent...');
-      return await fallbackToGenerateContent(geminiApiKey, fullContext, corsHeaders, citations, actionResult, responseModelName);
+      return await fallbackToGenerateContent(geminiApiKey, fullContext, corsHeaders, citations, actionResult, responseModelName, actualMediaUrls, user_id);
     }
 
-    const data = await response.json();
+    let currentData = await response.json();
     console.log('[Ask Olive Individual] Gemini response received');
-    console.log('[Ask Olive Individual] Interaction ID:', data.interactionId);
+    console.log('[Ask Olive Individual] Interaction ID:', currentData.interactionId);
 
-    // Extract the text response from the interaction
-    const assistantReply = extractTextFromInteraction(data);
+    // ── Function Calling Loop (bounded) ──────────────────────
+    // If Gemini wants to call a skill (e.g., scrape_website), execute it,
+    // send the result back via a follow-up interaction, and let Gemini formulate its final answer.
+    let toolCallCount = 0;
+    while (toolCallCount < MAX_TOOL_CALLS) {
+      const fcPart = extractFunctionCall(currentData);
+      if (!fcPart) break; // No function call → Gemini gave a final text answer
+
+      toolCallCount++;
+      console.log(`[Ask Olive Individual] Tool call #${toolCallCount}: ${fcPart.name}(${JSON.stringify(fcPart.args).substring(0, 100)})`);
+
+      let toolResult: string;
+      try {
+        toolResult = await executeSkill(fcPart.name, fcPart.args || {}, user_id);
+      } catch (e: any) {
+        toolResult = `Error: ${e.message || 'Unknown error'}`;
+      }
+      console.log(`[Ask Olive Individual] Tool result (${toolResult.length} chars): ${toolResult.substring(0, 200)}...`);
+
+      // Send function response back via Interactions API (multi-turn via interactionId)
+      const followUpPayload: any = {
+        model: responseModelName,
+        config: {
+          systemInstruction: effectiveSystemPrompt,
+          tools: toolsConfig
+        },
+        previousInteractionId: currentData.interactionId,
+        userContent: {
+          parts: [{ functionResponse: { name: fcPart.name, response: { result: toolResult } } }]
+        }
+      };
+
+      const followUpResponse = await fetch(`https://generativelanguage.googleapis.com/v1alpha/interactions?key=${geminiApiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(followUpPayload),
+      });
+
+      if (!followUpResponse.ok) {
+        console.warn(`[Ask Olive Individual] Follow-up interaction failed (HTTP ${followUpResponse.status}), using current response`);
+        break;
+      }
+      currentData = await followUpResponse.json();
+      console.log('[Ask Olive Individual] Follow-up interaction ID:', currentData.interactionId);
+    }
+
+    // Extract the text response from the final interaction
+    const assistantReply = extractTextFromInteraction(currentData);
 
     // Auto-evolve profile from conversation (non-blocking)
     if (actualUserId && supabase && actualMessage && assistantReply) {
@@ -1766,7 +1853,7 @@ User's Question: ${actualMessage}`;
     return new Response(JSON.stringify({
       reply: assistantReply,
       response: assistantReply, // For backwards compatibility with frontend
-      interactionId: data.interactionId,
+      interactionId: currentData.interactionId,
       citations: citations.length > 0 ? citations : undefined,
       sources_used: citations.length > 0 ? {
         facts: citations.filter(c => c.type === 'fact').length,
@@ -1790,6 +1877,25 @@ User's Question: ${actualMessage}`;
     });
   }
 });
+
+// Extract function call from Gemini Interactions / generateContent response
+function extractFunctionCall(data: any): { name: string; args: Record<string, any> } | null {
+  try {
+    // Check outputContent.parts (Interactions API format)
+    const parts = data.outputContent?.parts || data.candidates?.[0]?.content?.parts || [];
+    for (const part of parts) {
+      if (part.functionCall) {
+        return {
+          name: part.functionCall.name,
+          args: part.functionCall.args || {},
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('[Ask Olive Individual] Error parsing function call:', e);
+  }
+  return null;
+}
 
 // Extract text content from Gemini Interactions response
 function extractTextFromInteraction(data: any): string {
@@ -1818,44 +1924,107 @@ function extractTextFromInteraction(data: any): string {
 }
 
 // Fallback to standard generateContent API if Interactions API is unavailable
+// Supports multimodal media payloads and native function calling via Skills Engine
 async function fallbackToGenerateContent(
   apiKey: string,
   fullContext: string,
   corsHeaders: Record<string, string>,
   citations: Citation[] = [],
   actionResult: ActionResult | null = null,
-  modelName: string = "gemini-2.5-flash"
+  modelName: string = "gemini-2.5-flash",
+  mediaUrls?: string[],
+  userId?: string
 ): Promise<Response> {
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          role: 'user',
-          parts: [{ text: fullContext }]
-        }],
-        systemInstruction: {
-          parts: [{ text: OLIVE_SYSTEM_PROMPT }]
-        },
+    // Build multimodal parts if media attached
+    const parts: any[] = [{ text: fullContext }];
+    let sysPrompt = OLIVE_SYSTEM_PROMPT;
+
+    if (mediaUrls && mediaUrls.length > 0) {
+      try {
+        const { downloadMediaToBase64, MULTIMODAL_SYSTEM_PROMPT_SUFFIX } = await import("../_shared/media-utils.ts");
+        for (const url of mediaUrls) {
+          const media = await downloadMediaToBase64(url);
+          if (media) {
+            parts.push({ inlineData: { mimeType: media.mimeType, data: media.base64 } });
+          }
+        }
+        if (parts.length > 1) sysPrompt += MULTIMODAL_SYSTEM_PROMPT_SUFFIX;
+      } catch (e) {
+        console.warn('[Ask Olive Individual] Fallback media encoding error:', e);
+      }
+    }
+
+    // Import skills registry for function calling
+    const { getSkillDeclarations, executeSkill, MAX_TOOL_CALLS } = await import("../_shared/skills/registry.ts");
+    const skillDeclarations = getSkillDeclarations();
+
+    // Build tools config for function calling
+    const toolsForRequest = skillDeclarations.length > 0
+      ? [{ functionDeclarations: skillDeclarations }]
+      : undefined;
+
+    let requestContents: any[] = [{ role: 'user', parts }];
+
+    // Helper to call generateContent API
+    const callGenerate = async (contents: any[]) => {
+      const reqBody: any = {
+        contents,
+        systemInstruction: { parts: [{ text: sysPrompt }] },
         generationConfig: {
           temperature: 0.7,
           topK: 40,
           topP: 0.95,
-          maxOutputTokens: 2048
+          maxOutputTokens: mediaUrls && mediaUrls.length > 0 ? 4000 : 2048
         }
-      }),
-    });
+      };
+      if (toolsForRequest) reqBody.tools = toolsForRequest;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Fallback API error: ${response.status} ${errorText}`);
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reqBody),
+      });
+
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        throw new Error(`Fallback API error: ${resp.status} ${errorText}`);
+      }
+      return await resp.json();
+    };
+
+    let responseData = await callGenerate(requestContents);
+
+    // ── Function Calling Loop (bounded) ──────────────────────
+    let toolCallCount = 0;
+    while (toolCallCount < MAX_TOOL_CALLS) {
+      const fcPart = responseData.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall);
+      if (!fcPart) break; // No function call → final text answer
+
+      toolCallCount++;
+      const { name, args } = fcPart.functionCall;
+      console.log(`[Ask Olive Fallback] Tool call #${toolCallCount}: ${name}(${JSON.stringify(args).substring(0, 100)})`);
+
+      let toolResult: string;
+      try {
+        toolResult = await executeSkill(name, args || {}, userId || '');
+      } catch (e: any) {
+        toolResult = `Error: ${e.message || 'Unknown error'}`;
+      }
+      console.log(`[Ask Olive Fallback] Tool result (${toolResult.length} chars): ${toolResult.substring(0, 200)}...`);
+
+      // Append function call + response to conversation history
+      requestContents = [
+        ...requestContents,
+        { role: 'model', parts: [{ functionCall: { name, args } }] },
+        { role: 'user', parts: [{ functionResponse: { name, response: { result: toolResult } } }] },
+      ];
+
+      responseData = await callGenerate(requestContents);
     }
 
-    const data = await response.json();
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "I'm here to help! Could you rephrase your question?";
+    const reply = responseData.candidates?.[0]?.content?.parts?.find((p: any) => p.text)?.text
+      || "I'm here to help! Could you rephrase your question?";
 
     return new Response(JSON.stringify({
       reply,

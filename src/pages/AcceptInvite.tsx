@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace } from "@/providers/SpaceProvider";
 import { getSupabase } from "@/lib/supabaseClient";
 import { OliveLogo } from "@/components/OliveLogo";
 import { useSEO } from "@/hooks/useSEO";
-import { Check, X, Clock, Heart } from "lucide-react";
+import { Check, X, Clock, Heart, Users } from "lucide-react";
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
 const AcceptInvite = () => {
@@ -16,12 +17,14 @@ const AcceptInvite = () => {
   const navigate = useLocalizedNavigate();
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const { refetch: refetchCouples, switchCouple } = useSupabaseCouple();
-  
+  const { acceptInvite: acceptSpaceInvite } = useSpace();
+
   const [loading, setLoading] = useState(true);
   const [invite, setInvite] = useState<any>(null);
+  const [inviteType, setInviteType] = useState<"couple" | "space">("couple");
   const [error, setError] = useState<string | null>(null);
-  
-  useSEO({ title: "Accept Invite — Olive", description: "Join your partner's Olive space." });
+
+  useSEO({ title: "Accept Invite — Olive", description: "Join an Olive space." });
 
   const token = searchParams.get("token");
 
@@ -50,12 +53,38 @@ const AcceptInvite = () => {
   const loadInvite = async () => {
     try {
       const supabase = getSupabase();
-      
-      // Use the new RPC function instead of direct table query
+
+      // First, try to find a space invite with this token
+      const { data: spaceInviteData, error: spaceError } = await supabase
+        .from("olive_space_invites")
+        .select("*, olive_spaces(id, name, type, icon)")
+        .eq("token", token)
+        .eq("status", "pending")
+        .maybeSingle();
+
+      if (spaceInviteData && !spaceError) {
+        // This is a space invite
+        if (new Date(spaceInviteData.expires_at) < new Date()) {
+          setError("This invite has expired");
+          return;
+        }
+
+        setInviteType("space");
+        setInvite({
+          token: spaceInviteData.token,
+          space_id: spaceInviteData.space_id,
+          role: spaceInviteData.role,
+          space: spaceInviteData.olive_spaces,
+          expires_at: spaceInviteData.expires_at,
+          invited_email: spaceInviteData.invited_email,
+        });
+        return;
+      }
+
+      // Fall back to existing couple invite flow
       const { data, error } = await supabase.rpc('validate_invite', {
         p_token: token
       });
-
 
       if (error) {
         console.error('[AcceptInvite] RPC error:', error);
@@ -63,34 +92,30 @@ const AcceptInvite = () => {
         return;
       }
 
-      // data is an array from the RPC function
       const inviteData = Array.isArray(data) ? data[0] : null;
-      
+
       if (!inviteData) {
         console.error('[AcceptInvite] No invite found');
         setError("Invite not found or expired");
         return;
       }
 
-      // Check if invite is expired
       if (new Date(inviteData.expires_at) < new Date()) {
         setError("This invite has expired");
         return;
       }
 
-      // Check if already accepted
       if (inviteData.accepted) {
         setError("This invite has already been accepted");
         return;
       }
 
-      // Check if revoked
       if (inviteData.revoked) {
         setError("This invite has been revoked");
         return;
       }
 
-      // Transform the data to match the expected format
+      setInviteType("couple");
       const transformedInvite = {
         couple_id: inviteData.couple_id,
         role: inviteData.role,
@@ -110,56 +135,59 @@ const AcceptInvite = () => {
     }
   };
 
-  const acceptInvite = async () => {
+  const handleAcceptInvite = async () => {
     if (!user || !invite) return;
 
     setLoading(true);
     try {
-      const supabase = getSupabase();
-      
-      // Use the new RPC function for accepting invites
-      const { data: coupleId, error } = await supabase.rpc('accept_invite', {
-        p_token: token
-      });
-
-      if (error) {
-        console.error('Failed to accept invite:', error);
-        
-        // Handle specific error messages from the RPC
-        if (error.message?.includes('INVITE_NOT_FOUND')) {
-          toast.error("Invite not found");
-        } else if (error.message?.includes('INVITE_EXPIRED')) {
-          toast.error("This invite has expired");
-        } else if (error.message?.includes('INVITE_ALREADY_ACCEPTED')) {
-          toast.error("This invite has already been accepted");
-        } else if (error.message?.includes('INVITE_REVOKED')) {
-          toast.error("This invite has been revoked");
-        } else {
-          toast.error("Failed to accept invite. Please try again.");
+      if (inviteType === "space") {
+        // Accept space invite via edge function
+        const success = await acceptSpaceInvite(invite.token);
+        if (success) {
+          navigate("/home");
         }
-        return;
-      }
-
-      
-      // Refresh couples list to include the new shared space
-      await refetchCouples();
-      
-      // Fetch the specific couple that was just joined and set it as current
-      const { data: joinedCouple, error: fetchError } = await supabase
-        .from('clerk_couples')
-        .select('*')
-        .eq('id', coupleId)
-        .single();
-      
-      if (fetchError) {
-        console.error('Failed to fetch joined couple:', fetchError);
       } else {
-        // Switch to the shared space that was just joined
-        switchCouple(joinedCouple);
+        // Existing couple invite flow
+        const supabase = getSupabase();
+
+        const { data: coupleId, error } = await supabase.rpc('accept_invite', {
+          p_token: token
+        });
+
+        if (error) {
+          console.error('Failed to accept invite:', error);
+
+          if (error.message?.includes('INVITE_NOT_FOUND')) {
+            toast.error("Invite not found");
+          } else if (error.message?.includes('INVITE_EXPIRED')) {
+            toast.error("This invite has expired");
+          } else if (error.message?.includes('INVITE_ALREADY_ACCEPTED')) {
+            toast.error("This invite has already been accepted");
+          } else if (error.message?.includes('INVITE_REVOKED')) {
+            toast.error("This invite has been revoked");
+          } else {
+            toast.error("Failed to accept invite. Please try again.");
+          }
+          return;
+        }
+
+        await refetchCouples();
+
+        const { data: joinedCouple, error: fetchError } = await supabase
+          .from('clerk_couples')
+          .select('*')
+          .eq('id', coupleId)
+          .single();
+
+        if (fetchError) {
+          console.error('Failed to fetch joined couple:', fetchError);
+        } else {
+          switchCouple(joinedCouple);
+        }
+
+        toast.success("Welcome to your shared Olive space!");
+        navigate("/home");
       }
-      
-      toast.success("Welcome to your shared Olive space!");
-      navigate("/home");
     } catch (error) {
       console.error("Failed to accept invite:", error);
       toast.error("Failed to accept invite. Please try again.");
@@ -247,32 +275,42 @@ const AcceptInvite = () => {
   }
 
 
+  const inviteTitle = inviteType === "space"
+    ? invite?.space?.name || "a space"
+    : invite?.clerk_couples?.title || "a shared space";
+
+  const InviteIcon = inviteType === "space" ? Users : Heart;
+
   return (
     <main className="min-h-screen bg-gradient-soft">
       <section className="mx-auto max-w-md px-4 py-10">
         <div className="mb-6 flex justify-center">
           <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-olive/10 shadow-soft border border-olive/20">
-            <Heart className="h-8 w-8 text-olive" />
+            <InviteIcon className="h-8 w-8 text-olive" />
           </div>
         </div>
-        
+
         <div className="text-center space-y-4 mb-6">
           <h1 className="text-2xl font-bold text-foreground">You're Invited!</h1>
           <p className="text-muted-foreground">
-            Join <strong>{invite?.clerk_couples?.title || 'a shared space'}</strong> on Olive to share notes, lists, and organize your life together.
+            Join <strong>{inviteTitle}</strong> on Olive to share notes, lists, and organize your life together.
           </p>
         </div>
 
         <Card className="p-6 bg-white/50 border-olive/20 shadow-soft space-y-6">
           <div className="space-y-2">
-            <h3 className="font-semibold text-foreground">Couple Space</h3>
-            <p className="text-sm text-muted-foreground">{invite?.clerk_couples?.title || 'Shared Space'}</p>
+            <h3 className="font-semibold text-foreground">
+              {inviteType === "space" ? (invite?.space?.type || "Space") : "Couple Space"}
+            </h3>
+            <p className="text-sm text-muted-foreground">{inviteTitle}</p>
           </div>
 
-          <div className="space-y-2">
-            <h3 className="font-semibold text-foreground">Invited to</h3>
-            <p className="text-sm text-muted-foreground">{invite?.invited_email || 'Your email'}</p>
-          </div>
+          {invite?.invited_email && (
+            <div className="space-y-2">
+              <h3 className="font-semibold text-foreground">Invited to</h3>
+              <p className="text-sm text-muted-foreground">{invite.invited_email}</p>
+            </div>
+          )}
 
           {invite?.expires_at && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -281,8 +319,8 @@ const AcceptInvite = () => {
             </div>
           )}
 
-          <Button 
-            onClick={acceptInvite}
+          <Button
+            onClick={handleAcceptInvite}
             className="w-full bg-olive hover:bg-olive/90 text-white shadow-soft"
             disabled={loading}
           >

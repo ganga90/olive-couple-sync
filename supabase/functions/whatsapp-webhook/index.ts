@@ -55,7 +55,7 @@ const corsHeaders = {
 // CREATE: Everything else (default)
 // ============================================================================
 
-type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'WEB_SEARCH' | 'TASK_ACTION' | 'EXPENSE' | 'PARTNER_MESSAGE' | 'CREATE_LIST' | 'LIST_RECAP' | 'SAVE_ARTIFACT'; isUrgent?: boolean; cleanMessage?: string };
+type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'WEB_SEARCH' | 'WEB_RESEARCH' | 'SCHEDULE_CALENDAR' | 'TASK_ACTION' | 'EXPENSE' | 'PARTNER_MESSAGE' | 'CREATE_LIST' | 'LIST_RECAP' | 'SAVE_ARTIFACT' | 'SAVE_MEMORY'; isUrgent?: boolean; cleanMessage?: string };
 
 // ============================================================================
 // RECENT OUTBOUND MESSAGE CONTEXT
@@ -211,6 +211,11 @@ const RESPONSES: Record<string, Record<string, string>> = {
     en: '⚠️ Similar task found: "{task}"\nReply "Merge" to combine them.',
     'es': '⚠️ Tarea similar encontrada: "{task}"\nResponde "Merge" para combinarlas.',
     'it': '⚠️ Attività simile trovata: "{task}"\nRispondi "Merge" per unirle.',
+  },
+  memory_saved: {
+    en: '🧠 Got it! I\'ll remember: "{content}"\n\nYou can always ask me about it later 🫒',
+    'es': '🧠 ¡Entendido! Recordaré: "{content}"\n\nPuedes preguntarme sobre esto después 🫒',
+    'it': '🧠 Capito! Ricorderò: "{content}"\n\nPuoi chiedermi in qualsiasi momento 🫒',
   },
   help_text: {
     en: `🫒 *Olive Quick Commands*
@@ -679,6 +684,26 @@ function mapAIResultToIntentResult(
         _listName: params.list_name || undefined,
       };
 
+    case 'save_memory':
+      return {
+        intent: 'SAVE_MEMORY',
+        cleanMessage: ai.target_task_name || undefined,
+      };
+
+    case 'web_research':
+      return {
+        intent: 'WEB_RESEARCH',
+        cleanMessage: ai.target_task_name || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'schedule_calendar':
+      return {
+        intent: 'SCHEDULE_CALENDAR',
+        cleanMessage: ai.target_task_name || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
     case 'create':
     default:
       return {
@@ -751,6 +776,8 @@ function determineIntent(message: string, hasMedia: boolean): IntentResult & { q
 // Call Gemini AI — uses GEMINI_API directly via GoogleGenAI SDK
 // Supports dynamic model tier selection: "lite" | "standard" | "pro"
 // Phase 6F: Added optional LLM tracker + prompt version for observability
+// Supports optional multimodal media payloads (images, videos, PDFs)
+// Supports native Gemini Function Calling via the Skills Engine (_shared/skills/)
 async function callAI(
   systemPrompt: string,
   userMessage: string,
@@ -758,24 +785,96 @@ async function callAI(
   tier: string = "standard",
   tracker?: LLMTracker | null,
   promptVersion?: string,
+  mediaUrls?: string[],
+  userId?: string,
 ): Promise<string> {
   const { GEMINI_KEY, getModel } = await import("../_shared/gemini.ts");
   if (!GEMINI_KEY) throw new Error('GEMINI_API not configured');
 
   const model = getModel(tier as any);
-  console.log(`[callAI] Using ${model} (tier=${tier})${promptVersion ? ` [${promptVersion}]` : ''}`);
+  console.log(`[callAI] Using ${model} (tier=${tier})${promptVersion ? ` [${promptVersion}]` : ''}${mediaUrls?.length ? `, media=${mediaUrls.length} files` : ''}`);
 
   const startTime = performance.now();
   const genai = new GoogleGenAI({ apiKey: GEMINI_KEY });
-  const response = await genai.models.generateContent({
-    model,
-    contents: userMessage,
-    config: {
-      systemInstruction: systemPrompt,
-      temperature,
-      maxOutputTokens: tier === "pro" ? 2000 : 1000,
-    },
-  });
+
+  // Import skills registry for function calling
+  const { getSkillDeclarations, executeSkill, MAX_TOOL_CALLS } = await import("../_shared/skills/registry.ts");
+  const skillDeclarations = getSkillDeclarations();
+
+  // Build multimodal payload if media is present
+  let contents: any;
+  let effectiveSystemPrompt = systemPrompt;
+
+  if (mediaUrls && mediaUrls.length > 0) {
+    const { downloadMediaToBase64, MULTIMODAL_SYSTEM_PROMPT_SUFFIX } = await import("../_shared/media-utils.ts");
+    const parts: any[] = [{ text: userMessage || 'Analyze this media.' }];
+
+    for (const url of mediaUrls) {
+      try {
+        const media = await downloadMediaToBase64(url);
+        if (media) {
+          parts.push({ inlineData: { mimeType: media.mimeType, data: media.base64 } });
+        }
+      } catch (e) {
+        console.warn('[callAI] Media download failed for URL:', url.substring(0, 60), e);
+      }
+    }
+
+    // Use structured contents array for multimodal
+    contents = [{ role: "user", parts }];
+    effectiveSystemPrompt += MULTIMODAL_SYSTEM_PROMPT_SUFFIX;
+  } else {
+    // Backward-compatible: plain string for text-only calls
+    contents = userMessage;
+  }
+
+  const config: any = {
+    systemInstruction: effectiveSystemPrompt,
+    temperature,
+    maxOutputTokens: tier === "pro" ? 4000 : 1000,
+  };
+
+  // Add function calling tools if skills are registered
+  if (skillDeclarations.length > 0) {
+    config.tools = [{ functionDeclarations: skillDeclarations }];
+  }
+
+  let response = await genai.models.generateContent({ model, contents, config });
+
+  // ── Function Calling Loop (bounded to MAX_TOOL_CALLS) ──────────
+  // If Gemini decides to call a tool (e.g., scrape_website), execute it,
+  // append the result as a functionResponse, and re-call Gemini so it can
+  // formulate its final answer using the tool's output.
+  let toolCallCount = 0;
+  while (response.functionCalls && response.functionCalls.length > 0 && toolCallCount < MAX_TOOL_CALLS) {
+    toolCallCount++;
+    const fc = response.functionCalls[0];
+    console.log(`[callAI] Tool call #${toolCallCount}: ${fc.name}(${JSON.stringify(fc.args).substring(0, 100)})`);
+
+    // Execute the matched skill
+    let toolResult: string;
+    try {
+      toolResult = await executeSkill(fc.name, fc.args || {}, userId || '');
+    } catch (e: any) {
+      toolResult = `Error executing ${fc.name}: ${e.message || 'Unknown error'}`;
+    }
+    console.log(`[callAI] Tool result (${toolResult.length} chars): ${toolResult.substring(0, 200)}...`);
+
+    // Normalize contents to array format for conversation history
+    const historyContents = Array.isArray(contents)
+      ? contents
+      : [{ role: "user", parts: [{ text: contents }] }];
+
+    // Append the model's function call + our function response to the history
+    contents = [
+      ...historyContents,
+      { role: "model", parts: [{ functionCall: { name: fc.name, args: fc.args } }] },
+      { role: "user", parts: [{ functionResponse: { name: fc.name, response: { result: toolResult } } }] },
+    ];
+
+    // Re-call Gemini with the updated conversation history
+    response = await genai.models.generateContent({ model, contents, config });
+  }
 
   // Phase 6F: Track the LLM call (fire-and-forget)
   if (tracker) {
@@ -1400,9 +1499,51 @@ serve(async (req) => {
       return reply(`📍 Thanks for sharing your location! (${latitude}, ${longitude})\n\nYou can add a task with this location by sending a message like:\n"Buy groceries at this location"`);
     }
 
+    // ========================================================================
+    // VISUAL PRE-ANALYSIS — "The Eyes" (Epic 5)
+    // If a user sends an image/video with NO caption, quickly analyze it with
+    // Gemini Flash to extract a text description. This lets the message flow
+    // through normal intent classification instead of always becoming a note.
+    // If pre-analysis fails, we fall through to the existing process-note flow.
+    // ========================================================================
+    if (mediaUrls.length > 0 && !messageBody) {
+      try {
+        const { downloadMediaToBase64, getMediaType } = await import("../_shared/media-utils.ts");
+        const firstMediaType = getMediaType(mediaUrls[0], mediaTypes[0]);
+
+        if (firstMediaType === 'image' || firstMediaType === 'video') {
+          const media = await downloadMediaToBase64(mediaUrls[0]);
+          if (media) {
+            const { GEMINI_KEY } = await import("../_shared/gemini.ts");
+            const genaiVision = new GoogleGenAI({ apiKey: GEMINI_KEY });
+
+            const descResponse = await genaiVision.models.generateContent({
+              model: "gemini-2.5-flash",
+              contents: [{ role: "user", parts: [
+                { text: "Describe this media briefly in 1-2 sentences. If it's a receipt or invoice, start with 'RECEIPT:'. If it contains a task or to-do item, start with 'TASK:'. If it's a screenshot of text, start with 'TEXT:'. Otherwise describe what you see." },
+                { inlineData: { mimeType: media.mimeType, data: media.base64 } }
+              ]}],
+              config: { temperature: 0.1, maxOutputTokens: 200 }
+            });
+
+            const description = descResponse.text?.trim();
+            if (description && description.length > 5) {
+              messageBody = description;
+              console.log('[WhatsApp] Media pre-analyzed:', description.substring(0, 100));
+            }
+          }
+        }
+      } catch (preAnalyzeErr) {
+        console.warn('[WhatsApp] Media pre-analysis failed, falling back to process-note:', preAnalyzeErr);
+        // messageBody stays null → falls through to existing process-note flow below
+      }
+    }
+
     // Handle media-only messages (images, documents) — route directly to CREATE
     // NOTE: Audio voice notes never reach here — they were transcribed above
     // and injected into messageBody, so they flow through the normal text pipeline.
+    // NOTE: Images/videos that were successfully pre-analyzed above now have
+    // messageBody set, so they skip this block and flow through intent classification.
     if (mediaUrls.length > 0 && !messageBody) {
       console.log('[WhatsApp] Processing media-only message — routing directly to CREATE');
 
@@ -2516,6 +2657,7 @@ Description: "${parsedExpense.description}"`;
     const classificationLatencyMs = classificationResult.latencyMs;
 
     // Route intent → model tier (from _shared/model-router.ts)
+    // Pass hasMedia flag for Pro escalation on image/video messages
     const { routeIntent } = await import("../_shared/model-router.ts");
     const hasMedia = mediaUrls.length > 0;
     const route = routeIntent(
@@ -2753,6 +2895,22 @@ Description: "${parsedExpense.description}"`;
       });
     } catch (logErr) {
       console.warn('[RouterLogger] Non-blocking error:', logErr);
+    }
+
+    // ========================================================================
+    // SAVE MEMORY HANDLER — via shared action executor
+    // ========================================================================
+    if (intent === 'SAVE_MEMORY' && aiResult && aiResult.confidence >= 0.5) {
+      try {
+        const { executeAction } = await import("../_shared/action-executor.ts");
+        const memResult = await executeAction(supabase, aiResult, userId, coupleId, messageBody);
+        if (memResult?.success) {
+          return reply(t('memory_saved', userLang, { content: memResult.details?.saved || messageBody?.substring(0, 80) || '' }));
+        }
+      } catch (memErr) {
+        console.error('[SaveMemory] Error:', memErr);
+      }
+      // If save_memory failed, fall through to CREATE as fallback
     }
 
     // ========================================================================
@@ -4171,8 +4329,8 @@ Description: "${parsedExpense.description}"`;
     // ========================================================================
     // CONTEXTUAL ASK HANDLER - AI-powered semantic search
     // ========================================================================
-    if (intent === 'CONTEXTUAL_ASK') {
-      console.log('[WhatsApp] Processing CONTEXTUAL_ASK for:', effectiveMessage?.substring(0, 50));
+    if (intent === 'CONTEXTUAL_ASK' || intent === 'WEB_RESEARCH' || intent === 'SCHEDULE_CALENDAR') {
+      console.log(`[WhatsApp] Processing ${intent} for:`, effectiveMessage?.substring(0, 50));
       
       // Fetch notes WITH original_text for full detail access
       const { data: allTasks } = await supabase
@@ -4460,15 +4618,17 @@ Respond with helpful, specific information extracted from their saved data. Answ
       }
 
       try {
+        // Dynamic model selection — standard for most, Pro if media attached
+        const ctxMediaUrls = mediaUrls.length > 0 ? mediaUrls : undefined;
         let response: string;
         const effectiveTier = isHybridResponse ? 'standard' : route.responseTier;
         const ctxAskPromptVersion = isHybridResponse ? WA_HYBRID_ASK_PROMPT_VERSION : WA_CONTEXTUAL_ASK_PROMPT_VERSION;
         try {
-          response = await callAI(systemPrompt, effectiveMessage || '', 0.7, effectiveTier, tracker, ctxAskPromptVersion);
+          response = await callAI(systemPrompt, effectiveMessage || '', 0.7, effectiveTier, tracker, ctxAskPromptVersion, ctxMediaUrls, userId);
         } catch (escalationErr) {
           if (effectiveTier === 'pro') {
             console.warn('[Router] Pro failed for CONTEXTUAL_ASK, falling back to standard:', escalationErr);
-            response = await callAI(systemPrompt, effectiveMessage || '', 0.7, 'standard', tracker, ctxAskPromptVersion);
+            response = await callAI(systemPrompt, effectiveMessage || '', 0.7, 'standard', tracker, ctxAskPromptVersion, ctxMediaUrls, userId);
           } else {
             throw escalationErr;
           }
@@ -5611,15 +5771,16 @@ If the user's message is long and conversational — asking for help with someth
           systemPrompt += `\n\nIMPORTANT: Respond entirely in ${langName}.`;
         }
 
-        // Dynamic model selection — Pro for weekly_summary/planning, standard for rest
+        // Dynamic model selection — Pro for weekly_summary/planning or media, standard for rest
         const chatPromptVersion = getWAChatPromptVersion(chatType);
+        const chatMediaUrls = mediaUrls.length > 0 ? mediaUrls : undefined;
         let chatResponse: string;
         try {
-          chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7, route.responseTier, tracker, chatPromptVersion);
+          chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7, route.responseTier, tracker, chatPromptVersion, chatMediaUrls, userId);
         } catch (escalationErr) {
           if (route.responseTier === 'pro') {
             console.warn('[Router] Pro failed for CHAT, falling back to standard:', escalationErr);
-            chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7, 'standard', tracker, chatPromptVersion);
+            chatResponse = await callAI(systemPrompt, enhancedMessage, 0.7, 'standard', tracker, chatPromptVersion, chatMediaUrls, userId);
           } else {
             throw escalationErr;
           }

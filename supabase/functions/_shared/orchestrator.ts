@@ -7,10 +7,18 @@
  *   - whatsapp-webhook (WhatsApp)
  *
  * P2: Unified context pipeline with circuit breaker + graceful degradation.
+ *
+ * v2: Added SOUL.MD integration via assembleSoulContext().
+ *     All existing exports are unchanged. Soul is additive only.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { formatDateForZone, formatTimeForZone, getRelativeDayWindowUtc } from "./timezone-calendar.ts";
+import {
+  assembleSoulContext,
+  type SoulAssemblyResult,
+  type SoulAssemblyOptions,
+} from "./soul.ts";
 
 // ─── Circuit Breaker ───────────────────────────────────────────
 // Tracks failures per subsystem to skip flaky calls for a cooldown period.
@@ -1261,4 +1269,93 @@ async function quickProfileAppend(
         { onConflict: "user_id,file_type,file_date" }
       );
   } catch {}
+}
+
+// ─── SOUL.MD Integration (v2, additive) ─────────────────────────
+
+// Re-export soul types for convenience
+export { assembleSoulContext, type SoulAssemblyResult, type SoulAssemblyOptions };
+
+/**
+ * Build the full system context for an LLM call, SOUL-aware.
+ *
+ * If the user has a soul enabled, this returns a combined prompt with:
+ *   1. Soul stack (identity, user context, space context, trust)
+ *   2. Memories formatted as context
+ *   3. Agent insights
+ *   4. Pattern context
+ *
+ * If soul is NOT enabled, it returns null — the caller should fall back
+ * to its existing prompt-building logic. This ensures zero disruption.
+ *
+ * Usage in an edge function:
+ * ```ts
+ * const soulContext = await assembleFullContext(supabase, { userId, spaceId });
+ * if (soulContext) {
+ *   // Use soulContext.systemPrompt as the full system prompt
+ * } else {
+ *   // Fall back to existing behavior
+ * }
+ * ```
+ */
+export async function assembleFullContext(
+  supabase: ReturnType<typeof createClient<any>>,
+  options: SoulAssemblyOptions & { includeMemories?: boolean; includeAgentInsights?: boolean }
+): Promise<{ systemPrompt: string; tokensUsed: number; layersLoaded: string[] } | null> {
+  // Step 1: Try to assemble soul
+  const soulResult = await assembleSoulContext(supabase, options);
+
+  // If no soul, return null (caller uses legacy behavior)
+  if (!soulResult.hasSoul) {
+    return null;
+  }
+
+  const sections: string[] = [soulResult.prompt];
+  let totalTokens = soulResult.tokensUsed;
+  const allLayers = [...soulResult.layersLoaded];
+
+  // Step 2: Append memories (if requested, default true)
+  if (options.includeMemories !== false) {
+    const memories = await fetchUserMemories(supabase, options.userId, 10);
+    if (memories.length > 0) {
+      const memoryLines = memories.map(
+        (m) => `- [${m.category}] ${m.title}: ${m.content}`
+      );
+      const memoryBlock = "\n## Your memories\n" + memoryLines.join("\n");
+      const memTokens = Math.ceil(memoryBlock.length / 4);
+      sections.push(memoryBlock);
+      totalTokens += memTokens;
+      allLayers.push("memories");
+    }
+  }
+
+  // Step 3: Append agent insights (if requested, default true)
+  if (options.includeAgentInsights !== false) {
+    const insights = await fetchAgentInsightsContext(supabase, options.userId);
+    if (insights) {
+      const insightTokens = Math.ceil(insights.length / 4);
+      sections.push("\n" + insights);
+      totalTokens += insightTokens;
+      allLayers.push("agent-insights");
+    }
+  }
+
+  // Step 4: Append patterns
+  const patterns = await fetchPatterns(supabase, options.userId);
+  if (patterns.length > 0) {
+    const patternLines = patterns.map(
+      (p) => `- ${p.pattern_type}: ${JSON.stringify(p.pattern_data)} (confidence: ${p.confidence})`
+    );
+    const patternBlock = "\n## Behavioral patterns\n" + patternLines.join("\n");
+    const patTokens = Math.ceil(patternBlock.length / 4);
+    sections.push(patternBlock);
+    totalTokens += patTokens;
+    allLayers.push("patterns");
+  }
+
+  return {
+    systemPrompt: sections.join("\n"),
+    tokensUsed: totalTokens,
+    layersLoaded: allLayers,
+  };
 }

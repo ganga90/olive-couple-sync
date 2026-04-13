@@ -45,5 +45,22 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Olive needs camera access to take photos for your notes</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Olive needs microphone access for voice input</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Olive needs photo library access to attach images to your notes</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.olive.couple</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>olive</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

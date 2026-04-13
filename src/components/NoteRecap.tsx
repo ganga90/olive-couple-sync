@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { dateStringToStorage, extractDateOnly } from "@/utils/dateUtils";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace } from "@/providers/SpaceProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -67,10 +68,27 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
   const { updateNote } = useSupabaseNotesContext();
   const { user } = useAuth();
   const { currentCouple, members } = useSupabaseCouple();
+  const { currentSpace, getMembers } = useSpace();
   const { lists, createList, loading: listsLoading } = useSupabaseLists(currentCouple?.id || null);
 
-  
+  // Multi-member owners: fetch space members if available
+  const [spaceMembers, setSpaceMembers] = useState<Array<{user_id: string; display_name?: string}>>([]);
+  useEffect(() => {
+    if (currentSpace?.id && currentSpace.member_count && currentSpace.member_count > 0) {
+      getMembers(currentSpace.id).then((members) => {
+        setSpaceMembers(members.map(m => ({ user_id: m.user_id, display_name: m.display_name })));
+      });
+    }
+  }, [currentSpace?.id, currentSpace?.member_count, getMembers]);
+
   const availableOwners = useMemo(() => {
+    if (spaceMembers.length > 0) {
+      return spaceMembers.map((m) => ({
+        id: m.user_id,
+        name: m.display_name || m.user_id,
+        isCurrentUser: m.user_id === user?.id,
+      }));
+    }
     if (members.length > 0) {
       return members.map(m => ({
         id: m.user_id,
@@ -78,7 +96,6 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
         isCurrentUser: m.user_id === user?.id
       }));
     }
-    // Fallback for legacy
     const owners = [];
     if (user?.fullName) {
       owners.push({ id: user.id, name: currentCouple?.you_name || user.fullName, isCurrentUser: true });
@@ -87,7 +104,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
       owners.push({ id: 'partner', name: currentCouple.partner_name, isCurrentUser: false });
     }
     return owners;
-  }, [members, user, currentCouple]);
+  }, [members, user, currentCouple, spaceMembers]);
 
   const getPriorityConfig = (priority?: string) => {
     switch (priority) {

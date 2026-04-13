@@ -104,3 +104,36 @@ verify_jwt = false
 
 [functions.auto-calendar-event]
 verify_jwt = false
+
+[functions.olive-delegate]
+verify_jwt = false
+
+[functions.olive-briefing]
+verify_jwt = false
+
+[functions.olive-consolidate]
+verify_jwt = false
+
+[functions.olive-soul-safety]
+verify_jwt = false
+
+[functions.olive-templates]
+verify_jwt = false
+
+[functions.olive-client-pipeline]
+verify_jwt = false
+
+[functions.olive-decisions]
+verify_jwt = false
+
+[functions.olive-workflows]
+verify_jwt = false
+
+[functions.olive-billing]
+verify_jwt = false
+
+[functions.olive-polls]
+verify_jwt = false
+
+[functions.olive-conflicts]
+verify_jwt = false

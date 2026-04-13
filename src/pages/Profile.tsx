@@ -13,15 +13,34 @@ import { WhatsAppUnifiedCard } from "@/components/settings/WhatsAppUnifiedCard";
 import { AppPreferencesModals } from "@/components/settings/AppPreferencesModals";
 import { OliveProactivePreferences } from "@/components/settings/OliveProactivePreferences";
 import { OliveAutomationHub } from "@/components/settings/OliveAutomationHub";
+import { OliveSkillsManager } from "@/components/settings/OliveSkillsManager";
+import { BackgroundAgentsManager } from "@/components/settings/BackgroundAgentsManager";
+import { DelegationCard } from "@/components/DelegationCard";
+import { DailyBriefingView } from "@/components/DailyBriefingView";
+import { TrustSettingsCard } from "@/components/settings/TrustSettingsCard";
+import { TrustApprovalCard } from "@/components/settings/TrustApprovalCard";
+import { EngagementScoreCard } from "@/components/settings/EngagementScoreCard";
+import { ReflectionHistoryCard } from "@/components/settings/ReflectionHistoryCard";
 import { DefaultPrivacyCard } from "@/components/settings/DefaultPrivacyCard";
 import { ExpensePreferencesCard } from "@/components/settings/ExpensePreferencesCard";
+import { MemoryHealthCard } from "@/components/settings/MemoryHealthCard";
+import { SoulEvolutionSafetyCard } from "@/components/settings/SoulEvolutionSafetyCard";
+import { IndustryTemplateSelector } from "@/components/settings/IndustryTemplateSelector";
+import { ClientPipelineCard } from "@/components/settings/ClientPipelineCard";
+import { ExpenseSplitCard } from "@/components/settings/ExpenseSplitCard";
+import { DecisionLogCard } from "@/components/settings/DecisionLogCard";
+import { RecurringWorkflowsCard } from "@/components/settings/RecurringWorkflowsCard";
+import { SubscriptionCard } from "@/components/settings/SubscriptionCard";
+import { PollCard } from "@/components/settings/PollCard";
+import { ConflictCard } from "@/components/settings/ConflictCard";
 import { CollapsibleSection } from "@/components/settings/CollapsibleSection";
-import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot, Mail, Fingerprint, Wallet, HelpCircle } from "lucide-react";
+import { User, LogOut, Brain, Sparkles, Calendar, ChevronRight, MessageSquare, Users, Download, FileText, Shield, Scale, Settings, Zap, Link2, BellRing, Puzzle, Activity, Lock, Bot, Mail, Fingerprint, Wallet, HelpCircle, Send, Newspaper, Database, ShieldCheck, Briefcase, Home, Receipt, BookOpen, BarChart3, Crown } from "lucide-react";
 import { HelpFAQSection } from "@/components/settings/HelpFAQSection";
 import { PasskeySettingsCard } from "@/components/settings/PasskeySettingsCard";
 import { useAuth } from "@/providers/AuthProvider";
 import { useClerk } from "@clerk/clerk-react";
 import { useLanguage } from "@/providers/LanguageProvider";
+import { useSpace } from "@/providers/SpaceProvider";
 import { cn } from "@/lib/utils";
 
 interface SettingsCardProps {
@@ -84,6 +103,7 @@ const Profile = () => {
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
   const { signOut } = useClerk();
+  const { currentSpace } = useSpace();
 
   const handleSignOut = async () => {
     await signOut();
@@ -195,6 +215,54 @@ const Profile = () => {
             <OliveProactivePreferences />
           </SettingsCard>
 
+          {/* Trust & Autonomy Settings */}
+          <TrustApprovalCard />
+
+          <SettingsCard
+            icon={<Shield className="h-5 w-5 text-primary" />}
+            iconBg="bg-primary/10"
+            title="Trust & Autonomy"
+            subtitle="Control what Olive can do on her own"
+          >
+            <TrustSettingsCard />
+          </SettingsCard>
+
+          <SettingsCard
+            icon={<Activity className="h-5 w-5 text-emerald-500" />}
+            iconBg="bg-emerald-500/10"
+            title="Proactivity Level"
+            subtitle="How actively Olive reaches out based on your engagement"
+          >
+            <EngagementScoreCard />
+          </SettingsCard>
+
+          <SettingsCard
+            icon={<Brain className="h-5 w-5 text-violet-500" />}
+            iconBg="bg-violet-500/10"
+            title="What Olive Has Learned"
+            subtitle="Insights from your interactions"
+          >
+            <ReflectionHistoryCard />
+          </SettingsCard>
+
+          <SettingsCard
+            icon={<Database className="h-5 w-5 text-cyan-500" />}
+            iconBg="bg-cyan-500/10"
+            title={t('profile:memoryHealth.title', 'Memory Health')}
+            subtitle={t('profile:memoryHealth.subtitle', 'Storage, decay & consolidation status')}
+          >
+            <MemoryHealthCard />
+          </SettingsCard>
+
+          <SettingsCard
+            icon={<ShieldCheck className="h-5 w-5 text-violet-600" />}
+            iconBg="bg-violet-600/10"
+            title={t('profile:soulSafety.title', 'Soul Evolution Safety')}
+            subtitle={t('profile:soulSafety.subtitle', 'Drift detection, rollback & controls')}
+          >
+            <SoulEvolutionSafetyCard />
+          </SettingsCard>
+
           <SettingsCard
             icon={<Zap className="h-5 w-5 text-primary" />}
             iconBg="bg-primary/10"
@@ -221,9 +289,101 @@ const Profile = () => {
               <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:translate-x-0.5 transition-all" />
             </button>
           </SettingsCard>
+
+          <SettingsCard
+            icon={<Send className="h-5 w-5 text-teal-500" />}
+            iconBg="bg-teal-500/10"
+            title={t('profile:delegation.title', 'Task Delegation')}
+            subtitle={t('profile:delegation.subtitle', 'Tasks delegated to you by your team')}
+          >
+            <DelegationCard />
+          </SettingsCard>
+
+          <SettingsCard
+            icon={<Newspaper className="h-5 w-5 text-amber-500" />}
+            iconBg="bg-amber-500/10"
+            title={t('profile:briefing.title', 'Daily Briefing')}
+            subtitle={t('profile:briefing.subtitle', 'Your personalized daily overview')}
+          >
+            <DailyBriefingView />
+          </SettingsCard>
         </CollapsibleSection>
 
-        {/* SECTION 3: Integrations */}
+        {/* ============================================ */}
+        {/* SECTION 3: Business Tools (shown for business/team spaces) */}
+        {/* ============================================ */}
+        {currentSpace && (currentSpace.type === 'business' || (currentSpace.member_count ?? 0) > 1) && (
+          <CollapsibleSection
+            title={t('profile:sections.business', 'Business Tools')}
+            icon={<Briefcase className="h-3.5 w-3.5 text-stone-500" />}
+            delay={125}
+          >
+            <SettingsCard
+              icon={<Home className="h-5 w-5 text-blue-500" />}
+              iconBg="bg-blue-500/10"
+              title={t('profile:templates.title', 'Industry Templates')}
+              subtitle={t('profile:templates.subtitle', 'Pre-configured starter kits for your industry')}
+            >
+              <IndustryTemplateSelector />
+            </SettingsCard>
+
+            <SettingsCard
+              icon={<Users className="h-5 w-5 text-emerald-500" />}
+              iconBg="bg-emerald-500/10"
+              title={t('profile:pipeline.title', 'Client Pipeline')}
+              subtitle={t('profile:pipeline.subtitle', 'Track clients from lead to completion')}
+            >
+              <ClientPipelineCard />
+            </SettingsCard>
+
+            <SettingsCard
+              icon={<Receipt className="h-5 w-5 text-orange-500" />}
+              iconBg="bg-orange-500/10"
+              title={t('profile:expenses.title', 'Expense Splitting')}
+              subtitle={t('profile:expenses.subtitle', 'Split costs between team members')}
+            >
+              <ExpenseSplitCard />
+            </SettingsCard>
+
+            <SettingsCard
+              icon={<BookOpen className="h-5 w-5 text-indigo-500" />}
+              iconBg="bg-indigo-500/10"
+              title={t('profile:decisions.title', 'Decision Log')}
+              subtitle={t('profile:decisions.subtitle', 'Track team decisions with context')}
+            >
+              <DecisionLogCard />
+            </SettingsCard>
+
+            <SettingsCard
+              icon={<Zap className="h-5 w-5 text-amber-500" />}
+              iconBg="bg-amber-500/10"
+              title={t('profile:workflows.title', 'Recurring Workflows')}
+              subtitle={t('profile:workflows.subtitle', 'Automated weekly reviews, budget reports & follow-ups')}
+            >
+              <RecurringWorkflowsCard />
+            </SettingsCard>
+
+            <SettingsCard
+              icon={<Scale className="h-5 w-5 text-red-500" />}
+              iconBg="bg-red-500/10"
+              title={t('profile:conflicts.title', 'Conflict Detection')}
+              subtitle={t('profile:conflicts.subtitle', 'Schedule overlaps, overloads & budget issues')}
+            >
+              <ConflictCard />
+            </SettingsCard>
+
+            <SettingsCard
+              icon={<BarChart3 className="h-5 w-5 text-violet-500" />}
+              iconBg="bg-violet-500/10"
+              title={t('profile:polls.title', 'Team Polls')}
+              subtitle={t('profile:polls.subtitle', 'Quick decisions with your team')}
+            >
+              <PollCard />
+            </SettingsCard>
+          </CollapsibleSection>
+        )}
+
+        {/* SECTION: Integrations */}
         <CollapsibleSection 
           title={t('profile:sections.integrations', 'Connected Apps')}
           icon={<Link2 className="h-3.5 w-3.5 text-muted-foreground" />}
@@ -286,13 +446,22 @@ const Profile = () => {
           </SettingsCard>
         </CollapsibleSection>
 
-        {/* SECTION 4: System & Legal */}
-        <CollapsibleSection 
+        {/* SECTION: System & Legal */}
+        <CollapsibleSection
           title={t('profile:sections.system', 'System')}
           icon={<Settings className="h-3.5 w-3.5 text-muted-foreground" />}
           delay={200}
           sectionId="system"
         >
+          <SettingsCard
+            icon={<Crown className="h-5 w-5 text-amber-500" />}
+            iconBg="bg-amber-500/10"
+            title={t('profile:subscription.title', 'Subscription & Usage')}
+            subtitle={t('profile:subscription.subtitle', 'Your plan, limits & billing')}
+          >
+            <SubscriptionCard />
+          </SettingsCard>
+
           <SettingsCard
             icon={<span className="text-lg">🌍</span>}
             iconBg="bg-blue-500/10"

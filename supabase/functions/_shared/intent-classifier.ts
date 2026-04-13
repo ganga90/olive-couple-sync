@@ -82,6 +82,9 @@ const INTENT_SCHEMA = {
         "partner_message",
         "create_list",
         "list_recap",
+        "save_memory",
+        "web_research",
+        "schedule_calendar",
       ],
     },
     target_task_id: { type: Type.STRING, nullable: true },
@@ -380,6 +383,9 @@ KEY: Does the message mention an EMAIL ADDRESS or EXTERNAL person/colleague/boss
 - [After Olive discussed a task] "What about the other one?" → contextual_ask (follow-up about saved data)
 - [After ANY Olive response] "No, I meant X" → same intent as previous (clarification, NEVER create)
 - [After ANY Olive response] "Not that, the Y one" → same intent as previous (correction, NEVER create)
+- "save_memory": User wants to save a fact, preference, or personal detail as a memory (e.g., "remember that I prefer Italian food", "my dentist is Dr. Smith", "note that Marcus is allergic to peanuts", "save this: we love hiking on weekends", "ricorda che preferisco la pizza", "recuerda que soy vegetariano"). The user is telling you something to REMEMBER for the future, not a task to do.
+- "web_research": User wants to research, analyze, or extract content from a specific URL or webpage they shared. They share a link and want you to read it, summarize it, check prices, compare options, or extract specific information from it. Examples: "check out https://...", "summarize this article https://...", "what does this page say?", "look at this Zillow listing https://...", "scrape this link", "what's on this website?", "leggi questo link https://...", "mira este enlace https://...". Must contain or reference a URL. If the user asks a general question WITHOUT a specific URL → use contextual_ask or chat instead.
+- "schedule_calendar": User wants to schedule, book, or add an event to their calendar. They mention a specific time, date, or meeting and want it on their calendar. Examples: "add a meeting at 3pm tomorrow", "schedule a dentist appointment for Friday at 10am", "put dinner with Marco on my calendar for Saturday 7pm", "book a call with the team next Monday 2-3pm", "aggiungi al calendario una riunione domani alle 15", "agenda una cita con el dentista el viernes", "schedule a viewing for that house tomorrow at 2pm". Must involve a specific time/date reference AND the user explicitly or implicitly wants it on their calendar. If the user is just creating a task/reminder without a calendar context → use create or remind instead.
 
 ## CONVERSATION HISTORY:
 ${recentConvo || "No previous conversation."}

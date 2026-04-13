@@ -34,6 +34,7 @@ const DB_ONLY_INTENTS = [
   "merge",
   "create",
   "create_list",
+  "save_memory",
 ];
 
 /** Chat types that require deeper reasoning → Pro model */
@@ -131,6 +132,16 @@ export function routeIntent(
   // ── Partner message — standard for relay formatting ─────
   if (intent === "partner_message") {
     return { responseTier: "standard", reason: "partner_relay" };
+  }
+
+  // ── Web research — standard for function calling + URL scraping
+  if (intent === "web_research") {
+    return { responseTier: "standard", reason: "web_research" };
+  }
+
+  // ── Schedule calendar — standard for function calling + Calendar API
+  if (intent === "schedule_calendar") {
+    return { responseTier: "standard", reason: "schedule_calendar" };
   }
 
   // ── Fallback ────────────────────────────────────────────

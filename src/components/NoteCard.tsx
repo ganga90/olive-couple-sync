@@ -8,6 +8,7 @@ import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { NotePrivacyToggle } from "@/components/NotePrivacyToggle";
 import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
+import { NoteReactions } from "@/components/NoteReactions";
 import type { Note } from "@/types/note";
 import { format } from "date-fns";
 
@@ -188,9 +189,13 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             </Button>
           </div>
         </div>
+        {/* Reactions row (shared notes only) */}
+        {(note.isShared || note.coupleId) && (
+          <NoteReactions noteId={note.id} compact className="pt-1" />
+        )}
       </div>
-      
-      <QuickEditReminderDialog 
+
+      <QuickEditReminderDialog
         open={showReminderDialog}
         onOpenChange={setShowReminderDialog}
         note={note}

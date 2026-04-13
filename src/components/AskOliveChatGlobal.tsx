@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { Send, Sparkles, BookmarkPlus, Check } from "lucide-react";
+import { Send, Sparkles, BookmarkPlus, Check, Paperclip, X, Image, FileVideo, FileText } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -31,6 +32,7 @@ interface Message {
   sourcesUsed?: SourcesUsed;
   action?: TaskAction;
   savedAsNote?: boolean; // Track if this message was saved
+  mediaUrls?: string[];
 }
 
 interface AskOliveChatGlobalProps {
@@ -162,6 +164,8 @@ const formatUserContextForAI = (
   return contextParts.join("\n");
 };
 
+const isNativePlatform = Capacitor.isNativePlatform();
+
 const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -169,10 +173,14 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
   const [isStreaming, setIsStreaming] = useState(false);
   const [interactionId, setInteractionId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [mediaPreviews, setMediaPreviews] = useState<string[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const sessionLoadedRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { user } = useAuth();
   const { currentCouple, you } = useSupabaseCouple();
@@ -342,20 +350,119 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
     }
   };
 
+  // ── Media Handling ──────────────────────────────────────────
+
+  const addMediaFiles = useCallback((files: FileList | File[]) => {
+    const newFiles = Array.from(files).filter(
+      (f) => f.type.startsWith("image/") || f.type.startsWith("video/") || f.type === "application/pdf"
+    );
+    if (newFiles.length === 0) return;
+
+    // Limit to 3 files total
+    const combined = [...mediaFiles, ...newFiles].slice(0, 3);
+    setMediaFiles(combined);
+
+    // Generate previews
+    const previews = combined.map((file) => {
+      if (file.type.startsWith("image/")) return URL.createObjectURL(file);
+      return ""; // No preview for video/PDF — use icon instead
+    });
+    setMediaPreviews(previews);
+  }, [mediaFiles]);
+
+  const removeMediaFile = useCallback((index: number) => {
+    setMediaFiles((prev) => prev.filter((_, i) => i !== index));
+    setMediaPreviews((prev) => {
+      const removed = prev[index];
+      if (removed) URL.revokeObjectURL(removed);
+      return prev.filter((_, i) => i !== index);
+    });
+  }, []);
+
+  const uploadMediaFiles = async (files: File[]): Promise<string[]> => {
+    const urls: string[] = [];
+    for (const file of files) {
+      const ext = file.name.split(".").pop() || "bin";
+      const filename = `${user!.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("note-media")
+        .upload(filename, file, { contentType: file.type, upsert: false });
+      if (uploadError) {
+        console.error("Media upload error:", uploadError);
+        continue;
+      }
+      const { data: signedData } = await supabase.storage
+        .from("note-media")
+        .createSignedUrl(filename, 365 * 24 * 3600);
+      if (signedData?.signedUrl) urls.push(signedData.signedUrl);
+    }
+    return urls;
+  };
+
+  // Drag & drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files.length > 0) {
+      addMediaFiles(e.dataTransfer.files);
+    }
+  }, [addMediaFiles]);
+
+  // Paste handler for images
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith("image/")) {
+        const file = items[i].getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      addMediaFiles(imageFiles);
+    }
+  }, [addMediaFiles]);
+
+  // ── Submit Handler ─────────────────────────────────────────
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!input.trim() || !user || isLoading || isStreaming) return;
+    if ((!input.trim() && mediaFiles.length === 0) || !user || isLoading || isStreaming) return;
+
+    // Capture media files before clearing
+    const pendingMedia = [...mediaFiles];
+    const pendingPreviews = [...mediaPreviews];
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: "user",
-      content: input.trim(),
+      content: input.trim() || (pendingMedia.length > 0 ? `[${pendingMedia.map(f => f.name).join(", ")}]` : ""),
       timestamp: new Date(),
+      mediaUrls: pendingPreviews.filter(Boolean),
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setMediaFiles([]);
+    setMediaPreviews([]);
     setIsLoading(true);
     setIsStreaming(true);
 
@@ -363,6 +470,12 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
     abortControllerRef.current = new AbortController();
 
     try {
+      // Upload media files if any
+      let uploadedMediaUrls: string[] = [];
+      if (pendingMedia.length > 0) {
+        uploadedMediaUrls = await uploadMediaFiles(pendingMedia);
+      }
+
       // Build conversation history for multi-turn context
       const conversationHistory = messages
         .filter((m) => m.id !== "greeting")
@@ -384,6 +497,8 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
           message: userMessage.content,
           user_id: user.id,
           couple_id: currentCouple?.id,
+          // Media support (Epic 5)
+          media_urls: uploadedMediaUrls.length > 0 ? uploadedMediaUrls : undefined,
           context: {
             source: "global_chat",
             user_name: you,
@@ -596,7 +711,25 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
   }, [user?.id, currentCouple?.id, messages, refetchNotes, t]);
 
   return (
-    <div className="flex flex-col h-[60vh] max-h-[500px]">
+    <div
+      className="flex flex-col h-[60vh] max-h-[500px] relative"
+      {...(!isNativePlatform ? {
+        onDragEnter: handleDragEnter,
+        onDragOver: handleDragOver,
+        onDragLeave: handleDragLeave,
+        onDrop: handleDrop,
+      } : {})}
+    >
+      {/* Drag overlay — web only, not supported on mobile */}
+      {!isNativePlatform && isDragging && (
+        <div className="absolute inset-0 z-50 bg-primary/10 border-2 border-dashed border-primary rounded-lg flex items-center justify-center">
+          <div className="text-center">
+            <Image className="h-8 w-8 mx-auto mb-2 text-primary" />
+            <p className="text-sm font-medium text-primary">Drop files here</p>
+          </div>
+        </div>
+      )}
+
       {/* Messages Area */}
       <ScrollArea className="flex-1 px-4" ref={scrollRef}>
         <div className="space-y-4 py-4">
@@ -616,6 +749,25 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
                     : "bg-muted text-foreground rounded-bl-md"
                 )}
               >
+                {/* User message media thumbnails */}
+                {message.role === "user" && message.mediaUrls && message.mediaUrls.length > 0 && (
+                  <div className="flex gap-1 mb-2 flex-wrap">
+                    {message.mediaUrls.map((url, i) =>
+                      url ? (
+                        <img
+                          key={i}
+                          src={url}
+                          alt="Attached media"
+                          className="h-16 w-16 rounded object-cover"
+                        />
+                      ) : (
+                        <div key={i} className="h-16 w-16 rounded bg-primary-foreground/20 flex items-center justify-center">
+                          <FileText className="h-6 w-6 opacity-60" />
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
                 {message.role === "assistant" ? (
                   <div className="space-y-2">
                     <div className="prose prose-sm dark:prose-invert max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:mb-2 [&>ol]:mb-2">
@@ -688,14 +840,72 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
         </div>
       </ScrollArea>
 
+      {/* Media Preview Strip */}
+      {mediaFiles.length > 0 && (
+        <div className="border-t px-4 py-2 flex gap-2 overflow-x-auto">
+          {mediaFiles.map((file, index) => (
+            <div key={index} className="relative shrink-0">
+              {file.type.startsWith("image/") && mediaPreviews[index] ? (
+                <img
+                  src={mediaPreviews[index]}
+                  alt={file.name}
+                  className="h-14 w-14 rounded-lg object-cover border"
+                />
+              ) : (
+                <div className="h-14 w-14 rounded-lg border bg-muted flex items-center justify-center">
+                  {file.type.startsWith("video/") ? (
+                    <FileVideo className="h-5 w-5 text-muted-foreground" />
+                  ) : (
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                  )}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => removeMediaFile(index)}
+                className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5"
+              >
+                <X className="h-3 w-3" />
+              </button>
+              <span className="text-[10px] text-muted-foreground block text-center truncate w-14 mt-0.5">
+                {file.name.length > 8 ? file.name.slice(0, 6) + "..." : file.name}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Input Area */}
       <form onSubmit={handleSubmit} className="border-t p-4">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*,application/pdf"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files) addMediaFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
         <div className="flex items-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-11 w-11 shrink-0"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading || mediaFiles.length >= 3}
+            title="Attach image, video, or PDF"
+          >
+            <Paperclip className="h-4 w-4" />
+          </Button>
           <Textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={t("askOlive.placeholder", "Ask me anything...")}
             className="min-h-[44px] max-h-32 resize-none text-base"
             rows={1}
@@ -704,7 +914,7 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
           <Button
             type="submit"
             size="icon"
-            disabled={!input.trim() || isLoading}
+            disabled={(!input.trim() && mediaFiles.length === 0) || isLoading}
             className="h-11 w-11 shrink-0"
           >
             <Send className="h-4 w-4" />

@@ -1618,13 +1618,36 @@ serve(async (req) => {
           const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
           if (transcription) results.push(`[Audio transcription] ${transcription}`);
         } else if (mediaType === 'video') {
-          const videoAnalysis = await analyzeVideoWithGemini(genai, mediaUrl);
-          if (videoAnalysis) {
-            results.push(`[Video] ${videoAnalysis}`);
-          } else {
-            const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
-            if (transcription) results.push(`[Video audio transcription] ${transcription}`);
-            else results.push(`[Video] Video attachment (analysis unavailable)`);
+          // For videos: try visual analysis with Gemini Pro first, then audio transcription
+          try {
+            const { downloadMediaToBase64, MAX_VIDEO_SIZE_BYTES } = await import("../_shared/media-utils.ts");
+            const videoMedia = await downloadMediaToBase64(mediaUrl, MAX_VIDEO_SIZE_BYTES);
+            if (videoMedia) {
+              console.log(`[process-note] Analyzing video visually (${(videoMedia.sizeBytes / 1024 / 1024).toFixed(1)}MB)`);
+              const visualResponse = await genai.models.generateContent({
+                model: "gemini-2.5-pro",
+                contents: [{ role: "user", parts: [
+                  { text: "Analyze this video. Describe what you see, extract any visible text, identify objects/locations/people, and note any actionable items (tasks, reminders, shopping lists, etc.). Be thorough but concise." },
+                  { inlineData: { mimeType: videoMedia.mimeType, data: videoMedia.base64 } }
+                ]}],
+                config: { temperature: 0.2, maxOutputTokens: 1000 }
+              });
+              const visualDesc = visualResponse.text;
+              if (visualDesc) {
+                results.push(`[Video visual analysis] ${visualDesc}`);
+                console.log('[process-note] Video visual analysis complete');
+              }
+            } else {
+              console.log('[process-note] Video too large for visual analysis, falling back to audio-only');
+            }
+          } catch (videoVisErr) {
+            console.warn('[process-note] Video visual analysis failed (non-fatal):', videoVisErr);
+          }
+
+          // Also transcribe audio track
+          const transcription = await transcribeAudioWithElevenLabs(mediaUrl);
+          if (transcription) {
+            results.push(`[Video audio transcription] ${transcription}`);
           }
         }
         return { descriptions: results, receiptResult: localReceiptResult };
