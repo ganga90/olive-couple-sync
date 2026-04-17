@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useSafeClerkAuth as useAuth } from "@/hooks/useSafeClerk";
+import { useSafeUser } from "@/hooks/useSafeClerk";
 import { supabase } from "@/lib/supabaseClient";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,8 @@ import { Loader2, Phone } from "lucide-react";
 
 export const PhoneNumberField = () => {
   const { t } = useTranslation('profile');
-  const { userId } = useAuth();
+  const { user } = useSafeUser();
+  const userId = user?.id;
   const [phoneNumber, setPhoneNumber] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);

@@ -1,4 +1,15 @@
-import { useSignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
+import { useSignUp as useClerkSignUp, useAuth as useClerkAuthHook } from "@clerk/clerk-react";
+
+const HAS_CLERK = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+const useSignUp = (): any => {
+  try { return HAS_CLERK ? useClerkSignUp() : { signUp: null, isLoaded: true, setActive: null }; }
+  catch { return { signUp: null, isLoaded: true, setActive: null }; }
+};
+const useClerkAuth = (): any => {
+  try { return HAS_CLERK ? useClerkAuthHook() : { isSignedIn: false, isLoaded: true }; }
+  catch { return { isSignedIn: false, isLoaded: true }; }
+};
 import { useTranslation } from "react-i18next";
 import { useSEO } from "@/hooks/useSEO";
 import { Card } from "@/components/ui/card";
@@ -206,6 +217,24 @@ const SignUpPage = () => {
 
   const steps: Step[] = ["name", "email", "verify"];
   const currentStepIndex = steps.indexOf(step);
+
+  // Degraded mode: Clerk publishable key is missing — show a friendly notice.
+  if (!HAS_CLERK) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-soft">
+        <Card className="max-w-md w-full p-8 text-center space-y-4">
+          <OliveLogo />
+          <h1 className="text-2xl font-bold font-serif">Sign-up unavailable</h1>
+          <p className="text-muted-foreground">
+            Authentication isn't configured for this preview. Please try again later or contact support.
+          </p>
+          <Button onClick={() => rawNavigate("/landing")} variant="outline" className="w-full">
+            Back to landing
+          </Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-gradient-soft">
