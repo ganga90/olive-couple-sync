@@ -1,4 +1,15 @@
-import { useSignUp, useAuth as useClerkAuth } from "@clerk/clerk-react";
+import { useSignUp as useClerkSignUp, useAuth as useClerkAuthHook } from "@clerk/clerk-react";
+
+const HAS_CLERK = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+const useSignUp = (): any => {
+  try { return HAS_CLERK ? useClerkSignUp() : { signUp: null, isLoaded: true, setActive: null }; }
+  catch { return { signUp: null, isLoaded: true, setActive: null }; }
+};
+const useClerkAuth = (): any => {
+  try { return HAS_CLERK ? useClerkAuthHook() : { isSignedIn: false, isLoaded: true }; }
+  catch { return { isSignedIn: false, isLoaded: true }; }
+};
 import { useTranslation } from "react-i18next";
 import { useSEO } from "@/hooks/useSEO";
 import { Card } from "@/components/ui/card";

@@ -1,4 +1,21 @@
-import { useSignIn, useAuth, useUser } from "@clerk/clerk-react";
+import { useSignIn as useClerkSignIn, useAuth as useClerkAuthHook, useUser as useClerkUser } from "@clerk/clerk-react";
+
+const HAS_CLERK = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+// Safe wrappers — return inert defaults when Clerk is unavailable so the page
+// can render an "auth unavailable" notice instead of crashing the tree.
+const useSignIn = (): any => {
+  try { return HAS_CLERK ? useClerkSignIn() : { signIn: null, isLoaded: true, setActive: null }; }
+  catch { return { signIn: null, isLoaded: true, setActive: null }; }
+};
+const useAuth = (): any => {
+  try { return HAS_CLERK ? useClerkAuthHook() : { isSignedIn: false, isLoaded: true }; }
+  catch { return { isSignedIn: false, isLoaded: true }; }
+};
+const useUser = (): any => {
+  try { return HAS_CLERK ? useClerkUser() : { user: null, isLoaded: true }; }
+  catch { return { user: null, isLoaded: true }; }
+};
 import { useTranslation } from "react-i18next";
 import { useSEO } from "@/hooks/useSEO";
 import { Card } from "@/components/ui/card";
