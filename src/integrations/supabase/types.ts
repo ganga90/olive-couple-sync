@@ -405,6 +405,7 @@ export type Database = {
       }
       clerk_notes: {
         Row: {
+          assigned_to: string | null
           author_id: string | null
           auto_reminders_sent: string[] | null
           category: string
@@ -430,12 +431,14 @@ export type Database = {
           reminder_time: string | null
           source: string | null
           source_ref: string | null
+          space_id: string | null
           summary: string
           tags: string[] | null
           task_owner: string | null
           updated_at: string
         }
         Insert: {
+          assigned_to?: string | null
           author_id?: string | null
           auto_reminders_sent?: string[] | null
           category: string
@@ -461,12 +464,14 @@ export type Database = {
           reminder_time?: string | null
           source?: string | null
           source_ref?: string | null
+          space_id?: string | null
           summary: string
           tags?: string[] | null
           task_owner?: string | null
           updated_at?: string
         }
         Update: {
+          assigned_to?: string | null
           author_id?: string | null
           auto_reminders_sent?: string[] | null
           category?: string
@@ -492,6 +497,7 @@ export type Database = {
           reminder_time?: string | null
           source?: string | null
           source_ref?: string | null
+          space_id?: string | null
           summary?: string
           tags?: string[] | null
           task_owner?: string | null
@@ -510,6 +516,13 @@ export type Database = {
             columns: ["list_id"]
             isOneToOne: false
             referencedRelation: "clerk_lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clerk_notes_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
             referencedColumns: ["id"]
           },
         ]
@@ -947,6 +960,148 @@ export type Database = {
         }
         Relationships: []
       }
+      note_mentions: {
+        Row: {
+          created_at: string
+          id: string
+          mentioned_by: string
+          mentioned_user_id: string
+          note_id: string | null
+          read_at: string | null
+          space_id: string | null
+          thread_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          mentioned_by: string
+          mentioned_user_id: string
+          note_id?: string | null
+          read_at?: string | null
+          space_id?: string | null
+          thread_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          mentioned_by?: string
+          mentioned_user_id?: string
+          note_id?: string | null
+          read_at?: string | null
+          space_id?: string | null
+          thread_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "note_mentions_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_mentions_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_mentions_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "note_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      note_reactions: {
+        Row: {
+          created_at: string
+          emoji: string
+          id: string
+          note_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emoji: string
+          id?: string
+          note_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          note_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "note_reactions_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      note_threads: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          id: string
+          note_id: string
+          parent_id: string | null
+          space_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          body: string
+          created_at?: string
+          id?: string
+          note_id: string
+          parent_id?: string | null
+          space_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          id?: string
+          note_id?: string
+          parent_id?: string | null
+          space_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "note_threads_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_threads_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "note_threads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_threads_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notes: {
         Row: {
           author_id: string | null
@@ -1039,6 +1194,93 @@ export type Database = {
         }
         Relationships: []
       }
+      olive_agent_executions: {
+        Row: {
+          agent_id: string
+          agent_name: string | null
+          checkpoint: Json | null
+          completed_at: string | null
+          current_step: number
+          error_message: string | null
+          id: string
+          input_payload: Json
+          max_retries: number | null
+          next_retry_at: string | null
+          output: Json | null
+          queued_at: string
+          required_trust_level: number | null
+          retry_count: number | null
+          space_id: string | null
+          started_at: string | null
+          status: string
+          steps: Json
+          total_steps: number
+          trust_action_id: string | null
+          user_id: string
+        }
+        Insert: {
+          agent_id: string
+          agent_name?: string | null
+          checkpoint?: Json | null
+          completed_at?: string | null
+          current_step?: number
+          error_message?: string | null
+          id?: string
+          input_payload?: Json
+          max_retries?: number | null
+          next_retry_at?: string | null
+          output?: Json | null
+          queued_at?: string
+          required_trust_level?: number | null
+          retry_count?: number | null
+          space_id?: string | null
+          started_at?: string | null
+          status?: string
+          steps?: Json
+          total_steps?: number
+          trust_action_id?: string | null
+          user_id: string
+        }
+        Update: {
+          agent_id?: string
+          agent_name?: string | null
+          checkpoint?: Json | null
+          completed_at?: string | null
+          current_step?: number
+          error_message?: string | null
+          id?: string
+          input_payload?: Json
+          max_retries?: number | null
+          next_retry_at?: string | null
+          output?: Json | null
+          queued_at?: string
+          required_trust_level?: number | null
+          retry_count?: number | null
+          space_id?: string | null
+          started_at?: string | null
+          status?: string
+          steps?: Json
+          total_steps?: number
+          trust_action_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_agent_executions_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "olive_agent_executions_trust_action_id_fkey"
+            columns: ["trust_action_id"]
+            isOneToOne: false
+            referencedRelation: "olive_trust_actions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       olive_agent_runs: {
         Row: {
           agent_id: string
@@ -1081,6 +1323,65 @@ export type Database = {
         }
         Relationships: []
       }
+      olive_briefings: {
+        Row: {
+          briefing_type: string
+          covers_from: string | null
+          covers_to: string | null
+          created_at: string
+          delegation_count: number | null
+          delivered_via: string[] | null
+          id: string
+          read_at: string | null
+          sections: Json
+          space_id: string | null
+          summary: string
+          task_count: number | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          briefing_type?: string
+          covers_from?: string | null
+          covers_to?: string | null
+          created_at?: string
+          delegation_count?: number | null
+          delivered_via?: string[] | null
+          id?: string
+          read_at?: string | null
+          sections?: Json
+          space_id?: string | null
+          summary: string
+          task_count?: number | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          briefing_type?: string
+          covers_from?: string | null
+          covers_to?: string | null
+          created_at?: string
+          delegation_count?: number | null
+          delivered_via?: string[] | null
+          id?: string
+          read_at?: string | null
+          sections?: Json
+          space_id?: string | null
+          summary?: string
+          task_count?: number | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_briefings_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       olive_chat_sessions: {
         Row: {
           couple_id: string | null
@@ -1122,6 +1423,252 @@ export type Database = {
           },
         ]
       }
+      olive_client_activity: {
+        Row: {
+          activity_type: string
+          client_id: string
+          created_at: string
+          description: string | null
+          from_value: string | null
+          id: string
+          metadata: Json | null
+          to_value: string | null
+          user_id: string
+        }
+        Insert: {
+          activity_type: string
+          client_id: string
+          created_at?: string
+          description?: string | null
+          from_value?: string | null
+          id?: string
+          metadata?: Json | null
+          to_value?: string | null
+          user_id: string
+        }
+        Update: {
+          activity_type?: string
+          client_id?: string
+          created_at?: string
+          description?: string | null
+          from_value?: string | null
+          id?: string
+          metadata?: Json | null
+          to_value?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_client_activity_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "olive_clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_clients: {
+        Row: {
+          actual_value: number | null
+          company: string | null
+          created_at: string
+          currency: string
+          email: string | null
+          estimated_value: number | null
+          follow_up_date: string | null
+          id: string
+          is_archived: boolean
+          last_contact: string | null
+          metadata: Json | null
+          name: string
+          notes: string | null
+          phone: string | null
+          source: string | null
+          space_id: string
+          stage: string
+          stage_changed_at: string
+          tags: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          actual_value?: number | null
+          company?: string | null
+          created_at?: string
+          currency?: string
+          email?: string | null
+          estimated_value?: number | null
+          follow_up_date?: string | null
+          id?: string
+          is_archived?: boolean
+          last_contact?: string | null
+          metadata?: Json | null
+          name: string
+          notes?: string | null
+          phone?: string | null
+          source?: string | null
+          space_id: string
+          stage?: string
+          stage_changed_at?: string
+          tags?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          actual_value?: number | null
+          company?: string | null
+          created_at?: string
+          currency?: string
+          email?: string | null
+          estimated_value?: number | null
+          follow_up_date?: string | null
+          id?: string
+          is_archived?: boolean
+          last_contact?: string | null
+          metadata?: Json | null
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          source?: string | null
+          space_id?: string
+          stage?: string
+          stage_changed_at?: string
+          tags?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_clients_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_conflicts: {
+        Row: {
+          conflict_type: string
+          description: string | null
+          detected_at: string
+          entity_a_id: string
+          entity_a_type: string
+          entity_b_id: string
+          entity_b_type: string
+          id: string
+          metadata: Json | null
+          resolution: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+          space_id: string
+          status: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          conflict_type: string
+          description?: string | null
+          detected_at?: string
+          entity_a_id: string
+          entity_a_type: string
+          entity_b_id: string
+          entity_b_type: string
+          id?: string
+          metadata?: Json | null
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          space_id: string
+          status?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          conflict_type?: string
+          description?: string | null
+          detected_at?: string
+          entity_a_id?: string
+          entity_a_type?: string
+          entity_b_id?: string
+          entity_b_type?: string
+          id?: string
+          metadata?: Json | null
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          space_id?: string
+          status?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_conflicts_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_consolidation_runs: {
+        Row: {
+          chunks_compacted: number | null
+          completed_at: string | null
+          daily_logs_compacted: number | null
+          error_message: string | null
+          id: string
+          memories_archived: number | null
+          memories_deduplicated: number | null
+          memories_merged: number | null
+          memories_scanned: number | null
+          merge_details: Json | null
+          run_type: string
+          started_at: string
+          status: string
+          token_savings: number | null
+          user_id: string
+        }
+        Insert: {
+          chunks_compacted?: number | null
+          completed_at?: string | null
+          daily_logs_compacted?: number | null
+          error_message?: string | null
+          id?: string
+          memories_archived?: number | null
+          memories_deduplicated?: number | null
+          memories_merged?: number | null
+          memories_scanned?: number | null
+          merge_details?: Json | null
+          run_type?: string
+          started_at?: string
+          status?: string
+          token_savings?: number | null
+          user_id: string
+        }
+        Update: {
+          chunks_compacted?: number | null
+          completed_at?: string | null
+          daily_logs_compacted?: number | null
+          error_message?: string | null
+          id?: string
+          memories_archived?: number | null
+          memories_deduplicated?: number | null
+          memories_merged?: number | null
+          memories_scanned?: number | null
+          merge_details?: Json | null
+          run_type?: string
+          started_at?: string
+          status?: string
+          token_savings?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       olive_conversations: {
         Row: {
           created_at: string
@@ -1153,6 +1700,218 @@ export type Database = {
             columns: ["note_id"]
             isOneToOne: false
             referencedRelation: "clerk_notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_cross_space_insights: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          description: string
+          expires_at: string | null
+          id: string
+          insight_type: string
+          metadata: Json | null
+          source_spaces: Json
+          status: string
+          suggestion: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          description: string
+          expires_at?: string | null
+          id?: string
+          insight_type: string
+          metadata?: Json | null
+          source_spaces?: Json
+          status?: string
+          suggestion?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          description?: string
+          expires_at?: string | null
+          id?: string
+          insight_type?: string
+          metadata?: Json | null
+          source_spaces?: Json
+          status?: string
+          suggestion?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      olive_decisions: {
+        Row: {
+          alternatives: Json | null
+          category: string | null
+          context: string | null
+          created_at: string
+          decision_date: string
+          description: string | null
+          id: string
+          is_archived: boolean
+          outcome: string | null
+          outcome_date: string | null
+          participants: Json | null
+          rationale: string | null
+          related_note_ids: Json | null
+          space_id: string
+          status: string
+          tags: Json | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          alternatives?: Json | null
+          category?: string | null
+          context?: string | null
+          created_at?: string
+          decision_date?: string
+          description?: string | null
+          id?: string
+          is_archived?: boolean
+          outcome?: string | null
+          outcome_date?: string | null
+          participants?: Json | null
+          rationale?: string | null
+          related_note_ids?: Json | null
+          space_id: string
+          status?: string
+          tags?: Json | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          alternatives?: Json | null
+          category?: string | null
+          context?: string | null
+          created_at?: string
+          decision_date?: string
+          description?: string | null
+          id?: string
+          is_archived?: boolean
+          outcome?: string | null
+          outcome_date?: string | null
+          participants?: Json | null
+          rationale?: string | null
+          related_note_ids?: Json | null
+          space_id?: string
+          status?: string
+          tags?: Json | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_decisions_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_delegations: {
+        Row: {
+          agent_execution_id: string | null
+          completed_at: string | null
+          created_at: string
+          delegated_by: string
+          delegated_to: string
+          description: string | null
+          id: string
+          last_notified_at: string | null
+          note_id: string | null
+          notified_via: string[] | null
+          priority: string | null
+          reasoning: string | null
+          reassign_reason: string | null
+          reassigned_to: string | null
+          reminder_count: number | null
+          responded_at: string | null
+          response_note: string | null
+          snoozed_until: string | null
+          space_id: string
+          status: string
+          suggested_by: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          agent_execution_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          delegated_by: string
+          delegated_to: string
+          description?: string | null
+          id?: string
+          last_notified_at?: string | null
+          note_id?: string | null
+          notified_via?: string[] | null
+          priority?: string | null
+          reasoning?: string | null
+          reassign_reason?: string | null
+          reassigned_to?: string | null
+          reminder_count?: number | null
+          responded_at?: string | null
+          response_note?: string | null
+          snoozed_until?: string | null
+          space_id: string
+          status?: string
+          suggested_by?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          agent_execution_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          delegated_by?: string
+          delegated_to?: string
+          description?: string | null
+          id?: string
+          last_notified_at?: string | null
+          note_id?: string | null
+          notified_via?: string[] | null
+          priority?: string | null
+          reasoning?: string | null
+          reassign_reason?: string | null
+          reassigned_to?: string | null
+          reminder_count?: number | null
+          responded_at?: string | null
+          response_note?: string | null
+          snoozed_until?: string | null
+          space_id?: string
+          status?: string
+          suggested_by?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_delegations_agent_execution_id_fkey"
+            columns: ["agent_execution_id"]
+            isOneToOne: false
+            referencedRelation: "olive_agent_executions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "olive_delegations_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
             referencedColumns: ["id"]
           },
         ]
@@ -1210,6 +1969,69 @@ export type Database = {
           triage_frequency?: string | null
           triage_lookback_days?: number | null
           updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      olive_engagement_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      olive_engagement_metrics: {
+        Row: {
+          avg_response_time_seconds: number | null
+          last_interaction: string | null
+          messages_responded_7d: number
+          messages_sent_7d: number
+          proactive_accepted_7d: number
+          proactive_ignored_7d: number
+          proactive_rejected_7d: number
+          score: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avg_response_time_seconds?: number | null
+          last_interaction?: string | null
+          messages_responded_7d?: number
+          messages_sent_7d?: number
+          proactive_accepted_7d?: number
+          proactive_ignored_7d?: number
+          proactive_rejected_7d?: number
+          score?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avg_response_time_seconds?: number | null
+          last_interaction?: string | null
+          messages_responded_7d?: number
+          messages_sent_7d?: number
+          proactive_accepted_7d?: number
+          proactive_ignored_7d?: number
+          proactive_rejected_7d?: number
+          score?: number
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -1303,6 +2125,97 @@ export type Database = {
         }
         Relationships: []
       }
+      olive_expense_split_shares: {
+        Row: {
+          amount: number
+          id: string
+          is_paid: boolean
+          paid_at: string | null
+          percentage: number | null
+          split_id: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          id?: string
+          is_paid?: boolean
+          paid_at?: string | null
+          percentage?: number | null
+          split_id: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          id?: string
+          is_paid?: boolean
+          paid_at?: string | null
+          percentage?: number | null
+          split_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_expense_split_shares_split_id_fkey"
+            columns: ["split_id"]
+            isOneToOne: false
+            referencedRelation: "olive_expense_splits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_expense_splits: {
+        Row: {
+          created_at: string
+          created_by: string
+          currency: string
+          description: string
+          id: string
+          is_settled: boolean
+          settled_at: string | null
+          space_id: string
+          split_type: string
+          total_amount: number
+          transaction_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          currency?: string
+          description: string
+          id?: string
+          is_settled?: boolean
+          settled_at?: string | null
+          space_id: string
+          split_type?: string
+          total_amount: number
+          transaction_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          currency?: string
+          description?: string
+          id?: string
+          is_settled?: boolean
+          settled_at?: string | null
+          space_id?: string
+          split_type?: string
+          total_amount?: number
+          transaction_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_expense_splits_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       olive_gateway_sessions: {
         Row: {
           channel: string | null
@@ -1393,6 +2306,60 @@ export type Database = {
           message_preview?: string | null
           status?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      olive_industry_templates: {
+        Row: {
+          budget_categories: Json
+          created_at: string
+          description: string | null
+          icon: string | null
+          id: string
+          industry: string
+          is_active: boolean
+          lists: Json
+          name: string
+          note_categories: Json
+          proactive_rules: Json
+          skills: Json
+          soul_hints: Json
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          budget_categories?: Json
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          industry: string
+          is_active?: boolean
+          lists?: Json
+          name: string
+          note_categories?: Json
+          proactive_rules?: Json
+          skills?: Json
+          soul_hints?: Json
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          budget_categories?: Json
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          industry?: string
+          is_active?: boolean
+          lists?: Json
+          name?: string
+          note_categories?: Json
+          proactive_rules?: Json
+          skills?: Json
+          soul_hints?: Json
+          updated_at?: string
+          version?: number
         }
         Relationships: []
       }
@@ -1587,6 +2554,7 @@ export type Database = {
           file_type: string
           id: string
           metadata: Json | null
+          space_id: string | null
           token_count: number | null
           updated_at: string | null
           user_id: string
@@ -1601,6 +2569,7 @@ export type Database = {
           file_type: string
           id?: string
           metadata?: Json | null
+          space_id?: string | null
           token_count?: number | null
           updated_at?: string | null
           user_id: string
@@ -1615,6 +2584,7 @@ export type Database = {
           file_type?: string
           id?: string
           metadata?: Json | null
+          space_id?: string | null
           token_count?: number | null
           updated_at?: string | null
           user_id?: string
@@ -1661,6 +2631,51 @@ export type Database = {
           started_at?: string
           stats?: Json | null
           status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      olive_memory_relevance: {
+        Row: {
+          access_count: number | null
+          archive_reason: string | null
+          archived_at: string | null
+          created_at: string
+          decay_rate: number | null
+          id: string
+          is_archived: boolean | null
+          last_accessed_at: string | null
+          memory_id: string
+          relevance_score: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_count?: number | null
+          archive_reason?: string | null
+          archived_at?: string | null
+          created_at?: string
+          decay_rate?: number | null
+          id?: string
+          is_archived?: boolean | null
+          last_accessed_at?: string | null
+          memory_id: string
+          relevance_score?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_count?: number | null
+          archive_reason?: string | null
+          archived_at?: string | null
+          created_at?: string
+          decay_rate?: number | null
+          id?: string
+          is_archived?: boolean | null
+          last_accessed_at?: string | null
+          memory_id?: string
+          relevance_score?: number
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -1717,6 +2732,7 @@ export type Database = {
           pattern_data: Json
           pattern_type: string
           sample_count: number | null
+          space_id: string | null
           updated_at: string | null
           user_id: string
         }
@@ -1729,6 +2745,7 @@ export type Database = {
           pattern_data?: Json
           pattern_type: string
           sample_count?: number | null
+          space_id?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -1741,6 +2758,7 @@ export type Database = {
           pattern_data?: Json
           pattern_type?: string
           sample_count?: number | null
+          space_id?: string | null
           updated_at?: string | null
           user_id?: string
         }
@@ -1753,6 +2771,208 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      olive_poll_votes: {
+        Row: {
+          id: string
+          option_ids: Json
+          poll_id: string
+          ranking: Json | null
+          user_id: string
+          voted_at: string
+        }
+        Insert: {
+          id?: string
+          option_ids?: Json
+          poll_id: string
+          ranking?: Json | null
+          user_id: string
+          voted_at?: string
+        }
+        Update: {
+          id?: string
+          option_ids?: Json
+          poll_id?: string
+          ranking?: Json | null
+          user_id?: string
+          voted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_poll_votes_poll_id_fkey"
+            columns: ["poll_id"]
+            isOneToOne: false
+            referencedRelation: "olive_polls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_polls: {
+        Row: {
+          allow_add_options: boolean
+          anonymous: boolean
+          closes_at: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          options: Json
+          poll_type: string
+          question: string
+          space_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          allow_add_options?: boolean
+          anonymous?: boolean
+          closes_at?: string | null
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          options?: Json
+          poll_type?: string
+          question: string
+          space_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          allow_add_options?: boolean
+          anonymous?: boolean
+          closes_at?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          options?: Json
+          poll_type?: string
+          question?: string
+          space_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_polls_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_pricing_plans: {
+        Row: {
+          created_at: string
+          currency: string
+          description: string | null
+          features: Json
+          id: string
+          is_active: boolean
+          is_popular: boolean
+          max_ai_requests_per_day: number
+          max_file_storage_mb: number
+          max_members_per_space: number
+          max_notes_per_month: number
+          max_spaces: number
+          max_whatsapp_messages_per_day: number
+          name: string
+          plan_id: string
+          price_monthly_cents: number
+          price_yearly_cents: number
+          sort_order: number
+          stripe_price_id_monthly: string | null
+          stripe_price_id_yearly: string | null
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          description?: string | null
+          features?: Json
+          id?: string
+          is_active?: boolean
+          is_popular?: boolean
+          max_ai_requests_per_day?: number
+          max_file_storage_mb?: number
+          max_members_per_space?: number
+          max_notes_per_month?: number
+          max_spaces?: number
+          max_whatsapp_messages_per_day?: number
+          name: string
+          plan_id: string
+          price_monthly_cents?: number
+          price_yearly_cents?: number
+          sort_order?: number
+          stripe_price_id_monthly?: string | null
+          stripe_price_id_yearly?: string | null
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          description?: string | null
+          features?: Json
+          id?: string
+          is_active?: boolean
+          is_popular?: boolean
+          max_ai_requests_per_day?: number
+          max_file_storage_mb?: number
+          max_members_per_space?: number
+          max_notes_per_month?: number
+          max_spaces?: number
+          max_whatsapp_messages_per_day?: number
+          name?: string
+          plan_id?: string
+          price_monthly_cents?: number
+          price_yearly_cents?: number
+          sort_order?: number
+          stripe_price_id_monthly?: string | null
+          stripe_price_id_yearly?: string | null
+        }
+        Relationships: []
+      }
+      olive_reflections: {
+        Row: {
+          action_detail: Json | null
+          action_type: string
+          applied_to_soul: boolean
+          confidence: number | null
+          created_at: string
+          id: string
+          lesson: string | null
+          outcome: string
+          space_id: string | null
+          user_id: string
+          user_modification: string | null
+        }
+        Insert: {
+          action_detail?: Json | null
+          action_type: string
+          applied_to_soul?: boolean
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          lesson?: string | null
+          outcome: string
+          space_id?: string | null
+          user_id: string
+          user_modification?: string | null
+        }
+        Update: {
+          action_detail?: Json | null
+          action_type?: string
+          applied_to_soul?: boolean
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          lesson?: string | null
+          outcome?: string
+          space_id?: string | null
+          user_id?: string
+          user_modification?: string | null
+        }
+        Relationships: []
       }
       olive_relationships: {
         Row: {
@@ -1913,6 +3133,594 @@ export type Database = {
         }
         Relationships: []
       }
+      olive_soul_evolution_log: {
+        Row: {
+          changes_summary: string[] | null
+          created_at: string
+          drift_details: Json | null
+          drift_score: number | null
+          id: string
+          layer_type: string
+          post_snapshot_version: number | null
+          pre_snapshot_version: number | null
+          proposals_applied: number | null
+          proposals_blocked: number | null
+          proposals_count: number | null
+          proposals_deferred: number | null
+          rollback_reason: string | null
+          rollback_to_version: number | null
+          trigger: string | null
+          user_id: string
+          was_rate_limited: boolean | null
+          was_rollback: boolean | null
+        }
+        Insert: {
+          changes_summary?: string[] | null
+          created_at?: string
+          drift_details?: Json | null
+          drift_score?: number | null
+          id?: string
+          layer_type: string
+          post_snapshot_version?: number | null
+          pre_snapshot_version?: number | null
+          proposals_applied?: number | null
+          proposals_blocked?: number | null
+          proposals_count?: number | null
+          proposals_deferred?: number | null
+          rollback_reason?: string | null
+          rollback_to_version?: number | null
+          trigger?: string | null
+          user_id: string
+          was_rate_limited?: boolean | null
+          was_rollback?: boolean | null
+        }
+        Update: {
+          changes_summary?: string[] | null
+          created_at?: string
+          drift_details?: Json | null
+          drift_score?: number | null
+          id?: string
+          layer_type?: string
+          post_snapshot_version?: number | null
+          pre_snapshot_version?: number | null
+          proposals_applied?: number | null
+          proposals_blocked?: number | null
+          proposals_count?: number | null
+          proposals_deferred?: number | null
+          rollback_reason?: string | null
+          rollback_to_version?: number | null
+          trigger?: string | null
+          user_id?: string
+          was_rate_limited?: boolean | null
+          was_rollback?: boolean | null
+        }
+        Relationships: []
+      }
+      olive_soul_layers: {
+        Row: {
+          content: Json
+          content_rendered: string | null
+          created_at: string
+          evolved_at: string
+          id: string
+          is_locked: boolean
+          layer_type: string
+          owner_id: string | null
+          owner_type: string
+          token_count: number | null
+          version: number
+        }
+        Insert: {
+          content?: Json
+          content_rendered?: string | null
+          created_at?: string
+          evolved_at?: string
+          id?: string
+          is_locked?: boolean
+          layer_type: string
+          owner_id?: string | null
+          owner_type: string
+          token_count?: number | null
+          version?: number
+        }
+        Update: {
+          content?: Json
+          content_rendered?: string | null
+          created_at?: string
+          evolved_at?: string
+          id?: string
+          is_locked?: boolean
+          layer_type?: string
+          owner_id?: string | null
+          owner_type?: string
+          token_count?: number | null
+          version?: number
+        }
+        Relationships: []
+      }
+      olive_soul_rollbacks: {
+        Row: {
+          applied_at: string | null
+          created_at: string
+          error_message: string | null
+          from_version: number
+          id: string
+          layer_id: string
+          layer_type: string
+          reason: string
+          requested_by: string
+          status: string
+          to_version: number
+          user_id: string
+        }
+        Insert: {
+          applied_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          from_version: number
+          id?: string
+          layer_id: string
+          layer_type: string
+          reason: string
+          requested_by?: string
+          status?: string
+          to_version: number
+          user_id: string
+        }
+        Update: {
+          applied_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          from_version?: number
+          id?: string
+          layer_id?: string
+          layer_type?: string
+          reason?: string
+          requested_by?: string
+          status?: string
+          to_version?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      olive_soul_versions: {
+        Row: {
+          change_summary: string | null
+          content: Json
+          content_rendered: string | null
+          created_at: string
+          id: string
+          layer_id: string
+          trigger: string | null
+          version: number
+        }
+        Insert: {
+          change_summary?: string | null
+          content: Json
+          content_rendered?: string | null
+          created_at?: string
+          id?: string
+          layer_id: string
+          trigger?: string | null
+          version: number
+        }
+        Update: {
+          change_summary?: string | null
+          content?: Json
+          content_rendered?: string | null
+          created_at?: string
+          id?: string
+          layer_id?: string
+          trigger?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_soul_versions_layer_id_fkey"
+            columns: ["layer_id"]
+            isOneToOne: false
+            referencedRelation: "olive_soul_layers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_space_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          invited_by: string
+          invited_email: string | null
+          role: Database["public"]["Enums"]["space_role"]
+          space_id: string
+          status: string
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          invited_by: string
+          invited_email?: string | null
+          role?: Database["public"]["Enums"]["space_role"]
+          space_id: string
+          status?: string
+          token?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string
+          invited_email?: string | null
+          role?: Database["public"]["Enums"]["space_role"]
+          space_id?: string
+          status?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_space_invites_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_space_members: {
+        Row: {
+          id: string
+          joined_at: string
+          nickname: string | null
+          role: Database["public"]["Enums"]["space_role"]
+          space_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          nickname?: string | null
+          role?: Database["public"]["Enums"]["space_role"]
+          space_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          nickname?: string | null
+          role?: Database["public"]["Enums"]["space_role"]
+          space_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_space_members_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_space_templates: {
+        Row: {
+          applied_at: string
+          applied_by: string
+          config_overrides: Json | null
+          id: string
+          space_id: string
+          template_id: string
+        }
+        Insert: {
+          applied_at?: string
+          applied_by: string
+          config_overrides?: Json | null
+          id?: string
+          space_id: string
+          template_id: string
+        }
+        Update: {
+          applied_at?: string
+          applied_by?: string
+          config_overrides?: Json | null
+          id?: string
+          space_id?: string
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_space_templates_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "olive_space_templates_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "olive_industry_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_spaces: {
+        Row: {
+          couple_id: string | null
+          created_at: string
+          created_by: string
+          icon: string | null
+          id: string
+          max_members: number
+          name: string
+          settings: Json
+          type: Database["public"]["Enums"]["space_type"]
+          updated_at: string
+        }
+        Insert: {
+          couple_id?: string | null
+          created_at?: string
+          created_by: string
+          icon?: string | null
+          id?: string
+          max_members?: number
+          name?: string
+          settings?: Json
+          type?: Database["public"]["Enums"]["space_type"]
+          updated_at?: string
+        }
+        Update: {
+          couple_id?: string | null
+          created_at?: string
+          created_by?: string
+          icon?: string | null
+          id?: string
+          max_members?: number
+          name?: string
+          settings?: Json
+          type?: Database["public"]["Enums"]["space_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_spaces_couple_id_fkey"
+            columns: ["couple_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_couples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_subscriptions: {
+        Row: {
+          billing_cycle: string
+          canceled_at: string | null
+          created_at: string
+          current_period_end: string | null
+          current_period_start: string | null
+          id: string
+          metadata: Json | null
+          plan_id: string
+          revenucat_subscriber_id: string | null
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          trial_end: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          billing_cycle?: string
+          canceled_at?: string | null
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          metadata?: Json | null
+          plan_id: string
+          revenucat_subscriber_id?: string | null
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          trial_end?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          billing_cycle?: string
+          canceled_at?: string | null
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          metadata?: Json | null
+          plan_id?: string
+          revenucat_subscriber_id?: string | null
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          trial_end?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      olive_trust_actions: {
+        Row: {
+          action_description: string
+          action_payload: Json
+          action_type: string
+          created_at: string
+          executed_at: string | null
+          execution_result: Json | null
+          expires_at: string
+          id: string
+          required_level: number
+          responded_at: string | null
+          space_id: string | null
+          status: string
+          trigger_context: Json | null
+          trigger_type: string | null
+          trust_level: number
+          user_id: string
+          user_response: string | null
+        }
+        Insert: {
+          action_description: string
+          action_payload?: Json
+          action_type: string
+          created_at?: string
+          executed_at?: string | null
+          execution_result?: Json | null
+          expires_at?: string
+          id?: string
+          required_level?: number
+          responded_at?: string | null
+          space_id?: string | null
+          status?: string
+          trigger_context?: Json | null
+          trigger_type?: string | null
+          trust_level?: number
+          user_id: string
+          user_response?: string | null
+        }
+        Update: {
+          action_description?: string
+          action_payload?: Json
+          action_type?: string
+          created_at?: string
+          executed_at?: string | null
+          execution_result?: Json | null
+          expires_at?: string
+          id?: string
+          required_level?: number
+          responded_at?: string | null
+          space_id?: string | null
+          status?: string
+          trigger_context?: Json | null
+          trigger_type?: string | null
+          trust_level?: number
+          user_id?: string
+          user_response?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_trust_actions_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_trust_notifications: {
+        Row: {
+          acted_on_at: string | null
+          body: string
+          created_at: string
+          dismissed_at: string | null
+          id: string
+          metadata: Json
+          read_at: string | null
+          title: string
+          trust_action_id: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          acted_on_at?: string | null
+          body: string
+          created_at?: string
+          dismissed_at?: string | null
+          id?: string
+          metadata?: Json
+          read_at?: string | null
+          title: string
+          trust_action_id?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          acted_on_at?: string | null
+          body?: string
+          created_at?: string
+          dismissed_at?: string | null
+          id?: string
+          metadata?: Json
+          read_at?: string | null
+          title?: string
+          trust_action_id?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_trust_notifications_trust_action_id_fkey"
+            columns: ["trust_action_id"]
+            isOneToOne: false
+            referencedRelation: "olive_trust_actions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_usage_meters: {
+        Row: {
+          ai_requests: number
+          created_at: string
+          delegations_created: number
+          file_storage_bytes: number
+          file_uploads: number
+          id: string
+          meter_date: string
+          notes_created: number
+          search_queries: number
+          updated_at: string
+          user_id: string
+          whatsapp_messages_received: number
+          whatsapp_messages_sent: number
+          workflow_runs: number
+        }
+        Insert: {
+          ai_requests?: number
+          created_at?: string
+          delegations_created?: number
+          file_storage_bytes?: number
+          file_uploads?: number
+          id?: string
+          meter_date?: string
+          notes_created?: number
+          search_queries?: number
+          updated_at?: string
+          user_id: string
+          whatsapp_messages_received?: number
+          whatsapp_messages_sent?: number
+          workflow_runs?: number
+        }
+        Update: {
+          ai_requests?: number
+          created_at?: string
+          delegations_created?: number
+          file_storage_bytes?: number
+          file_uploads?: number
+          id?: string
+          meter_date?: string
+          notes_created?: number
+          search_queries?: number
+          updated_at?: string
+          user_id?: string
+          whatsapp_messages_received?: number
+          whatsapp_messages_sent?: number
+          workflow_runs?: number
+        }
+        Relationships: []
+      }
       olive_user_preferences: {
         Row: {
           created_at: string | null
@@ -1923,10 +3731,12 @@ export type Database = {
           morning_briefing_time: string | null
           overdue_nudge_enabled: boolean | null
           pattern_suggestions_enabled: boolean | null
+          plan_id: string | null
           proactive_enabled: boolean | null
           quiet_hours_end: string | null
           quiet_hours_start: string | null
           reminder_advance_intervals: string[]
+          soul_enabled: boolean
           timezone: string | null
           updated_at: string | null
           user_id: string
@@ -1943,10 +3753,12 @@ export type Database = {
           morning_briefing_time?: string | null
           overdue_nudge_enabled?: boolean | null
           pattern_suggestions_enabled?: boolean | null
+          plan_id?: string | null
           proactive_enabled?: boolean | null
           quiet_hours_end?: string | null
           quiet_hours_start?: string | null
           reminder_advance_intervals?: string[]
+          soul_enabled?: boolean
           timezone?: string | null
           updated_at?: string | null
           user_id: string
@@ -1963,10 +3775,12 @@ export type Database = {
           morning_briefing_time?: string | null
           overdue_nudge_enabled?: boolean | null
           pattern_suggestions_enabled?: boolean | null
+          plan_id?: string | null
           proactive_enabled?: boolean | null
           quiet_hours_end?: string | null
           quiet_hours_start?: string | null
           reminder_advance_intervals?: string[]
+          soul_enabled?: boolean
           timezone?: string | null
           updated_at?: string | null
           user_id?: string
@@ -2016,6 +3830,182 @@ export type Database = {
             referencedColumns: ["skill_id"]
           },
         ]
+      }
+      olive_workflow_instances: {
+        Row: {
+          config: Json | null
+          created_at: string
+          enabled_by: string
+          id: string
+          is_enabled: boolean
+          last_run_at: string | null
+          last_run_status: string | null
+          run_count: number
+          schedule_override: string | null
+          space_id: string
+          updated_at: string
+          workflow_id: string
+        }
+        Insert: {
+          config?: Json | null
+          created_at?: string
+          enabled_by: string
+          id?: string
+          is_enabled?: boolean
+          last_run_at?: string | null
+          last_run_status?: string | null
+          run_count?: number
+          schedule_override?: string | null
+          space_id: string
+          updated_at?: string
+          workflow_id: string
+        }
+        Update: {
+          config?: Json | null
+          created_at?: string
+          enabled_by?: string
+          id?: string
+          is_enabled?: boolean
+          last_run_at?: string | null
+          last_run_status?: string | null
+          run_count?: number
+          schedule_override?: string | null
+          space_id?: string
+          updated_at?: string
+          workflow_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_workflow_instances_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "olive_workflow_instances_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "olive_workflow_templates"
+            referencedColumns: ["workflow_id"]
+          },
+        ]
+      }
+      olive_workflow_runs: {
+        Row: {
+          completed_at: string | null
+          error: string | null
+          id: string
+          instance_id: string
+          output: Json | null
+          space_id: string
+          started_at: string
+          status: string
+          steps_completed: number | null
+          steps_total: number | null
+          triggered_by: string
+          workflow_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          error?: string | null
+          id?: string
+          instance_id: string
+          output?: Json | null
+          space_id: string
+          started_at?: string
+          status?: string
+          steps_completed?: number | null
+          steps_total?: number | null
+          triggered_by?: string
+          workflow_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          error?: string | null
+          id?: string
+          instance_id?: string
+          output?: Json | null
+          space_id?: string
+          started_at?: string
+          status?: string
+          steps_completed?: number | null
+          steps_total?: number | null
+          triggered_by?: string
+          workflow_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "olive_workflow_runs_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "olive_workflow_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      olive_workflow_templates: {
+        Row: {
+          applicable_space_types: Json | null
+          category: string
+          created_at: string
+          default_schedule: string
+          description: string | null
+          icon: string | null
+          id: string
+          is_active: boolean
+          is_builtin: boolean
+          min_space_members: number | null
+          name: string
+          output_channel: string
+          output_type: string
+          requires_feature: Json | null
+          schedule_options: Json | null
+          steps: Json
+          updated_at: string
+          workflow_id: string
+        }
+        Insert: {
+          applicable_space_types?: Json | null
+          category?: string
+          created_at?: string
+          default_schedule: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          is_builtin?: boolean
+          min_space_members?: number | null
+          name: string
+          output_channel?: string
+          output_type?: string
+          requires_feature?: Json | null
+          schedule_options?: Json | null
+          steps?: Json
+          updated_at?: string
+          workflow_id: string
+        }
+        Update: {
+          applicable_space_types?: Json | null
+          category?: string
+          created_at?: string
+          default_schedule?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          is_builtin?: boolean
+          min_space_members?: number | null
+          name?: string
+          output_channel?: string
+          output_type?: string
+          requires_feature?: Json | null
+          schedule_options?: Json | null
+          steps?: Json
+          updated_at?: string
+          workflow_id?: string
+        }
+        Relationships: []
       }
       oura_connections: {
         Row: {
@@ -2202,6 +4192,47 @@ export type Database = {
         }
         Relationships: []
       }
+      space_activity: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          id: string
+          metadata: Json
+          space_id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          metadata?: Json
+          space_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          metadata?: Json
+          space_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "space_activity_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "olive_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_memories: {
         Row: {
           category: string | null
@@ -2323,6 +4354,23 @@ export type Database = {
     }
     Functions: {
       accept_invite: { Args: { p_token: string }; Returns: string }
+      accept_space_invite: {
+        Args: { p_token: string }
+        Returns: {
+          id: string
+          joined_at: string
+          nickname: string | null
+          role: Database["public"]["Enums"]["space_role"]
+          space_id: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "olive_space_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       add_member_to_space: {
         Args: {
           p_couple_id: string
@@ -2332,7 +4380,24 @@ export type Database = {
         }
         Returns: string
       }
+      apply_memory_decay: {
+        Args: { p_archive_threshold?: number; p_user_id: string }
+        Returns: number
+      }
+      boost_memory_relevance: {
+        Args: { p_boost?: number; p_memory_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      check_quota: {
+        Args: { p_meter: string; p_user_id: string }
+        Returns: {
+          current_usage: number
+          is_within_quota: boolean
+          max_allowed: number
+        }[]
+      }
       cleanup_expired_linking_tokens: { Args: never; Returns: undefined }
+      compute_engagement_score: { Args: { p_user_id: string }; Returns: number }
       create_couple: {
         Args: { p_partner_name: string; p_title: string; p_you_name: string }
         Returns: string
@@ -2341,11 +4406,72 @@ export type Database = {
         Args: { p_couple_id: string; p_invited_email?: string }
         Returns: Json
       }
+      create_space: {
+        Args: {
+          p_icon?: string
+          p_name: string
+          p_settings?: Json
+          p_type?: string
+        }
+        Returns: {
+          couple_id: string | null
+          created_at: string
+          created_by: string
+          icon: string | null
+          id: string
+          max_members: number
+          name: string
+          settings: Json
+          type: Database["public"]["Enums"]["space_type"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "olive_spaces"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_space_invite: {
+        Args: { p_invited_email?: string; p_role?: string; p_space_id: string }
+        Returns: {
+          accepted_at: string | null
+          accepted_by: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          invited_by: string
+          invited_email: string | null
+          role: Database["public"]["Enums"]["space_role"]
+          space_id: string
+          status: string
+          token: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "olive_space_invites"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       debug_claims: { Args: never; Returns: Json }
       debug_clerk_jwt: { Args: never; Returns: string }
       debug_clerk_user_id: { Args: never; Returns: string }
       debug_clerk_user_id_fixed: { Args: never; Returns: string }
       debug_jwt_claims: { Args: never; Returns: Json }
+      expire_old_trust_actions: { Args: never; Returns: undefined }
+      fetch_top_memory_chunks: {
+        Args: { p_limit?: number; p_min_importance?: number; p_user_id: string }
+        Returns: {
+          chunk_type: string
+          content: string
+          created_at: string
+          decay_factor: number
+          id: string
+          importance: number
+          source: string
+        }[]
+      }
       find_shared_entities: {
         Args: { p_couple_id: string; p_min_similarity?: number }
         Returns: {
@@ -2397,6 +4523,14 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_chunks_needing_embeddings: {
+        Args: { p_limit?: number }
+        Returns: {
+          content: string
+          id: string
+          user_id: string
+        }[]
+      }
       get_clerk_user_id: { Args: never; Returns: string }
       get_couple_compiled_files: {
         Args: { p_couple_id: string; p_file_types?: string[] }
@@ -2423,6 +4557,14 @@ export type Database = {
         }[]
       }
       get_memory_health: { Args: { p_user_id: string }; Returns: Json }
+      get_notes_needing_embeddings: {
+        Args: { p_limit?: number }
+        Returns: {
+          content: string
+          id: string
+          user_id: string
+        }[]
+      }
       get_partner_task_patterns: {
         Args: { p_couple_id: string; p_days?: number }
         Returns: {
@@ -2445,12 +4587,53 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_user_spaces: {
+        Args: never
+        Returns: {
+          couple_id: string
+          created_at: string
+          created_by: string
+          icon: string
+          id: string
+          max_members: number
+          member_count: number
+          name: string
+          settings: Json
+          type: Database["public"]["Enums"]["space_type"]
+          updated_at: string
+          user_role: Database["public"]["Enums"]["space_role"]
+        }[]
+      }
       has_role: {
         Args: {
           p_role: Database["public"]["Enums"]["app_role"]
           p_user_id: string
         }
         Returns: boolean
+      }
+      hybrid_search_notes: {
+        Args: {
+          p_couple_id: string
+          p_limit?: number
+          p_query: string
+          p_query_embedding: string
+          p_user_id: string
+          p_vector_weight?: number
+        }
+        Returns: {
+          category: string
+          completed: boolean
+          due_date: string
+          id: string
+          original_text: string
+          priority: string
+          score: number
+          summary: string
+        }[]
+      }
+      increment_usage: {
+        Args: { p_amount?: number; p_meter: string; p_user_id: string }
+        Returns: undefined
       }
       is_couple_member: {
         Args: { couple_uuid: string; p_user_id: string }
@@ -2470,6 +4653,10 @@ export type Database = {
       }
       is_member_of_couple: {
         Args: { p_couple_id: string; p_user_id?: string }
+        Returns: boolean
+      }
+      is_space_member: {
+        Args: { p_space_id: string; p_user_id: string }
         Returns: boolean
       }
       jwt: { Args: never; Returns: Json }
@@ -2494,6 +4681,23 @@ export type Database = {
           metadata: Json
           name: string
           similarity: number
+        }[]
+      }
+      search_memory_chunks: {
+        Args: {
+          p_limit?: number
+          p_min_importance?: number
+          p_query_embedding: string
+          p_user_id: string
+        }
+        Returns: {
+          chunk_type: string
+          content: string
+          created_at: string
+          id: string
+          importance: number
+          similarity: number
+          source: string
         }[]
       }
       search_user_memories: {
@@ -2539,6 +4743,8 @@ export type Database = {
       invite_status: "pending" | "accepted" | "revoked"
       member_role: "owner" | "member"
       note_priority: "low" | "medium" | "high"
+      space_role: "owner" | "admin" | "member"
+      space_type: "couple" | "family" | "household" | "business" | "custom"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2677,6 +4883,8 @@ export const Constants = {
       invite_status: ["pending", "accepted", "revoked"],
       member_role: ["owner", "member"],
       note_priority: ["low", "medium", "high"],
+      space_role: ["owner", "admin", "member"],
+      space_type: ["couple", "family", "household", "business", "custom"],
     },
   },
 } as const
