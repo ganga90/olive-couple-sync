@@ -1568,12 +1568,20 @@ serve(async (req) => {
     }
 
     // ========================================================================
-    // VISUAL PRE-ANALYSIS — "The Eyes" (Epic 5)
-    // If a user sends an image/video with NO caption, quickly analyze it with
-    // Gemini Flash to extract a text description. This lets the message flow
-    // through normal intent classification instead of always becoming a note.
-    // If pre-analysis fails, we fall through to the existing process-note flow.
+    // VISUAL PRE-ANALYSIS — "The Eyes" (Epic 5) — ROUTING-ONLY MODE
+    // ------------------------------------------------------------------------
+    // For media without a caption, we run a quick classifier to detect
+    // RECEIPT vs TASK vs TEXT — but we do NOT inject the description into
+    // messageBody. Doing that previously caused regressions where a truncated
+    // AI summary (e.g. "TASK: This is a") became the user's "caption" and
+    // poisoned downstream extraction with a fake/garbled title.
+    //
+    // Instead, the routing hint is stored in `mediaRoutingHint` and the
+    // message flows through the dedicated media-only branch below, which
+    // calls process-note with text:'' and lets the full multimodal pipeline
+    // do high-quality extraction (handwriting OCR, event detection, etc.).
     // ========================================================================
+    let mediaRoutingHint: 'receipt' | 'task' | 'text' | 'other' | null = null;
     if (mediaUrls.length > 0 && !messageBody) {
       try {
         const { downloadMediaToBase64, getMediaType } = await import("../_shared/media-utils.ts");
@@ -1588,22 +1596,23 @@ serve(async (req) => {
             const descResponse = await genaiVision.models.generateContent({
               model: "gemini-2.5-flash",
               contents: [{ role: "user", parts: [
-                { text: "Describe this media briefly in 1-2 sentences. If it's a receipt or invoice, start with 'RECEIPT:'. If it contains a task or to-do item, start with 'TASK:'. If it's a screenshot of text, start with 'TEXT:'. Otherwise describe what you see." },
+                { text: "Classify this media into ONE word ONLY. Reply with exactly one of: RECEIPT (if it's a receipt/invoice/bill), TASK (if it shows a to-do, reminder, or actionable item like an event), TEXT (if it's a screenshot of text/document), or OTHER. No explanation, just the single label." },
                 { inlineData: { mimeType: media.mimeType, data: media.base64 } }
               ]}],
-              config: { temperature: 0.1, maxOutputTokens: 200 }
+              config: { temperature: 0, maxOutputTokens: 10 }
             });
 
-            const description = descResponse.text?.trim();
-            if (description && description.length > 5) {
-              messageBody = description;
-              console.log('[WhatsApp] Media pre-analyzed:', description.substring(0, 100));
-            }
+            const label = (descResponse.text || '').trim().toUpperCase();
+            if (label.startsWith('RECEIPT')) mediaRoutingHint = 'receipt';
+            else if (label.startsWith('TASK')) mediaRoutingHint = 'task';
+            else if (label.startsWith('TEXT')) mediaRoutingHint = 'text';
+            else mediaRoutingHint = 'other';
+            console.log('[WhatsApp] Media routing hint:', mediaRoutingHint, '(raw:', label.substring(0, 30) + ')');
           }
         }
       } catch (preAnalyzeErr) {
         console.warn('[WhatsApp] Media pre-analysis failed, falling back to process-note:', preAnalyzeErr);
-        // messageBody stays null → falls through to existing process-note flow below
+        // mediaRoutingHint stays null → media-only branch below handles it
       }
     }
 
@@ -1613,7 +1622,25 @@ serve(async (req) => {
     // NOTE: Images/videos that were successfully pre-analyzed above now have
     // messageBody set, so they skip this block and flow through intent classification.
     if (mediaUrls.length > 0 && !messageBody) {
-      console.log('[WhatsApp] Processing media-only message — routing directly to CREATE');
+      console.log('[WhatsApp] Processing media-only message — routing directly to CREATE (hint:', mediaRoutingHint || 'none', ')');
+
+      // Receipt fast-path: if pre-analysis confidently classified the image
+      // as a receipt, route to process-receipt for expense extraction.
+      // Falls through to normal note creation on any failure.
+      if (mediaRoutingHint === 'receipt') {
+        try {
+          const { data: receiptResult } = await supabase.functions.invoke('process-receipt', {
+            body: { image_url: mediaUrls[0], from_number: fromNumber, source: 'whatsapp' },
+          });
+          if (receiptResult?.transaction) {
+            const tx = receiptResult.transaction;
+            const response = `✅ Expense logged: $${Number(tx.amount).toFixed(2)} — ${tx.merchant || 'Unknown'} (${tx.category || 'Other'})`;
+            return reply(response);
+          }
+        } catch (e) {
+          console.warn('[WhatsApp] Receipt fast-path failed, falling back to note:', e);
+        }
+      }
 
       // Authenticate user first (need userId, coupleId for note creation)
       const { data: mediaProfiles, error: mediaProfileError } = await supabase
