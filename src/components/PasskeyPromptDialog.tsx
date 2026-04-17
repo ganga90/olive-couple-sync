@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useUser } from "@clerk/clerk-react";
+import { useSafeUser as useUser } from "@/hooks/useSafeClerk";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,

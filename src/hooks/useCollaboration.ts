@@ -5,7 +5,7 @@
  * via the olive-collaboration edge function.
  */
 import { useCallback } from "react";
-import { useUser } from "@clerk/clerk-react";
+import { useSafeUser as useUser } from "@/hooks/useSafeClerk";
 import { getSupabase } from "@/lib/supabaseClient";
 
 // ─── Types ──────────────────────────────────────────────────────

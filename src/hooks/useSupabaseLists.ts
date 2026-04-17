@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useUser } from "@clerk/clerk-react";
+import { useSafeUser as useUser } from "@/hooks/useSafeClerk";
 import { getSupabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 

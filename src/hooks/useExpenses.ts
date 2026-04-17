@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useMemo } from "react";
-import { useUser } from "@clerk/clerk-react";
+import { useSafeUser as useUser } from "@/hooks/useSafeClerk";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/lib/supabaseClient";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";

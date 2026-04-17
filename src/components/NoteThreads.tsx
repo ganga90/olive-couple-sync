@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { useUser } from "@clerk/clerk-react";
+import { useSafeUser as useUser } from "@/hooks/useSafeClerk";
 import {
   useCollaboration,
   NoteThread,
