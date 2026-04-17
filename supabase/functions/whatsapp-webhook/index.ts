@@ -1622,7 +1622,25 @@ serve(async (req) => {
     // NOTE: Images/videos that were successfully pre-analyzed above now have
     // messageBody set, so they skip this block and flow through intent classification.
     if (mediaUrls.length > 0 && !messageBody) {
-      console.log('[WhatsApp] Processing media-only message — routing directly to CREATE');
+      console.log('[WhatsApp] Processing media-only message — routing directly to CREATE (hint:', mediaRoutingHint || 'none', ')');
+
+      // Receipt fast-path: if pre-analysis confidently classified the image
+      // as a receipt, route to process-receipt for expense extraction.
+      // Falls through to normal note creation on any failure.
+      if (mediaRoutingHint === 'receipt') {
+        try {
+          const { data: receiptResult } = await supabase.functions.invoke('process-receipt', {
+            body: { image_url: mediaUrls[0], from_number: fromNumber, source: 'whatsapp' },
+          });
+          if (receiptResult?.transaction) {
+            const tx = receiptResult.transaction;
+            const response = `✅ Expense logged: $${Number(tx.amount).toFixed(2)} — ${tx.merchant || 'Unknown'} (${tx.category || 'Other'})`;
+            return reply(response);
+          }
+        } catch (e) {
+          console.warn('[WhatsApp] Receipt fast-path failed, falling back to note:', e);
+        }
+      }
 
       // Authenticate user first (need userId, coupleId for note creation)
       const { data: mediaProfiles, error: mediaProfileError } = await supabase
