@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <!-- English (default) -->
+  <url>
+    <loc>https://www.witholive.app/landing</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.witholive.app/landing" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://www.witholive.app/es-es/landing" />
+    <xhtml:link rel="alternate" hreflang="it" href="https://www.witholive.app/it-it/landing" />
+  </url>
+  <url>
+    <loc>https://www.witholive.app/sign-up</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.witholive.app/sign-up" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://www.witholive.app/es-es/sign-up" />
+    <xhtml:link rel="alternate" hreflang="it" href="https://www.witholive.app/it-it/sign-up" />
+  </url>
+  <url>
+    <loc>https://www.witholive.app/sign-in</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://www.witholive.app/legal/privacy</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://www.witholive.app/legal/terms</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+
+  <!-- Spanish -->
+  <url>
+    <loc>https://www.witholive.app/es-es/landing</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.witholive.app/landing" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://www.witholive.app/es-es/landing" />
+    <xhtml:link rel="alternate" hreflang="it" href="https://www.witholive.app/it-it/landing" />
+  </url>
+  <url>
+    <loc>https://www.witholive.app/es-es/sign-up</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Italian -->
+  <url>
+    <loc>https://www.witholive.app/it-it/landing</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://www.witholive.app/landing" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://www.witholive.app/es-es/landing" />
+    <xhtml:link rel="alternate" hreflang="it" href="https://www.witholive.app/it-it/landing" />
+  </url>
+  <url>
+    <loc>https://www.witholive.app/it-it/sign-up</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>

@@ -303,6 +303,74 @@ function t(key: string, lang: string, vars?: Record<string, string>): string {
  * Fetch recent outbound messages sent to this user (last 60 min)
  * Combines olive_outbound_queue + olive_heartbeat_log for full picture
  */
+/**
+ * Phase 1-D — WhatsApp thread instrumentation
+ * Increment per-thread and lifetime message counters for the user's gateway
+ * session. Creates the gateway session row if it doesn't exist (for users
+ * that message Olive for the first time via WhatsApp).
+ *
+ * Returns the new counters so downstream logic can decide when to compact.
+ * Fire-and-forget — failures are logged and swallowed so a telemetry problem
+ * never blocks the actual message-handling flow.
+ */
+async function touchGatewaySession(
+  supabase: any,
+  userId: string
+): Promise<{ messageCount: number; totalMessagesEver: number } | null> {
+  try {
+    // Step 1: Ensure a session row exists. Use select+insert rather than
+    // upsert because there's no unique constraint on (user_id, channel).
+    const { data: existing } = await supabase
+      .from('olive_gateway_sessions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('channel', 'whatsapp')
+      .eq('is_active', true)
+      .order('last_activity', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let sessionId: string | null = existing?.id ?? null;
+
+    if (!sessionId) {
+      const { data: created, error: insertErr } = await supabase
+        .from('olive_gateway_sessions')
+        .insert({
+          user_id: userId,
+          channel: 'whatsapp',
+          is_active: true,
+          conversation_context: {},
+        })
+        .select('id')
+        .single();
+      if (insertErr) {
+        console.warn('[GatewaySession] Insert failed (non-blocking):', insertErr.message);
+        return null;
+      }
+      sessionId = created.id;
+    }
+
+    // Step 2: Atomic increment via RPC (avoids TOCTOU races).
+    const { data: incRows, error: rpcErr } = await supabase.rpc(
+      'increment_gateway_session_message',
+      { p_session_id: sessionId }
+    );
+    if (rpcErr || !incRows || incRows.length === 0) {
+      if (rpcErr) console.warn('[GatewaySession] RPC failed (non-blocking):', rpcErr.message);
+      return null;
+    }
+
+    const row = incRows[0];
+    return {
+      messageCount: row.message_count,
+      totalMessagesEver: row.total_messages_ever,
+    };
+  } catch (err: any) {
+    console.warn('[GatewaySession] touchGatewaySession error (non-blocking):', err?.message);
+    return null;
+  }
+}
+
 async function getRecentOutboundMessages(supabase: any, userId: string): Promise<RecentOutbound[]> {
   const sixtyMinAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const results: RecentOutbound[] = [];
@@ -1792,6 +1860,17 @@ serve(async (req) => {
     const userId = profile.id;
     _authenticatedUserId = userId; // Enable reply() to save outbound context
 
+    // Phase 1-D: Increment thread counters on olive_gateway_sessions.
+    // Fire-and-forget — never blocks message handling. Used by Phase 2
+    // thread-compaction to decide when a session needs summarization.
+    touchGatewaySession(supabase, userId).then((counters) => {
+      if (counters) {
+        console.log(
+          `[GatewaySession] user=${userId} message_count=${counters.messageCount} total_ever=${counters.totalMessagesEver}`
+        );
+      }
+    });
+
     // Phase 6F: Create LLM tracker for observability on all AI calls in this request
     const tracker = createLLMTracker(supabase, "whatsapp-webhook", userId);
     // Detect language: prefer profile setting, then auto-detect from message content
@@ -2640,6 +2719,57 @@ Description: "${parsedExpense.description}"`;
     // Build outbound context strings for AI
     const outboundContextStrings = recentOutbound.map(m => m.content).filter(Boolean);
 
+    // ========================================================================
+    // Phase 2 Task 2-A: Pending-question early path
+    // ------------------------------------------------------------------------
+    // If Olive has an unanswered question for this user (currently only
+    // contradiction_resolve), try to interpret this message as the answer.
+    // - Resolved → send confirmation, return (done).
+    // - Not classified → leave question open, fall through to normal routing.
+    // - No media messages: attachments aren't answers to A/B questions.
+    // ========================================================================
+    if (messageBody && messageBody.trim().length > 0 && mediaUrls.length === 0) {
+      try {
+        const {
+          findActivePendingQuestion,
+          tryResolvePendingQuestion,
+          formatResolutionConfirmation,
+        } = await import("../_shared/contradiction-resolver.ts");
+
+        const pending = await findActivePendingQuestion(supabase, userId, 'whatsapp');
+        if (pending) {
+          console.log(
+            `[PendingQuestion] Found pending ${pending.question_type} (id=${pending.id}, ` +
+            `asked ${Math.round((Date.now() - new Date(pending.asked_at).getTime()) / 60000)}m ago)`
+          );
+          const outcome = await tryResolvePendingQuestion(supabase, pending, messageBody);
+          if (outcome.resolved) {
+            const confirmation = formatResolutionConfirmation(
+              outcome.decision,
+              pending.payload as any
+            );
+            console.log(
+              `[PendingQuestion] Resolved: winner=${outcome.decision.winner} ` +
+              `applied=${outcome.applied} reason=${outcome.reason || 'ok'}`
+            );
+            await reply(confirmation);
+            return new Response(JSON.stringify({ ok: true, resolved_pending: true }), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+          console.log(
+            `[PendingQuestion] Not classified (${outcome.reason}) — falling through to normal routing; ` +
+            `question stays open until expiry`
+          );
+        }
+      } catch (pendingErr) {
+        console.warn(
+          '[PendingQuestion] early-path error (non-blocking):',
+          pendingErr instanceof Error ? pendingErr.message : pendingErr
+        );
+      }
+    }
+
     // Call shared AI classifier (from _shared/intent-classifier.ts)
     const { classifyIntent: sharedClassifyIntent } = await import("../_shared/intent-classifier.ts");
     const classificationResult = await sharedClassifyIntent({
@@ -2673,6 +2803,26 @@ Description: "${parsedExpense.description}"`;
       // AI classification succeeded — trust the AI for all natural language
       intentResult = mapAIResultToIntentResult(aiResult);
       console.log(`[AI Router] Using AI result: intent=${intentResult.intent}, confidence=${aiResult.confidence}, aiTaskId=${intentResult._aiTaskId || 'none'}, skill=${intentResult._aiSkillId || 'none'}`);
+
+      // Phase 1 Task 1-E: Per-intent confidence floor for destructive actions.
+      // If the classifier says "delete/complete/set_due/..." but below the
+      // floor, redirect to CHAT (assistant) so Olive asks for confirmation
+      // instead of silently executing.
+      const { checkConfidenceFloor } = await import("../_shared/model-router.ts");
+      const floorCheck = checkConfidenceFloor(aiResult.intent, aiResult.confidence);
+      if (!floorCheck.passes) {
+        console.log(`[Confidence Floor] ⚠️ ${floorCheck.reason} — redirecting to CHAT (assistant) for clarification`);
+        intentResult = {
+          ...intentResult,
+          intent: 'CHAT',
+          chatType: 'assistant',
+          // Preserve what the AI thought so the clarification prompt can reference it.
+          _belowFloorIntent: aiResult.intent,
+          _belowFloorTarget: aiResult.target_task_name || undefined,
+          _belowFloorConfidence: aiResult.confidence,
+          _belowFloorRequired: floorCheck.floor,
+        } as any;
+      }
     } else {
       // Fallback to minimal deterministic routing (shortcuts + defaults only)
       if (aiResult) {
@@ -5394,6 +5544,37 @@ IMPORTANT: Use the above skill knowledge to enhance your response with domain-sp
       }
 
       // ================================================================
+      // Phase 2 Task 2-B: Compact conversation summary (if present)
+      // ----------------------------------------------------------------
+      // Earlier turns that have been rolled into a summary by the thread
+      // compactor live on `olive_gateway_sessions.compact_summary`. We
+      // fetch the most-recent active session for this user+channel and
+      // inject the summary ABOVE the verbatim recent turns so the model
+      // sees the long-thread arc without blowing the HISTORY budget.
+      // ================================================================
+      let compactSummary: string | null = null;
+      try {
+        const { data: gwRow } = await supabase
+          .from('olive_gateway_sessions')
+          .select('compact_summary, last_compacted_at')
+          .eq('user_id', userId)
+          .eq('channel', 'whatsapp')
+          .eq('is_active', true)
+          .order('last_activity', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (gwRow?.compact_summary && gwRow.compact_summary.trim().length > 0) {
+          compactSummary = gwRow.compact_summary.trim();
+          console.log(
+            `[CompactSummary] loaded (${compactSummary.length} chars, ` +
+            `last_compacted_at=${gwRow.last_compacted_at || 'never'})`
+          );
+        }
+      } catch (csErr) {
+        console.warn('[CompactSummary] load error (non-blocking):', csErr);
+      }
+
+      // ================================================================
       // SPECIALIZED SYSTEM PROMPTS BY CHAT TYPE
       // ================================================================
       let systemPrompt: string;
@@ -5437,7 +5618,7 @@ ${recentOutbound.length > 0
     }).join('\n')
   : 'No recent messages sent'}
 
-## Recent Conversation History:
+${compactSummary ? `## Earlier in this thread (compacted summary):\n${compactSummary}\n\n` : ''}## Recent Conversation History:
 ${sessionContext.conversation_history && sessionContext.conversation_history.length > 0
   ? sessionContext.conversation_history.map(msg => `${msg.role === 'user' ? 'User' : 'Olive'}: ${msg.content}`).join('\n')
   : 'No recent conversation'}

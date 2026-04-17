@@ -75,6 +75,12 @@ function extractTokenCounts(response: any): {
 export interface TrackerOptions {
   promptVersion?: string;
   metadata?: Record<string, unknown>;
+  /** Per-slot token breakdown from context-contract assembly */
+  slotTokens?: Record<string, number>;
+  /** Total tokens used by context assembly (pre-LLM) */
+  contextTotalTokens?: number;
+  /** Slots that exceeded their budget */
+  slotsOverBudget?: string[];
 }
 
 export interface LLMTracker {
@@ -101,6 +107,22 @@ export interface LLMTracker {
     response: any,
     opts?: TrackerOptions & { error?: string }
   ): void;
+
+  /**
+   * Log a streaming call's context-assembly analytics without wrapping the
+   * stream itself. Use this when you can't intercept the stream body but still
+   * want slot-level token observability.
+   *
+   * - `tokensIn` is estimated from prompt length (chars/4).
+   * - `tokensOut` is 0 (streaming output isn't captured).
+   * - `status` defaults to "stream_started".
+   */
+  logStreamingCall(
+    model: string,
+    promptCharLength: number,
+    latencyToFirstByteMs: number,
+    opts?: TrackerOptions & { status?: string; error?: string }
+  ): void;
 }
 
 /**
@@ -123,22 +145,27 @@ export function createLLMTracker(
     // Fire-and-forget — never block the response
     const costUsd = estimateCost(model, tokensIn, tokensOut);
 
+    const row: Record<string, unknown> = {
+      user_id: userId || null,
+      function_name: functionName,
+      model,
+      prompt_version: opts?.promptVersion || null,
+      tokens_in: tokensIn,
+      tokens_out: tokensOut,
+      latency_ms: latencyMs,
+      cost_usd: costUsd,
+      status,
+      error_message: opts?.error || null,
+      metadata: {
+        ...(opts?.metadata || {}),
+        ...(opts?.slotTokens ? { slot_tokens: opts.slotTokens } : {}),
+        ...(opts?.contextTotalTokens != null ? { context_total_tokens: opts.contextTotalTokens } : {}),
+        ...(opts?.slotsOverBudget?.length ? { slots_over_budget: opts.slotsOverBudget } : {}),
+      },
+    };
+
     Promise.resolve(
-      supabase
-        .from("olive_llm_calls")
-        .insert({
-          user_id: userId || null,
-          function_name: functionName,
-          model,
-          prompt_version: opts?.promptVersion || null,
-          tokens_in: tokensIn,
-          tokens_out: tokensOut,
-          latency_ms: latencyMs,
-          cost_usd: costUsd,
-          status,
-          error_message: opts?.error || null,
-          metadata: opts?.metadata || {},
-        })
+      supabase.from("olive_llm_calls").insert(row)
     ).then(() => {}).catch((err: any) => {
       console.warn("[LLMTracker] Non-blocking log error:", err?.message);
     });
@@ -209,6 +236,14 @@ export function createLLMTracker(
       const { tokensIn, tokensOut } = extractTokenCounts(response);
       const status = opts?.error ? "error" : "success";
       log(model, latencyMs, tokensIn, tokensOut, status, opts);
+    },
+
+    logStreamingCall(model, promptCharLength, latencyToFirstByteMs, opts) {
+      const tokensIn = Math.ceil(promptCharLength / 4);
+      const status = opts?.status || (opts?.error ? "error" : "stream_started");
+      // tokens_out = 0 — streaming output isn't captured here. A future
+      // enhancement could accumulate streamed chunks and update the row.
+      log(model, latencyToFirstByteMs, tokensIn, 0, status, opts);
     },
   };
 }

@@ -1,14 +1,14 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
 User-agent: *
-Allow: /
+Allow: /landing
+Allow: /es-es/landing
+Allow: /it-it/landing
+Allow: /sign-up
+Allow: /sign-in
+Allow: /legal/
+Disallow: /home
+Disallow: /profile
+Disallow: /onboarding
+Disallow: /admin
+Disallow: /api/
+
+Sitemap: https://www.witholive.app/sitemap.xml

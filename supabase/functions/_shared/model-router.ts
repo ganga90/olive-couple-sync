@@ -147,3 +147,82 @@ export function routeIntent(
   // ── Fallback ────────────────────────────────────────────
   return { responseTier: "standard", reason: `fallback:${intent}` };
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 1 Task 1-E — DB-only Intent Confidence Floors
+// ═══════════════════════════════════════════════════════════════════
+// When the classifier returns an action intent with low confidence, we
+// don't want to silently execute a destructive operation. Instead, we
+// surface a clarification question to the user via Flash-Lite.
+//
+// Floors are calibrated per intent:
+//   - delete:     0.95 (destructive — highest bar)
+//   - complete:   0.92 (mostly safe, but "complete the wrong task" is annoying)
+//   - set_due:    0.90 (medium stakes — wrong due date breaks reminders)
+//   - archive:    0.90 (reversible but annoying)
+//   - move:       0.90 (medium stakes — wrong list = lost item)
+//   - set_priority: 0.85 (low stakes — easy to fix)
+//   - assign:     0.90 (medium — assigning to wrong partner is awkward)
+//
+// Below the floor, callers should NOT execute the action. They should
+// escalate to Flash-Lite for a clarification turn.
+
+/** Per-intent confidence floors for destructive/impactful DB-only actions. */
+export const INTENT_CONFIDENCE_FLOORS: Record<string, number> = {
+  delete: 0.95,
+  complete: 0.92,
+  set_due: 0.90,
+  archive: 0.90,
+  move: 0.90,
+  assign: 0.90,
+  set_priority: 0.85,
+};
+
+export interface ConfidenceCheck {
+  /** True when the classifier's confidence meets the intent's floor. */
+  passes: boolean;
+  /** The floor required for this intent. */
+  floor: number;
+  /** The confidence observed from the classifier. */
+  confidence: number;
+  /** Human-readable explanation for logging. */
+  reason: string;
+}
+
+/**
+ * Check whether a classified intent meets its DB-execution confidence floor.
+ *
+ * Use this before executing any destructive or impactful action. When
+ * `passes` is false, route the user through a clarification flow (ask them
+ * to confirm or rephrase) rather than silently executing.
+ *
+ * @param intent — The classified intent string
+ * @param confidence — The classifier's self-reported confidence (0–1)
+ */
+export function checkConfidenceFloor(
+  intent: string,
+  confidence: number
+): ConfidenceCheck {
+  const floor = INTENT_CONFIDENCE_FLOORS[intent];
+
+  // Intents without a floor default to "pass" — only gated intents are checked.
+  if (floor === undefined) {
+    return {
+      passes: true,
+      floor: 0,
+      confidence,
+      reason: `no_floor:${intent}`,
+    };
+  }
+
+  const passes = confidence >= floor;
+  return {
+    passes,
+    floor,
+    confidence,
+    reason: passes
+      ? `meets_floor:${intent} (${confidence.toFixed(2)} >= ${floor})`
+      : `below_floor:${intent} (${confidence.toFixed(2)} < ${floor}) — clarify before executing`,
+  };
+}
+

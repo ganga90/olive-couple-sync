@@ -15,6 +15,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { dedupeReminders } from "../_shared/reminder-dedup.ts";
+import {
+  handleContradictionResolveJob,
+  type ContradictionPayload,
+} from "../_shared/contradiction-resolver.ts";
+import { compactActiveThreads } from "../_shared/thread-compactor.ts";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -26,7 +31,8 @@ type JobType =
   | 'weekly_summary'
   | 'task_reminder'
   | 'overdue_nudge'
-  | 'pattern_suggestion';
+  | 'pattern_suggestion'
+  | 'contradiction_resolve';
 
 interface HeartbeatJob {
   id: string;
@@ -1003,6 +1009,74 @@ async function processHeartbeatJobs(supabase: any): Promise<{ processed: number;
         case 'weekly_summary':
           content = await generateWeeklySummary(supabase, job.user_id);
           break;
+        case 'contradiction_resolve': {
+          // Ask-user flow for memory contradictions (Phase 2).
+          // We diverge from the generic send path because we need to insert
+          // an `olive_pending_questions` row BEFORE the send and roll it
+          // back if the send fails (otherwise the user never sees the
+          // question but their next message would be mis-classified as an
+          // answer).
+          const payload = (job.payload || {}) as ContradictionPayload;
+          if (!payload.contradiction_id) {
+            throw new Error('contradiction_resolve job missing contradiction_id');
+          }
+
+          const prepared = await handleContradictionResolveJob(
+            supabase,
+            job.user_id,
+            payload,
+            'whatsapp'
+          );
+
+          if (!prepared) {
+            // Already resolved or no-op — mark this job done and move on.
+            await supabase
+              .from('olive_heartbeat_jobs')
+              .update({ status: 'completed' })
+              .eq('id', job.id);
+            await supabase.from('olive_heartbeat_log').insert({
+              user_id: job.user_id,
+              job_type: job.job_type,
+              status: 'skipped',
+              message_preview: 'already_resolved_or_noop',
+              channel: 'whatsapp',
+            });
+            processed++;
+            continue;
+          }
+
+          const sent = await sendWhatsAppMessage(
+            supabase,
+            job.user_id,
+            'contradiction_resolve',
+            prepared.questionText,
+            job.payload?.priority || 'normal'
+          );
+
+          if (sent) {
+            await supabase
+              .from('olive_heartbeat_jobs')
+              .update({ status: 'completed' })
+              .eq('id', job.id);
+            await supabase.from('olive_heartbeat_log').insert({
+              user_id: job.user_id,
+              job_type: job.job_type,
+              status: 'sent',
+              message_preview: prepared.questionText.substring(0, 200),
+              channel: 'whatsapp',
+            });
+            processed++;
+          } else {
+            // Roll back: cancel the pending question so the user isn't
+            // trapped in an unanswerable state on their next message.
+            await supabase
+              .from('olive_pending_questions')
+              .update({ status: 'cancelled' })
+              .eq('id', prepared.pendingQuestionId);
+            throw new Error('Gateway send failed for contradiction_resolve');
+          }
+          continue; // skip the generic send block below
+        }
         default:
           content = job.payload?.content || 'No content provided';
       }
@@ -1404,6 +1478,22 @@ serve(async (req) => {
         }
         console.log(`[Heartbeat] Community detection: ${communitiesDetected} users processed`);
 
+        // Thread compaction (Phase 2 Task 2-B)
+        // Runs BEFORE the outbound queue drain so the summaries are
+        // available for any context-assembly triggered by this tick's
+        // briefings / reviews. Compaction failures are non-blocking.
+        let compactionResult = { scanned: 0, compacted: 0, skipped: 0, failed: 0 };
+        try {
+          compactionResult = await compactActiveThreads(supabase);
+          console.log(
+            `[Heartbeat] Compaction: scanned=${compactionResult.scanned}, ` +
+            `compacted=${compactionResult.compacted}, skipped=${compactionResult.skipped}, ` +
+            `failed=${compactionResult.failed}`
+          );
+        } catch (compactErr) {
+          console.error('[Heartbeat] Compaction error (non-blocking):', compactErr);
+        }
+
         // Process queued outbound messages
         const queueResponse = await supabase.functions.invoke('whatsapp-gateway', {
           body: { action: 'process_queue' },
@@ -1422,6 +1512,7 @@ serve(async (req) => {
               nudges_sent: nudges,
               agents_invoked: agentsInvoked,
               communities_detected: communitiesDetected,
+              compaction: compactionResult,
               queue_processed: queueResult.processed,
               rate_limit_state: {
                 consecutive_failures: rateLimitState.consecutiveFailures,

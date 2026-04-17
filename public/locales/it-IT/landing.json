@@ -10,7 +10,7 @@
   "hero": {
     "eyebrow": "Il tuo secondo cervello con IA",
     "headline": "Lei ricorda, così tu non devi.",
-    "subheadline": "Codici d'accesso, liste della spesa, idee brillanti — scrivi a Olive. Lei organizza tutto e te lo restituisce, pulito e ordinato, quando ne hai bisogno.",
+    "subheadline": "Codici d'accesso, liste della spesa, idee brillanti — inviali a Olive dalla web app, WhatsApp o con la voce. Lei organizza tutto e te lo restituisce, pulito e ordinato, quando ne hai bisogno.",
     "betaCta": "Accedi a Olive",
     "ctaPrimary": "Inizia a Usare Olive — Gratis",
     "ctaSecondary": "Scopri Come Funziona",
@@ -48,7 +48,7 @@
     "subheadline": "Continua a fare quello che fai già. Olive trasforma i tuoi messaggi in azioni organizzate — automaticamente.",
     "capture": {
       "title": "1. Invialo",
-      "description": "Testo, nota vocale, foto, link — invialo a Olive su WhatsApp. Senza formattare. Senza cartelle. Semplicemente invialo."
+      "description": "Testo, nota vocale, foto, link — invialo a Olive dalla web app o WhatsApp. Senza formattare. Senza cartelle. Semplicemente invialo."
     },
     "organize": {
       "title": "2. Olive Organizza",
@@ -64,8 +64,8 @@
     }
   },
   "whatsappFirst": {
-    "headline": "Funziona dove vivi già.",
-    "description": "Nessuna nuova app. Inoltra una nota vocale, foto o link a Olive su WhatsApp. Lei si occupa del resto.",
+    "headline": "Cattura da qualsiasi luogo.",
+    "description": "Usa la web app per il tuo pannello completo — liste, calendario, spese e chat con IA. In movimento? Scrivi a Olive su WhatsApp. Tutto si sincronizza all'istante.",
     "comingSoon": "In arrivo",
     "features": {
       "voiceNotes": "🎙️ Note vocali",

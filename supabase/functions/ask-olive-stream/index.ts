@@ -24,7 +24,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { GEMINI_KEY, getModel } from "../_shared/gemini.ts";
-import { routeIntent } from "../_shared/model-router.ts";
+import { routeIntent, checkConfidenceFloor } from "../_shared/model-router.ts";
 import { createLLMTracker } from "../_shared/llm-tracker.ts";
 import {
   OLIVE_CHAT_PROMPT as CHAT_PROMPT_IMPORTED,
@@ -37,6 +37,8 @@ import {
 import {
   assembleFullContext,
   formatContextForPrompt,
+  formatContextWithBudget,
+  getSlotTokenLog,
   cleanupStaleSessions,
   evolveProfileFromConversation,
   type UnifiedContext,
@@ -821,6 +823,21 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
 
     // ── ACTION (P3: full action parity via shared classifier + process-note) ──
     if (effectiveType === 'action' && classifiedIntent) {
+      // Phase 1 Task 1-E: Confidence floor for destructive actions.
+      // Below the floor we don't execute — we ask the user to confirm.
+      const floorCheck = checkConfidenceFloor(classifiedIntent.intent, classifiedIntent.confidence);
+      console.log(`[ask-olive-stream] Confidence floor: ${floorCheck.reason}`);
+
+      if (!floorCheck.passes) {
+        const targetDesc = classifiedIntent.target_task_name
+          ? `"${classifiedIntent.target_task_name}"`
+          : 'this item';
+        const clarifyPrompt = `You are Olive. The user issued a potentially destructive action ("${classifiedIntent.intent}" on ${targetDesc}) but you're not confident (${(classifiedIntent.confidence * 100).toFixed(0)}% confidence, need ${(floorCheck.floor * 100).toFixed(0)}%). Ask the user to confirm exactly which task they want to ${classifiedIntent.intent.replace('_', ' ')} — keep it warm and brief (1-2 sentences). Do NOT perform the action.`;
+        const clarifyContent = `User's original request: "${message}"\n\nClassifier interpretation: intent=${classifiedIntent.intent}, target=${classifiedIntent.target_task_name || 'none'}, confidence=${classifiedIntent.confidence}\n\nAsk the user to confirm before you proceed.`;
+        scheduleMemoryEvolution(user_id, message, `Confidence floor triggered: ${floorCheck.reason}`);
+        return streamGeminiResponse(clarifyPrompt, clarifyContent, 'lite');
+      }
+
       const serverCtx = await serverCtxPromise;
       const supabase = getServiceSupabase();
 
@@ -838,14 +855,58 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
 
     // ── CHAT / HELP ───────────────────────────────────────────────
     const serverCtx = await serverCtxPromise;
-    const fullContext = formatContextForPrompt(serverCtx, {
+    const budgetResult = formatContextWithBudget(serverCtx, {
       userMessage: message,
       userName: context?.user_name,
       conversationHistory,
       savedItemsContext: context?.saved_items_context,
     });
+
+    // Log slot-level token usage for analytics (to console + olive_llm_calls)
+    if (budgetResult.truncatedSlots.length > 0 || budgetResult.droppedSlots.length > 0 || budgetResult.missingRequired.length > 0) {
+      console.log(
+        `[ask-olive-stream] Context budget: ${budgetResult.totalTokens} tokens, ` +
+        `truncated: [${budgetResult.truncatedSlots}], dropped: [${budgetResult.droppedSlots}], ` +
+        `missingRequired: [${budgetResult.missingRequired}], degraded: ${budgetResult.degraded}, ` +
+        `emergency: ${budgetResult.emergency}`
+      );
+    }
+
+    // Emit slot-level analytics to olive_llm_calls (fire-and-forget)
+    const chatStartedAt = performance.now();
+    const chatSupabase = getServiceSupabase();
+    const chatTracker = createLLMTracker(chatSupabase, "ask-olive-stream", user_id);
+    const chatModel = getModel(route.responseTier as any);
+
     scheduleMemoryEvolution(user_id, message, '(chat response)');
-    return streamGeminiResponse(OLIVE_CHAT_PROMPT, fullContext, route.responseTier);
+    const resp = await streamGeminiResponse(OLIVE_CHAT_PROMPT, budgetResult.prompt, route.responseTier);
+
+    // Log context-assembly analytics now that stream has started
+    chatTracker.logStreamingCall(
+      chatModel,
+      OLIVE_CHAT_PROMPT.length + budgetResult.prompt.length,
+      Math.round(performance.now() - chatStartedAt),
+      {
+        promptVersion: CHAT_PROMPT_VERSION,
+        slotTokens: getSlotTokenLog(budgetResult),
+        contextTotalTokens: budgetResult.totalTokens,
+        slotsOverBudget: budgetResult.truncatedSlots,
+        metadata: {
+          intent: 'chat',
+          effective_type: effectiveType,
+          classified_intent: classifiedIntent?.intent,
+          classifier_confidence: classifiedIntent?.confidence,
+          route_tier: route.responseTier,
+          route_reason: route.reason,
+          dropped_slots: budgetResult.droppedSlots,
+          missing_required: budgetResult.missingRequired,
+          degraded: budgetResult.degraded,
+          emergency: budgetResult.emergency,
+        },
+      }
+    );
+
+    return resp;
 
   } catch (error: any) {
     console.error('[ask-olive-stream] Error:', error);

@@ -10,7 +10,7 @@
   "hero": {
     "eyebrow": "Your AI-powered second brain",
     "headline": "She remembers, so you don't have to.",
-    "subheadline": "Gate codes, grocery lists, brilliant ideas — just text Olive. She organizes everything and gives it back to you, clean and sorted, whenever you need it.",
+    "subheadline": "Gate codes, grocery lists, brilliant ideas — drop them into Olive from the web app, WhatsApp, or voice. She organizes everything and gives it back to you, clean and sorted, whenever you need it.",
     "betaCta": "Get Access to Olive",
     "ctaPrimary": "Start Using Olive — Free",
     "ctaSecondary": "See How It Works",
@@ -48,7 +48,7 @@
     "subheadline": "Keep doing what you already do. Olive turns your messages into organized actions — automatically.",
     "capture": {
       "title": "1. Drop It",
-      "description": "Text, voice note, photo, link — just send it to Olive on WhatsApp. No formatting. No folders. Just dump it."
+      "description": "Text, voice note, photo, link — drop it into Olive from the web app or WhatsApp. No formatting. No folders. Just dump it."
     },
     "organize": {
       "title": "2. Olive Organizes",
@@ -64,8 +64,8 @@
     }
   },
   "whatsappFirst": {
-    "headline": "Works where you already live.",
-    "description": "No new apps to learn. Just forward a voice note, a photo, or a link to Olive on WhatsApp. She handles the rest.",
+    "headline": "Capture from anywhere.",
+    "description": "Use the web app for your full dashboard — lists, calendar, expenses, and AI chat. On the go? Just text Olive on WhatsApp. Everything syncs instantly.",
     "comingSoon": "Coming soon",
     "features": {
       "voiceNotes": "🎙️ Voice notes",

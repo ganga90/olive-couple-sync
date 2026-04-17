@@ -272,11 +272,20 @@ Return ONLY the merged statement, nothing else.`;
  * 3. CONTRADICTION DETECTION
  * Compare chunks pairwise (within importance tiers) to find
  * conflicting facts. Uses AI to judge contradictions.
+ *
+ * Resolution strategy (Phase 1 Task 1-C):
+ *   - AUTO_RECENCY is the DEFAULT for high-confidence (>=0.8) factual/temporal
+ *     contradictions. The newer chunk wins; the older is deactivated.
+ *   - ASK_USER is used for preference/behavioral contradictions or when the
+ *     AI is unsure (confidence < 0.8 but >= 0.5). A heartbeat job is created
+ *     so the user sees the question in their next digest.
+ *   - Low-confidence (<0.5) contradictions are left as 'unresolved' for the
+ *     next maintenance cycle.
  */
 async function runContradictionDetection(
   supabase: any,
   userId: string
-): Promise<{ detected: number; auto_resolved: number }> {
+): Promise<{ detected: number; auto_resolved: number; ask_user_queued: number }> {
   // Get high-importance active chunks (focus on facts that matter)
   const { data: chunks } = await supabase
     .from("olive_memory_chunks")
@@ -289,7 +298,7 @@ async function runContradictionDetection(
     .limit(100);
 
   if (!chunks || chunks.length < 2) {
-    return { detected: 0, auto_resolved: 0 };
+    return { detected: 0, auto_resolved: 0, ask_user_queued: 0 };
   }
 
   // Build a batch of facts for AI analysis
@@ -314,6 +323,16 @@ Example: [{"a":0,"b":3,"type":"preference","confidence":0.9,"resolution":"keep_n
 
   let detected = 0;
   let auto_resolved = 0;
+  let ask_user_queued = 0;
+
+  // Confidence thresholds (tunable — raise if false positives appear)
+  const AUTO_RECENCY_CONFIDENCE_MIN = 0.8;
+  const ASK_USER_CONFIDENCE_MIN = 0.5;
+
+  // Factual/temporal contradictions are safe to auto-resolve by recency.
+  // Preference/behavioral contradictions require the user's input because
+  // both statements may be valid (user's taste evolved, not overwritten).
+  const AUTO_RECENCY_TYPES = new Set(["factual", "temporal"]);
 
   try {
     const response = await callGemini(prompt, 0.1, 1024);
@@ -325,16 +344,16 @@ Example: [{"a":0,"b":3,"type":"preference","confidence":0.9,"resolution":"keep_n
     } catch {
       // Try extracting first valid JSON array
       const jsonMatch = response.match(/\[(?:[^\[\]]*|\[(?:[^\[\]]*|\[[^\[\]]*\])*\])*\]/);
-      if (!jsonMatch) return { detected: 0, auto_resolved: 0 };
+      if (!jsonMatch) return { detected: 0, auto_resolved: 0, ask_user_queued: 0 };
       try {
         contradictions = JSON.parse(jsonMatch[0]);
       } catch {
         console.warn("[Contradiction] Failed to parse AI response:", response.substring(0, 200));
-        return { detected: 0, auto_resolved: 0 };
+        return { detected: 0, auto_resolved: 0, ask_user_queued: 0 };
       }
     }
 
-    if (!Array.isArray(contradictions)) return { detected: 0, auto_resolved: 0 };
+    if (!Array.isArray(contradictions)) return { detected: 0, auto_resolved: 0, ask_user_queued: 0 };
 
     for (const c of contradictions) {
       if (
@@ -347,6 +366,8 @@ Example: [{"a":0,"b":3,"type":"preference","confidence":0.9,"resolution":"keep_n
 
       const chunkA = chunks[c.a];
       const chunkB = chunks[c.b];
+      const confidence = typeof c.confidence === "number" ? c.confidence : 0.5;
+      const type: string = c.type || "factual";
 
       // Check if this contradiction pair already exists
       const { data: existing } = await supabase
@@ -360,27 +381,29 @@ Example: [{"a":0,"b":3,"type":"preference","confidence":0.9,"resolution":"keep_n
 
       if (existing && existing.length > 0) continue;
 
-      // Log the contradiction
-      await supabase.from("olive_memory_contradictions").insert({
-        user_id: userId,
-        chunk_a_id: chunkA.id,
-        chunk_b_id: chunkB.id,
-        chunk_a_content: chunkA.content,
-        chunk_b_content: chunkB.content,
-        contradiction_type: c.type || "factual",
-        confidence: c.confidence || 0.5,
-        resolution: c.resolution === "ask_user" ? "unresolved" : c.resolution || "unresolved",
-      });
-      detected++;
+      // ─── Resolution decision tree ─────────────────────────────
+      // Priority:
+      //  1. Too-low confidence → just log as unresolved, nothing actionable.
+      //  2. Factual/temporal + high confidence → AUTO_RECENCY (newer wins).
+      //  3. Everything else above ask-user threshold → ASK_USER (queue heartbeat).
+      let resolutionStrategy: string | null = null;
+      let resolution = "unresolved";
+      let winningChunkId: string | null = null;
+      let resolvedContent: string | null = null;
+      let resolutionNotes: string | null = null;
 
-      // Auto-resolve "keep_newer" contradictions
-      if (c.resolution === "keep_newer" && c.confidence >= 0.8) {
-        const older =
-          new Date(chunkA.created_at) < new Date(chunkB.created_at)
-            ? chunkA
-            : chunkB;
-        const newer =
-          older.id === chunkA.id ? chunkB : chunkA;
+      if (confidence >= AUTO_RECENCY_CONFIDENCE_MIN && AUTO_RECENCY_TYPES.has(type)) {
+        resolutionStrategy = "AUTO_RECENCY";
+        const olderFirst = new Date(chunkA.created_at) < new Date(chunkB.created_at);
+        const older = olderFirst ? chunkA : chunkB;
+        const newer = olderFirst ? chunkB : chunkA;
+        resolution = "keep_newer";
+        winningChunkId = newer.id;
+        resolvedContent = newer.content;
+        resolutionNotes =
+          `AUTO_RECENCY: ${type} contradiction at confidence ${confidence.toFixed(2)}. ` +
+          `Newer chunk (${new Date(newer.created_at).toISOString()}) supersedes older ` +
+          `(${new Date(older.created_at).toISOString()}).`;
 
         // Deactivate the older chunk
         await supabase
@@ -395,26 +418,80 @@ Example: [{"a":0,"b":3,"type":"preference","confidence":0.9,"resolution":"keep_n
           })
           .eq("id", older.id);
 
-        // Mark contradiction as resolved
-        await supabase
-          .from("olive_memory_contradictions")
-          .update({
-            resolution: "keep_newer",
-            resolved_content: newer.content,
-            resolved_at: new Date().toISOString(),
-          })
-          .eq("user_id", userId)
-          .eq("chunk_a_id", chunkA.id)
-          .eq("chunk_b_id", chunkB.id);
-
         auto_resolved++;
+      } else if (confidence >= ASK_USER_CONFIDENCE_MIN) {
+        resolutionStrategy = "ASK_USER";
+        resolution = "unresolved";
+        resolutionNotes =
+          `ASK_USER: ${type} contradiction at confidence ${confidence.toFixed(2)}. ` +
+          `User input required — neither AUTO_RECENCY (type mismatch) nor high-confidence auto-resolve applies.`;
+      } else {
+        // Very low confidence: log but don't queue a heartbeat job
+        resolutionStrategy = null;
+        resolutionNotes =
+          `Low confidence (${confidence.toFixed(2)}) — deferred to next maintenance cycle.`;
+      }
+
+      // Insert the contradiction record (single insert with full resolution state)
+      const { data: inserted, error: insertErr } = await supabase
+        .from("olive_memory_contradictions")
+        .insert({
+          user_id: userId,
+          chunk_a_id: chunkA.id,
+          chunk_b_id: chunkB.id,
+          chunk_a_content: chunkA.content,
+          chunk_b_content: chunkB.content,
+          contradiction_type: type,
+          confidence,
+          resolution,
+          resolved_content: resolvedContent,
+          resolved_at: winningChunkId ? new Date().toISOString() : null,
+          resolution_strategy: resolutionStrategy,
+          winning_chunk_id: winningChunkId,
+          resolution_notes: resolutionNotes,
+        })
+        .select("id")
+        .single();
+
+      if (insertErr) {
+        console.error("[Contradiction] Insert failed:", insertErr);
+        continue;
+      }
+
+      detected++;
+
+      // Queue a heartbeat job for ASK_USER contradictions so the user is
+      // asked during their next digest. Fire-and-forget — a failure here
+      // shouldn't block the maintenance run.
+      if (resolutionStrategy === "ASK_USER" && inserted?.id) {
+        try {
+          await supabase.from("olive_heartbeat_jobs").insert({
+            user_id: userId,
+            job_type: "contradiction_resolve",
+            scheduled_for: new Date().toISOString(),
+            status: "pending",
+            payload: {
+              contradiction_id: inserted.id,
+              chunk_a_content: chunkA.content,
+              chunk_b_content: chunkB.content,
+              contradiction_type: type,
+              confidence,
+            },
+          });
+          ask_user_queued++;
+        } catch (jobErr) {
+          console.warn(
+            "[Contradiction] Failed to queue ASK_USER heartbeat job:",
+            jobErr
+          );
+        }
       }
     }
   } catch (e) {
     console.error("[Contradiction] Detection failed:", e);
   }
 
-  return { detected, auto_resolved };
+  return { detected, auto_resolved, ask_user_queued };
 }
 
 /**
@@ -809,7 +886,9 @@ serve(async (req) => {
           const contraResult = await runContradictionDetection(supabase, userId);
           stats.contradictions = contraResult;
           console.log(
-            `[Maintenance] Contradictions: ${contraResult.detected} found, ${contraResult.auto_resolved} auto-resolved`
+            `[Maintenance] Contradictions: ${contraResult.detected} found, ` +
+            `${contraResult.auto_resolved} auto-resolved (AUTO_RECENCY), ` +
+            `${contraResult.ask_user_queued} queued (ASK_USER)`
           );
         }
 

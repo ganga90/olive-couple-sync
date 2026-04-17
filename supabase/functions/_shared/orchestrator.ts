@@ -19,6 +19,14 @@ import {
   type SoulAssemblyResult,
   type SoulAssemblyOptions,
 } from "./soul.ts";
+import {
+  assembleContext,
+  getSlotTokenLog,
+  STANDARD_CONTRACT,
+  STANDARD_BUDGET,
+  type AssemblyResult,
+  type SlotTokenLog,
+} from "./context-contract.ts";
 
 // ─── Circuit Breaker ───────────────────────────────────────────
 // Tracks failures per subsystem to skip flaky calls for a cooldown period.
@@ -928,6 +936,98 @@ export function formatContextForPrompt(
   }
 
   return parts.join("\n");
+}
+
+// ══════════════════════════════════════════════════════════════════
+// BUDGET-AWARE CONTEXT ASSEMBLY (Phase 2 — Task 1-A)
+// ══════════════════════════════════════════════════════════════════
+
+export type { AssemblyResult, SlotTokenLog };
+export { getSlotTokenLog };
+
+/**
+ * Budget-aware version of formatContextForPrompt.
+ *
+ * Maps UnifiedContext fields into named slots, then runs them through
+ * the formal context contract with token budgets and priority-based
+ * overflow handling.
+ *
+ * Returns both the assembled prompt AND slot-level analytics for the
+ * LLM tracker.
+ */
+export function formatContextWithBudget(
+  ctx: UnifiedContext,
+  opts?: {
+    soulPrompt?: string;
+    intentModule?: string;
+    userMessage?: string;
+    userName?: string;
+    conversationHistory?: Array<{ role: string; content: string }>;
+    savedItemsContext?: string;
+  }
+): AssemblyResult {
+  // ─── Map UnifiedContext → Contract Slots ─────────────────────
+
+  // IDENTITY: Soul prompt or static identity
+  const identity = opts?.soulPrompt || "";
+
+  // QUERY: User message + name
+  const queryParts: string[] = [];
+  if (opts?.userName) queryParts.push(`User's name: ${opts.userName}`);
+  if (opts?.userMessage) queryParts.push(`USER MESSAGE: ${opts.userMessage}`);
+  const query = queryParts.join("\n");
+
+  // USER_COMPILED: Profile + memories + patterns + deep profile + relationships + partner
+  const userParts: string[] = [];
+  if (ctx.profile) userParts.push(ctx.profile);
+  if (ctx.memories) userParts.push(ctx.memories);
+  if (ctx.patterns) userParts.push(ctx.patterns);
+  if (ctx.deepProfile) userParts.push(ctx.deepProfile);
+  if (ctx.partnerContext) userParts.push(ctx.partnerContext);
+  const userCompiled = userParts.join("\n");
+
+  // INTENT_MODULE: Intent-specific prompt rules
+  const intentModule = opts?.intentModule || "";
+
+  // TOOLS: Skills (will expand to tool schemas in future)
+  const tools = ctx.skills || "";
+
+  // DYNAMIC: Calendar + task analytics + agent insights + semantic data + saved items
+  const dynamicParts: string[] = [];
+  if (ctx.calendar) dynamicParts.push(ctx.calendar);
+  if (ctx.taskAnalytics) dynamicParts.push(ctx.taskAnalytics);
+  if (ctx.agentInsights) dynamicParts.push(ctx.agentInsights);
+  if (ctx.semanticNotes) dynamicParts.push(ctx.semanticNotes);
+  if (ctx.semanticMemoryChunks) dynamicParts.push(ctx.semanticMemoryChunks);
+  if (ctx.relationshipGraph) dynamicParts.push(ctx.relationshipGraph);
+  if (opts?.savedItemsContext) dynamicParts.push(`\nUSER'S SAVED DATA:\n${opts.savedItemsContext}`);
+  const dynamic = dynamicParts.join("\n");
+
+  // HISTORY: Conversation history
+  let history = "";
+  if (opts?.conversationHistory?.length) {
+    history =
+      "CONVERSATION HISTORY:\n" +
+      opts.conversationHistory
+        .map((m) => `${m.role === "user" ? "User" : "Olive"}: ${m.content}`)
+        .join("\n");
+  }
+
+  // ─── Run through contract ────────────────────────────────────
+
+  return assembleContext(
+    {
+      IDENTITY: identity,
+      QUERY: query,
+      USER_COMPILED: userCompiled,
+      INTENT_MODULE: intentModule,
+      TOOLS: tools,
+      DYNAMIC: dynamic,
+      HISTORY: history,
+    },
+    STANDARD_CONTRACT,
+    STANDARD_BUDGET,
+  );
 }
 
 // ══════════════════════════════════════════════════════════════════
