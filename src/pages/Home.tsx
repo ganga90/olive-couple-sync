@@ -229,7 +229,7 @@ const Home = () => {
     
     // Haptic feedback on native
     if (newState) {
-      haptics.notificationSuccess();
+      haptics.notifySuccess();
     } else {
       haptics.impactLight();
     }

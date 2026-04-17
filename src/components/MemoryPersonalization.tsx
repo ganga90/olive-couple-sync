@@ -270,7 +270,7 @@ export function MemoryPersonalization() {
     setNewCategory('personal');
     setNewImportance(3);
     setActiveTab('view');
-    haptics.notificationSuccess();
+    haptics.notifySuccess();
 
     try {
       setSaving(true);
@@ -294,7 +294,7 @@ export function MemoryPersonalization() {
     } catch (error) {
       console.error('Failed to add memory:', error);
       toast.error(t('memory.error'));
-      haptics.notificationError();
+      haptics.notifyError();
       setMemories(prev => prev.filter(m => m.id !== optimisticMemory.id));
     } finally {
       setSaving(false);
@@ -331,7 +331,7 @@ export function MemoryPersonalization() {
     } catch (error) {
       console.error('Failed to update memory:', error);
       toast.error(t('memory.error'));
-      haptics.notificationError();
+      haptics.notifyError();
       setMemories(previousMemories);
     } finally {
       setSaving(false);
@@ -355,7 +355,7 @@ export function MemoryPersonalization() {
         onClick: () => {
           undone = true;
           setMemories(previousMemories);
-          haptics.notificationSuccess();
+          haptics.notifySuccess();
         },
       },
     });
@@ -377,7 +377,7 @@ export function MemoryPersonalization() {
       } catch (error) {
         console.error('Failed to delete memory:', error);
         toast.error(t('memory.error'));
-        haptics.notificationError();
+        haptics.notifyError();
         if (!undone) setMemories(previousMemories);
       }
     }, 5500);
