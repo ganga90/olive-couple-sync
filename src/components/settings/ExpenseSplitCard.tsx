@@ -138,11 +138,13 @@ export const ExpenseSplitCard: React.FC<ExpenseSplitCardProps> = ({ className })
     await supabase.from("olive_expense_split_shares").insert(shares);
 
     // Log engagement
-    await supabase.from("olive_engagement_events").insert({
-      user_id: userId,
-      event_type: "expense_split_created",
-      metadata: { split_id: split.id, amount: totalAmount, members: members.length },
-    }).catch(() => {});
+    try {
+      await supabase.from("olive_engagement_events").insert({
+        user_id: userId,
+        event_type: "expense_split_created",
+        metadata: { split_id: split.id, amount: totalAmount, members: members.length },
+      });
+    } catch { /* non-blocking */ }
 
     notifySuccess();
     toast.success(`Split $${totalAmount.toFixed(2)} between ${members.length} members`);
@@ -174,11 +176,13 @@ export const ExpenseSplitCard: React.FC<ExpenseSplitCardProps> = ({ className })
 
     if (!error) {
       const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from("olive_engagement_events").insert({
-        user_id: user?.id,
-        event_type: "expense_split_settled",
-        metadata: { split_id: splitId },
-      }).catch(() => {});
+      try {
+        await supabase.from("olive_engagement_events").insert({
+          user_id: user?.id,
+          event_type: "expense_split_settled",
+          metadata: { split_id: splitId },
+        });
+      } catch { /* non-blocking */ }
 
       toast.success("Expense settled!");
       await fetchSplits();
