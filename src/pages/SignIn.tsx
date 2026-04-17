@@ -61,6 +61,25 @@ const SignInPage = () => {
 
   useSEO({ title: `${t('signIn.title')} — Olive`, description: t('signIn.description') });
 
+  // Degraded mode: Clerk publishable key is missing — show a friendly notice
+  // instead of crashing or rendering a non-functional form.
+  if (!HAS_CLERK) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-soft">
+        <Card className="max-w-md w-full p-8 text-center space-y-4">
+          <OliveLogo />
+          <h1 className="text-2xl font-bold font-serif">Sign-in unavailable</h1>
+          <p className="text-muted-foreground">
+            Authentication isn't configured for this preview. Please try again later or contact support.
+          </p>
+          <Button onClick={() => rawNavigate("/landing")} variant="outline" className="w-full">
+            Back to landing
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
   // If this page was opened from native app and user is now signed in,
   // redirect back to the native app
   useEffect(() => {
