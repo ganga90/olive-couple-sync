@@ -13,10 +13,30 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const CLERK_LOAD_TIMEOUT_MS = 6000; // 6 seconds max wait for Clerk
 
+// Safe wrappers — if ClerkProvider is missing (degraded mode), return inert defaults
+// instead of throwing. This keeps public routes (landing, legal) renderable.
+const useSafeUser = (): { user: any; isLoaded: boolean } => {
+  try {
+    return useUser();
+  } catch {
+    return { user: null, isLoaded: true };
+  }
+};
+
+const useSafeClerkAuth = (): { getToken: (opts?: any) => Promise<string | null>; isSignedIn: boolean } => {
+  try {
+    const a = useClerkAuth();
+    return { getToken: a.getToken as any, isSignedIn: !!a.isSignedIn };
+  } catch {
+    return { getToken: async () => null, isSignedIn: false };
+  }
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, isLoaded } = useUser();
-  const { getToken, isSignedIn } = useClerkAuth();
+  const { user, isLoaded } = useSafeUser();
+  const { getToken, isSignedIn } = useSafeClerkAuth();
   const [clerkTimedOut, setClerkTimedOut] = useState(false);
+
 
   // Timeout: if Clerk doesn't load within 6s, stop blocking the app
   useEffect(() => {
