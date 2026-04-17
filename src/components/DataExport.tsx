@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useUser } from "@clerk/clerk-react";
+import { useSafeUser as useUser } from "@/hooks/useSafeClerk";
 import { Download, FileText, Brain, Loader2, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";

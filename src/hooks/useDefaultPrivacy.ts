@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useUser } from "@clerk/clerk-react";
+import { useSafeUser as useUser } from "@/hooks/useSafeClerk";
 import { getSupabase } from "@/lib/supabaseClient";
 
 export type DefaultPrivacy = "private" | "shared";

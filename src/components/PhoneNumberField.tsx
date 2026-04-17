@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useAuth } from "@clerk/clerk-react";
+import { useSafeClerkAuth as useAuth } from "@/hooks/useSafeClerk";
 import { supabase } from "@/lib/supabaseClient";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
