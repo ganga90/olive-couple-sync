@@ -8,12 +8,13 @@ import { initCapacitorPlugins } from './lib/capacitor-init'
 // Initialize native plugins (StatusBar, Keyboard) — no-ops on web
 initCapacitorPlugins();
 
-// Use environment variable for production
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
-
-if (!PUBLISHABLE_KEY) {
-  console.error('[Olive] Missing Clerk Publishable Key — app will load in degraded mode')
-}
+// Clerk publishable keys are public-safe (shipped to every browser anyway).
+// Hardcoded fallback keeps the app functional if VITE_CLERK_PUBLISHABLE_KEY
+// isn't injected at build time; the env var still wins so preview/staging
+// builds can target a different Clerk instance.
+const FALLBACK_PUBLISHABLE_KEY = 'pk_live_Y2xlcmsud2l0aG9saXZlLmFwcCQ'
+const PUBLISHABLE_KEY =
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || FALLBACK_PUBLISHABLE_KEY
 
 createRoot(document.getElementById('root')!).render(
   <ClerkProvider 
