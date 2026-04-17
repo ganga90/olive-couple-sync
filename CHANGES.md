@@ -444,7 +444,141 @@ supabase — no real API keys or network required.
 
 ---
 
-## Invariants preserved (cumulative Phase 1 + 2)
+## 2026-04-16 — Phase 3 (Memory Pipeline Repair)
+
+Phase 2 audit of the production database revealed a critical gap: the
+entire memory retrieval pipeline was non-functional. Memory chunks were
+extracted from conversations (48 active chunks) but never reached the
+LLM prompt because:
+
+1. **`search_memory_chunks` RPC did not exist** — the orchestrator called
+   it on every request but the circuit breaker silently caught the error.
+2. **`hybrid_search_notes` RPC did not exist** — same failure mode.
+3. **0 of 48 memory chunks had embeddings** — even with the RPC, semantic
+   search would have returned nothing.
+4. **0 of 615 clerk_notes had embeddings** — hybrid search was equally dead.
+5. **No importance-only fallback** — when no query embedding was available
+   (proactive messages, short inputs), the DYNAMIC slot stayed empty.
+
+### Task 3-A · Missing RPCs + Importance-Only Fallback (migration)
+
+Created 5 new RPCs and 3 indexes:
+
+| RPC | Purpose |
+| --- | ------- |
+| `search_memory_chunks(user, embedding, limit, min_importance)` | Semantic vector search on `olive_memory_chunks` |
+| `hybrid_search_notes(user, couple, query, embedding, weight, limit)` | Combined vector + full-text search on `clerk_notes` |
+| `fetch_top_memory_chunks(user, limit, min_importance)` | **Importance-only** — no embedding required |
+| `get_chunks_needing_embeddings(limit)` | Backfill queue for memory chunks |
+| `get_notes_needing_embeddings(limit)` | Backfill queue for clerk_notes |
+
+All RPCs use `SET search_path TO 'public', 'extensions'` to resolve
+the pgvector `<=>` operator correctly.
+
+`fetch_top_memory_chunks` is the key innovation: it guarantees memories
+always reach the prompt by ranking on `importance * decay_factor` without
+requiring an embedding vector.
+
+### Task 3-B · Unified Memory Retrieval Module (`memory-retrieval.ts`)
+
+**Strategy: semantic search + importance-only fallback, merged.**
+
+```
+fetchMemoryChunks(db, userId, queryEmbedding?, userMessage?)
+  ├─ if embedding available → try searchMemoryChunks (semantic)
+  ├─ ALWAYS → fetchTopMemoryChunks (importance-only baseline)
+  └─ merge: semantic first (relevance-ranked), importance fills gaps
+     → deduplicate by ID → cap at maxTotal → format for prompt
+```
+
+Pure functions: `shouldAttemptSemanticSearch`, `mergeMemoryResults`,
+`formatMemoryChunksForPrompt`. DB interface via `MemoryDB` abstraction
+for testability.
+
+**Key guarantees:**
+- If active memory chunks exist, at least some will appear in the prompt.
+- Semantic search failure degrades gracefully to importance-only.
+- Both failures degrade to empty string — no thrown errors escape.
+- Strategy telemetry (`semantic` / `importance_only` / `merged` / `empty`)
+  logged for observability.
+
+### Task 3-C · Orchestrator Wiring
+
+Replaced the broken `search_memory_chunks`-only path in Layer 4 of
+`assembleFullContext()` with the unified `fetchMemoryChunks()` call.
+The old code silently failed on every request; the new code:
+- Always attempts importance-only retrieval as baseline
+- Augments with semantic search when embedding is available
+- Logs strategy + counts for observability
+- Preserves the relationship graph section (moved to own `if (userMessage)` guard)
+
+### Task 3-D · Embedding Backfill via Heartbeat
+
+Added incremental embedding repair to the heartbeat tick:
+- 10 memory chunks + 10 clerk_notes per tick (every 15 min)
+- Uses Gemini `gemini-embedding-001` at 768 dimensions
+- Non-blocking: wrapped in try/catch, failures don't affect other tick work
+- Result included in tick response JSON for observability
+
+At current rates (10+10 per 15min tick), the 48 chunks will be fully
+backfilled within 1 hour, and the 615 notes within ~10 hours. Once
+backfilled, semantic search becomes fully functional alongside the
+importance-only baseline.
+
+### Files
+
+**New files (Phase 3):**
+
+| File | Lines | Purpose |
+| ---- | :---: | ------- |
+| `supabase/migrations/20260416000002_phase3_memory_pipeline_repair.sql` | 245 | 5 RPCs + 3 indexes |
+| `supabase/functions/_shared/memory-retrieval.ts` | ~320 | Unified retrieval module with semantic + importance fallback |
+| `supabase/functions/_shared/memory-retrieval.test.ts` | ~400 | 39 tests: gates, merge, format, orchestrator, backfill |
+
+**Modified files:**
+
+| File | Changes |
+| ---- | ------- |
+| `supabase/functions/_shared/orchestrator.ts` | Replaced broken Layer 4 memory search with unified `fetchMemoryChunks()` + added `memoryRetrievalStrategy` to `UnifiedContext` |
+| `supabase/functions/olive-heartbeat/index.ts` | Added embedding backfill step (10 chunks + 10 notes per tick) |
+
+### Testing
+
+39 tests in `memory-retrieval.test.ts`:
+
+- **shouldAttemptSemanticSearch** (7 tests): null/empty embedding, null/short/whitespace message
+- **mergeMemoryResults** (6 tests): semantic priority, dedup, maxTotal, empty inputs
+- **formatMemoryChunksForPrompt** (5 tests): empty, header, importance display, source, multi-chunk
+- **fetchMemoryChunks orchestrator** (8 tests): merged strategy, importance-only, semantic error fallback, both fail, pure semantic, empty DB, maxTotal, param forwarding
+- **backfillChunkEmbeddings** (5 tests): success, embedding failure, DB update failure, empty queue, RPC error
+- **backfillNoteEmbeddings** (3 tests): success, empty, mixed success/failure
+- **Integration scenarios** (5 tests): full pipeline with no embedding, with embedding, broken semantic search
+
+### Deployment checklist
+
+1. **Migration already applied** to production (`phase3_memory_pipeline_repair_v2`).
+   All 5 RPCs verified present. `fetch_top_memory_chunks` tested with real
+   data — returns correct results.
+
+2. **Deploy edge functions:**
+   ```
+   supabase functions deploy olive-heartbeat
+   supabase functions deploy whatsapp-webhook
+   ```
+
+3. **Verify** after deploy:
+   - Heartbeat tick response includes `embedding_backfill: {...}`.
+   - After ~1 hour, `olive_memory_chunks` should have non-null embeddings.
+   - WhatsApp messages show `[Orchestrator] Memory retrieval: strategy=...`
+     in edge function logs.
+   - Even without embeddings, importance-only fallback populates the
+     DYNAMIC slot with learned facts immediately.
+
+4. No config changes, no secrets rotation required.
+
+---
+
+## Invariants preserved (cumulative Phase 1 + 2 + 3)
 
 - Required slots (IDENTITY, QUERY) are never dropped, even under
   EMERGENCY_BUDGET. Empty content is surfaced via `missingRequired` and
@@ -463,5 +597,13 @@ supabase — no real API keys or network required.
 - **Phase 2:** Thread compaction is cursor-based and never destructive.
   The compactor never mutates `conversation_history`; only the webhook
   manages FIFO trimming. Race conditions are harmless by design.
+- **Phase 3:** Memory retrieval ALWAYS produces results when active chunks
+  exist. Importance-only fallback guarantees the LLM sees learned facts
+  even when semantic search is unavailable or broken. Circuit breaker
+  isolates failures per subsystem — one broken RPC never blanks the
+  entire DYNAMIC slot.
+- **Phase 3:** Embedding backfill is incremental and non-blocking.
+  Missing embeddings are repaired 20 per heartbeat tick. Backfill
+  failures don't affect other tick work or user-facing responses.
 - Schema changes are additive; all existing rows remain valid (defaults
   backfill the new columns).

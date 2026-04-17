@@ -27,6 +27,11 @@ import {
   type AssemblyResult,
   type SlotTokenLog,
 } from "./context-contract.ts";
+import {
+  fetchMemoryChunks,
+  createSupabaseMemoryDB,
+  type MemoryRetrievalResult,
+} from "./memory-retrieval.ts";
 
 // ─── Circuit Breaker ───────────────────────────────────────────
 // Tracks failures per subsystem to skip flaky calls for a cooldown period.
@@ -348,6 +353,8 @@ export interface UnifiedContext {
   semanticNotes: string;
   semanticMemoryChunks: string;
   relationshipGraph: string;
+  // Phase 3: Memory retrieval telemetry
+  memoryRetrievalStrategy?: string;
   // For contextual_ask:
   savedItems: string;
   // P4: Partner, task analytics, skills
@@ -675,57 +682,66 @@ export async function assembleFullContext(
     ctx.skills = `\n## Active Skills:\n${userSkills.map((s: any) => `- ${s.name}: ${(s.content || "").substring(0, 200)}`).join("\n")}`;
   }
 
-  // ─── LAYER 4: Semantic Search (with circuit breakers) ─────────
-  if (queryEmbedding && userMessage) {
-    // 4a: Hybrid note search
-    if (needsSavedItems) {
-      const semanticNotes = await safeFetch("semantic_notes", async () => {
-        const { data } = await supabase.rpc("hybrid_search_notes", {
-          p_user_id: userId,
-          p_couple_id: coupleId || null,
-          p_query: userMessage,
-          p_query_embedding: JSON.stringify(queryEmbedding),
-          p_vector_weight: 0.7,
-          p_limit: 15,
-        });
-        return data;
-      }, null);
-
-      if (semanticNotes?.length) {
-        ctx.semanticNotes = `\n## SEMANTICALLY RELEVANT NOTES (AI-ranked):\n`;
-        for (const note of semanticNotes.slice(0, 10)) {
-          const status = note.completed ? "✓" : "○";
-          const dueInfo = note.due_date ? ` | Due: ${note.due_date}` : "";
-          const cat = note.category ? ` [${note.category}]` : "";
-          ctx.semanticNotes += `\n📌 ${status} "${note.summary}"${cat}${dueInfo} (relevance: ${(note.score * 100).toFixed(0)}%)\n`;
-          if (note.original_text && note.original_text !== note.summary) {
-            ctx.semanticNotes += `   Full details: ${note.original_text.substring(0, 600)}\n`;
-          }
-        }
-      }
-    }
-
-    // 4b: Memory chunk semantic search
-    const memChunks = await safeFetch("memory_chunks", async () => {
-      const { data } = await supabase.rpc("search_memory_chunks", {
+  // ─── LAYER 4: Semantic Search + Memory Retrieval ──────────────
+  // 4a: Hybrid note search (only for contextual_ask)
+  if (queryEmbedding && userMessage && needsSavedItems) {
+    const semanticNotes = await safeFetch("semantic_notes", async () => {
+      const { data } = await supabase.rpc("hybrid_search_notes", {
         p_user_id: userId,
+        p_couple_id: coupleId || null,
+        p_query: userMessage,
         p_query_embedding: JSON.stringify(queryEmbedding),
-        p_limit: 8,
-        p_min_importance: 2,
+        p_vector_weight: 0.7,
+        p_limit: 15,
       });
       return data;
     }, null);
 
-    if (memChunks?.length) {
-      ctx.semanticMemoryChunks = `\n## RELEVANT LEARNED FACTS (from conversations & notes):\n${memChunks
-        .map(
-          (c: any) =>
-            `- ${c.content} (importance: ${c.importance}/5, source: ${c.source || "auto"})`
-        )
-        .join("\n")}`;
+    if (semanticNotes?.length) {
+      ctx.semanticNotes = `\n## SEMANTICALLY RELEVANT NOTES (AI-ranked):\n`;
+      for (const note of semanticNotes.slice(0, 10)) {
+        const status = note.completed ? "✓" : "○";
+        const dueInfo = note.due_date ? ` | Due: ${note.due_date}` : "";
+        const cat = note.category ? ` [${note.category}]` : "";
+        ctx.semanticNotes += `\n📌 ${status} "${note.summary}"${cat}${dueInfo} (relevance: ${(note.score * 100).toFixed(0)}%)\n`;
+        if (note.original_text && note.original_text !== note.summary) {
+          ctx.semanticNotes += `   Full details: ${note.original_text.substring(0, 600)}\n`;
+        }
+      }
+    }
+  }
+
+  {
+    // 4b: Memory chunk retrieval — unified semantic + importance fallback.
+    // This replaces the old search_memory_chunks-only path that silently
+    // failed when the RPC didn't exist or when no embedding was available.
+    // Now: ALWAYS fetches top-k by importance as baseline, augments with
+    // semantic search when embedding is available. Memories always reach
+    // the prompt.
+    const memoryDB = createSupabaseMemoryDB(supabase);
+    const memResult: MemoryRetrievalResult = await safeFetch(
+      "memory_chunks",
+      () => fetchMemoryChunks(memoryDB, userId, queryEmbedding, userMessage),
+      { promptBlock: "", semanticCount: 0, importanceCount: 0, totalCount: 0, strategy: "empty" as const }
+    );
+
+    if (memResult.promptBlock) {
+      ctx.semanticMemoryChunks = "\n" + memResult.promptBlock;
+    }
+    ctx.memoryRetrievalStrategy = memResult.strategy;
+
+    if (memResult.totalCount > 0) {
+      console.log(
+        `[Orchestrator] Memory retrieval: strategy=${memResult.strategy}, ` +
+          `total=${memResult.totalCount} (semantic=${memResult.semanticCount}, ` +
+          `importance=${memResult.importanceCount})`
+      );
     }
 
-    // 4c: Relationship graph — entity-aware context
+  }
+
+  // ─── LAYER 4c: Relationship graph — entity-aware context ──────
+  if (userMessage) {
     const messageLower = userMessage.toLowerCase();
     const mentionedEntityIds = new Set<string>();
     if (entities?.length) {

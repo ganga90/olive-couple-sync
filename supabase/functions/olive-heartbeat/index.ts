@@ -20,6 +20,10 @@ import {
   type ContradictionPayload,
 } from "../_shared/contradiction-resolver.ts";
 import { compactActiveThreads } from "../_shared/thread-compactor.ts";
+import {
+  backfillChunkEmbeddings,
+  backfillNoteEmbeddings,
+} from "../_shared/memory-retrieval.ts";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -1494,6 +1498,49 @@ serve(async (req) => {
           console.error('[Heartbeat] Compaction error (non-blocking):', compactErr);
         }
 
+        // ─── Embedding backfill ─────────────────────────────────────
+        // Incrementally repair memory chunks and notes that are missing
+        // embeddings. This closes the gap where chunks are extracted from
+        // conversations but never get embeddings (blocking semantic search).
+        // Runs 10 chunks + 10 notes per tick = ~20 API calls = ~2s.
+        let embeddingBackfill = { chunks: { repaired: 0, failed: 0 }, notes: { repaired: 0, failed: 0 } };
+        try {
+          const GEMINI_KEY = Deno.env.get("GEMINI_API") || Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_AI_API_KEY") || "";
+          if (GEMINI_KEY) {
+            const embedFn = async (text: string): Promise<number[] | null> => {
+              const res = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_KEY}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    content: { parts: [{ text }] },
+                    outputDimensionality: 768,
+                  }),
+                }
+              );
+              if (!res.ok) return null;
+              const data = await res.json();
+              return data.embedding?.values || null;
+            };
+
+            const [chunkResult, noteResult] = await Promise.all([
+              backfillChunkEmbeddings(supabase, embedFn, 10),
+              backfillNoteEmbeddings(supabase, embedFn, 10),
+            ]);
+            embeddingBackfill = { chunks: chunkResult, notes: noteResult };
+
+            if (chunkResult.repaired > 0 || noteResult.repaired > 0) {
+              console.log(
+                `[Heartbeat] Embedding backfill: chunks=${chunkResult.repaired}/${chunkResult.repaired + chunkResult.failed}, ` +
+                `notes=${noteResult.repaired}/${noteResult.repaired + noteResult.failed}`
+              );
+            }
+          }
+        } catch (embedErr) {
+          console.error('[Heartbeat] Embedding backfill error (non-blocking):', embedErr);
+        }
+
         // Process queued outbound messages
         const queueResponse = await supabase.functions.invoke('whatsapp-gateway', {
           body: { action: 'process_queue' },
@@ -1513,6 +1560,7 @@ serve(async (req) => {
               agents_invoked: agentsInvoked,
               communities_detected: communitiesDetected,
               compaction: compactionResult,
+              embedding_backfill: embeddingBackfill,
               queue_processed: queueResult.processed,
               rate_limit_state: {
                 consecutive_failures: rateLimitState.consecutiveFailures,
