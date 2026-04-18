@@ -97,7 +97,7 @@ export function EmailConnect() {
       setConnecting(true);
       // On native iOS/Android, use the deployed web URL for OAuth redirects
       const isNative = Capacitor.isNativePlatform();
-      const origin = isNative ? 'https://witholive.app' : window.location.origin.replace('://www.', '://');
+      const origin = isNative ? 'https://witholive.app' : window.location.origin;
 
       const { data, error } = await supabase.functions.invoke('email-auth-url', {
         body: { user_id: userId, redirect_origin: origin }

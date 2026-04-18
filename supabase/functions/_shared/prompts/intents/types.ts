@@ -40,6 +40,7 @@ export type IntentModuleKey =
   | "expense"
   | "task_action"
   | "partner_message"
+  | "help_about_olive"
   | "default";
 
 export interface PromptModule {

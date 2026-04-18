@@ -320,7 +320,7 @@ const Onboarding = () => {
     setLoading(true);
     try {
       const isNative = Capacitor.isNativePlatform();
-      const origin = isNative ? 'https://witholive.app' : window.location.origin.replace("://www.", "://");
+      const origin = isNative ? 'https://witholive.app' : window.location.origin;
       const { data, error } = await supabase.functions.invoke("calendar-auth-url", {
         body: { user_id: user.id, redirect_origin: origin },
       });

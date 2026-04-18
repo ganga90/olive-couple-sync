@@ -31,6 +31,7 @@ Deno.test("resolveIntentKey: canonical intents resolve to themselves", () => {
   assertEquals(resolveIntentKey("expense"), "expense");
   assertEquals(resolveIntentKey("task_action"), "task_action");
   assertEquals(resolveIntentKey("partner_message"), "partner_message");
+  assertEquals(resolveIntentKey("help_about_olive"), "help_about_olive");
 });
 
 Deno.test("resolveIntentKey: case-insensitive", () => {
@@ -55,6 +56,9 @@ Deno.test("resolveIntentKey: classifier aliases land on sensible targets", () =>
   assertEquals(resolveIntentKey("list_recap"), "search");
   assertEquals(resolveIntentKey("create_list"), "create");
   assertEquals(resolveIntentKey("save_artifact"), "create");
+  // Pre-filter in ask-olive-stream emits type='help' → should land on
+  // the help module, not fall through to chat.
+  assertEquals(resolveIntentKey("help"), "help_about_olive");
 });
 
 // ─── Loader ───────────────────────────────────────────────────────
@@ -68,6 +72,7 @@ Deno.test("loadPromptModule: every canonical intent returns a module", () => {
     "expense",
     "task_action",
     "partner_message",
+    "help_about_olive",
   ]) {
     const mod = loadPromptModule(intent);
     assertEquals(mod.intent, intent);
@@ -153,9 +158,9 @@ Deno.test("invariant: all version strings are unique", () => {
   );
 });
 
-Deno.test("allModules: returns the 7 canonical intents, deduplicated", () => {
+Deno.test("allModules: returns the 8 canonical intents, deduplicated", () => {
   const mods = allModules();
-  assertEquals(mods.length, 7);
+  assertEquals(mods.length, 8);
   const intents = new Set(mods.map((m) => m.intent));
   assert(intents.has("chat"));
   assert(intents.has("contextual_ask"));
@@ -164,4 +169,5 @@ Deno.test("allModules: returns the 7 canonical intents, deduplicated", () => {
   assert(intents.has("expense"));
   assert(intents.has("task_action"));
   assert(intents.has("partner_message"));
+  assert(intents.has("help_about_olive"));
 });

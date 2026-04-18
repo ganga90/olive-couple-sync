@@ -28,6 +28,7 @@ import { CHAT_MODULE } from "./chat.ts";
 import { CONTEXTUAL_ASK_MODULE } from "./contextual-ask.ts";
 import { CREATE_MODULE } from "./create.ts";
 import { EXPENSE_MODULE } from "./expense.ts";
+import { HELP_ABOUT_OLIVE_MODULE } from "./help-about-olive.ts";
 import { PARTNER_MESSAGE_MODULE } from "./partner-message.ts";
 import { SEARCH_MODULE } from "./search.ts";
 import { TASK_ACTION_MODULE } from "./task-action.ts";
@@ -46,6 +47,7 @@ const REGISTRY: Record<IntentModuleKey, PromptModule> = {
   expense: EXPENSE_MODULE,
   task_action: TASK_ACTION_MODULE,
   partner_message: PARTNER_MESSAGE_MODULE,
+  help_about_olive: HELP_ABOUT_OLIVE_MODULE,
   default: CHAT_MODULE,
 };
 
@@ -63,12 +65,16 @@ const ALIASES: Record<string, IntentModuleKey> = {
   expense: "expense",
   task_action: "task_action",
   partner_message: "partner_message",
+  help_about_olive: "help_about_olive",
   // Common aliases
   web_search: "search",
   merge: "task_action",
   list_recap: "search",
   create_list: "create",
   save_artifact: "create",
+  // Pre-filter in ask-olive-stream emits type='help'; webhook uses
+  // chatType='help_about_olive'. Both land on the help module.
+  help: "help_about_olive",
 };
 
 /**
