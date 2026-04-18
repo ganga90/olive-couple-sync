@@ -32,6 +32,11 @@ import {
   createSupabaseMemoryDB,
   type MemoryRetrievalResult,
 } from "./memory-retrieval.ts";
+import {
+  assembleUserSlot,
+  createSupabaseArtifactDB,
+  type UserSlotResult,
+} from "./compiled-artifacts.ts";
 
 // ─── Circuit Breaker ───────────────────────────────────────────
 // Tracks failures per subsystem to skip flaky calls for a cooldown period.
@@ -355,6 +360,14 @@ export interface UnifiedContext {
   relationshipGraph: string;
   // Phase 3: Memory retrieval telemetry
   memoryRetrievalStrategy?: string;
+  // Phase 4-B: USER_COMPILED slot telemetry.
+  // Surfaces whether SLOT_USER was populated from compiled artifacts
+  // (fast path, pre-built by olive-compile-memory) or fell back to the
+  // legacy dynamic read. Logged into olive_llm_analytics via slotTokens
+  // metadata for week-over-week cost/quality comparison.
+  userSlotSource?: "compiled" | "dynamic" | "mixed" | "empty";
+  userSlotFresh?: boolean;
+  userSlotArtifacts?: UserSlotResult["artifactStatus"];
   // For contextual_ask:
   savedItems: string;
   // P4: Partner, task analytics, skills
@@ -377,6 +390,9 @@ const EMPTY_CTX: UnifiedContext = {
   partnerContext: "",
   taskAnalytics: "",
   skills: "",
+  userSlotSource: "empty",
+  userSlotFresh: false,
+  userSlotArtifacts: [],
 };
 
 /**
@@ -482,16 +498,27 @@ export async function assembleFullContext(
         .limit(15);
       return events || [];
     }, []),
-    // [4] Deep profile (memory files)
+    // [4] Deep profile — Phase 4-B: use assembleUserSlot.
+    // This was previously a raw .from("olive_memory_files").select() loop.
+    // Now it's routed through the compiled-artifacts module which:
+    //   - enforces per-artifact token budgets (profile<=400, patterns<=150, etc.)
+    //   - tags each artifact as fresh/stale
+    //   - returns a single formatted slot string ready for SLOT_USER
+    //   - reports `source` so we can see whether users are actually
+    //     hitting the compiled path (telemetry → olive_llm_analytics)
+    // On DB failure `assembleUserSlot` returns an empty result — this
+    // matches the previous `safeFetch` fallback behavior exactly, so no
+    // regression even if the artifact table is temporarily unreadable.
     safeFetch("deep_profile", async () => {
-      const { data } = await supabase
-        .from("olive_memory_files")
-        .select("file_type, content, updated_at")
-        .eq("user_id", userId)
-        .in("file_type", ["profile", "patterns", "relationship", "household"])
-        .order("updated_at", { ascending: false });
-      return data || [];
-    }, []),
+      const artifactDB = createSupabaseArtifactDB(supabase);
+      return await assembleUserSlot(artifactDB, userId);
+    }, {
+      content: "",
+      source: "empty" as const,
+      fresh: false,
+      artifactStatus: [],
+      estimatedTokens: 0,
+    } as UserSlotResult),
     // [5] Agent insights
     fetchAgentInsightsContext(supabase, userId),
     // [6] Knowledge entities
@@ -572,8 +599,8 @@ export async function assembleFullContext(
     savedItemsPromise,
   ]);
 
-  const [profileData, memories, patterns, calendarEvents, memoryFiles, agentInsights, entities, partnerData, tasksList, userSkills] =
-    baseResults as [any, any[], any[], any[], any[], string, any[], any, any[], any[]];
+  const [profileData, memories, patterns, calendarEvents, userSlot, agentInsights, entities, partnerData, tasksList, userSkills] =
+    baseResults as [any, any[], any[], any[], UserSlotResult, string, any[], any, any[], any[]];
 
   // ─── FORMAT: Profile ──────────────────────────────────────────
   if (profileData) {
@@ -614,24 +641,17 @@ export async function assembleFullContext(
       .join("\n")}`;
   }
 
-  // ─── FORMAT: Deep Profile (memory files) ──────────────────────
-  if (memoryFiles?.length) {
-    const parts: string[] = [];
-    for (const mf of memoryFiles) {
-      if (mf.content && mf.content.trim().length > 0) {
-        const label = mf.file_type.toUpperCase();
-        const maxLen = mf.file_type === "profile" ? 2500 : 1500;
-        const content =
-          mf.content.length > maxLen
-            ? mf.content.slice(0, maxLen) + "\n...(truncated)"
-            : mf.content;
-        parts.push(`[${label}]:\n${content}`);
-      }
-    }
-    if (parts.length > 0) {
-      ctx.deepProfile = `\n## COMPILED KNOWLEDGE (AI-synthesized from your history):\n${parts.join("\n\n")}`;
-    }
+  // ─── FORMAT: Deep Profile (compiled artifacts) ────────────────
+  // Phase 4-B: `userSlot` is produced by `assembleUserSlot()` and is
+  // already formatted + budget-enforced. We just carry it onto the ctx
+  // and record the telemetry fields. The legacy per-file loop is gone;
+  // all the same information is present but now bounded and labeled.
+  if (userSlot?.content) {
+    ctx.deepProfile = `\n${userSlot.content}`;
   }
+  ctx.userSlotSource = userSlot?.source ?? "empty";
+  ctx.userSlotFresh = userSlot?.fresh ?? false;
+  ctx.userSlotArtifacts = userSlot?.artifactStatus ?? [];
 
   // ─── FORMAT: Agent Insights ───────────────────────────────────
   ctx.agentInsights = agentInsights;
@@ -1395,6 +1415,12 @@ export { assembleSoulContext, type SoulAssemblyResult, type SoulAssemblyOptions 
 /**
  * Build the full system context for an LLM call, SOUL-aware.
  *
+ * NOTE (Phase 4-B): Renamed from `assembleFullContext` to
+ * `assembleSoulAwareContext` to resolve a pre-existing duplicate-function
+ * conflict with the primary `assembleFullContext` (UnifiedContext) above.
+ * The two had identical names but incompatible signatures, which blocked
+ * `deno check` from succeeding on this file. Runtime behavior is unchanged.
+ *
  * If the user has a soul enabled, this returns a combined prompt with:
  *   1. Soul stack (identity, user context, space context, trust)
  *   2. Memories formatted as context
@@ -1406,7 +1432,7 @@ export { assembleSoulContext, type SoulAssemblyResult, type SoulAssemblyOptions 
  *
  * Usage in an edge function:
  * ```ts
- * const soulContext = await assembleFullContext(supabase, { userId, spaceId });
+ * const soulContext = await assembleSoulAwareContext(supabase, { userId, spaceId });
  * if (soulContext) {
  *   // Use soulContext.systemPrompt as the full system prompt
  * } else {
@@ -1414,7 +1440,7 @@ export { assembleSoulContext, type SoulAssemblyResult, type SoulAssemblyOptions 
  * }
  * ```
  */
-export async function assembleFullContext(
+export async function assembleSoulAwareContext(
   supabase: ReturnType<typeof createClient<any>>,
   options: SoulAssemblyOptions & { includeMemories?: boolean; includeAgentInsights?: boolean }
 ): Promise<{ systemPrompt: string; tokensUsed: number; layersLoaded: string[] } | null> {

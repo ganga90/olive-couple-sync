@@ -36,7 +36,8 @@ type JobType =
   | 'task_reminder'
   | 'overdue_nudge'
   | 'pattern_suggestion'
-  | 'contradiction_resolve';
+  | 'contradiction_resolve'
+  | 'recompile_artifacts';
 
 interface HeartbeatJob {
   id: string;
@@ -1013,6 +1014,41 @@ async function processHeartbeatJobs(supabase: any): Promise<{ processed: number;
         case 'weekly_summary':
           content = await generateWeeklySummary(supabase, job.user_id);
           break;
+        case 'recompile_artifacts': {
+          // Phase 4-E: event-driven compiled-artifact recompile.
+          // Trigger on olive_memory_chunks enqueues this job debounced
+          // ~10 min after the most recent chunk write. We invoke
+          // olive-compile-memory with the user-scoped "compile_user"
+          // action so only this one user's artifacts are rebuilt.
+          // Skip the WhatsApp send branch — this is a silent background
+          // refresh, not a user-facing notification.
+          try {
+            const { data: compileRes, error: compileErr } =
+              await supabase.functions.invoke('olive-compile-memory', {
+                body: { action: 'compile_user', user_id: job.user_id, force: false },
+              });
+            if (compileErr) {
+              throw new Error(`compile invoke error: ${compileErr.message}`);
+            }
+            await supabase
+              .from('olive_heartbeat_jobs')
+              .update({ status: 'completed' })
+              .eq('id', job.id);
+            await supabase.from('olive_heartbeat_log').insert({
+              user_id: job.user_id,
+              job_type: job.job_type,
+              status: 'success',
+              message_preview: `recompiled: ${JSON.stringify(
+                (compileRes?.results || []).map((r: any) => `${r.fileType}:${r.status}`)
+              ).slice(0, 150)}`,
+              channel: 'internal',
+            });
+            processed++;
+          } catch (innerErr) {
+            throw innerErr; // bubble to outer catch — job marked 'failed'
+          }
+          continue; // skip generic send branch below
+        }
         case 'contradiction_resolve': {
           // Ask-user flow for memory contradictions (Phase 2).
           // We diverge from the generic send path because we need to insert

@@ -578,7 +578,300 @@ importance-only baseline.
 
 ---
 
-## Invariants preserved (cumulative Phase 1 + 2 + 3)
+## 2026-04-17 — Phase 4 (Compiled Intelligence)
+
+Phases 1–3 built the *instruments* (context contract, model routing,
+slot telemetry, contradiction detector, thread compactor, memory
+retrieval fallback). Phase 4 turns on the *intelligence*: pre-compiled
+user artifacts replace ad-hoc memory reads, prompts split per intent,
+search gains a knowledge-graph pre-pass, and the artifact layer
+recompiles reactively when facts change.
+
+Alignment with the engineering plan:
+
+| Task              | Plan §             | Status |
+| ----------------- | ------------------ | ------ |
+| 4-A / Task 2-A    | Compiled artifacts | ✅ w/ source-citation validator |
+| 4-B / Task 2-B    | Wire into SLOT_USER | ✅ with `userSlotSource` telemetry |
+| 4-C / Task 2-D    | Per-intent modules  | ✅ 7 modules + registry |
+| 4-D / Task 2-E    | Entity pre-pass     | ✅ olive-search opt-in |
+| 4-E (plan add-on) | Event-driven recompile | ✅ DB trigger + heartbeat handler |
+
+### Task 4-A · Compiled Memory Artifacts + Grounding Validator
+
+**Intent.** Make the compiled-artifact layer both budgeted and
+verifiable. Before Phase 4, `olive-compile-memory` produced markdown
+blindly — if Gemini fabricated a name or date, it quietly flowed into
+the USER_COMPILED slot on every call.
+
+- **`_shared/compiled-artifacts.ts`** (~350 lines) — Pure core:
+  - `validateCompiledAgainstSources(compiledText, sourceChunks)` —
+    keyword-overlap grounding heuristic. Scores 0..1 based on how many
+    compiled sentences have ≥2 unique content-word matches against
+    any source chunk. Zero LLM cost. Not a perfect hallucination
+    detector, but catches obvious fabrications (invented names,
+    dates, locations) with no source backing.
+  - `ARTIFACT_BUDGETS`: profile=400, patterns=150, relationship=100,
+    household=150 tokens. `COMPILED_USER_BUDGET = 650` (fits SLOT_USER).
+  - `truncateArtifact()` — sentence/newline boundary truncation.
+  - `assembleCompiledSlot(artifacts)` — ordered, header-labeled
+    USER_COMPILED block with per-artifact status (used/stale/missing).
+  - `assembleUserSlot(db, userId)` — full orchestrator with injected
+    `ArtifactDB`. Never throws — DB errors degrade to empty.
+
+- **`olive-compile-memory/index.ts`** (modified) — After each Gemini
+  generation:
+  1. Truncate to `ARTIFACT_BUDGETS[fileType]` at sentence boundary.
+  2. Build `ValidationSource[]` from notes + memories + entities.
+  3. Run `validateCompiledAgainstSources()` → log `LOW GROUNDING`
+     warning if score < 0.5, always persist score.
+  4. Store `source_chunk_ids` (mix of `note:<id>` / `memory:<id>` /
+     `entity:<name>` tokens), `validation_score`, `validation_notes`,
+     `validation_ungrounded_count`, `budget_tokens`, `was_truncated`
+     into `olive_memory_files.metadata`.
+
+  **Invariant: validation never blocks.** A low score is surfaced in
+  metadata for downstream reviewers (wiki-lint, "Why this answer?"
+  UI, admin dashboards) — it does NOT reject the artifact. This
+  matches Phase 1-C's treatment of memory contradictions: detect
+  explicitly, resolve deliberately, never silently.
+
+- **`_shared/compiled-artifacts.test.ts`** — **24 tests** covering:
+  token estimation, boundary-aware truncation (under-budget / over-
+  budget / no-boundaries), keyword tokenizer (stopword/short-word
+  filters, punctuation stripping), sentence splitter, validator
+  (empty / no-sources / fully grounded / partial / fully ungrounded),
+  `assembleCompiledSlot` staleness handling + budget enforcement +
+  missing-type tolerance, `assembleUserSlot` empty-userId safety +
+  DB-error degradation + happy path.
+
+### Task 4-B · Unified USER_COMPILED Slot Assembly
+
+**Intent.** The orchestrator used to fetch `olive_memory_files` as a
+loose list and build the "COMPILED KNOWLEDGE" block inline with per-
+file-type character caps that didn't match the Context Contract's
+token budget. Phase 4-B routes it through the new compiled-artifacts
+module for consistency + telemetry.
+
+- **`_shared/orchestrator.ts`** (modified):
+  - Imports `assembleUserSlot` + `createSupabaseArtifactDB`.
+  - Layer-4 deep-profile fetch now calls `assembleUserSlot(db, userId)`
+    instead of an inline `.select()`.
+  - New fields on `UnifiedContext`:
+    - `userSlotSource`: `"compiled" | "dynamic" | "mixed" | "empty"`
+    - `userSlotFresh`: boolean (all artifacts ≤24h)
+    - `userSlotArtifacts`: per-artifact status for analytics
+  - Legacy `deepProfile` still exposed as a pre-formatted string, now
+    sourced from the budget-enforced `assembleUserSlot` output.
+
+- **Side effect (cleanup).** Renamed the pre-existing duplicate
+  declaration `assembleFullContext` (the SOUL-aware variant at
+  line ~1437) to `assembleSoulAwareContext`. The conflict was already
+  breaking `deno check` on `main` (confirmed via `git stash`); fixing
+  it was necessary to verify Phase 4 compiled. That function has no
+  external callers, so the rename is zero-risk at runtime.
+
+### Task 4-C · Per-Intent Prompt Modules
+
+**Intent.** The monolithic `OLIVE_CHAT_PROMPT` in
+`ask-olive-prompts.ts` (~1,000 tokens) tries to cover every intent in
+one blob. Most of it is irrelevant to any given call. Per-intent
+modules split the prompt into a shared `system_core` (~200 tokens —
+persona only) and swappable `intent_rules` (~150-250 tokens —
+intent-specific behavior). Smaller context, better focus, and (Phase
+6 setup) a stable prefix for prompt caching.
+
+- **`_shared/prompts/intents/`** directory:
+  - `types.ts` — `PromptModule` interface (version, intent,
+    system_core, intent_rules, optional few_shot_examples).
+  - `system-core.ts` — `SYSTEM_CORE_V1` + version. IDENTICAL across
+    all modules (prompt-cache invariant, verified by test).
+  - `chat.ts` — general assistant (open conversation, drafting).
+  - `contextual-ask.ts` — questions about user's saved data.
+  - `create.ts` — task extraction (brain-dump splitting, dates).
+  - `search.ts` — retrieval from user's saved items.
+  - `expense.ts` — amount/category/vendor extraction.
+  - `task-action.ts` — complete/delete/reschedule gates.
+  - `partner-message.ts` — partner-relay composition.
+  - `registry.ts` — `resolveIntentKey(intent)` + `loadPromptModule(intent)`;
+    aliases (`web_search`→search, `merge`→task_action, etc.); falls
+    back to chat on unknown intents (never null).
+
+- **`_shared/prompts/intents/registry.test.ts`** — **14 tests**:
+  canonical intents + case normalization + whitespace tolerance +
+  alias mapping + unknown fallback + null safety + budget invariants
+  (system_core ≤200 tok, intent_rules ≤250 tok, examples ≤250 tok) +
+  `system_core` byte-equality across modules + unique version strings.
+
+- **Backwards-compatible.** `ask-olive-prompts.ts` is unchanged;
+  existing callers continue to work. Migrating callers to the new
+  registry is a follow-up (one-line swap per caller).
+
+### Task 4-D · Entity-Aware Search Pre-pass
+
+**Intent.** The hybrid vector+BM25 search returns chunks by similarity;
+it doesn't leverage the knowledge graph. When a user asks "what does
+Sarah prefer for dinner?", the orchestrator should surface Sarah's
+entity record + her depth-1 relationships before running vector search.
+
+- **`_shared/entity-prepass.ts`** (~320 lines) — Pure core:
+  - `matchEntitiesByKeyword(query, entities, maxMatches)` — case-
+    insensitive substring match against entity canonical_name +
+    aliases. Sorts by `mention_count` DESC. Min-length filter skips
+    2-char candidates that would match anywhere.
+  - `mergeEntityMatches(keyword, llm, max)` — keyword wins on dedup.
+    (LLM path is stubbed in the types but disabled by default —
+    keyword is zero-cost and catches 90% of cases.)
+  - `formatEntityContext(neighborhood, maxTokens)` — stable output
+    shape with `## ENTITIES IN QUERY` and `## RELATIONSHIPS (depth-1)`
+    sections. Bounded by `MAX_ENTITY_CONTEXT_TOKENS = 300`. Shrink
+    path: drop relationships first, then tail entities, always
+    preserving at least the top 2 matches.
+  - `runEntityPrepass(db, userId, query, options)` — orchestrator.
+    NEVER throws: DB failure → empty block; relationship fetch
+    failure → matches without relationships (partial result).
+
+- **`olive-search/index.ts`** (modified) — Added `use_entity_prepass`
+  boolean to `SearchRequest`. When true:
+  - Runs `runEntityPrepass` before hybrid search.
+  - Returns `entity_prepass: { context_block, match_count,
+    relationship_count, estimated_tokens }` alongside existing
+    `results`. Legacy callers that don't pass the flag are unchanged.
+
+- **`_shared/entity-prepass.test.ts`** — **22 tests**: keyword
+  matcher (case insensitivity, alias lookup via `metadata.aliases`,
+  min-length filter, mention-count sort, maxMatches cap, no-hit
+  fallback), merge semantics (keyword priority, ID dedup, cap),
+  formatter (empty / standard shape / budget shrink / top-2
+  preservation under tiny budget), orchestrator (happy path, empty
+  query, empty user, DB failure, relationship-fetch partial failure,
+  `entityPool` bypass, `DEFAULT_MAX_MATCHES` respect).
+
+### Task 4-E · Event-Driven Artifact Recompile
+
+**Intent.** Nightly compile alone leaves up to 24h of staleness —
+"I hate cilantro" at 9am, prompt still says "enjoys cilantro" until
+3am tomorrow. This is the highest-impact correctness risk in Phases
+2/3. Event-driven recompile cuts staleness to ~10 min (debounce
+window) at a cost of ~3 extra Flash calls/day/active user.
+
+- **`20260417000000_phase4_compiled_artifacts.sql`** — idempotent,
+  additive migration:
+  1. Defensively drops any remaining CHECK constraint on
+     `olive_heartbeat_jobs.job_type` so new job types (`recompile_artifacts`,
+     earlier `contradiction_resolve`) can be scheduled everywhere.
+     Production appears to already be constraint-free; dev/local envs
+     converge after this.
+  2. `enqueue_artifact_recompile(user_id, debounce_minutes)` RPC:
+     looks up any pending recompile job for the user with
+     `scheduled_for >= now()`. If found, returns its id (debounced).
+     If not, inserts a new job `scheduled_for now() + debounce` and
+     returns the new id.
+  3. `on_memory_chunk_change()` trigger function: AFTER INSERT/UPDATE
+     on `olive_memory_chunks`. Fires on content/active/importance
+     changes. Wrapped in `BEGIN..EXCEPTION` so a queue failure never
+     rolls back the chunk write. Inactive chunks don't trigger.
+  4. `trg_memory_chunk_enqueue_recompile` trigger attached to
+     `olive_memory_chunks`.
+  5. Partial index on `olive_heartbeat_jobs(user_id, scheduled_for)`
+     WHERE `job_type = 'recompile_artifacts' AND status = 'pending'`
+     — keeps debounce lookup O(log n).
+
+- **`olive-heartbeat/index.ts`** (modified):
+  - Added `'recompile_artifacts'` to the `JobType` union.
+  - New `case 'recompile_artifacts'` handler in the job dispatch
+    switch. Invokes `olive-compile-memory` via
+    `supabase.functions.invoke('olive-compile-memory', { action:
+    'compile_user', user_id, force: false })`. Logs success with a
+    preview of which file types changed. Skips the WhatsApp send
+    branch — this is a silent background refresh, not a user message.
+
+- **Concurrency note (in-code).** Under simultaneous brain-dump
+  inserts (10 workers × 5 chunks each), the RPC's SELECT-then-INSERT
+  pattern may occasionally duplicate. That's harmless: `compile_user`'s
+  existing hash check short-circuits to "unchanged" when nothing
+  actually moved.
+
+### Testing
+
+- **64 new tests** across 4 files:
+  - `compiled-artifacts.test.ts` — 24 tests (Phase 4-A/B).
+  - `prompts/intents/registry.test.ts` — 14 tests (Phase 4-C).
+  - `entity-prepass.test.ts` — 22 tests (Phase 4-D).
+  - `phase4-integration.test.ts` — 4 tests (golden-path e2e).
+- **Full suite: 196 passed, 1 pre-existing failure** (unrelated to
+  Phase 4; `mergeMemoryResults: maxTotal=0 → empty` in
+  memory-retrieval.test.ts — confirmed failing on `main` before any
+  Phase 4 changes via `git stash` comparison).
+- All modified files pass `deno check` with no NEW type errors.
+  The single pre-existing TS2345 in `orchestrator.ts`'s dead SOUL
+  path is unrelated and unchanged by Phase 4.
+
+### Files
+
+**New files (Phase 4):**
+
+| File | Lines | Purpose |
+| ---- | :---: | ------- |
+| `supabase/functions/_shared/compiled-artifacts.ts` | ~350 | Pure validator + slot assembler (4-A/B) |
+| `supabase/functions/_shared/compiled-artifacts.test.ts` | ~260 | 24 tests |
+| `supabase/functions/_shared/prompts/intents/types.ts` | ~55 | `PromptModule` interface |
+| `supabase/functions/_shared/prompts/intents/system-core.ts` | ~25 | Shared persona block |
+| `supabase/functions/_shared/prompts/intents/{chat,contextual-ask,create,search,expense,task-action,partner-message}.ts` | ~20 each | Per-intent `PromptModule`s |
+| `supabase/functions/_shared/prompts/intents/registry.ts` | ~100 | Loader + aliases + fallback |
+| `supabase/functions/_shared/prompts/intents/registry.test.ts` | ~135 | 14 tests |
+| `supabase/functions/_shared/entity-prepass.ts` | ~320 | KG pre-pass for olive-search (4-D) |
+| `supabase/functions/_shared/entity-prepass.test.ts` | ~260 | 22 tests |
+| `supabase/functions/_shared/phase4-integration.test.ts` | ~175 | E2E golden-path, 4 tests |
+| `supabase/migrations/20260417000000_phase4_compiled_artifacts.sql` | ~130 | Trigger + RPC + index (4-E) |
+
+**Modified files:**
+
+| File | Changes |
+| ---- | ------- |
+| `supabase/functions/olive-compile-memory/index.ts` | +validator step per file, +source_chunk_ids + validation_score + budget_tokens in metadata, +per-artifact token cap enforcement, +`id` selected from notes/memories |
+| `supabase/functions/_shared/orchestrator.ts` | Layer-4 deep-profile now routes through `assembleUserSlot`. +`userSlotSource/Fresh/Artifacts` telemetry on `UnifiedContext`. +import of compiled-artifacts module. Renamed dead duplicate `assembleFullContext` → `assembleSoulAwareContext` (was blocking `deno check`). |
+| `supabase/functions/olive-search/index.ts` | +`use_entity_prepass` opt-in flag. +entity-prepass wiring in `search_notes` and `search_all` responses. |
+| `supabase/functions/olive-heartbeat/index.ts` | +`'recompile_artifacts'` job type. +handler that invokes olive-compile-memory. |
+
+### Deployment checklist
+
+1. **Apply migration** (idempotent):
+   ```
+   supabase db push
+   ```
+   Or apply `20260417000000_phase4_compiled_artifacts.sql` manually.
+   Creates the debounce RPC, trigger, and partial index. Relaxes the
+   job_type CHECK if one still exists.
+
+2. **Deploy edge functions** (order doesn't matter):
+   ```
+   supabase functions deploy olive-compile-memory
+   supabase functions deploy olive-heartbeat
+   supabase functions deploy olive-search
+   # ask-olive-stream, whatsapp-webhook: redeploy only when migrating
+   # their call sites to the new per-intent prompt registry.
+   ```
+
+3. **Verify** after deploy:
+   - `olive_memory_files.metadata` shows `validation_score` and
+     `source_chunk_ids` on the next compile run.
+   - `olive_llm_analytics.slot_tokens` metadata starts showing
+     `user_slot_source` values after ask-olive-stream + whatsapp-webhook
+     migrate to pass `ctx.userSlotSource` into their tracker calls
+     (follow-up, non-blocking).
+   - After inserting a memory chunk, an `olive_heartbeat_jobs` row
+     with `job_type='recompile_artifacts'` appears within a second.
+     ~10 min later, `olive_heartbeat_log` shows a `recompile_artifacts`
+     success entry for that user.
+   - Calling `olive-search` with `use_entity_prepass: true` returns an
+     `entity_prepass` block alongside results.
+
+4. No config changes, no secrets rotation required.
+
+---
+
+## Invariants preserved (cumulative Phase 1 + 2 + 3 + 4)
 
 - Required slots (IDENTITY, QUERY) are never dropped, even under
   EMERGENCY_BUDGET. Empty content is surfaced via `missingRequired` and
@@ -607,3 +900,27 @@ importance-only baseline.
   failures don't affect other tick work or user-facing responses.
 - Schema changes are additive; all existing rows remain valid (defaults
   backfill the new columns).
+- **Phase 4:** Compiled artifacts are both BUDGET-CAPPED (profile≤400,
+  patterns≤150, relationship≤100, household≤150 tokens; combined
+  SLOT_USER≤650) and VALIDATED against their source chunks. A low
+  grounding score is logged + stored in metadata but NEVER rejects the
+  artifact — validation surfaces risk, downstream reviewers (wiki-lint,
+  UI) decide what to do with it.
+- **Phase 4:** USER_COMPILED slot assembly is deterministic and
+  observable: `userSlotSource` telemetry records whether SLOT_USER
+  came from fresh compiled artifacts, stale ones, or nothing. Week-
+  over-week analytics can see compiled-path adoption directly.
+- **Phase 4:** Per-intent prompt modules preserve a byte-identical
+  `system_core` across every intent — prompt-cache prefix stability
+  is a TEST INVARIANT, not a convention. Breaking it fails CI.
+- **Phase 4:** Every per-intent module's `intent_rules` block fits
+  ≤250 tokens (SLOT_INTENT_MODULE budget); `system_core` fits
+  ≤200 tokens (SLOT_IDENTITY budget). Test-enforced, no drift.
+- **Phase 4:** Entity pre-pass is OPT-IN (`use_entity_prepass: true`)
+  and never blocks. A DB failure in the pre-pass leaves search output
+  unchanged — callers that didn't ask for entity context are never
+  affected.
+- **Phase 4:** Event-driven artifact recompile is DEBOUNCED at the DB
+  level (10-min window) and SWALLOWS ITS OWN ERRORS (trigger function
+  catches all exceptions) — a queue failure never rolls back the
+  underlying chunk write.

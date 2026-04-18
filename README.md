@@ -1,73 +1,67 @@
-# Welcome to your Lovable project
+# Olive — Couple Sync
 
-## Project info
+Olive is an AI-powered personal assistant that captures unstructured thoughts
+(text, voice, photos, links) from web, iOS, and WhatsApp and auto-organizes
+them into tasks, lists, calendar events, reminders, and expenses. She learns
+user preferences over time and proactively surfaces what matters.
 
-**URL**: https://lovable.dev/projects/fe28fe11-6f80-433f-aa49-de1399a1110c
+See `OLIVE_SYSTEM_PROMPT.md` for the full product + architecture reference and
+`CHANGES.md` for the rolling engineering log.
 
 ## How can I edit this code?
 
-There are several ways of editing your application.
+**Use your preferred IDE (recommended)**
 
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/fe28fe11-6f80-433f-aa49-de1399a1110c) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+Clone the repo and push to GitHub. The `dev` branch deploys a preview via
+Vercel; `main` deploys production.
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
+# 1. Clone
 git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
 cd <YOUR_PROJECT_NAME>
 
-# Step 3: Install the necessary dependencies.
+# 2. Install
 npm i
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# 3. Start dev server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+**Edit a file directly in GitHub** — pencil icon → commit.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+**GitHub Codespaces** — Code → Codespaces → New codespace.
 
-**Use GitHub Codespaces**
+## Branching + deploys
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- `dev` — preview branch. Every push triggers a Vercel preview deploy for
+  manual QA. Edge-function changes require `supabase functions deploy ...`
+  from the working tree.
+- `main` — production. Promotions from `dev` happen via PR + review.
 
-## What technologies are used for this project?
+Do not push directly to `main`. Open a PR from `dev`.
 
-This project is built with:
+## Tech stack
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+- Vite + React 18 + TypeScript 5
+- Tailwind CSS v3 + shadcn/ui (Radix)
+- TanStack Query + React Context (auth / couple / notes)
+- Supabase (Postgres + Edge Functions on Deno)
+- Google Gemini (Flash-Lite / Flash / Pro) via `_shared/model-router.ts`
+- Clerk (auth), synced to Supabase via `clerk-sync` edge function
+- Capacitor (iOS build target)
 
-## How can I deploy this project?
+## Deploying
 
-Simply open [Lovable](https://lovable.dev/projects/fe28fe11-6f80-433f-aa49-de1399a1110c) and click on Share -> Publish.
+- **Frontend:** Vercel (auto-deploy on push to `dev` → preview; `main` → production).
+- **Edge functions:** `supabase functions deploy <name>` per function.
+- **DB migrations:** `supabase db push` (migrations under `supabase/migrations/`).
+- **Custom domain:** Configure on Vercel (Project → Settings → Domains).
 
-## Can I connect a custom domain to my Lovable project?
+## Tests
 
-Yes, you can!
+Edge-function unit tests are co-located with each function as `*.test.ts`
+(Deno). Run the full `_shared/` suite:
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+```sh
+deno test supabase/functions/_shared/ --allow-net --allow-read --allow-env
+```

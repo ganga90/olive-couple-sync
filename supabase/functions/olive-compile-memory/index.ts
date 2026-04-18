@@ -18,6 +18,13 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { createLLMTracker } from "../_shared/llm-tracker.ts";
 import { getCompilePromptVersion } from "../_shared/prompts/compile-prompts.ts";
+import {
+  validateCompiledAgainstSources,
+  ARTIFACT_BUDGETS,
+  truncateArtifact,
+  estimateArtifactTokens,
+  type ArtifactType,
+} from "../_shared/compiled-artifacts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,6 +44,7 @@ type FileType = "profile" | "patterns" | "relationship" | "household";
 
 interface RawContext {
   notes: Array<{
+    id: string;
     summary: string;
     category: string;
     original_text: string;
@@ -46,6 +54,7 @@ interface RawContext {
     created_at: string;
   }>;
   memories: Array<{
+    id: string;
     title: string;
     content: string;
     category: string;
@@ -68,6 +77,14 @@ interface RawContext {
   partnerEntities: Array<{ name: string; entity_type: string; mention_count: number; user_id: string }>;
   partnerRelationships: Array<{ source_name: string; target_name: string; relationship_type: string; strength: number }>;
   partnerName: string | null;
+}
+
+/** Sources used by the grounding validator — mix of notes + memories. */
+interface ValidationSource {
+  /** Soft identifier (note_id / memory_id / "entity:<name>"). */
+  id: string;
+  /** Text content for keyword grounding. */
+  content: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -159,11 +176,13 @@ async function gatherRawContext(
   // Fetch all sources in parallel
   const [notesRes, memoriesRes, entitiesRes, relsRes, filesRes, profileRes] =
     await Promise.all([
-      // Recent notes (last 90 days, max 200)
+      // Recent notes (last 90 days, max 200).
+      // NOTE: `id` is needed so the grounding validator can record which
+      // source items contributed to the compiled artifact (Phase 4-A).
       supabase
         .from("clerk_notes")
         .select(
-          "summary, category, original_text, priority, completed, due_date, created_at"
+          "id, summary, category, original_text, priority, completed, due_date, created_at"
         )
         .eq("author_id", userId)
         .gte(
@@ -173,10 +192,10 @@ async function gatherRawContext(
         .order("created_at", { ascending: false })
         .limit(200),
 
-      // All active user memories
+      // All active user memories — `id` captured for source-citation tracking.
       supabase
         .from("user_memories")
-        .select("title, content, category, importance")
+        .select("id, title, content, category, importance")
         .eq("user_id", userId)
         .eq("is_active", true)
         .order("importance", { ascending: false })
@@ -321,6 +340,59 @@ async function gatherRawContext(
     partnerRelationships,
     partnerName,
   };
+}
+
+// ─── Validation Source Builder ───────────────────────────────────────────────
+
+/**
+ * Build the list of sources the grounding validator will check against
+ * the Gemini output. We include raw notes + stored memories + entity
+ * mentions — the same materials the prompt itself summarizes.
+ *
+ * Partner data is included for `relationship` and `household` file types
+ * since those artifacts can legitimately reference cross-user context.
+ */
+function buildValidationSources(
+  raw: RawContext,
+  fileType: FileType
+): ValidationSource[] {
+  const sources: ValidationSource[] = [];
+
+  for (const n of raw.notes) {
+    const body = [n.summary, n.original_text, n.category].filter(Boolean).join(" ");
+    if (body.trim().length > 0) {
+      sources.push({ id: `note:${n.id}`, content: body });
+    }
+  }
+
+  for (const m of raw.memories) {
+    const body = [m.title, m.content, m.category].filter(Boolean).join(" ");
+    if (body.trim().length > 0) {
+      sources.push({ id: `memory:${m.id}`, content: body });
+    }
+  }
+
+  for (const e of raw.entities) {
+    const meta = e.metadata ? JSON.stringify(e.metadata) : "";
+    sources.push({
+      id: `entity:${e.name}`,
+      content: `${e.name} ${e.entity_type} ${meta}`,
+    });
+  }
+
+  if (fileType === "relationship" || fileType === "household") {
+    for (const pe of raw.partnerEntities) {
+      sources.push({
+        id: `partner_entity:${pe.name}`,
+        content: `${pe.name} ${pe.entity_type}`,
+      });
+    }
+    if (raw.partnerName) {
+      sources.push({ id: "partner_name", content: raw.partnerName });
+    }
+  }
+
+  return sources;
 }
 
 // ─── Compilation Prompts ─────────────────────────────────────────────────────
@@ -518,10 +590,39 @@ async function compileFile(
     { model: "gemini-2.0-flash", contents: prompt, config: { temperature: 0.2, maxOutputTokens: 2048 } },
     { promptVersion: getCompilePromptVersion(fileType as any) }
   );
-  const compiled = trackerResponse?.candidates?.[0]?.content?.parts?.[0]?.text || null;
-  if (!compiled || compiled.trim().length < 20) {
+  const rawCompiled = trackerResponse?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+  if (!rawCompiled || rawCompiled.trim().length < 20) {
     return { fileType, status: "gemini_failed", changed: false };
   }
+
+  // ─── Phase 4-A: Enforce per-artifact token budget ─────────────────
+  // Each artifact has a hard cap so the combined SLOT_USER can never
+  // overflow 650 tokens. Gemini sometimes ignores "Max N words" in the
+  // prompt — this is the safety net.
+  const budgetKey = fileType as ArtifactType;
+  const budget = ARTIFACT_BUDGETS[budgetKey] ?? 400;
+  const compiled = truncateArtifact(rawCompiled, budget);
+  const tokenCount = estimateArtifactTokens(compiled);
+
+  // ─── Phase 4-A: Source-citation validator ─────────────────────────
+  // Grounding check: are the statements in `compiled` supported by the
+  // raw materials we fed the LLM? A low score means likely hallucination.
+  // We LOG but DO NOT REJECT — invariant: "validation never blocks".
+  // Callers (wiki-lint, humans) can inspect `metadata.validation_score`
+  // to flag bad artifacts.
+  const validationSources = buildValidationSources(raw, fileType);
+  const validation = validateCompiledAgainstSources(compiled, validationSources);
+  if (validation.score < 0.5 && validation.totalSentences > 0) {
+    console.warn(
+      `[compile-memory] LOW GROUNDING for ${fileType} user=${userId}: score=${validation.score.toFixed(2)} (${validation.notes})`
+    );
+  }
+
+  // Trim source IDs to a reasonable cap before storing in JSONB metadata.
+  // We keep IDs that were part of the keyword overlap universe — that's
+  // the set the validator actually considered. Cap at 100 to keep the
+  // metadata row small; the validator score already summarizes broadly.
+  const sourceIds = validationSources.slice(0, 100).map((s) => s.id);
 
   // Check if content actually changed
   const newHash = await sha256(compiled);
@@ -530,9 +631,6 @@ async function compileFile(
   if (!force && existing?.content_hash === newHash) {
     return { fileType, status: "unchanged", changed: false };
   }
-
-  // Estimate token count
-  const tokenCount = Math.ceil(compiled.length / 4);
 
   // Generate embedding for the compiled content
   const embedding = await generateEmbedding(compiled);
@@ -555,6 +653,15 @@ async function compileFile(
       source_notes: raw.notes.length,
       source_memories: raw.memories.length,
       source_entities: raw.entities.length,
+      // Phase 4-A: grounding provenance + score so the wiki-lint pass
+      // and the future "Why this answer?" UI can explain the compiled
+      // artifact back to the user.
+      source_chunk_ids: sourceIds,
+      validation_score: validation.score,
+      validation_notes: validation.notes,
+      validation_ungrounded_count: validation.ungroundedSentences.length,
+      budget_tokens: budget,
+      was_truncated: rawCompiled.length > compiled.length,
     },
     updated_at: new Date().toISOString(),
   };

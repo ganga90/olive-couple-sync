@@ -9,6 +9,11 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  createSupabaseEntityDB,
+  runEntityPrepass,
+  type EntityPrepassResult,
+} from "../_shared/entity-prepass.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,6 +28,16 @@ interface SearchRequest {
   filters?: SearchFilters;
   limit?: number;
   vector_weight?: number;  // 0.0 to 1.0, default 0.7
+  /**
+   * Phase 4-D: opt-in entity pre-pass.
+   *
+   * When true, olive-search runs the knowledge-graph pre-pass BEFORE the
+   * hybrid search and returns the entity/relationship context alongside
+   * the search results. Callers that want to prepend this to an LLM
+   * prompt get a ready-made block; callers that don't set this flag get
+   * the legacy behavior exactly (zero regression).
+   */
+  use_entity_prepass?: boolean;
 }
 
 interface SearchFilters {
@@ -308,8 +323,25 @@ serve(async (req) => {
       query,
       filters = {},
       limit = 20,
-      vector_weight = 0.7
+      vector_weight = 0.7,
+      use_entity_prepass = false,
     } = body;
+
+    // Phase 4-D: optional entity pre-pass. Runs before search so the
+    // caller can decide whether to include entity context in its prompt.
+    // Fails open — an entity-prepass failure never blocks search.
+    let entityPrepass: EntityPrepassResult | null = null;
+    if (use_entity_prepass && user_id && query) {
+      try {
+        const entityDB = createSupabaseEntityDB(supabase);
+        entityPrepass = await runEntityPrepass(entityDB, user_id, query);
+      } catch (err) {
+        console.warn(
+          "[olive-search] entity pre-pass failed (continuing):",
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
 
     if (!query) {
       return new Response(
@@ -391,7 +423,19 @@ serve(async (req) => {
         }));
 
         return new Response(
-          JSON.stringify({ success: true, results: resultsWithSnippets, method: 'hybrid' }),
+          JSON.stringify({
+            success: true,
+            results: resultsWithSnippets,
+            method: 'hybrid',
+            entity_prepass: entityPrepass
+              ? {
+                  context_block: entityPrepass.contextBlock,
+                  match_count: entityPrepass.matches.length,
+                  relationship_count: entityPrepass.relationships.length,
+                  estimated_tokens: entityPrepass.estimatedTokens,
+                }
+              : null,
+          }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -474,6 +518,14 @@ serve(async (req) => {
               notes: noteResults.length,
               memory: memoryResults.length,
             },
+            entity_prepass: entityPrepass
+              ? {
+                  context_block: entityPrepass.contextBlock,
+                  match_count: entityPrepass.matches.length,
+                  relationship_count: entityPrepass.relationships.length,
+                  estimated_tokens: entityPrepass.estimatedTokens,
+                }
+              : null,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
