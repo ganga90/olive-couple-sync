@@ -104,15 +104,18 @@ export function mergeMemoryResults(
   const seen = new Set<string>();
   const merged: MemoryChunk[] = [];
 
-  // Semantic first (relevance-ranked)
+  // Semantic first (relevance-ranked).
+  // Cap check BEFORE push — earlier this came after, producing an
+  // off-by-one where `maxTotal=0` returned 1 chunk. Caught by the
+  // pre-existing `maxTotal=0 → empty` test.
   for (const chunk of semanticChunks) {
+    if (merged.length >= maxTotal) break;
     if (seen.has(chunk.id)) continue;
     seen.add(chunk.id);
     merged.push(chunk);
-    if (merged.length >= maxTotal) break;
   }
 
-  // Importance-only fills gaps
+  // Importance-only fills gaps — same cap-before-push pattern.
   for (const chunk of importanceChunks) {
     if (merged.length >= maxTotal) break;
     if (seen.has(chunk.id)) continue;

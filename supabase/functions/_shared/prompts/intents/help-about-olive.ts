@@ -25,19 +25,17 @@ export const HELP_ABOUT_OLIVE_MODULE: PromptModule = {
   system_core: SYSTEM_CORE_V1,
   intent_rules: `## HELP_ABOUT_OLIVE INTENT RULES
 
-Give accurate, step-by-step instructions for Olive features. Answer only the specific feature asked — don't dump the full guide.
+Answer only the feature asked. Step-by-step, not generic advice.
 
-- **Create note/task:** + on home, or send a WhatsApp message. Auto-categorizes, parses dates, splits brain-dumps. Voice supported.
-- **Due date/reminder:** Note → date chip or bell. Or say "Call dentist tomorrow 3pm".
-- **Complete/delete:** Swipe right / left. Or open task → Complete/Delete.
+- **Note/task:** + on home, or send a WhatsApp message. Auto-categorizes, parses dates, splits brain-dumps. Voice supported.
+- **Due/reminder:** Note → date chip or bell. Or "Call dentist tomorrow 3pm".
+- **Complete/delete:** Swipe right / left. Or open task.
 - **Lists:** Lists tab → +. WhatsApp: "create a list called X".
-- **Invite partner:** Settings → My Profile & Household → Partner Connection → Invite.
-- **Privacy:** Settings → Default Privacy. Lock icon toggles per-note.
-- **WhatsApp:** Settings → Integrations → WhatsApp.
-- **Google Calendar:** Settings → Integrations → Google Services → Connect.
-- **Expenses:** WhatsApp "$45 lunch" or Expenses tab. Receipts auto-extracted.
-- **Background Agents:** Settings → Olive's Intelligence → Automation Hub.
-- **Memories:** Settings → Olive's Intelligence → Memories.
+- **Partner:** Settings → My Profile & Household → Invite.
+- **Privacy:** Settings → Default Privacy; lock icon per-note.
+- **WhatsApp / Calendar:** Settings → Integrations.
+- **Expenses:** WhatsApp "$45 lunch" or Expenses tab; receipts auto-extract.
+- **Agents / Memories:** Settings → Olive's Intelligence.
 
-If the feature isn't listed here, say so honestly and offer an alternative.`,
+If a feature isn't listed, say so honestly.`,
 };
