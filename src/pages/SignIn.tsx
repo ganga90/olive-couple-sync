@@ -1,21 +1,4 @@
-import { useSignIn as useClerkSignIn, useAuth as useClerkAuthHook, useUser as useClerkUser } from "@clerk/clerk-react";
-
-const HAS_CLERK = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-
-// Safe wrappers — return inert defaults when Clerk is unavailable so the page
-// can render an "auth unavailable" notice instead of crashing the tree.
-const useSignIn = (): any => {
-  try { return HAS_CLERK ? useClerkSignIn() : { signIn: null, isLoaded: true, setActive: null }; }
-  catch { return { signIn: null, isLoaded: true, setActive: null }; }
-};
-const useAuth = (): any => {
-  try { return HAS_CLERK ? useClerkAuthHook() : { isSignedIn: false, isLoaded: true }; }
-  catch { return { isSignedIn: false, isLoaded: true }; }
-};
-const useUser = (): any => {
-  try { return HAS_CLERK ? useClerkUser() : { user: null, isLoaded: true }; }
-  catch { return { user: null, isLoaded: true }; }
-};
+import { useSignIn, useAuth, useUser } from "@clerk/clerk-react";
 import { useTranslation } from "react-i18next";
 import { useSEO } from "@/hooks/useSEO";
 import { Card } from "@/components/ui/card";
@@ -249,25 +232,6 @@ const SignInPage = () => {
       <main className="min-h-screen bg-gradient-soft flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </main>
-    );
-  }
-
-  // Degraded mode: Clerk publishable key is missing — show a friendly notice
-  // instead of crashing or rendering a non-functional form.
-  if (!HAS_CLERK) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-soft">
-        <Card className="max-w-md w-full p-8 text-center space-y-4">
-          <OliveLogo />
-          <h1 className="text-2xl font-bold font-serif">Sign-in unavailable</h1>
-          <p className="text-muted-foreground">
-            Authentication isn't configured for this preview. Please try again later or contact support.
-          </p>
-          <Button onClick={() => rawNavigate("/landing")} variant="outline" className="w-full">
-            Back to landing
-          </Button>
-        </Card>
-      </div>
     );
   }
 
