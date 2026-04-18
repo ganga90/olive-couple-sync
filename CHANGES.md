@@ -924,3 +924,224 @@ window) at a cost of ~3 extra Flash calls/day/active user.
   level (10-min window) and SWALLOWS ITS OWN ERRORS (trigger function
   catches all exceptions) — a queue failure never rolls back the
   underlying chunk write.
+
+---
+
+## 2026-04-18 — Phase 4 Follow-up Option A (resolver + stream migration + bug fix)
+
+Phase 4 shipped the modular prompt system but the highest-volume callers
+still ran on the legacy monolithic `OLIVE_CHAT_PROMPT` — so the actual
+token savings were zero. Option A closes that loop for `ask-olive-stream`
+behind a reversible feature flag, adds the missing `help_about_olive`
+intent module (the FAQ content that used to live inline in the legacy
+prompt), and fixes a latent off-by-one in memory retrieval.
+
+### Task A-1 · `help_about_olive` intent module
+
+**Intent.** The legacy `OLIVE_CHAT_PROMPT` had a 300-token "HELP &
+HOW-TO — OLIVE FEATURE GUIDE" block. On modular calls that FAQ has
+nowhere to land unless a dedicated intent module carries it.
+
+- **`_shared/prompts/intents/help-about-olive.ts`** — condensed FAQ
+  (≤250 tok per SLOT_INTENT_MODULE budget), covering: create note/task,
+  due/reminder, complete/delete, lists, partner, privacy, WhatsApp,
+  Google Calendar, expenses, agents, memories. Instructions tell the
+  model to answer only what was asked.
+- **Registry**: `help_about_olive` added as the 8th canonical intent.
+  Alias `help` → `help_about_olive` so `ask-olive-stream`'s
+  pre-filter (which emits `type='help'`) lands on the right module.
+- **Tests updated**: 14 registry tests pass; canonical-intent list +
+  allModules count bumped from 7 → 8; `help` alias verified.
+
+### Task A-2 · `resolvePrompt` — feature-flagged resolver
+
+**Intent.** Give every migration call site ONE reversible policy surface
+so flipping off a regression is a single env-var change, not a deploy.
+
+- **`_shared/prompts/intents/resolver.ts`** (~165 lines, pure):
+  - `hashUserToBucket(userId)` — FNV-1a → `[0, 100)` bucket, stable
+    across requests for the same user.
+  - `decidePromptSource(userId, flag, rolloutPct)` — policy function
+    with documented precedence: `USE_INTENT_MODULES=1` beats
+    `INTENT_MODULES_ROLLOUT_PCT=N` beats default-legacy.
+  - `resolvePrompt({ intent, userId, legacyPrompt, legacyVersion })` —
+    returns `{ systemInstruction, intentRules, version, source,
+    resolvedIntent }`. Caller uses it to drive Gemini + analytics in
+    one object.
+
+- **Feature flags** (Supabase edge runtime env vars):
+  - `USE_INTENT_MODULES=1` — force-on, overrides everything.
+  - `USE_INTENT_MODULES=0` — force-off, overrides rollout.
+  - `INTENT_MODULES_ROLLOUT_PCT=N` — apply to first N% of users
+    (hash-bucketed on userId). Defaults to 0 (legacy-only).
+
+- **Rollout invariant.** Same user → same bucket → same path across
+  all their requests (stability is tested). Makes A/B clean at
+  user-granularity, not per-request noise.
+
+- **`_shared/prompts/intents/resolver.test.ts`** — **20 tests**:
+  hash determinism + distribution sanity; full flag-precedence matrix
+  (ON/OFF/unset × rollout 0/50/100/negative/garbage × userId
+  present/absent); resolver happy paths (legacy, modular, `help`
+  alias, unknown intent fallback, flag=0 beats rollout=100, empty
+  userId stays conservative, null/undefined intent safe).
+
+### Task A-3 · `ask-olive-stream` CHAT path migration
+
+**Intent.** Highest-volume LLM path on Olive's web surface. Migrating
+it enables direct measurement of Phase 4's token savings against a
+live traffic slice.
+
+- **`ask-olive-stream/index.ts`** (modified — CHAT path only, other
+  paths unchanged):
+  - Imports `resolvePrompt` from the resolver.
+  - Builds `intentForResolver` from `effectiveType='help'` (pre-filter)
+    OR `classifiedIntent.intent` OR `effectiveType`, in that order.
+  - Calls `resolvePrompt({...})` once per request — no DB, no LLM, no
+    network.
+  - On modular path: `system_core` becomes `SLOT_IDENTITY`,
+    `intent_rules` becomes `SLOT_INTENT_MODULE`, both flow through
+    the existing `formatContextWithBudget` so budgets apply uniformly.
+  - On legacy path: behavior is BIT-IDENTICAL to pre-PR.
+  - Analytics: `promptVersion` now carries the module version when
+    modular; `metadata.prompt_system` = `"modular"|"legacy"` and
+    `metadata.resolved_intent` = which module was loaded — this is the
+    A/B key for the query below.
+
+- **WEB_SEARCH path, CONTEXTUAL_ASK path, ACTION path** deliberately
+  NOT migrated. They have their own prompt shapes (search-result
+  formatting, data-question answering, action confirmation) that
+  deserve their own modules — follow-up PR.
+
+- **`whatsapp-webhook`** deliberately NOT migrated. It has 10
+  chatType-specialized inline prompts (briefing, weekly_summary,
+  daily_focus, productivity_tips, progress_check, motivation,
+  planning, greeting, help_about_olive, assistant). Those need
+  dedicated modules, not the generic `chat` module — separate PR.
+  The resolver is ready for them when the modules are built.
+
+### Task A-4 · Bug fix: `mergeMemoryResults: maxTotal=0`
+
+**Intent.** A pre-existing off-by-one in `memory-retrieval.ts` where
+the cap check happened AFTER `push()`. When `maxTotal=0` the function
+returned 1 chunk instead of 0 — the single failing test in the Phase 4
+suite.
+
+- **`_shared/memory-retrieval.ts`** — moved cap check to run BEFORE
+  `push()` in both the semantic-chunks loop and the importance-only
+  loop. Comment added explaining the fix.
+- **Impact:** the test `mergeMemoryResults: maxTotal=0 → empty` that
+  was pre-existing-failing on main is now green. Full `_shared/` suite:
+  **217 passed / 0 failed** (was 196/1 at Phase 4 landing).
+
+### Task A-5 · A/B analytics query (ready to run once deployed)
+
+Once the flag is enabled for even a small rollout pct, run this to
+compare legacy vs modular on identical traffic:
+
+```sql
+-- Legacy vs modular: tokens + latency per CHAT call, last 7 days.
+-- Assumes ask-olive-stream only (function_name filter).
+SELECT
+  COALESCE(metadata->>'prompt_system', 'legacy') AS prompt_system,
+  metadata->>'resolved_intent' AS resolved_intent,
+  COUNT(*) AS calls,
+  ROUND(AVG(tokens_in))  AS avg_tokens_in,
+  ROUND(AVG(tokens_out)) AS avg_tokens_out,
+  ROUND(AVG((metadata->>'context_total_tokens')::int))
+                         AS avg_context_tokens,
+  ROUND(AVG(latency_ms)) AS avg_latency_ms,
+  ROUND(SUM(cost_usd)::numeric, 4) AS total_cost_usd
+FROM olive_llm_calls
+WHERE function_name = 'ask-olive-stream'
+  AND created_at > NOW() - INTERVAL '7 days'
+  AND status <> 'stream_started'  -- exclude the stream-start sentinel
+GROUP BY 1, 2
+ORDER BY 1, 2;
+```
+
+Expected outcome after flag enabled for a representative user slice:
+
+- `avg_tokens_in` for `prompt_system='modular'` should be ~40-60%
+  lower than `prompt_system='legacy'` on CHAT calls (the main bet).
+- `avg_latency_ms` should be comparable or slightly lower (smaller
+  prompt → smaller TTFB).
+- `avg_tokens_out` should be within ~10% between groups (otherwise
+  quality may have drifted — investigate).
+
+If modular is clearly worse on quality (subjective review of samples
+grouped by `prompt_system`), `USE_INTENT_MODULES=0` rolls back
+instantly — no code change, no redeploy.
+
+### Testing
+
+| Suite | Tests | Status |
+| ---- | :---: | ------ |
+| registry.test.ts (added `help`, 8-module assertions) | 14 | ✅ |
+| resolver.test.ts (new) | 20 | ✅ |
+| memory-retrieval.test.ts (fix restores the failing test) | 39 | ✅ |
+| Full `_shared/` suite | **217** | **0 failures** (was 196/1) |
+
+`deno check` on `ask-olive-stream` shows 8 errors — ALL pre-existing
+(confirmed by stashing my changes and rechecking). Zero new type
+errors introduced.
+
+### Files
+
+**New files:**
+| File | Lines | Purpose |
+| ---- | :---: | ------- |
+| `supabase/functions/_shared/prompts/intents/help-about-olive.ts` | ~40 | 8th intent module |
+| `supabase/functions/_shared/prompts/intents/resolver.ts` | ~165 | Feature-flagged resolver |
+| `supabase/functions/_shared/prompts/intents/resolver.test.ts` | ~200 | 20 tests |
+
+**Modified files:**
+| File | Changes |
+| ---- | ------- |
+| `supabase/functions/_shared/prompts/intents/types.ts` | +`help_about_olive` in `IntentModuleKey`. |
+| `supabase/functions/_shared/prompts/intents/registry.ts` | Registered help module + `help` alias. |
+| `supabase/functions/_shared/prompts/intents/registry.test.ts` | 7→8 canonical intents; help alias test. |
+| `supabase/functions/_shared/memory-retrieval.ts` | Fixed off-by-one in `mergeMemoryResults` (cap check moved before push). |
+| `supabase/functions/ask-olive-stream/index.ts` | CHAT path now routes through `resolvePrompt`. Telemetry carries `prompt_system` + `resolved_intent`. |
+
+### Deployment
+
+1. **No migration** — this PR is edge-functions + shared modules only.
+
+2. **Deploy**:
+   ```
+   supabase functions deploy ask-olive-stream
+   ```
+   (memory-retrieval is a shared module; it rides along with any edge
+   function redeploy, but the change is no-op unless `maxTotal=0` is
+   passed — safe.)
+
+3. **Default behavior on deploy**: `USE_INTENT_MODULES` unset +
+   `INTENT_MODULES_ROLLOUT_PCT` unset → **legacy path for every
+   user**. Zero user-visible change, zero risk.
+
+4. **Enable the A/B** (recommended, on dev first):
+   ```
+   supabase secrets set INTENT_MODULES_ROLLOUT_PCT=10
+   ```
+   → 10% of users (hash-bucketed) move to modular. Monitor the query
+   above for 48h.
+
+5. **Scale up** when green: set to 50, then 100. Any time, flip to
+   `USE_INTENT_MODULES=0` to force-off during investigation.
+
+### Invariants preserved (Option A delta)
+
+- Legacy CHAT path is BIT-IDENTICAL to pre-PR when flags are off.
+  Verified by: same `OLIVE_CHAT_PROMPT` input to `streamGeminiResponse`,
+  same `CHAT_PROMPT_VERSION` logged, same metadata shape, no
+  systemInstruction mutation.
+- Rollout bucket is STABLE per user across requests — no mid-session
+  flipping between legacy and modular.
+- `USE_INTENT_MODULES=0` is a HARD OFF that overrides rollout pct —
+  easy kill-switch.
+- `resolvePrompt` never throws; unknown intents degrade to the chat
+  module; empty userId stays conservative (legacy) when rollout is
+  partial.
+- Memory retrieval returns EXACTLY `min(available, maxTotal)` chunks
+  for any `maxTotal >= 0`. No more off-by-one.

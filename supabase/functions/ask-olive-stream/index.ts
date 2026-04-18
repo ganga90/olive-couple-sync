@@ -34,6 +34,12 @@ import {
   WEB_SEARCH_FORMAT_PROMPT as WEB_SEARCH_PROMPT_IMPORTED,
   WEB_SEARCH_FORMAT_PROMPT_VERSION,
 } from "../_shared/prompts/ask-olive-prompts.ts";
+// Phase 4 follow-up (Option A): feature-flagged per-intent prompt modules.
+// When `USE_INTENT_MODULES=1` (or a userId-hashed rollout via
+// `INTENT_MODULES_ROLLOUT_PCT`) is set, the CHAT path switches from the
+// monolithic `OLIVE_CHAT_PROMPT` to the per-intent modular system.
+// Legacy path remains the default — zero regression risk.
+import { resolvePrompt } from "../_shared/prompts/intents/resolver.ts";
 import {
   assembleFullContext,
   formatContextForPrompt,
@@ -854,8 +860,35 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
     }
 
     // ── CHAT / HELP ───────────────────────────────────────────────
+    // Phase 4 follow-up: resolve which prompt system to use (legacy vs
+    // modular). Decision is driven by env flag + userId-hashed rollout,
+    // so a single user sees a STABLE path across requests — A/B is clean.
+    //
+    // The classified intent or pre-filter type both flow into the
+    // resolver. For help queries (pre-filter type='help' or classifier
+    // contextual_ask with how-to signal), the resolver aliases to the
+    // help_about_olive module and the FAQ ships as SLOT_INTENT_MODULE
+    // only on help calls — no waste on non-help traffic.
+    const intentForResolver =
+      effectiveType === 'help'
+        ? 'help'
+        : (classifiedIntent?.intent || effectiveType || 'chat');
+
+    const resolved = resolvePrompt({
+      intent: intentForResolver,
+      userId: user_id,
+      legacyPrompt: OLIVE_CHAT_PROMPT,
+      legacyVersion: CHAT_PROMPT_VERSION,
+    });
+
     const serverCtx = await serverCtxPromise;
     const budgetResult = formatContextWithBudget(serverCtx, {
+      // Modular path passes system_core + intent_rules through the
+      // Context Contract's named slots so budgets apply uniformly.
+      // Legacy path keeps them empty — the full legacy prompt goes via
+      // `systemInstruction` to Gemini directly, preserving current behavior.
+      soulPrompt: resolved.source === 'modular' ? resolved.systemInstruction : undefined,
+      intentModule: resolved.source === 'modular' ? resolved.intentRules : undefined,
       userMessage: message,
       userName: context?.user_name,
       conversationHistory,
@@ -868,7 +901,7 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
         `[ask-olive-stream] Context budget: ${budgetResult.totalTokens} tokens, ` +
         `truncated: [${budgetResult.truncatedSlots}], dropped: [${budgetResult.droppedSlots}], ` +
         `missingRequired: [${budgetResult.missingRequired}], degraded: ${budgetResult.degraded}, ` +
-        `emergency: ${budgetResult.emergency}`
+        `emergency: ${budgetResult.emergency}, prompt_system: ${resolved.source}`
       );
     }
 
@@ -878,16 +911,23 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
     const chatTracker = createLLMTracker(chatSupabase, "ask-olive-stream", user_id);
     const chatModel = getModel(route.responseTier as any);
 
+    // On the modular path, `systemInstruction` is the small system_core
+    // and `intent_rules` already rides in SLOT_INTENT_MODULE of budgetResult.
+    // On legacy, systemInstruction carries the full monolithic prompt.
+    const streamSystemPrompt = resolved.source === 'modular'
+      ? resolved.systemInstruction
+      : OLIVE_CHAT_PROMPT;
+
     scheduleMemoryEvolution(user_id, message, '(chat response)');
-    const resp = await streamGeminiResponse(OLIVE_CHAT_PROMPT, budgetResult.prompt, route.responseTier);
+    const resp = await streamGeminiResponse(streamSystemPrompt, budgetResult.prompt, route.responseTier);
 
     // Log context-assembly analytics now that stream has started
     chatTracker.logStreamingCall(
       chatModel,
-      OLIVE_CHAT_PROMPT.length + budgetResult.prompt.length,
+      streamSystemPrompt.length + budgetResult.prompt.length,
       Math.round(performance.now() - chatStartedAt),
       {
-        promptVersion: CHAT_PROMPT_VERSION,
+        promptVersion: resolved.version,
         slotTokens: getSlotTokenLog(budgetResult),
         contextTotalTokens: budgetResult.totalTokens,
         slotsOverBudget: budgetResult.truncatedSlots,
@@ -902,6 +942,9 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
           missing_required: budgetResult.missingRequired,
           degraded: budgetResult.degraded,
           emergency: budgetResult.emergency,
+          // Phase 4 follow-up: A/B key. Analytics group by this.
+          prompt_system: resolved.source,
+          resolved_intent: resolved.resolvedIntent,
         },
       }
     );
