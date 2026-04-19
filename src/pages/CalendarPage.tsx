@@ -2,7 +2,9 @@ import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, MapPin, RefreshCw, Loader2 } from "lucide-react";
-import { FloatingActionButton } from "@/components/FloatingActionButton";
+// FloatingActionButton import removed — duplicate Quick Add FAB was
+// stacking on top of the global FloatingSpeedDial (AppLayout). Brain-dump
+// from the speed-dial replaces this entry point.
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -109,8 +111,7 @@ const CalendarPage = () => {
 
   return (
     <div className="h-full overflow-y-auto bg-background">
-      <FloatingActionButton />
-      
+      {/* FloatingActionButton render removed — see import comment above. */}
       <div className="px-4 pt-6 pb-32 md:pb-6 space-y-6 max-w-2xl mx-auto">
         {/* Header - Editorial Style */}
         <div className="flex items-center justify-between animate-fade-up">

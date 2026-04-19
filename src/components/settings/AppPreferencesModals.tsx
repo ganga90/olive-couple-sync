@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CookieSettings } from '@/components/CookieSettings';
+import { FeedbackDialog } from '@/components/FeedbackDialog';
 import { cn } from '@/lib/utils';
 
 interface PreferenceRowProps {
@@ -141,6 +142,14 @@ const HelpContent: React.FC = () => {
       <div className="p-4 rounded-xl bg-stone-50">
         <h4 className="font-medium text-sm mb-2">{t('help.feedback', 'Send Feedback')}</h4>
         <p className="text-xs text-stone-500">{t('help.feedbackDesc', 'We love hearing from you! Share your ideas.')}</p>
+        {/*
+          Previously this card was a dead-end (static text, no action).
+          Feedback used to be a floating-action-button mounted in App.tsx
+          but that created a three-FAB stack on the bottom-right. The
+          inline variant renders a small outlined button here, so the
+          card is the single discoverable entry point for feedback.
+        */}
+        <FeedbackDialog variant="inline" />
       </div>
     </div>
   );

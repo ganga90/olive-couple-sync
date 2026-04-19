@@ -1422,3 +1422,125 @@ the dashboard.
   `pk_test_*` will be signed out on first launch after this change.
   They sign in again with their real (web) credentials and land on the
   correct Supabase data. Documented in `capacitor.config.ts` comment.
+
+---
+
+## 2026-04-19 — UX fixes: list privacy toggle + FAB dedupe
+
+Two user-reported bugs visible on both iOS and web.
+
+### Bug 1 · List-level Private / Shared toggle did nothing
+
+The "Private" (or "Shared") pill next to the list title on the
+list-detail page (`src/pages/ListCategory.tsx`) was a **display-only
+`<Badge>`** — no `onClick`, no handler, no Popover. Tapping it looked
+interactive but did nothing. The only way to toggle list privacy was to
+open the Edit Dialog via the pencil icon → select Private/Shared → Save.
+Meanwhile, the per-task privacy pill (`NotePrivacyToggle.tsx`) DID work,
+which made the disparity confusing.
+
+Fix:
+
+- **`src/components/ListPrivacyToggle.tsx`** (new, ~170 lines) —
+  Popover-backed Button that mirrors `NotePrivacyToggle`'s UX pattern
+  exactly. Writes through `useSupabaseLists.updateList({ couple_id })`
+  — the same hook + field the Edit Dialog was already using
+  successfully (`handleEditList` at line 74-93). Toasts success/failure
+  using existing translation keys (`listDetail.listShared` /
+  `listMadePrivate`). When the user has no couple, falls back to a
+  read-only `<Badge>` so the header still renders the state but the
+  click is a no-op (matches pre-fix behavior for solo users).
+
+- **`src/pages/ListCategory.tsx`** — replaced the two static `<Badge>`
+  renders (lines 213-223) with a single `<ListPrivacyToggle
+  listId={currentList.id} isShared={!!currentList.couple_id} />`. The
+  Edit Dialog's Private/Shared buttons are untouched — users who prefer
+  that route still have it.
+
+Why a separate component from `NotePrivacyToggle` rather than a shared
+one: different data source (`clerk_lists` vs `clerk_notes`), different
+hook (`useSupabaseLists` vs `useSupabaseNotesContext`), different field
+shape (`couple_id` vs `isShared` + `coupleId`). A shared abstraction
+would be forced and cost more than it saves.
+
+### Bug 2 · Three floating action buttons overlapping
+
+The list-detail screen (and Home, Calendar, Reminders) rendered THREE
+bottom-right FABs stacked on top of each other:
+
+1. `FloatingSpeedDial` — global, mounted in `AppLayout.tsx`. Expandable
+   menu with "Ask Olive" (chat) + "Brain-dump" (quick note). **KEEP.**
+2. `FloatingActionButton` — per-page, mounted in 4 pages. Just a "+"
+   that opened a Quick Add Note dialog. Duplicates the speed-dial's
+   brain-dump path. **REMOVE.**
+3. `FeedbackDialog` (variant="fab" by default) — global, mounted in
+   `App.tsx`. Separate pill on the bottom-right. **REMOVE FROM FAB;
+   keep the dialog, move the trigger into Settings.**
+
+User's ask: "keep only one (the one that asks to chat with olive or
+brain dump)." The speed-dial already provides both actions, so it's the
+keeper.
+
+Fixes:
+
+- **`src/pages/Index.tsx`, `CalendarPage.tsx`, `ListCategory.tsx`,
+  `Reminders.tsx`** — removed `FloatingActionButton` import + render
+  from all four pages. Replaced with an explanatory comment so the
+  next contributor understands why the FAB isn't there. The component
+  file (`src/components/FloatingActionButton.tsx`) is kept in the tree
+  (zero callers, but deleting it is a separate cleanup PR — doesn't
+  block the UX fix and avoids noise in this diff).
+
+- **`src/App.tsx`** — removed `<FeedbackDialog />` render + import.
+  Comment in place explaining why.
+
+- **`src/components/FeedbackDialog.tsx`** — the `variant="inline"`
+  branch previously returned `null` as its trigger, making the Dialog
+  unreachable. Changed it to render a small outlined `Button` with the
+  MessageSquarePlus icon + "Send Feedback" label. The "fab" variant
+  is preserved for any caller that still opts in, but it's no longer
+  mounted anywhere by default.
+
+- **`src/components/settings/AppPreferencesModals.tsx`** — the "Send
+  Feedback" card in Help & Support was purely descriptive text (no
+  action). Added `<FeedbackDialog variant="inline" />` inside the card
+  so the card now has a working trigger button. Users discover
+  feedback through Settings → Help & Support, which matches the user
+  mental model ("tell me how to do X" lives in Settings).
+
+### Testing
+
+- ✅ `npx tsc --noEmit` — clean.
+- ✅ `npm run build` — Vite bundle OK (4.1s).
+- ✅ `deno test supabase/functions/_shared/` — 217 / 0 failed
+  (no regression).
+- ✅ `npx cap sync ios` — 5 plugins synced.
+- ✅ `xcodebuild ... iphonesimulator build` → `** BUILD SUCCEEDED **`.
+
+### Invariants preserved
+
+- Web + iOS share identical behavior (single codebase change).
+- The Edit Dialog (pencil icon) on the list detail still toggles
+  privacy the same way it always did — ListPrivacyToggle is additive.
+- `FloatingSpeedDial` (global) is untouched — Ask Olive + Brain-dump
+  still available on every page.
+- Feedback submission is unchanged at the send-feedback edge function
+  level — only the trigger moved.
+- Users without a couple see a read-only "Private" badge on list
+  headers exactly as before (can't share when there's no one to share
+  with).
+- Existing i18n keys reused; new fallbacks provided for any new labels
+  (`listDetail.visibilityLabel`, `listDetail.privateOption`,
+  `listDetail.sharedOption`, `listDetail.privacyToggle`) using the
+  shadcn i18n default-value pattern.
+
+### Not in this PR (deliberately)
+
+- Deleting `src/components/FloatingActionButton.tsx`. The component
+  is no longer imported anywhere; removing the file is trivial but
+  adds noise to this diff. One-line follow-up cleanup.
+- Migrating `NotePrivacyToggle` + `ListPrivacyToggle` to a shared
+  abstraction. The shapes of `Note` vs `List` privacy differ enough
+  (isShared vs couple_id null-check) that a shared component would
+  need a discriminated-union config object — more complexity than the
+  ~170 lines of duplication it would save.

@@ -10,7 +10,9 @@ import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { RecentTasksSection } from "@/components/RecentTasksSection";
 import { UniversalSearch } from "@/components/UniversalSearch";
-import { FloatingActionButton } from "@/components/FloatingActionButton";
+// FloatingActionButton import removed — duplicate Quick Add FAB was
+// stacking on top of the global FloatingSpeedDial (AppLayout). Brain-dump
+// from the speed-dial replaces this entry point.
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
 const Index = () => {
@@ -114,7 +116,7 @@ const Index = () => {
 
   return (
     <main className="min-h-screen bg-gradient-soft">
-      <FloatingActionButton />
+      {/* FloatingActionButton render removed — see import comment above. */}
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-lg mx-auto space-y-8">
           {/* Global Search - Prominent at top for authenticated users */}
