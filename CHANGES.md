@@ -1256,3 +1256,169 @@ support it).
   versions (both series keep `setStyle`, `setOverlaysWebView`,
   `setResizeMode`, `setAccessoryBarVisible`, `setScroll`, `impact`,
   etc. — already-used methods).
+
+---
+
+## 2026-04-19 — iOS Passkey authentication fix
+
+User report: "on iOS app, when I try to use passkey to login, it doesn't
+work and it fails, while on web app, it works."
+
+### Root cause (multi-layer)
+
+Passkeys in a Capacitor iOS WebView require FOUR things to line up; three
+were missing:
+
+1. **WebView origin must match (or be a registrable suffix of) the
+   WebAuthn RP ID.** Default Capacitor iOS origin is
+   `capacitor://localhost`. Clerk's production instance uses
+   `clerk.witholive.app` as the RP ID (decoded from
+   `pk_live_Y2xlcmsud2l0aG9saXZlLmFwcCQ`). WebKit throws `SecurityError`
+   when the two don't match, which Clerk surfaces as a generic
+   "passkey failed" — hiding the real cause.
+
+2. **`com.apple.developer.associated-domains` entitlement** with
+   `webcredentials:<domain>` entries is required for iOS to let the
+   WebView present platform passkeys for that domain. The iOS project
+   had no `.entitlements` file at all.
+
+3. **AASA (`apple-app-site-association`) JSON file** must be reachable
+   at `https://<domain>/.well-known/apple-app-site-association`,
+   served with `Content-Type: application/json` and no redirects.
+   iOS fetches this on install to verify the app is authorized to use
+   that domain's credentials. Missing entirely.
+
+4. **Silent secondary bug**: because Capacitor iOS reported hostname
+   `localhost`, `main.tsx`'s `isProductionOrigin()` was false → iOS
+   users fell back to the DEV Clerk instance (`pk_test_*`). Different
+   tenant from web users — silent data isolation.
+
+### Fix
+
+- **`capacitor.config.ts`** — added `server.hostname: 'witholive.app'` +
+  `server.iosScheme: 'https'`. Keeps `webDir` local (no `server.url`
+  override), so bundled assets still load from disk but under the
+  origin `https://witholive.app`. This single change unblocks items
+  (1) and (4): WebAuthn origin now matches and `isProductionOrigin()`
+  returns true on iOS. Migration note in the config file warns about
+  existing pk_test_* sessions being cleared on upgrade.
+
+- **`ios/App/App/App.entitlements`** — new file with:
+
+  ```xml
+  <key>com.apple.developer.associated-domains</key>
+  <array>
+    <string>webcredentials:witholive.app</string>
+    <string>webcredentials:www.witholive.app</string>
+    <string>webcredentials:clerk.witholive.app</string>
+    <string>applinks:witholive.app</string>
+    <string>applinks:www.witholive.app</string>
+  </array>
+  ```
+
+  Three `webcredentials:` entries cover the apex, `www`, and Clerk's
+  subdomain (so whichever RP ID Clerk uses is covered). `applinks:`
+  entries are additive — they don't break the existing `olive://`
+  custom scheme but pre-wire Universal Links for when we migrate the
+  deep-link flow off the custom scheme.
+
+- **`ios/App/App.xcodeproj/project.pbxproj`** — added
+  `CODE_SIGN_ENTITLEMENTS = App/App.entitlements;` to both Debug and
+  Release configs of the App target so Xcode picks up the entitlements
+  during codesign. Verified with `xcodebuild ... build` →
+  `** BUILD SUCCEEDED **`.
+
+- **`public/.well-known/apple-app-site-association`** — new AASA file.
+  Contains `webcredentials` (passkeys), `applinks` (Universal Links
+  pre-wired), and `appclips` (empty placeholder). Vite copies the
+  `public/.well-known/` tree into `dist/` verbatim, so deploys serve
+  it at `https://witholive.app/.well-known/apple-app-site-association`.
+
+- **`vercel.json`** — two changes required so Vercel actually serves
+  the AASA correctly:
+  1. Added a `/.well-known/:path*` → `/.well-known/:path*` rewrite
+     BEFORE the SPA catch-all. Without this, the existing
+     `/(.*) → /index.html` would rewrite the AASA to the HTML bundle,
+     and Apple would see HTML + reject.
+  2. Added a `headers` rule that sets `Content-Type: application/json`
+     + `Cache-Control: public, max-age=7200` for
+     `/.well-known/apple-app-site-association`. Apple rejects
+     `application/octet-stream` (Vercel's default for extension-less
+     files).
+
+- **`src/pages/SignIn.tsx`** — expanded `handlePasskeySignIn` error
+  logging. Before: `console.error('[SignIn] Passkey error:', err)` +
+  generic toast. After: structured log of
+  `{origin, hasCredentialsAPI, hasPublicKeyCredential, isNative}`
+  before the call, plus `{errorName, errorMessage, errorCause,
+  clerkCode, clerkLongMessage, clerkMeta, isNative}` on failure. Added
+  a dedicated `SecurityError` branch that tells the user "app origin
+  doesn't match" (what iOS without AASA actually reports) instead of
+  the misleading "not supported" message that used to run first.
+
+### Build verification
+
+- ✅ `npx tsc --noEmit` — clean.
+- ✅ `npm run build` — Vite bundle OK; AASA present at
+  `dist/.well-known/apple-app-site-association`.
+- ✅ `npx cap sync ios` — 5 plugins synced.
+- ✅ `xcodebuild -workspace App.xcworkspace -scheme App -sdk
+  iphonesimulator build` → `** BUILD SUCCEEDED **`.
+- ✅ `deno test supabase/functions/_shared/` — 217 / 0 failed.
+
+### REQUIRED Clerk dashboard config (manual, one-time)
+
+The Clerk production instance's allowed origins must include
+`https://witholive.app` (likely already there, since the web app
+works). If not, passkeys will still fail with a Clerk-side origin
+error, not an iOS one. Verify at:
+
+  Clerk Dashboard → Configure → Domains → Application origins
+
+No new origin is required — the iOS app now presents itself as
+`https://witholive.app`, which matches the existing web production
+origin. No code deploy can add Clerk origins; the user does this in
+the dashboard.
+
+### Post-deploy verification steps
+
+1. Deploy the web app to Vercel (dev branch → preview URL, or merge to
+   prod). Confirm `https://witholive.app/.well-known/apple-app-site-association`
+   returns `200 OK` with `Content-Type: application/json` and the
+   exact JSON body from `public/.well-known/apple-app-site-association`.
+
+2. Apple caches AASA aggressively. To force a re-fetch on a test
+   device: delete + reinstall the app (simulator: `xcrun simctl
+   uninstall booted app.olive.couple` then re-run). Alternative:
+   toggle "Developer → Reset Pass Kit / Associated Domains" in iOS
+   Settings (simulator has this under Developer menu).
+
+3. In Xcode: add the entitlements file to the project if not already
+   visible in the File Navigator (right-click App folder → Add Files →
+   select `App.entitlements`). The `project.pbxproj` already points to
+   it via `CODE_SIGN_ENTITLEMENTS`; this step just makes it visible in
+   the GUI.
+
+4. Run the app on simulator. Tap "Sign in with passkey". Expected
+   behavior:
+   - If user has NO passkey yet → Clerk prompts "Use an existing
+     passkey or set up a new one" via iOS system sheet.
+   - If user has a passkey registered on web → iOS offers it
+     immediately.
+   - Console logs `[SignIn/Passkey] Attempting authenticateWithPasskey`
+     with `origin: "https://witholive.app"`. If that origin is still
+     `capacitor://localhost`, the Capacitor config change didn't take
+     effect — run `npx cap sync ios` again.
+
+### Invariants preserved / trade-offs
+
+- Web passkey flow UNCHANGED. All changes are iOS-scoped.
+- API calls from iOS now originate from `https://witholive.app` —
+  Supabase CORS is permissive; no edge-function changes needed.
+- `olive://` custom scheme still works (the earlier deep-link fix is
+  independent of this one).
+- Deno tests + TypeScript compile still green.
+- One-time migration: iOS users currently signed in against
+  `pk_test_*` will be signed out on first launch after this change.
+  They sign in again with their real (web) credentials and land on the
+  correct Supabase data. Documented in `capacitor.config.ts` comment.
