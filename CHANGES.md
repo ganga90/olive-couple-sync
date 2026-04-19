@@ -1544,3 +1544,194 @@ Fixes:
   (isShared vs couple_id null-check) that a shared component would
   need a discriminated-union config object — more complexity than the
   ~170 lines of duplication it would save.
+
+---
+
+## 2026-04-19 — Phase 8-A · Eval Harness (static layer) + seed fixtures
+
+Ships the foundation of Olive's test-and-measurement layer — the thing
+the engineering plan called out as a prerequisite for Phase 5 (learning
+agents) and Phase 6 (Anthropic fallback): **how do we know a change to
+the prompt pipeline didn't regress quality?**
+
+Two-layer design:
+
+1. **STATIC** (this PR): pure-function pipeline invocation. No Gemini,
+   no DB. Runs in 2 ms for 12 fixtures. Free, deterministic, safe for
+   every CI run.
+2. **LIVE** (stubbed in types, not implemented): same cases against
+   real Gemini. Expensive, flaky, run nightly.
+
+The first cut focuses 100% on static so we can ship the CI gate without
+a billing conversation.
+
+### What the static layer catches
+
+- Intent alias drift (`help` stops mapping to `help_about_olive`).
+- Prompt-system flag regressions (rollout env misread).
+- `SLOT_USER` / `SLOT_DYNAMIC` overflow past 3,200-token budget.
+- Memory injection failures (seeded fact never reaches the prompt).
+- Missing required slots (`IDENTITY` / `QUERY` empty).
+- Compiled-vs-dynamic `userSlotSource` telemetry breaking.
+
+### Architecture
+
+```
+tools/eval-harness/
+  run.ts                               # Deno CLI entry
+  README.md                            # authoring + running docs
+  fixtures/*.json                      # one case per file (12 seeded)
+  reports/*.json                       # gitignored — timestamped runs
+
+supabase/functions/_shared/eval-harness/
+  types.ts                             # EvalCase, EvalResult, EvalReport
+  static-runner.ts                     # pure pipeline runner
+  loader.ts                            # JSON fixture loader + validator
+  reporter.ts                          # percentile math + human summary
+  eval-harness.test.ts                 # 27 meta-tests
+```
+
+### Case shape (JSON)
+
+```json
+{
+  "id": "chat-basic-solo",
+  "description": "Solo user asks for help drafting an email.",
+  "suite": "intent-classification",
+  "persona": "solo",
+  "layer": "static",
+  "tags": ["phase4-option-a", "regression"],
+  "input": { "message": "...", "userId": "..." },
+  "seededContext": { "compiledArtifacts": [...], "memoryChunks": [...] },
+  "classifierFixture": { "intent": { "intent": "chat", ... } },
+  "expected": {
+    "resolvedIntent": "chat",
+    "promptSystem": "modular",
+    "slotBudgetUnder": 3200,
+    "requiredSlotsPopulated": ["IDENTITY", "QUERY"],
+    "promptMustContain": ["espresso"]
+  }
+}
+```
+
+Every `expected` field is optional — the runner asserts only what the
+case opts into (open-world). This lets a case in the `memory-recall`
+suite focus its assertions on recall without having to over-specify
+other fields.
+
+### CLI
+
+```sh
+# Full static suite (default)
+deno run --allow-read --allow-write --allow-net --allow-env --allow-run \
+  tools/eval-harness/run.ts
+
+# Filter by suite
+deno run ... --suites memory-recall,prompt-budget
+
+# Filter by tag (any-match)
+deno run ... --tags phase4-option-a
+
+# CI-friendly
+deno run ... --fail-fast
+```
+
+Exit: `0` all-pass · `1` any failure · `2` CLI arg error. JSON report
+lands in `tools/eval-harness/reports/<iso-timestamp>.json` (gitignored).
+
+### First-cut fixture set (12 cases)
+
+| Suite | Cases |
+|---|---|
+| `intent-classification` | chat, contextual_ask, create, search, expense, help_about_olive (via `help` alias) — all modular path |
+| `user-slot-source` | couple persona with compiled artifacts → asserts `userSlotSource=compiled` |
+| `prompt-budget` | 5-artifact + 4-chunk overflow case → must stay under 3,200 tokens |
+| `memory-recall` | preference, safety (allergy), partner-name-via-compiled-artifact, empty-baseline |
+
+### First-run result (this PR, clean)
+
+```
+Olive Eval Harness — STATIC layer
+12/12 passed (100%)  ·  0 failed  ·  0 skipped
+
+Per-suite:
+  ✓ intent-classification         6/6 pass
+  ✓ user-slot-source              1/1 pass
+  ✓ prompt-budget                 1/1 pass
+  ✓ memory-recall                 4/4 pass
+
+Classifier accuracy:  100%
+Memory recall rate:   100%
+Token budgets (total across all slots, passing cases):
+  intent-classification         p50=404  p95=420  max=425
+  memory-recall                 p50=417  p95=430  max=431
+Avg tokens by intent:
+  chat=411  contextual-ask=523  create=404  search=362
+  expense=403  help-about-olive=405
+
+Completed in 2ms.
+```
+
+That 2 ms number is the most important line in this report: it means
+the harness can run on EVERY PR without anyone caring about CI cost.
+
+### Testing the tester
+
+`eval-harness.test.ts` — **27 meta-tests** covering:
+
+- Loader: accepts well-formed cases, rejects each required-field
+  omission, aggregates errors across a batch.
+- Static runner pass/fail paths: happy path, intent mismatch, budget
+  overflow, required-slot missing, must-contain/must-not-contain,
+  memory strategy inference, skip-reason when layer mismatches.
+- Batch: suite filter, tag any-match filter, failFast halts early.
+- Reporter: pass/fail/skip totals, percentile omission under small N,
+  classifier accuracy + memory recall rates restricted to matching
+  suites, human-summary headline + failure block.
+
+Full `_shared/` regression: **244 passed / 0 failed** (was 217 pre-PR;
+net +27 meta-tests, zero pre-existing failures).
+
+### Design invariants preserved
+
+- **Never throws from the runner.** An unexpected exception in
+  `runStaticCase` is recorded as an `internal_error` failure, not a
+  thrown error — one bad case doesn't blow up the batch.
+- **Fixtures are pure data.** No TS imports needed to author one.
+  PMs can open `fixtures/*.json`, copy the nearest case, and edit.
+- **Assertions are structured, not textual.** A failure tells you
+  exactly which field differed and what the expected/actual was.
+  Reporter groups by failure type to surface systemic bugs.
+- **Runner uses the SAME code production uses.** `resolvePrompt`,
+  `assembleContext`, `assembleCompiledSlot`, `fetchMemoryChunks`,
+  registry aliases — all imported from `_shared/` without stubs. The
+  only stubs are `MemoryDB` (seeded chunks) and the classifier
+  (fixture). If the harness passes, production routing works.
+- **No Supabase, no Gemini, no network.** Static layer is hermetic —
+  runs on a laptop in airplane mode.
+
+### What's next (not in this PR)
+
+1. **GitHub Actions CI gate** — run the static suite on every PR;
+   fail the PR if `classifierAccuracy < 1.0` or `memoryRecallRate <
+   1.0` or p95 tokens regress >20% vs `main`'s baseline report.
+2. **Live layer** — real Gemini calls behind an env flag + a
+   nightly-only workflow. Records response patterns, token usage,
+   latency. Cases can opt in via `expected.responseShape`.
+3. **Gold baseline diffing** — snapshot prompts in a baseline report
+   committed to git; diff per PR so unintended prompt drift shows up
+   in review.
+4. **Grow the fixture set** — engineering plan target: 60 cases
+   across 3 personas × 8 intents. Seeded at 12; grow as real bugs
+   and edge cases surface.
+
+### Invariants preserved across Phase 1 → 4 → Option A → iOS → 8-A
+
+All prior invariants still hold. The harness is strictly additive:
+zero changes to edge-function handlers, shared modules, or React UI.
+Build + test chain:
+
+- `npx tsc --noEmit` — clean.
+- `npm run build` — Vite bundle unchanged.
+- `deno test supabase/functions/_shared/` — **244 / 0 failed**.
+- `deno run tools/eval-harness/run.ts` — **12 / 12 passed, 2 ms**.

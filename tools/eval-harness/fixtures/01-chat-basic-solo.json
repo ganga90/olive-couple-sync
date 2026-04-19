@@ -1,0 +1,28 @@
+{
+  "id": "chat-basic-solo",
+  "description": "Solo user asks for help drafting an email — should route to chat module, modular path.",
+  "suite": "intent-classification",
+  "persona": "solo",
+  "layer": "static",
+  "tags": ["phase4-option-a", "chat-path", "baseline"],
+  "input": {
+    "message": "Can you help me draft a short email to my landlord about the leak in the kitchen?",
+    "userId": "user-solo-01"
+  },
+  "classifierFixture": {
+    "intent": {
+      "intent": "chat",
+      "confidence": 0.9,
+      "target_task_name": null,
+      "parameters": {}
+    },
+    "notes": "Unambiguous assistive/drafting request."
+  },
+  "expected": {
+    "resolvedIntent": "chat",
+    "promptSystem": "modular",
+    "moduleVersion": "chat-intent-v1.0",
+    "slotBudgetUnder": 3200,
+    "requiredSlotsPopulated": ["IDENTITY", "QUERY"]
+  }
+}

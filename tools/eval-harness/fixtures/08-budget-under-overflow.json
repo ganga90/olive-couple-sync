@@ -1,0 +1,59 @@
+{
+  "id": "budget-under-overflow",
+  "description": "Massive seeded memory + long history — Context Contract must still produce output under STANDARD_BUDGET (3200) by truncating DYNAMIC/HISTORY. Required slots preserved.",
+  "suite": "prompt-budget",
+  "persona": "solo",
+  "layer": "static",
+  "tags": ["phase4-option-a", "budget", "regression"],
+  "input": {
+    "message": "Tell me about my preferences and routines.",
+    "userId": "user-budget-01",
+    "conversationHistory": [
+      { "role": "user", "content": "I mentioned last week that I prefer early meetings. And I like espresso. And I'm allergic to peanuts." },
+      { "role": "assistant", "content": "Got it — I've noted those. Morning meetings, espresso, peanut allergy." },
+      { "role": "user", "content": "Also remember my partner is lactose intolerant." },
+      { "role": "assistant", "content": "Noted — Sarah is lactose intolerant." }
+    ]
+  },
+  "seededContext": {
+    "compiledArtifacts": [
+      {
+        "file_type": "profile",
+        "content": "Name: Alex (user-budget-01). Partner: Sarah. Timezone: America/New_York. Language: English. Prefers morning meetings. Loves espresso. Peanut allergy. Sarah: lactose intolerant. Lives in Miami. Works remote."
+      },
+      {
+        "file_type": "patterns",
+        "content": "Morning-coffee-before-work (daily 7am). Sunday-meal-prep (weekly). Monthly expense review on last Friday."
+      },
+      {
+        "file_type": "relationship",
+        "content": "Shared: grocery list, calendar, expenses. Sarah handles grocery shopping; Alex handles bills. Weekend activities: hiking, brunch."
+      },
+      {
+        "file_type": "household",
+        "content": "Home: Miami condo. Pets: cat named Luna. Utilities auto-paid. Rent on the 1st."
+      }
+    ],
+    "memoryChunks": [
+      { "id": "mc1", "content": "Alex prefers morning meetings.", "chunk_type": "fact", "importance": 5 },
+      { "id": "mc2", "content": "Alex loves espresso.", "chunk_type": "fact", "importance": 4 },
+      { "id": "mc3", "content": "Sarah is lactose intolerant.", "chunk_type": "fact", "importance": 5 },
+      { "id": "mc4", "content": "Alex allergic to peanuts.", "chunk_type": "fact", "importance": 5 },
+      { "id": "mc5", "content": "Weekend hiking together.", "chunk_type": "pattern", "importance": 3 }
+    ]
+  },
+  "classifierFixture": {
+    "intent": {
+      "intent": "contextual_ask",
+      "confidence": 0.93,
+      "target_task_name": null,
+      "parameters": {}
+    }
+  },
+  "expected": {
+    "promptSystem": "modular",
+    "resolvedIntent": "contextual_ask",
+    "slotBudgetUnder": 3200,
+    "requiredSlotsPopulated": ["IDENTITY", "QUERY", "USER_COMPILED", "INTENT_MODULE"]
+  }
+}

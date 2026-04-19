@@ -1,0 +1,35 @@
+{
+  "id": "memory-recall-couple-partner-name",
+  "description": "Partner name seeded in compiled artifact (not memory chunk). Prompt must include partner name via USER_COMPILED slot.",
+  "suite": "memory-recall",
+  "persona": "couple",
+  "layer": "static",
+  "tags": ["phase4-option-a", "memory-recall", "compiled-artifacts"],
+  "input": {
+    "message": "Remind me who handles the bills here?",
+    "userId": "user-recall-03",
+    "coupleId": "couple-recall-03"
+  },
+  "seededContext": {
+    "compiledArtifacts": [
+      {
+        "file_type": "profile",
+        "content": "User: Alex. Partner: Sarah. Alex handles bills; Sarah handles groceries."
+      }
+    ]
+  },
+  "classifierFixture": {
+    "intent": {
+      "intent": "contextual_ask",
+      "confidence": 0.93,
+      "target_task_name": null,
+      "parameters": {}
+    }
+  },
+  "expected": {
+    "userSlotSource": "compiled",
+    "requiredSlotsPopulated": ["USER_COMPILED"],
+    "slotBudgetUnder": 3200,
+    "promptMustContain": ["Sarah"]
+  }
+}

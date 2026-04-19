@@ -1,0 +1,35 @@
+{
+  "id": "memory-recall-allergy",
+  "description": "Critical safety recall: seeded peanut allergy must reach the prompt when user asks for dinner suggestions.",
+  "suite": "memory-recall",
+  "persona": "solo",
+  "layer": "static",
+  "tags": ["phase4-option-a", "memory-recall", "safety"],
+  "input": {
+    "message": "What should I cook for dinner tonight?",
+    "userId": "user-recall-02"
+  },
+  "seededContext": {
+    "memoryChunks": [
+      {
+        "id": "mc-allergy",
+        "content": "Alex has a severe peanut allergy.",
+        "chunk_type": "fact",
+        "importance": 5
+      }
+    ]
+  },
+  "classifierFixture": {
+    "intent": {
+      "intent": "chat",
+      "confidence": 0.9,
+      "target_task_name": null,
+      "parameters": {}
+    }
+  },
+  "expected": {
+    "memoryRetrievalStrategy": "importance_only",
+    "slotBudgetUnder": 3200,
+    "promptMustContain": ["peanut allergy"]
+  }
+}
