@@ -93,7 +93,7 @@ export const NoteReactions: React.FC<NoteReactionsProps> = ({
             className={cn(
               "inline-flex items-center justify-center w-7 h-7 rounded-full",
               "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-              "transition-all opacity-0 group-hover:opacity-100",
+              "transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100",
               className
             )}
             aria-label="Add reaction"

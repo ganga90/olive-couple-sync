@@ -334,7 +334,7 @@ export default function Knowledge() {
               </CardContent>
             </Card>
           ) : (
-            <ScrollArea className="h-[500px]">
+            <ScrollArea className="h-[60vh] max-h-[500px] min-h-[320px]">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {filteredEntities.map((entity) => (
                   <EntityCard
@@ -359,7 +359,7 @@ export default function Knowledge() {
               </CardContent>
             </Card>
           ) : (
-            <ScrollArea className="h-[500px]">
+            <ScrollArea className="h-[60vh] max-h-[500px] min-h-[320px]">
               <div className="space-y-2">
                 {relationships.map((rel) => {
                   const source = entities.find((e) => e.id === rel.source_entity_id);

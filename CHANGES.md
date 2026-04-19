@@ -1145,3 +1145,114 @@ errors introduced.
   partial.
 - Memory retrieval returns EXACTLY `min(available, maxTotal)` chunks
   for any `maxTotal >= 0`. No more off-by-one.
+
+---
+
+## 2026-04-19 — Phase 4 Option A follow-up · iOS parity hardening
+
+Three HIGH-severity iOS issues surfaced by the parity audit + one
+pre-existing Capacitor version mismatch that was blocking the Xcode
+build. All four fixed. `** BUILD SUCCEEDED **` verified.
+
+### Fix 1 · Hover-hidden interactive elements (HIGH, 6 files)
+
+Multiple surfaces hid buttons behind `opacity-0 group-hover:opacity-100`.
+On touch devices there IS no hover — the buttons were invisible and
+unreachable. Pattern applied across the codebase:
+
+  `opacity-0 group-hover:opacity-100`
+→ `opacity-100 md:opacity-0 md:group-hover:opacity-100`
+
+Mobile (< 768px): always visible. Desktop (≥ 768px): legacy hover
+behavior preserved. Files touched:
+
+- `src/components/NoteMediaSection.tsx` — external-link button on media rows
+- `src/components/NoteInput.tsx` — media chip delete buttons (×2)
+- `src/components/NoteReactions.tsx` — reaction add button
+- `src/components/NoteThreads.tsx` — thread actions menu trigger
+- `src/components/PartnerActivityWidget.tsx` — activity row arrow
+- `src/pages/Lists.tsx` — delete-list button
+
+NOT touched: `src/components/layout/ContextRail.tsx` (desktop-only
+sidebar — hover is fine there) and `src/components/ui/toast.tsx`
+(shadcn primitive; auto-dismiss makes the X optional).
+
+### Fix 2 · Fixed `h-[500px]` ScrollArea (HIGH)
+
+`src/pages/Knowledge.tsx` had two ScrollAreas hard-coded to 500px —
+on iPhone SE (568px tall) this filled the entire viewport, making
+content unreachable.
+
+Replaced with `h-[60vh] max-h-[500px] min-h-[320px]`:
+- iPhone SE: 60vh × ~568 = ~341px, clamped by min-h to 320px.
+- iPhone 15 Pro: 60vh × ~852 = ~511px, clamped by max-h to 500px.
+- Desktop: 60vh > 500px, max-h clamps back to 500px (legacy behavior).
+
+### Fix 3 · Deep-link OAuth return listener (HIGH)
+
+`src/pages/AuthRedirectNative.tsx` fires `window.location.href =
+'olive://auth-complete'` to re-open the native app after web sign-in.
+The scheme was registered in `Info.plist` but NO `appUrlOpen` listener
+was wired on the native side — any URL the OS routed back to the app
+was silently dropped.
+
+- Installed `@capacitor/app@^7.1.2`.
+- Extended `src/lib/capacitor-init.ts` with an `App.addListener(
+  'appUrlOpen', ...)` handler using the existing dynamic-import +
+  try/catch pattern (so web builds that don't have the plugin don't
+  break).
+- `handleDeepLink(url)` parses the scheme, routes `auth-complete`
+  back into the React app with a full location reload (forces Clerk
+  SDK re-hydrate from storage), and is extensible for future paths
+  (`olive://note/<id>`, etc.).
+- Pure URL logic exported as `__test__.handleDeepLink` for future
+  unit coverage.
+- Documented limitation in-code: this listener routes the URL, but
+  cross-context auth session restoration (Safari sign-in → native
+  WebView session) still depends on Clerk's mechanisms. Full native
+  auth flow is a follow-up.
+
+### Fix 4 · Pre-existing Capacitor v7/v8 plugin mismatch (infra)
+
+The Xcode build was broken on `origin/dev` BEFORE this PR: `@capacitor/
+core` + `ios` were at 7.4.3 but `status-bar`, `keyboard`, `haptics`
+had been upgraded to v8.x. `CapacitorStatusBar/StatusBar.swift`
+referenced `NSNotification.Name.capacitorViewDidAppear` which only
+exists in Capacitor 8 core. Build failed with:
+
+  `error: type 'NSNotification.Name?' has no member 'capacitorViewDidAppear'`
+
+Downgraded three plugins to v7 to match core:
+  - `@capacitor/status-bar`: 8.0.2 → 7.0.6
+  - `@capacitor/keyboard`:   8.0.3 → 7.0.6
+  - `@capacitor/haptics`:    8.0.2 → 7.0.5
+
+Also bumped `ios/App/Podfile` and `ios/App/App.xcodeproj` deployment
+target from iOS 14.0 → 15.0 (needed transiently while v8 plugins were
+installed; kept at 15.0 since it's a safer baseline — iPhone 6s+ all
+support it).
+
+`xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug
+-sdk iphonesimulator build` now produces `** BUILD SUCCEEDED **`.
+
+### Test + build verification
+
+- ✅ `deno test supabase/functions/_shared/` — 217 passed / 0 failed.
+- ✅ `npx tsc --noEmit` — clean (React side compiles).
+- ✅ `npm run build` — Vite production bundle builds (~4.3s).
+- ✅ `npx cap sync ios` — 5 Capacitor plugins installed for iOS.
+- ✅ `xcodebuild ... build` — `** BUILD SUCCEEDED **` on iphonesimulator.
+
+### Invariants preserved
+
+- Desktop hover behavior unchanged on all touched files.
+- Knowledge ScrollArea height is IDENTICAL to pre-PR on desktop
+  (≥ 833px viewport: `60vh > 500px → max-h caps to 500px`).
+- Deep-link listener never throws (guarded by try/catch around the
+  dynamic import AND the URL handler).
+- `@capacitor/app` is loaded lazily — web builds don't pull it in.
+- Plugin version alignment is strictly a downgrade in minor/major
+  numbers; no API usage in Capacitor 7 was lost from the Capacitor 8
+  versions (both series keep `setStyle`, `setOverlaysWebView`,
+  `setResizeMode`, `setAccessoryBarVisible`, `setScroll`, `impact`,
+  etc. — already-used methods).

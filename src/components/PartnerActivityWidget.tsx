@@ -152,7 +152,7 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
                 </p>
               </div>
               <ArrowRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-primary
-                                     opacity-0 group-hover:opacity-100 transition-all mt-2
+                                     opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all mt-2
                                      group-hover:translate-x-0.5" />
             </div>
           </button>
