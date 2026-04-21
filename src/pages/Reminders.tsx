@@ -12,7 +12,9 @@ import { Bell, Clock, Calendar, AlertTriangle, CheckCircle2, ChevronRight } from
 import { addHours, isBefore, isAfter, addDays, format, formatDistanceToNow } from "date-fns";
 import { useDateLocale } from "@/hooks/useDateLocale";
 import { QuickEditReminderDialog } from "@/components/QuickEditReminderDialog";
-import { FloatingActionButton } from "@/components/FloatingActionButton";
+// FloatingActionButton import removed — duplicate Quick Add FAB was
+// stacking on top of the global FloatingSpeedDial (AppLayout). Brain-dump
+// from the speed-dial replaces this entry point.
 import { SwipeableReminderCard } from "@/components/SwipeableReminderCard";
 import { cn } from "@/lib/utils";
 import type { Note } from "@/types/note";
@@ -206,8 +208,7 @@ const Reminders = () => {
 
   return (
     <div className="h-full overflow-y-auto bg-background atmosphere-bg">
-      <FloatingActionButton />
-      
+      {/* FloatingActionButton render removed — see import comment above. */}
       <div className="px-4 pt-6 pb-24 md:pb-6 space-y-6 max-w-2xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between animate-fade-up">

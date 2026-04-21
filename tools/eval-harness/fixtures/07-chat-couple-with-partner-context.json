@@ -1,0 +1,42 @@
+{
+  "id": "chat-couple-with-partner-context",
+  "description": "Couple-user chat turn — partner context + couple memory present. Prompt must include partner-scoped facts. Also acts as a USER_COMPILED=compiled telemetry check.",
+  "suite": "user-slot-source",
+  "persona": "couple",
+  "layer": "static",
+  "tags": ["phase4-option-a", "couple", "compiled-artifacts"],
+  "input": {
+    "message": "What should I plan for Sarah's birthday next weekend?",
+    "userId": "user-couple-07",
+    "coupleId": "couple-07"
+  },
+  "seededContext": {
+    "profile": "Name: Alex. Partner: Sarah. Timezone: America/New_York.",
+    "compiledArtifacts": [
+      {
+        "file_type": "profile",
+        "content": "Alex — works remote, partner Sarah, likes planning ahead."
+      },
+      {
+        "file_type": "relationship",
+        "content": "Sarah loves Italian food; her birthday is June 15; prefers small gatherings."
+      }
+    ]
+  },
+  "classifierFixture": {
+    "intent": {
+      "intent": "chat",
+      "confidence": 0.9,
+      "target_task_name": null,
+      "parameters": {}
+    }
+  },
+  "expected": {
+    "resolvedIntent": "chat",
+    "promptSystem": "modular",
+    "userSlotSource": "compiled",
+    "slotBudgetUnder": 3200,
+    "requiredSlotsPopulated": ["IDENTITY", "QUERY", "USER_COMPILED"],
+    "promptMustContain": ["Sarah", "Italian"]
+  }
+}

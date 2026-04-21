@@ -513,7 +513,7 @@ const Lists = () => {
                               e.stopPropagation();
                               handleDeleteList(list.id, list.name);
                             }}
-                            className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-2 hover:bg-[hsl(var(--priority-high))]/10 rounded-xl"
+                            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all duration-200 p-2 hover:bg-[hsl(var(--priority-high))]/10 rounded-xl"
                             aria-label="Delete list"
                           >
                             <Trash2 className="h-4 w-4 text-[hsl(var(--priority-high))]" />

@@ -17,7 +17,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Pencil, Trash2, CheckCircle2, Circle, Plus, ChevronDown, ChevronUp, Calendar, User, AlertCircle, Users, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { NoteInput } from "@/components/NoteInput";
-import { FloatingActionButton } from "@/components/FloatingActionButton";
+// FloatingActionButton removed here — was stacking on top of the global
+// FloatingSpeedDial (mounted in AppLayout) and the FeedbackDialog FAB,
+// producing three overlapping FABs on the bottom-right. The speed-dial
+// already provides Ask Olive + Brain-dump entry points (brain-dump
+// replaces the FAB's Quick Add Note flow).
+import { ListPrivacyToggle } from "@/components/ListPrivacyToggle";
 import { cn } from "@/lib/utils";
 import { useLocalizedNavigate, useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 
@@ -185,7 +190,7 @@ const ListCategory = () => {
 
   return (
     <div className="h-full overflow-y-auto bg-background">
-      <FloatingActionButton />
+      {/* FloatingActionButton render removed — see import comment above. */}
       <div className="px-4 pt-6 pb-24 max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="animate-fade-up">
@@ -210,17 +215,19 @@ const ListCategory = () => {
                     {t('badges.auto')}
                   </Badge>
                 )}
-                {currentList.couple_id ? (
-                  <Badge variant="secondary" className="text-xs bg-primary/10 text-primary flex-shrink-0 gap-1">
-                    <Users className="h-3 w-3" />
-                    {t('badges.shared')}
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary" className="text-xs bg-muted text-muted-foreground flex-shrink-0 gap-1">
-                    <Lock className="h-3 w-3" />
-                    {t('badges.private')}
-                  </Badge>
-                )}
+                {/*
+                  Privacy toggle — was a static Badge pair that only
+                  DISPLAYED the current state. Users reported tapping it
+                  did nothing. Now a Popover-backed Button mirroring
+                  `NotePrivacyToggle`, so the list pill and the note
+                  pill share the same mental model. Writes through
+                  `useSupabaseLists.updateList` and toasts success/failure.
+                */}
+                <ListPrivacyToggle
+                  listId={currentList.id}
+                  isShared={!!currentList.couple_id}
+                />
+
               </div>
               {currentList.description && (
                 <p className="text-sm text-muted-foreground">{currentList.description}</p>

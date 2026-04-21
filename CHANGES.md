@@ -1145,3 +1145,717 @@ errors introduced.
   partial.
 - Memory retrieval returns EXACTLY `min(available, maxTotal)` chunks
   for any `maxTotal >= 0`. No more off-by-one.
+
+---
+
+## 2026-04-19 — Phase 4 Option A follow-up · iOS parity hardening
+
+Three HIGH-severity iOS issues surfaced by the parity audit + one
+pre-existing Capacitor version mismatch that was blocking the Xcode
+build. All four fixed. `** BUILD SUCCEEDED **` verified.
+
+### Fix 1 · Hover-hidden interactive elements (HIGH, 6 files)
+
+Multiple surfaces hid buttons behind `opacity-0 group-hover:opacity-100`.
+On touch devices there IS no hover — the buttons were invisible and
+unreachable. Pattern applied across the codebase:
+
+  `opacity-0 group-hover:opacity-100`
+→ `opacity-100 md:opacity-0 md:group-hover:opacity-100`
+
+Mobile (< 768px): always visible. Desktop (≥ 768px): legacy hover
+behavior preserved. Files touched:
+
+- `src/components/NoteMediaSection.tsx` — external-link button on media rows
+- `src/components/NoteInput.tsx` — media chip delete buttons (×2)
+- `src/components/NoteReactions.tsx` — reaction add button
+- `src/components/NoteThreads.tsx` — thread actions menu trigger
+- `src/components/PartnerActivityWidget.tsx` — activity row arrow
+- `src/pages/Lists.tsx` — delete-list button
+
+NOT touched: `src/components/layout/ContextRail.tsx` (desktop-only
+sidebar — hover is fine there) and `src/components/ui/toast.tsx`
+(shadcn primitive; auto-dismiss makes the X optional).
+
+### Fix 2 · Fixed `h-[500px]` ScrollArea (HIGH)
+
+`src/pages/Knowledge.tsx` had two ScrollAreas hard-coded to 500px —
+on iPhone SE (568px tall) this filled the entire viewport, making
+content unreachable.
+
+Replaced with `h-[60vh] max-h-[500px] min-h-[320px]`:
+- iPhone SE: 60vh × ~568 = ~341px, clamped by min-h to 320px.
+- iPhone 15 Pro: 60vh × ~852 = ~511px, clamped by max-h to 500px.
+- Desktop: 60vh > 500px, max-h clamps back to 500px (legacy behavior).
+
+### Fix 3 · Deep-link OAuth return listener (HIGH)
+
+`src/pages/AuthRedirectNative.tsx` fires `window.location.href =
+'olive://auth-complete'` to re-open the native app after web sign-in.
+The scheme was registered in `Info.plist` but NO `appUrlOpen` listener
+was wired on the native side — any URL the OS routed back to the app
+was silently dropped.
+
+- Installed `@capacitor/app@^7.1.2`.
+- Extended `src/lib/capacitor-init.ts` with an `App.addListener(
+  'appUrlOpen', ...)` handler using the existing dynamic-import +
+  try/catch pattern (so web builds that don't have the plugin don't
+  break).
+- `handleDeepLink(url)` parses the scheme, routes `auth-complete`
+  back into the React app with a full location reload (forces Clerk
+  SDK re-hydrate from storage), and is extensible for future paths
+  (`olive://note/<id>`, etc.).
+- Pure URL logic exported as `__test__.handleDeepLink` for future
+  unit coverage.
+- Documented limitation in-code: this listener routes the URL, but
+  cross-context auth session restoration (Safari sign-in → native
+  WebView session) still depends on Clerk's mechanisms. Full native
+  auth flow is a follow-up.
+
+### Fix 4 · Pre-existing Capacitor v7/v8 plugin mismatch (infra)
+
+The Xcode build was broken on `origin/dev` BEFORE this PR: `@capacitor/
+core` + `ios` were at 7.4.3 but `status-bar`, `keyboard`, `haptics`
+had been upgraded to v8.x. `CapacitorStatusBar/StatusBar.swift`
+referenced `NSNotification.Name.capacitorViewDidAppear` which only
+exists in Capacitor 8 core. Build failed with:
+
+  `error: type 'NSNotification.Name?' has no member 'capacitorViewDidAppear'`
+
+Downgraded three plugins to v7 to match core:
+  - `@capacitor/status-bar`: 8.0.2 → 7.0.6
+  - `@capacitor/keyboard`:   8.0.3 → 7.0.6
+  - `@capacitor/haptics`:    8.0.2 → 7.0.5
+
+Also bumped `ios/App/Podfile` and `ios/App/App.xcodeproj` deployment
+target from iOS 14.0 → 15.0 (needed transiently while v8 plugins were
+installed; kept at 15.0 since it's a safer baseline — iPhone 6s+ all
+support it).
+
+`xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug
+-sdk iphonesimulator build` now produces `** BUILD SUCCEEDED **`.
+
+### Test + build verification
+
+- ✅ `deno test supabase/functions/_shared/` — 217 passed / 0 failed.
+- ✅ `npx tsc --noEmit` — clean (React side compiles).
+- ✅ `npm run build` — Vite production bundle builds (~4.3s).
+- ✅ `npx cap sync ios` — 5 Capacitor plugins installed for iOS.
+- ✅ `xcodebuild ... build` — `** BUILD SUCCEEDED **` on iphonesimulator.
+
+### Invariants preserved
+
+- Desktop hover behavior unchanged on all touched files.
+- Knowledge ScrollArea height is IDENTICAL to pre-PR on desktop
+  (≥ 833px viewport: `60vh > 500px → max-h caps to 500px`).
+- Deep-link listener never throws (guarded by try/catch around the
+  dynamic import AND the URL handler).
+- `@capacitor/app` is loaded lazily — web builds don't pull it in.
+- Plugin version alignment is strictly a downgrade in minor/major
+  numbers; no API usage in Capacitor 7 was lost from the Capacitor 8
+  versions (both series keep `setStyle`, `setOverlaysWebView`,
+  `setResizeMode`, `setAccessoryBarVisible`, `setScroll`, `impact`,
+  etc. — already-used methods).
+
+---
+
+## 2026-04-19 — iOS Passkey authentication fix
+
+User report: "on iOS app, when I try to use passkey to login, it doesn't
+work and it fails, while on web app, it works."
+
+### Root cause (multi-layer)
+
+Passkeys in a Capacitor iOS WebView require FOUR things to line up; three
+were missing:
+
+1. **WebView origin must match (or be a registrable suffix of) the
+   WebAuthn RP ID.** Default Capacitor iOS origin is
+   `capacitor://localhost`. Clerk's production instance uses
+   `clerk.witholive.app` as the RP ID (decoded from
+   `pk_live_Y2xlcmsud2l0aG9saXZlLmFwcCQ`). WebKit throws `SecurityError`
+   when the two don't match, which Clerk surfaces as a generic
+   "passkey failed" — hiding the real cause.
+
+2. **`com.apple.developer.associated-domains` entitlement** with
+   `webcredentials:<domain>` entries is required for iOS to let the
+   WebView present platform passkeys for that domain. The iOS project
+   had no `.entitlements` file at all.
+
+3. **AASA (`apple-app-site-association`) JSON file** must be reachable
+   at `https://<domain>/.well-known/apple-app-site-association`,
+   served with `Content-Type: application/json` and no redirects.
+   iOS fetches this on install to verify the app is authorized to use
+   that domain's credentials. Missing entirely.
+
+4. **Silent secondary bug**: because Capacitor iOS reported hostname
+   `localhost`, `main.tsx`'s `isProductionOrigin()` was false → iOS
+   users fell back to the DEV Clerk instance (`pk_test_*`). Different
+   tenant from web users — silent data isolation.
+
+### Fix
+
+- **`capacitor.config.ts`** — added `server.hostname: 'witholive.app'` +
+  `server.iosScheme: 'https'`. Keeps `webDir` local (no `server.url`
+  override), so bundled assets still load from disk but under the
+  origin `https://witholive.app`. This single change unblocks items
+  (1) and (4): WebAuthn origin now matches and `isProductionOrigin()`
+  returns true on iOS. Migration note in the config file warns about
+  existing pk_test_* sessions being cleared on upgrade.
+
+- **`ios/App/App/App.entitlements`** — new file with:
+
+  ```xml
+  <key>com.apple.developer.associated-domains</key>
+  <array>
+    <string>webcredentials:witholive.app</string>
+    <string>webcredentials:www.witholive.app</string>
+    <string>webcredentials:clerk.witholive.app</string>
+    <string>applinks:witholive.app</string>
+    <string>applinks:www.witholive.app</string>
+  </array>
+  ```
+
+  Three `webcredentials:` entries cover the apex, `www`, and Clerk's
+  subdomain (so whichever RP ID Clerk uses is covered). `applinks:`
+  entries are additive — they don't break the existing `olive://`
+  custom scheme but pre-wire Universal Links for when we migrate the
+  deep-link flow off the custom scheme.
+
+- **`ios/App/App.xcodeproj/project.pbxproj`** — added
+  `CODE_SIGN_ENTITLEMENTS = App/App.entitlements;` to both Debug and
+  Release configs of the App target so Xcode picks up the entitlements
+  during codesign. Verified with `xcodebuild ... build` →
+  `** BUILD SUCCEEDED **`.
+
+- **`public/.well-known/apple-app-site-association`** — new AASA file.
+  Contains `webcredentials` (passkeys), `applinks` (Universal Links
+  pre-wired), and `appclips` (empty placeholder). Vite copies the
+  `public/.well-known/` tree into `dist/` verbatim, so deploys serve
+  it at `https://witholive.app/.well-known/apple-app-site-association`.
+
+- **`vercel.json`** — two changes required so Vercel actually serves
+  the AASA correctly:
+  1. Added a `/.well-known/:path*` → `/.well-known/:path*` rewrite
+     BEFORE the SPA catch-all. Without this, the existing
+     `/(.*) → /index.html` would rewrite the AASA to the HTML bundle,
+     and Apple would see HTML + reject.
+  2. Added a `headers` rule that sets `Content-Type: application/json`
+     + `Cache-Control: public, max-age=7200` for
+     `/.well-known/apple-app-site-association`. Apple rejects
+     `application/octet-stream` (Vercel's default for extension-less
+     files).
+
+- **`src/pages/SignIn.tsx`** — expanded `handlePasskeySignIn` error
+  logging. Before: `console.error('[SignIn] Passkey error:', err)` +
+  generic toast. After: structured log of
+  `{origin, hasCredentialsAPI, hasPublicKeyCredential, isNative}`
+  before the call, plus `{errorName, errorMessage, errorCause,
+  clerkCode, clerkLongMessage, clerkMeta, isNative}` on failure. Added
+  a dedicated `SecurityError` branch that tells the user "app origin
+  doesn't match" (what iOS without AASA actually reports) instead of
+  the misleading "not supported" message that used to run first.
+
+### Build verification
+
+- ✅ `npx tsc --noEmit` — clean.
+- ✅ `npm run build` — Vite bundle OK; AASA present at
+  `dist/.well-known/apple-app-site-association`.
+- ✅ `npx cap sync ios` — 5 plugins synced.
+- ✅ `xcodebuild -workspace App.xcworkspace -scheme App -sdk
+  iphonesimulator build` → `** BUILD SUCCEEDED **`.
+- ✅ `deno test supabase/functions/_shared/` — 217 / 0 failed.
+
+### REQUIRED Clerk dashboard config (manual, one-time)
+
+The Clerk production instance's allowed origins must include
+`https://witholive.app` (likely already there, since the web app
+works). If not, passkeys will still fail with a Clerk-side origin
+error, not an iOS one. Verify at:
+
+  Clerk Dashboard → Configure → Domains → Application origins
+
+No new origin is required — the iOS app now presents itself as
+`https://witholive.app`, which matches the existing web production
+origin. No code deploy can add Clerk origins; the user does this in
+the dashboard.
+
+### Post-deploy verification steps
+
+1. Deploy the web app to Vercel (dev branch → preview URL, or merge to
+   prod). Confirm `https://witholive.app/.well-known/apple-app-site-association`
+   returns `200 OK` with `Content-Type: application/json` and the
+   exact JSON body from `public/.well-known/apple-app-site-association`.
+
+2. Apple caches AASA aggressively. To force a re-fetch on a test
+   device: delete + reinstall the app (simulator: `xcrun simctl
+   uninstall booted app.olive.couple` then re-run). Alternative:
+   toggle "Developer → Reset Pass Kit / Associated Domains" in iOS
+   Settings (simulator has this under Developer menu).
+
+3. In Xcode: add the entitlements file to the project if not already
+   visible in the File Navigator (right-click App folder → Add Files →
+   select `App.entitlements`). The `project.pbxproj` already points to
+   it via `CODE_SIGN_ENTITLEMENTS`; this step just makes it visible in
+   the GUI.
+
+4. Run the app on simulator. Tap "Sign in with passkey". Expected
+   behavior:
+   - If user has NO passkey yet → Clerk prompts "Use an existing
+     passkey or set up a new one" via iOS system sheet.
+   - If user has a passkey registered on web → iOS offers it
+     immediately.
+   - Console logs `[SignIn/Passkey] Attempting authenticateWithPasskey`
+     with `origin: "https://witholive.app"`. If that origin is still
+     `capacitor://localhost`, the Capacitor config change didn't take
+     effect — run `npx cap sync ios` again.
+
+### Invariants preserved / trade-offs
+
+- Web passkey flow UNCHANGED. All changes are iOS-scoped.
+- API calls from iOS now originate from `https://witholive.app` —
+  Supabase CORS is permissive; no edge-function changes needed.
+- `olive://` custom scheme still works (the earlier deep-link fix is
+  independent of this one).
+- Deno tests + TypeScript compile still green.
+- One-time migration: iOS users currently signed in against
+  `pk_test_*` will be signed out on first launch after this change.
+  They sign in again with their real (web) credentials and land on the
+  correct Supabase data. Documented in `capacitor.config.ts` comment.
+
+---
+
+## 2026-04-19 — UX fixes: list privacy toggle + FAB dedupe
+
+Two user-reported bugs visible on both iOS and web.
+
+### Bug 1 · List-level Private / Shared toggle did nothing
+
+The "Private" (or "Shared") pill next to the list title on the
+list-detail page (`src/pages/ListCategory.tsx`) was a **display-only
+`<Badge>`** — no `onClick`, no handler, no Popover. Tapping it looked
+interactive but did nothing. The only way to toggle list privacy was to
+open the Edit Dialog via the pencil icon → select Private/Shared → Save.
+Meanwhile, the per-task privacy pill (`NotePrivacyToggle.tsx`) DID work,
+which made the disparity confusing.
+
+Fix:
+
+- **`src/components/ListPrivacyToggle.tsx`** (new, ~170 lines) —
+  Popover-backed Button that mirrors `NotePrivacyToggle`'s UX pattern
+  exactly. Writes through `useSupabaseLists.updateList({ couple_id })`
+  — the same hook + field the Edit Dialog was already using
+  successfully (`handleEditList` at line 74-93). Toasts success/failure
+  using existing translation keys (`listDetail.listShared` /
+  `listMadePrivate`). When the user has no couple, falls back to a
+  read-only `<Badge>` so the header still renders the state but the
+  click is a no-op (matches pre-fix behavior for solo users).
+
+- **`src/pages/ListCategory.tsx`** — replaced the two static `<Badge>`
+  renders (lines 213-223) with a single `<ListPrivacyToggle
+  listId={currentList.id} isShared={!!currentList.couple_id} />`. The
+  Edit Dialog's Private/Shared buttons are untouched — users who prefer
+  that route still have it.
+
+Why a separate component from `NotePrivacyToggle` rather than a shared
+one: different data source (`clerk_lists` vs `clerk_notes`), different
+hook (`useSupabaseLists` vs `useSupabaseNotesContext`), different field
+shape (`couple_id` vs `isShared` + `coupleId`). A shared abstraction
+would be forced and cost more than it saves.
+
+### Bug 2 · Three floating action buttons overlapping
+
+The list-detail screen (and Home, Calendar, Reminders) rendered THREE
+bottom-right FABs stacked on top of each other:
+
+1. `FloatingSpeedDial` — global, mounted in `AppLayout.tsx`. Expandable
+   menu with "Ask Olive" (chat) + "Brain-dump" (quick note). **KEEP.**
+2. `FloatingActionButton` — per-page, mounted in 4 pages. Just a "+"
+   that opened a Quick Add Note dialog. Duplicates the speed-dial's
+   brain-dump path. **REMOVE.**
+3. `FeedbackDialog` (variant="fab" by default) — global, mounted in
+   `App.tsx`. Separate pill on the bottom-right. **REMOVE FROM FAB;
+   keep the dialog, move the trigger into Settings.**
+
+User's ask: "keep only one (the one that asks to chat with olive or
+brain dump)." The speed-dial already provides both actions, so it's the
+keeper.
+
+Fixes:
+
+- **`src/pages/Index.tsx`, `CalendarPage.tsx`, `ListCategory.tsx`,
+  `Reminders.tsx`** — removed `FloatingActionButton` import + render
+  from all four pages. Replaced with an explanatory comment so the
+  next contributor understands why the FAB isn't there. The component
+  file (`src/components/FloatingActionButton.tsx`) is kept in the tree
+  (zero callers, but deleting it is a separate cleanup PR — doesn't
+  block the UX fix and avoids noise in this diff).
+
+- **`src/App.tsx`** — removed `<FeedbackDialog />` render + import.
+  Comment in place explaining why.
+
+- **`src/components/FeedbackDialog.tsx`** — the `variant="inline"`
+  branch previously returned `null` as its trigger, making the Dialog
+  unreachable. Changed it to render a small outlined `Button` with the
+  MessageSquarePlus icon + "Send Feedback" label. The "fab" variant
+  is preserved for any caller that still opts in, but it's no longer
+  mounted anywhere by default.
+
+- **`src/components/settings/AppPreferencesModals.tsx`** — the "Send
+  Feedback" card in Help & Support was purely descriptive text (no
+  action). Added `<FeedbackDialog variant="inline" />` inside the card
+  so the card now has a working trigger button. Users discover
+  feedback through Settings → Help & Support, which matches the user
+  mental model ("tell me how to do X" lives in Settings).
+
+### Testing
+
+- ✅ `npx tsc --noEmit` — clean.
+- ✅ `npm run build` — Vite bundle OK (4.1s).
+- ✅ `deno test supabase/functions/_shared/` — 217 / 0 failed
+  (no regression).
+- ✅ `npx cap sync ios` — 5 plugins synced.
+- ✅ `xcodebuild ... iphonesimulator build` → `** BUILD SUCCEEDED **`.
+
+### Invariants preserved
+
+- Web + iOS share identical behavior (single codebase change).
+- The Edit Dialog (pencil icon) on the list detail still toggles
+  privacy the same way it always did — ListPrivacyToggle is additive.
+- `FloatingSpeedDial` (global) is untouched — Ask Olive + Brain-dump
+  still available on every page.
+- Feedback submission is unchanged at the send-feedback edge function
+  level — only the trigger moved.
+- Users without a couple see a read-only "Private" badge on list
+  headers exactly as before (can't share when there's no one to share
+  with).
+- Existing i18n keys reused; new fallbacks provided for any new labels
+  (`listDetail.visibilityLabel`, `listDetail.privateOption`,
+  `listDetail.sharedOption`, `listDetail.privacyToggle`) using the
+  shadcn i18n default-value pattern.
+
+### Not in this PR (deliberately)
+
+- Deleting `src/components/FloatingActionButton.tsx`. The component
+  is no longer imported anywhere; removing the file is trivial but
+  adds noise to this diff. One-line follow-up cleanup.
+- Migrating `NotePrivacyToggle` + `ListPrivacyToggle` to a shared
+  abstraction. The shapes of `Note` vs `List` privacy differ enough
+  (isShared vs couple_id null-check) that a shared component would
+  need a discriminated-union config object — more complexity than the
+  ~170 lines of duplication it would save.
+
+---
+
+## 2026-04-19 — Phase 8-A · Eval Harness (static layer) + seed fixtures
+
+Ships the foundation of Olive's test-and-measurement layer — the thing
+the engineering plan called out as a prerequisite for Phase 5 (learning
+agents) and Phase 6 (Anthropic fallback): **how do we know a change to
+the prompt pipeline didn't regress quality?**
+
+Two-layer design:
+
+1. **STATIC** (this PR): pure-function pipeline invocation. No Gemini,
+   no DB. Runs in 2 ms for 12 fixtures. Free, deterministic, safe for
+   every CI run.
+2. **LIVE** (stubbed in types, not implemented): same cases against
+   real Gemini. Expensive, flaky, run nightly.
+
+The first cut focuses 100% on static so we can ship the CI gate without
+a billing conversation.
+
+### What the static layer catches
+
+- Intent alias drift (`help` stops mapping to `help_about_olive`).
+- Prompt-system flag regressions (rollout env misread).
+- `SLOT_USER` / `SLOT_DYNAMIC` overflow past 3,200-token budget.
+- Memory injection failures (seeded fact never reaches the prompt).
+- Missing required slots (`IDENTITY` / `QUERY` empty).
+- Compiled-vs-dynamic `userSlotSource` telemetry breaking.
+
+### Architecture
+
+```
+tools/eval-harness/
+  run.ts                               # Deno CLI entry
+  README.md                            # authoring + running docs
+  fixtures/*.json                      # one case per file (12 seeded)
+  reports/*.json                       # gitignored — timestamped runs
+
+supabase/functions/_shared/eval-harness/
+  types.ts                             # EvalCase, EvalResult, EvalReport
+  static-runner.ts                     # pure pipeline runner
+  loader.ts                            # JSON fixture loader + validator
+  reporter.ts                          # percentile math + human summary
+  eval-harness.test.ts                 # 27 meta-tests
+```
+
+### Case shape (JSON)
+
+```json
+{
+  "id": "chat-basic-solo",
+  "description": "Solo user asks for help drafting an email.",
+  "suite": "intent-classification",
+  "persona": "solo",
+  "layer": "static",
+  "tags": ["phase4-option-a", "regression"],
+  "input": { "message": "...", "userId": "..." },
+  "seededContext": { "compiledArtifacts": [...], "memoryChunks": [...] },
+  "classifierFixture": { "intent": { "intent": "chat", ... } },
+  "expected": {
+    "resolvedIntent": "chat",
+    "promptSystem": "modular",
+    "slotBudgetUnder": 3200,
+    "requiredSlotsPopulated": ["IDENTITY", "QUERY"],
+    "promptMustContain": ["espresso"]
+  }
+}
+```
+
+Every `expected` field is optional — the runner asserts only what the
+case opts into (open-world). This lets a case in the `memory-recall`
+suite focus its assertions on recall without having to over-specify
+other fields.
+
+### CLI
+
+```sh
+# Full static suite (default)
+deno run --allow-read --allow-write --allow-net --allow-env --allow-run \
+  tools/eval-harness/run.ts
+
+# Filter by suite
+deno run ... --suites memory-recall,prompt-budget
+
+# Filter by tag (any-match)
+deno run ... --tags phase4-option-a
+
+# CI-friendly
+deno run ... --fail-fast
+```
+
+Exit: `0` all-pass · `1` any failure · `2` CLI arg error. JSON report
+lands in `tools/eval-harness/reports/<iso-timestamp>.json` (gitignored).
+
+### First-cut fixture set (12 cases)
+
+| Suite | Cases |
+|---|---|
+| `intent-classification` | chat, contextual_ask, create, search, expense, help_about_olive (via `help` alias) — all modular path |
+| `user-slot-source` | couple persona with compiled artifacts → asserts `userSlotSource=compiled` |
+| `prompt-budget` | 5-artifact + 4-chunk overflow case → must stay under 3,200 tokens |
+| `memory-recall` | preference, safety (allergy), partner-name-via-compiled-artifact, empty-baseline |
+
+### First-run result (this PR, clean)
+
+```
+Olive Eval Harness — STATIC layer
+12/12 passed (100%)  ·  0 failed  ·  0 skipped
+
+Per-suite:
+  ✓ intent-classification         6/6 pass
+  ✓ user-slot-source              1/1 pass
+  ✓ prompt-budget                 1/1 pass
+  ✓ memory-recall                 4/4 pass
+
+Classifier accuracy:  100%
+Memory recall rate:   100%
+Token budgets (total across all slots, passing cases):
+  intent-classification         p50=404  p95=420  max=425
+  memory-recall                 p50=417  p95=430  max=431
+Avg tokens by intent:
+  chat=411  contextual-ask=523  create=404  search=362
+  expense=403  help-about-olive=405
+
+Completed in 2ms.
+```
+
+That 2 ms number is the most important line in this report: it means
+the harness can run on EVERY PR without anyone caring about CI cost.
+
+### Testing the tester
+
+`eval-harness.test.ts` — **27 meta-tests** covering:
+
+- Loader: accepts well-formed cases, rejects each required-field
+  omission, aggregates errors across a batch.
+- Static runner pass/fail paths: happy path, intent mismatch, budget
+  overflow, required-slot missing, must-contain/must-not-contain,
+  memory strategy inference, skip-reason when layer mismatches.
+- Batch: suite filter, tag any-match filter, failFast halts early.
+- Reporter: pass/fail/skip totals, percentile omission under small N,
+  classifier accuracy + memory recall rates restricted to matching
+  suites, human-summary headline + failure block.
+
+Full `_shared/` regression: **244 passed / 0 failed** (was 217 pre-PR;
+net +27 meta-tests, zero pre-existing failures).
+
+### Design invariants preserved
+
+- **Never throws from the runner.** An unexpected exception in
+  `runStaticCase` is recorded as an `internal_error` failure, not a
+  thrown error — one bad case doesn't blow up the batch.
+- **Fixtures are pure data.** No TS imports needed to author one.
+  PMs can open `fixtures/*.json`, copy the nearest case, and edit.
+- **Assertions are structured, not textual.** A failure tells you
+  exactly which field differed and what the expected/actual was.
+  Reporter groups by failure type to surface systemic bugs.
+- **Runner uses the SAME code production uses.** `resolvePrompt`,
+  `assembleContext`, `assembleCompiledSlot`, `fetchMemoryChunks`,
+  registry aliases — all imported from `_shared/` without stubs. The
+  only stubs are `MemoryDB` (seeded chunks) and the classifier
+  (fixture). If the harness passes, production routing works.
+- **No Supabase, no Gemini, no network.** Static layer is hermetic —
+  runs on a laptop in airplane mode.
+
+### What's next (not in this PR)
+
+1. **GitHub Actions CI gate** — run the static suite on every PR;
+   fail the PR if `classifierAccuracy < 1.0` or `memoryRecallRate <
+   1.0` or p95 tokens regress >20% vs `main`'s baseline report.
+2. **Live layer** — real Gemini calls behind an env flag + a
+   nightly-only workflow. Records response patterns, token usage,
+   latency. Cases can opt in via `expected.responseShape`.
+3. **Gold baseline diffing** — snapshot prompts in a baseline report
+   committed to git; diff per PR so unintended prompt drift shows up
+   in review.
+4. **Grow the fixture set** — engineering plan target: 60 cases
+   across 3 personas × 8 intents. Seeded at 12; grow as real bugs
+   and edge cases surface.
+
+### Invariants preserved across Phase 1 → 4 → Option A → iOS → 8-A
+
+All prior invariants still hold. The harness is strictly additive:
+zero changes to edge-function handlers, shared modules, or React UI.
+Build + test chain:
+
+- `npx tsc --noEmit` — clean.
+- `npm run build` — Vite bundle unchanged.
+- `deno test supabase/functions/_shared/` — **244 / 0 failed**.
+- `deno run tools/eval-harness/run.ts` — **12 / 12 passed, 2 ms**.
+
+---
+
+## 2026-04-21 — Option B Phase 8-A (CI gate)
+
+Builds on the static eval harness shipped earlier today. The harness
+writes a rich `EvalReport`; the gate turns that report into a pass/fail
+decision and wires it into every PR.
+
+### Scope (intentionally tight)
+
+- **Static layer only.** No live Gemini calls in CI — those would be
+  paid + flaky per PR. Nightly live-layer workflow is a follow-up.
+- **Absolute thresholds only** for first cut. Baseline-diffing vs
+  `main` is a follow-up.
+- **Deterministic rules only** (pass/fail). Soft-warning / trend
+  rules are deferred until we have a baseline to compare against.
+
+### Deliverables
+
+**`tools/eval-harness/thresholds.json`** — declarative config. Six
+rules, each tunable without a code change. A top-level `relaxations[]`
+array serves as an audit log: whenever we lower a threshold, the
+entry is required (date + PR + reason).
+
+**`supabase/functions/_shared/eval-harness/gate.ts`** — pure decision
+logic:
+
+```ts
+applyGate(report, thresholds) → { passed, violations, rulesChecked, suitesChecked }
+renderGateMarkdown(decision, report) → string  // PR-comment-ready
+```
+
+Rule set:
+
+| Rule | Default | What it catches |
+| ---- | ------- | --------------- |
+| `max-failures-allowed` | 0 | Any case failure. |
+| `max-skipped-allowed` | 0 | Silent skipping is the #1 way regressions hide. |
+| `classifier-accuracy` | ≥ 1.0 | Intent routing regression on any known intent. |
+| `memory-recall-rate` | ≥ 1.0 | Seeded facts stopped reaching the LLM prompt. |
+| `max-runtime-ms` | 30000 | Pathological cases before the suite outgrows per-PR CI. |
+| `max-tokens-per-case` | 3200 per suite | STANDARD_BUDGET overrun on any SINGLE case (not p95 — one bad case fails the gate). |
+
+Design choices:
+
+- Rules are independent: a single failing case often trips multiple
+  rules, and that redundancy helps triage.
+- Missing metrics skip their rule (not applicable). Unknown suites in
+  `maxTokensPerCase` are tolerated (forward-compat: adding a suite
+  shouldn't break old configs).
+- Same-suite overruns collapse to one violation with multiple case
+  IDs — keeps PR comments readable when a whole suite regresses.
+- Markdown renderer caps failing-case detail at 10 entries.
+
+**`gate.test.ts`** — 19 meta-tests. Covers each rule's pass/fail path,
+multiple simultaneous violations, missing-metric tolerance,
+forward-compat for unknown suites, markdown headline + body shape +
+10-case cap.
+
+**`tools/eval-harness/gate.ts`** — CLI wrapper. Single command for CI:
+
+```bash
+deno run --allow-read --allow-write --allow-net --allow-env --allow-run \
+  tools/eval-harness/gate.ts
+# exit 0 pass · 1 fail · 2 CLI/IO error
+```
+
+- Loads thresholds, fixtures, runs the static batch, applies the gate.
+- Writes `reports/latest.json` (full report) and `reports/latest.md`
+  (PR comment body) — CI uploads them as artifacts.
+- Captures git provenance (sha, branch, ci/local) for the markdown
+  footer so reviewers can trace a comment back to a commit.
+- `--thresholds` override for future staging/prod gate differentiation.
+
+**`.github/workflows/eval-harness.yml`** — CI wiring:
+
+- Triggers on PRs to `main`/`dev` + pushes to `main`. Manual
+  `workflow_dispatch` for ad-hoc runs.
+- Path-filtered to `supabase/functions/**`, `tools/eval-harness/**`,
+  `src/**`, and the workflow file. Docs-only / CHANGES-only PRs skip.
+- Deno caching keyed on lockfile + harness source hash — re-runs are
+  seconds.
+- `concurrency` group cancels in-flight runs on new commits so the
+  Actions UI stays tidy.
+- `permissions: pull-requests: write` (minimum) so the comment step
+  works; everything else is read-only.
+- Deliberately `set +e` around the gate call so the "Post PR
+  comment" step ALWAYS runs, even on gate failure. Final step
+  re-raises the exit code to fail the job.
+- PR comment uses a marker (`<!-- olive-eval-harness-comment -->`) so
+  subsequent runs **update** the existing comment instead of spamming.
+
+**`tools/eval-harness/README.md`** — expanded with: running locally,
+threshold semantics, when to add a relaxation, workflow anatomy, and
+how to extend the rule set safely.
+
+**`.gitignore`** — added `tools/eval-harness/reports/` (run
+artifacts, regenerated every run, uploaded by CI) + `.claude/`.
+
+### Verification
+
+- ✅ Gate meta-tests: 19/19 pass.
+- ✅ Full `_shared/` Deno suite: **263 passed / 0 failed** (was 244
+  before this work).
+- ✅ Gate CLI end-to-end on real fixtures: exit 0 (12/12 cases pass,
+  all thresholds met).
+- ✅ Gate CLI with deliberately-strict thresholds: exit 1, structured
+  violations printed with case IDs. Confirms the fail path.
+- ✅ `npx tsc --noEmit` clean.
+
+### Post-deploy verification (after merge)
+
+1. Open a draft PR touching any file under the workflow's path filter.
+   Expect: "Eval Harness / Static eval + gate" check appears on the
+   PR within ~1 minute.
+2. That check runs ~10-20s (first run ~40s while Deno deps warm the
+   cache). It posts a PR comment with the report summary.
+3. Push a no-op commit to confirm the comment UPDATES (one bot
+   comment per PR, not a thread).
+4. Deliberately break a case in a branch — e.g. change an
+   intent-classification fixture's `expected.classifier.intent` to
+   `foo`. Expect: the check fails, the PR comment lists the
+   violation with the exact case id.

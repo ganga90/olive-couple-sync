@@ -1,0 +1,27 @@
+{
+  "id": "expense-simple",
+  "description": "Simple expense entry `$45 lunch` — routes to expense module.",
+  "suite": "intent-classification",
+  "persona": "solo",
+  "layer": "static",
+  "tags": ["phase4-option-a", "expense-path"],
+  "input": {
+    "message": "$45 lunch at Panera",
+    "userId": "user-solo-05"
+  },
+  "classifierFixture": {
+    "intent": {
+      "intent": "expense",
+      "confidence": 0.97,
+      "target_task_name": null,
+      "parameters": {}
+    }
+  },
+  "expected": {
+    "resolvedIntent": "expense",
+    "promptSystem": "modular",
+    "moduleVersion": "expense-intent-v1.0",
+    "slotBudgetUnder": 3200,
+    "requiredSlotsPopulated": ["IDENTITY", "QUERY"]
+  }
+}

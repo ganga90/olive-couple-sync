@@ -1,0 +1,21 @@
+{
+  "$comment": "Eval harness CI thresholds. Tunable without code changes. Defaults are strict: any regression fails the gate. When intentionally loosening a threshold (e.g. adding a flaky case), bump the counter in `relaxations` with a reason — reviewers can scan this to see WHY CI accepts what it accepts. See tools/eval-harness/README.md § CI Gate.",
+  "version": "1.0",
+  "static": {
+    "minClassifierAccuracy": 1.0,
+    "minMemoryRecallRate": 1.0,
+    "maxFailuresAllowed": 0,
+    "maxSkippedAllowed": 0,
+    "maxRuntimeMs": 30000,
+    "$tokenBudgets_comment": "Hard caps per individual case. Each case's metrics.totalTokens must be <= this for its suite. The Context Contract's STANDARD_BUDGET is 3200 — set here slightly above to catch the runaway before the contract's built-in truncation hides it.",
+    "maxTokensPerCase": {
+      "intent-classification": 3200,
+      "prompt-budget": 3200,
+      "memory-recall": 3200,
+      "user-slot-source": 3200,
+      "modular-prompt-parity": 3200
+    }
+  },
+  "$relaxations": "If a relaxation is applied (e.g. minMemoryRecallRate set below 1.0), log it here with date + PR + reason so reviewers can audit what we've accepted.",
+  "relaxations": []
+}

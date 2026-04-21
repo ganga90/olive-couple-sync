@@ -1,0 +1,29 @@
+{
+  "id": "help-about-olive",
+  "description": "Help/how-to question — pre-filter emits type='help'; resolver alias lands on help_about_olive module, surfacing the FAQ.",
+  "suite": "intent-classification",
+  "persona": "solo",
+  "layer": "static",
+  "tags": ["phase4-option-a", "help-path", "alias"],
+  "input": {
+    "message": "How do I invite my partner to the app?",
+    "userId": "user-solo-06"
+  },
+  "classifierFixture": {
+    "intent": {
+      "intent": "help",
+      "confidence": 0.9,
+      "target_task_name": null,
+      "parameters": {}
+    },
+    "notes": "ask-olive-stream pre-filter emits type='help' for how-to questions; resolver should alias to help_about_olive."
+  },
+  "expected": {
+    "resolvedIntent": "help_about_olive",
+    "promptSystem": "modular",
+    "moduleVersion": "help-about-olive-intent-v1.0",
+    "slotBudgetUnder": 3200,
+    "requiredSlotsPopulated": ["IDENTITY", "QUERY", "INTENT_MODULE"],
+    "promptMustContain": ["Partner", "Settings"]
+  }
+}

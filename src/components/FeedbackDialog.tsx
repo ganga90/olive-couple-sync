@@ -149,6 +149,16 @@ export const FeedbackDialog: React.FC<{ variant?: "fab" | "inline" }> = ({ varia
     </div>
   );
 
+  // Trigger rendering per variant.
+  //
+  // - "fab" (legacy): floating circular pill on the bottom-right. No
+  //   longer mounted at the App level (was one of three stacked FABs
+  //   the user reported); kept here for any caller that still opts in.
+  // - "inline": a regular full-width Button suitable for embedding in
+  //   settings cards, menu rows, or anywhere a discrete "Send feedback"
+  //   entry point is needed. Previously this variant rendered null,
+  //   which meant the Dialog/Drawer had no trigger and silently never
+  //   opened — a dead code path that's now the primary surface.
   const triggerButton =
     variant === "fab" ? (
       <button
@@ -165,7 +175,18 @@ export const FeedbackDialog: React.FC<{ variant?: "fab" | "inline" }> = ({ varia
         <MessageSquarePlus className="h-4 w-4" />
         <span className="hidden sm:inline">{t("feedback.title", "Feedback")}</span>
       </button>
-    ) : null;
+    ) : (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="mt-3 gap-2"
+        aria-label={t("feedback.title", "Send Feedback")}
+      >
+        <MessageSquarePlus className="h-4 w-4" />
+        {t("feedback.title", "Send Feedback")}
+      </Button>
+    );
 
   const title = t("feedback.dialogTitle", "Share your feedback");
   const description = t(

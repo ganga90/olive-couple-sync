@@ -1,0 +1,4 @@
+# Eval harness reports are timestamped artifacts — we don't want every
+# run's report polluting git history. Keep this dir in tree (so the CLI
+# always has somewhere to write) but ignore its contents.
+reports/*.json

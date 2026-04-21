@@ -200,6 +200,23 @@ const SignInPage = () => {
 
     setIsLoading(true);
     try {
+      // Log environmental info BEFORE the call so iOS passkey failures
+      // are debuggable from console/Xcode. In Capacitor WebViews the
+      // failure surface is different from Safari — surfacing origin +
+      // WebAuthn availability up front makes the failure mode obvious
+      // (wrong origin → WebKit refuses; no webcredentials entitlement →
+      // `NotAllowedError`; Clerk RP misconfigured → specific Clerk code).
+      console.log('[SignIn/Passkey] Attempting authenticateWithPasskey', {
+        origin: typeof window !== 'undefined' ? window.location.origin : 'n/a',
+        hasCredentialsAPI:
+          typeof window !== 'undefined' &&
+          typeof (window.navigator as any)?.credentials?.get === 'function',
+        hasPublicKeyCredential:
+          typeof window !== 'undefined' &&
+          typeof (window as any).PublicKeyCredential !== 'undefined',
+        isNative,
+      });
+
       const result = await (signIn as any).authenticateWithPasskey({ flow: 'discoverable' });
 
       if (result.status === 'complete') {
@@ -210,15 +227,48 @@ const SignInPage = () => {
         toast.error(t('signIn.verificationIncomplete', 'Verification incomplete. Please try again.'));
       }
     } catch (err: any) {
-      console.error('[SignIn] Passkey error:', err);
+      // Structured logging — every field we can pull out of the thrown
+      // object. Clerk wraps WebAuthn SecurityError / NotAllowedError but
+      // the original cause often lives in err.cause or err.errors.
       const clerkError = err?.errors?.[0];
-      if (clerkError?.code === 'passkey_not_supported') {
+      console.error('[SignIn/Passkey] Failed', {
+        errorName: err?.name,
+        errorMessage: err?.message,
+        errorCause: err?.cause,
+        clerkCode: clerkError?.code,
+        clerkLongMessage: clerkError?.longMessage,
+        clerkMeta: clerkError?.meta,
+        isNative,
+      });
+
+      // Classify in order of most-specific → least-specific. Previously
+      // `passkey_not_supported` was the first branch, which obscured
+      // origin-mismatch `SecurityError`s (the common iOS failure).
+      if (err?.name === 'SecurityError') {
+        // Happens when the WebView origin doesn't match (or isn't a
+        // registrable suffix of) the RP ID Clerk passes to WebAuthn.
+        // On iOS this means the Associated Domains entitlement isn't
+        // wired, the AASA file isn't reachable, or the Capacitor
+        // `server.hostname` doesn't align with the Clerk domain.
+        toast.error(
+          t(
+            'signIn.passkeyOriginError',
+            "Passkeys can't run here because the app origin doesn't match Olive's domain. Sign in with email and we'll fix this."
+          )
+        );
+      } else if (clerkError?.code === 'passkey_not_supported') {
         toast.error(t('signIn.passkeyNotSupported', 'Passkeys are not supported on this device.'));
       } else if (err?.name === 'NotAllowedError' || clerkError?.code === 'passkey_registration_required') {
-        toast(t('signIn.passkeyNotFound', "No passkey found for this device. Sign in with email first, then create a passkey from your Profile settings."), {
-          duration: 6000,
-          icon: '🔑',
-        });
+        toast(
+          t(
+            'signIn.passkeyNotFound',
+            "No passkey found for this device. Sign in with email first, then create a passkey from your Profile settings."
+          ),
+          {
+            duration: 6000,
+            icon: '🔑',
+          }
+        );
       } else {
         toast.error(clerkError?.longMessage || t('signIn.passkeyError', 'Passkey sign-in failed. Try another method.'));
       }

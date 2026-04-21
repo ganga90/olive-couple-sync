@@ -1,0 +1,18 @@
+{
+  "webcredentials": {
+    "apps": ["Z6Q25K7J8C.app.olive.couple"]
+  },
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["Z6Q25K7J8C.app.olive.couple"],
+        "components": [
+          { "/": "/*", "comment": "All paths eligible as Universal Links" }
+        ]
+      }
+    ]
+  },
+  "appclips": {
+    "apps": []
+  }
+}

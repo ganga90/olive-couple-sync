@@ -1,0 +1,36 @@
+{
+  "id": "contextual-ask-solo",
+  "description": "Solo user asks about their own saved data — routes to contextual_ask module.",
+  "suite": "intent-classification",
+  "persona": "solo",
+  "layer": "static",
+  "tags": ["phase4-option-a", "contextual-ask"],
+  "input": {
+    "message": "What's on my grocery list?",
+    "userId": "user-solo-02"
+  },
+  "seededContext": {
+    "savedLists": [{ "id": "list-groceries", "name": "Groceries" }],
+    "savedNotes": [
+      { "id": "n1", "summary": "Milk", "category": "shopping" },
+      { "id": "n2", "summary": "Eggs", "category": "shopping" },
+      { "id": "n3", "summary": "Avocados", "category": "shopping" }
+    ]
+  },
+  "classifierFixture": {
+    "intent": {
+      "intent": "contextual_ask",
+      "confidence": 0.92,
+      "target_task_name": null,
+      "parameters": {}
+    }
+  },
+  "expected": {
+    "resolvedIntent": "contextual_ask",
+    "promptSystem": "modular",
+    "moduleVersion": "contextual-ask-intent-v1.0",
+    "slotBudgetUnder": 3200,
+    "requiredSlotsPopulated": ["IDENTITY", "QUERY", "DYNAMIC"],
+    "promptMustContain": ["Milk", "Eggs", "Groceries"]
+  }
+}

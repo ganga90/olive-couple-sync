@@ -1,0 +1,26 @@
+{
+  "id": "memory-recall-empty-baseline",
+  "description": "Baseline — no seeded memory at all. Memory retrieval MUST report 'empty' and the prompt MUST still assemble successfully (required slots populated, under budget).",
+  "suite": "memory-recall",
+  "persona": "solo",
+  "layer": "static",
+  "tags": ["phase4-option-a", "memory-recall", "baseline", "regression"],
+  "input": {
+    "message": "What should I work on this afternoon?",
+    "userId": "user-recall-04"
+  },
+  "classifierFixture": {
+    "intent": {
+      "intent": "chat",
+      "confidence": 0.88,
+      "target_task_name": null,
+      "parameters": {}
+    }
+  },
+  "expected": {
+    "memoryRetrievalStrategy": "empty",
+    "userSlotSource": "empty",
+    "slotBudgetUnder": 3200,
+    "requiredSlotsPopulated": ["IDENTITY", "QUERY", "INTENT_MODULE"]
+  }
+}

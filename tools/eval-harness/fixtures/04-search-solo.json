@@ -1,0 +1,27 @@
+{
+  "id": "search-solo",
+  "description": "Search query with ? prefix — routes to search module.",
+  "suite": "intent-classification",
+  "persona": "solo",
+  "layer": "static",
+  "tags": ["phase4-option-a", "search-path"],
+  "input": {
+    "message": "?dentist",
+    "userId": "user-solo-04"
+  },
+  "classifierFixture": {
+    "intent": {
+      "intent": "search",
+      "confidence": 0.98,
+      "target_task_name": null,
+      "parameters": {}
+    }
+  },
+  "expected": {
+    "resolvedIntent": "search",
+    "promptSystem": "modular",
+    "moduleVersion": "search-intent-v1.0",
+    "slotBudgetUnder": 3200,
+    "requiredSlotsPopulated": ["IDENTITY", "QUERY"]
+  }
+}

@@ -38,7 +38,10 @@ import AuthPage from "./pages/Auth";
 import AuthRedirectNative from "./pages/AuthRedirectNative";
 import NativeWelcome from "./pages/NativeWelcome";
 import CookieConsentBanner from "./components/CookieConsentBanner";
-import { FeedbackDialog } from "./components/FeedbackDialog";
+// FeedbackDialog was mounted here as a floating action button. Removed
+// because it was stacking with FloatingSpeedDial + FloatingActionButton
+// (three overlapping bottom-right FABs per user report). Feedback is now
+// accessible via Settings → Help & Support ("Send Feedback" card).
 import ErrorBoundary from "./components/ErrorBoundary";
 
 // Import i18n configuration
@@ -102,7 +105,6 @@ const App = () => (
                     <Route path="*" element={<AppRoutes />} />
                   </Routes>
                   <CookieConsentBanner />
-                  <FeedbackDialog />
                 </AppLayout>
               </LanguageProvider>
             </BrowserRouter>
