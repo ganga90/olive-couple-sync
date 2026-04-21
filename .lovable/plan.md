@@ -1,49 +1,81 @@
 
 
-## Root Cause
+## Olive Brand & Design Bible — Plan
 
-The previous edits introduced a new unified `assembleFullContext` (line 424) without removing the legacy Soul-aware `assembleFullContext` (lines 1395-1477). This created a duplicate symbol, which cascaded into Deno type-checking every related file and surfacing latent (pre-existing) issues across many `olive-*` functions.
+I'll create **`OLIVE_BRAND_BIBLE.md`** at the project root: a single, world-class brand reference distilled from everything Olive is today (design system, voice, product architecture) and where it's going (consumer + B2B verticals on the same backend, anchored by the three primitives: Space, Capture, Compiled Artifact).
 
-Errors fall into 4 categories:
+### Format & length
+- Markdown, ~1,500–2,000 lines, structured for skim + deep-read.
+- Self-contained: a designer, copywriter, PM, or partner agency could open it and ship on-brand work the same day.
+- Living document: dated, versioned, with a "How to evolve this" section at the end.
 
-1. **Critical (blocking compile)** — duplicate function in `orchestrator.ts`
-2. **Critical (regression I introduced)** — bad `parseNaturalDate` call shape in `ask-olive-stream/index.ts` (assumed `{ iso, hasTime }`, real shape is `{ date, time, readable }`; param is a string, not an options object)
-3. **Critical (regression I introduced)** — `EMPTY_CTX` literal in `ask-olive-stream/index.ts` line 135 missing the 3 fields I added to `UnifiedContext` (`partnerContext`, `taskAnalytics`, `skills`)
-4. **Pre-existing latent bugs surfacing now** — `catch (err)` blocks treating `err` as `any` (TS18046) across `olive-billing`, `olive-client-pipeline`, `olive-collaboration`, `olive-conflicts`, etc., plus `unknown[]` widening in `olive-consolidate`, plus `.then().catch()` misuse for an `await rpc()`
+### Structure (12 sections)
 
-## Fix Plan
+**1. North Star** — The vision paragraph (Olive as the AI you invite into conversations, 1:1 and small spaces of up to 9, memory scoped to member×space). The five compounding moats. Why same backend, multiple surfaces.
 
-### 1. `supabase/functions/_shared/orchestrator.ts`
-- **Delete the duplicate legacy `assembleFullContext`** at lines 1395-1477. Keep the SOUL types re-export at line 1393. The unified pipeline version at line 424 is the only callsite (verified in `ask-olive-stream/index.ts:145`).
+**2. Brand Essence** — Purpose, mission, vision. Brand promise ("She remembers, so you don't have to."). Brand archetype (The Caregiver × The Sage — warm intelligence). Three brand values: *Compounding Trust, Quiet Competence, Human Warmth*.
 
-### 2. `supabase/functions/ask-olive-stream/index.ts`
-- **Line 135** — replace incomplete `EMPTY_CTX` literal with the canonical `EMPTY_CTX` constant exported from `orchestrator.ts` (or include the 3 missing fields).
-- **Lines 434-458** — fix `parseNaturalDate` call:
-  - Change signature: `parseNaturalDate(dateExpr, userTimezone)` (string, not object)
-  - Replace `parsed.hasTime` → `!!parsed.time`
-  - Replace `parsed.iso` → derive ISO from `parsed.date` + optional `parsed.time` (use `${parsed.date}T${parsed.time || '00:00'}:00` or just use `parsed.date` for due_date)
-- **Line 596** — fix `.then(...).catch(...)` chain on `await`-able rpc: drop the `.then().catch()` and wrap in try/catch or use `.then(..., () => {})` pattern.
+**3. The Olive Persona** — Who Olive is as a character: a sharp, warm friend who texts back fast; remembers your gate code, your partner's birthday, and what your client said three weeks ago. Never robotic, never theatrical. Specific personality dimensions on a scale (formal↔casual, serious↔playful, reserved↔expressive, traditional↔innovative) with the exact dial position and rationale.
 
-### 3. `supabase/functions/olive-consolidate/index.ts`
-- **Line 115** — type the Set explicitly: `const uniqueUsers = [...new Set<string>((users || []).map((u: any) => String(u.user_id)))];` so `.filter((id: string) => …)` matches.
+**4. Voice & Tone Principles** — The seven non-negotiables, derived from `SYSTEM_CORE_V1` and our shipped copy:
+   - **Produce, don't describe** (deliver the result, not a description of what she could do)
+   - **Mine the context** (reference real tasks/memories, never generic advice)
+   - **Warm, direct, concise** (smart friend texting energy; emojis sparingly)
+   - **Never re-ask** (memory is the product; repetition is the failure state)
+   - **Match the user** (language, register, length)
+   - **Capture-Offer-Confirm-Execute** is the conversational rhythm
+   - **Beta-transparent** (we say "Beta," we don't pretend we're finished)
+   
+   Tone matrix by context: *Onboarding, Daily capture, Recall, Errors, Empty states, Celebrations, B2B/Real Estate, Partner relay*.
 
-### 4. Edge functions with `err.message` on unknown
-For each of: `olive-billing/index.ts`, `olive-client-pipeline/index.ts`, `olive-collaboration/index.ts`, `olive-conflicts/index.ts` (and any other surfaced by build):
-- Replace `catch (err) { … err.message … }` with `catch (err) { … err instanceof Error ? err.message : String(err) … }` to make the cast explicit and safe.
+**5. Copy System** — Headline patterns, subhead patterns, CTA patterns (with do/don't pairs from real shipped copy). Microcopy library: confirmations, undos, empty states, loading, errors. Forbidden words list ("simply," "just," "powerful," "revolutionary," "delight"). Naming conventions: *Olive* (always capitalized, female pronouns), *Space* (the universal container), *Capture* (the verb + noun for input), *Compiled Artifact* (internal term — externally: "summary," "list," "recap"). Surface-specific lexicon (Consumer vs. Olive for Real Estate).
 
-### 5. Verification
-- Run `supabase--deploy_edge_functions` on `whatsapp-webhook`, `ask-olive-stream`, `_shared` consumers (all share orchestrator), and `olive-billing`, `olive-client-pipeline`, `olive-collaboration`, `olive-conflicts`, `olive-consolidate`.
-- Confirm no remaining type errors via deploy success.
+**6. Visual Identity — Color** — The full token system from `index.css`:
+   - Primary: Hunter Green `hsl(130 22% 29%)` / `#3A5A40`
+   - Accent: Warm Coral `hsl(18 75% 60%)` / `#E8956F`
+   - Magic/AI: Muted Gold `hsl(45 85% 74%)` / `#F4E285`
+   - Backgrounds: Warm Beige `#FDFDF8`, Desk Stone `#EAE8E0`, Paper `#FDFCF8`
+   - Semantic: priority high/medium/low, success/info/warning, sage, cream
+   - Dark mode mappings
+   - Usage rules: when to use Magic Gold vs. Coral, primary green dominance ratio, accessibility contrast minimums (WCAG AA on all text).
 
-### Out of Scope (not regressions)
-The build error list also references many `_shared/*` and other files — those are flagged because Deno re-checks the whole graph when a single shared file fails to compile. Once orchestrator.ts compiles, the graph errors should clear except the 4 categories above.
+**7. Visual Identity — Typography** — Fraunces (serif, display + headings) and Plus Jakarta Sans (body). Type scale, line-height, tracking. Heading classes (`.heading-display`, `.heading-page`, `.heading-card`). The 16px iOS-zoom rule. Multilingual considerations (en/it/es).
 
-### Files to Edit
-- `supabase/functions/_shared/orchestrator.ts` (delete dead code)
-- `supabase/functions/ask-olive-stream/index.ts` (3 fixes)
-- `supabase/functions/olive-consolidate/index.ts` (typing)
-- `supabase/functions/olive-billing/index.ts` (err typing)
-- `supabase/functions/olive-client-pipeline/index.ts` (err typing)
-- `supabase/functions/olive-collaboration/index.ts` (err typing)
-- `supabase/functions/olive-conflicts/index.ts` (err typing)
+**8. Visual Language — Surfaces & Materials** — The "Frosted Glass on Warm Sand" aesthetic. Card system (`card-glass`, `card-elevated`, `card-magic`). Squircle icons (28% radius). Pill buttons. Paper inputs (floating, soft shadow). Atmospheric gradients. Shadow scale (sm → float). Border radius scale. The "Apple Notes meets Notion meets a really good notebook" mood board reference.
+
+**9. Motion & Interaction** — The animation library (fade-in, fade-up, scale-in, slide-up, pulse-soft, shimmer, bounce-subtle). 0.3s ease-out as default. Optimistic UX (5-second undo). Hover-lift on desktop, active-scale on mobile. `prefers-reduced-motion` respect. Haptics on iOS. The "5-second rule" — every interaction must feel sub-perceptual.
+
+**10. Logo, Iconography, Imagery** — OliveLogo usage rules, BetaBadge pairing, clearspace, minimum sizes, do/don't. Iconography: lucide-react only, 5px stroke equivalent, squircle wraps for emphasis. Photography/illustration direction: warm, organic, human-first; no stock-photo gloss; sketch-style chat bubbles in product visuals (per `SuperpowersGrid` references).
+
+**11. Product Architecture as Brand** — Why Space, Capture, Compiled Artifact are the brand's spine, not just engineering primitives:
+   - **Space** = "the room you invite Olive into" — naming, UI metaphor (rooms, not channels), member capacity (1–9), privacy boundary as design language
+   - **Capture** = "anything you drop in" — never "create a task," always "drop it in" / "tell Olive"
+   - **Compiled Artifact** = invisible to users, but underlies the magic of "Olive already knew that"
+   - How these primitives express across surfaces: Consumer (personal/partner/family), Olive for Real Estate (agent ↔ client space), future verticals (legal, wealth, healthcare).
+
+**12. Surface System — Consumer vs. B2B** — Same brand DNA, two voices:
+   - **Consumer Olive**: warmer, more emoji-tolerant (sparingly), playful headlines ("Stop texting into the void"), pricing language casual
+   - **Olive for Real Estate**: same warmth, more precise, professional restraint, vocabulary shifts ("client" vs. "partner," "transaction" vs. "household"), zero emojis in client-facing surfaces, Hunter Green dominates over Coral, Magic Gold reserved for AI moments only
+   - Side-by-side example pairs (same idea, two surfaces) for: hero headline, onboarding, capture confirmation, error state, empty state.
+
+### Appendices
+- **A. Quick reference cheat sheet** (1-page printable: colors, type, voice rules, do/don't)
+- **B. Component-to-token map** (which classes to use for which moments)
+- **C. Voice prompt for AI agents** (drop-in system prompt fragment so any LLM-generated copy stays on-brand — derived from `SYSTEM_CORE_V1` and extended)
+- **D. Vocabulary glossary** (Space, Capture, Compiled Artifact, Brain Dump, Skill, Heartbeat, Thread, Member — internal vs. external naming)
+- **E. Anti-patterns** — screenshots/snippets of off-brand work with annotations
+- **F. Versioning & evolution rules** (when to amend, who approves, how to deprecate a token)
+
+### What this delivers
+A single artifact that:
+- Any new designer, writer, engineer, or vendor can read in 30 minutes and produce on-brand work.
+- Codifies the voice that's been emerging in shipped product (`SYSTEM_CORE_V1`, landing copy, onboarding) into explicit rules.
+- Connects engineering primitives (Space/Capture/Compiled Artifact) to brand language so consumer and B2B stay coherent.
+- Is reusable across decks, partner briefs, agency handoffs, AI prompts, and future vertical launches.
+
+### Files created
+- `OLIVE_BRAND_BIBLE.md` (root) — the bible itself
+- `/mnt/documents/OLIVE_BRAND_BIBLE.md` — downloadable copy with `<lov-artifact>` for easy export
+
+No code changes, no dependencies, no risk to existing functionality.
 
