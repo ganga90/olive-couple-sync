@@ -1,0 +1,133 @@
+name: Eval Harness
+
+# Runs the static eval harness on every PR to main/dev. The gate fails
+# the check (and the PR) if any regression rule fires. See
+# tools/eval-harness/README.md and tools/eval-harness/thresholds.json
+# for what's being asserted.
+#
+# Scope discipline:
+#   - STATIC layer only. No live Gemini / Anthropic calls — those go in
+#     a separate nightly workflow when we ramp up to Option B Phase 8-F.
+#   - Path filters keep docs-only / CHANGES-only PRs from tripping the
+#     job for no reason.
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'supabase/functions/**'
+      - 'tools/eval-harness/**'
+      - 'src/**'
+      - '.github/workflows/eval-harness.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+      - 'tools/eval-harness/**'
+      - 'src/**'
+      - '.github/workflows/eval-harness.yml'
+  workflow_dispatch:
+
+# Cancel in-flight runs when a new commit lands on the same PR / branch.
+# The harness is cheap (seconds, not minutes) so this mostly just keeps
+# the Actions UI tidy.
+concurrency:
+  group: eval-harness-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Static eval + gate
+    runs-on: ubuntu-latest
+    # Needed for actions/github-script to post/update PR comments.
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Cache Deno deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/deno
+            ~/.deno
+          key: ${{ runner.os }}-deno-${{ hashFiles('**/deno.lock', 'tools/eval-harness/**/*.ts', 'supabase/functions/_shared/**/*.ts') }}
+          restore-keys: |
+            ${{ runner.os }}-deno-
+
+      - name: Run gate
+        id: gate
+        # Do NOT use `set -e` semantics here — the next step (PR comment)
+        # must run even on gate failure, so we capture the exit code and
+        # fail the job at the END.
+        run: |
+          set +e
+          deno run \
+            --allow-read --allow-write --allow-net --allow-env --allow-run \
+            tools/eval-harness/gate.ts 2>&1 | tee tools/eval-harness/reports/stdout.log
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-harness-report
+          path: tools/eval-harness/reports/
+          retention-days: 30
+
+      - name: Post PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'tools/eval-harness/reports/latest.md';
+            let body = '';
+            try {
+              body = fs.readFileSync(path, 'utf8');
+            } catch (err) {
+              body = `## ⚠️ Olive Eval Harness\n\nThe gate run did not produce a report file. Inspect the Actions log for details.\n\n<sub>This usually means the harness crashed before reaching the gate stage — e.g. a fixture loader error. Look at the "Run gate" step above.</sub>`;
+            }
+
+            const MARKER = '<!-- olive-eval-harness-comment -->';
+            body = `${MARKER}\n${body}`;
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            // Find existing comment by marker so we UPDATE instead of spam.
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number, per_page: 100 }
+            );
+            const existing = comments.find(
+              (c) => c.user && c.user.type === 'Bot' && c.body && c.body.includes(MARKER)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body,
+              });
+              core.info(`Updated existing eval-harness comment #${existing.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body,
+              });
+              core.info('Posted new eval-harness comment');
+            }
+
+      - name: Fail job if gate exited non-zero
+        if: steps.gate.outputs.exit_code != '0'
+        run: |
+          echo "Eval harness gate failed (exit=${{ steps.gate.outputs.exit_code }})."
+          echo "See the PR comment + the uploaded 'eval-harness-report' artifact."
+          exit 1

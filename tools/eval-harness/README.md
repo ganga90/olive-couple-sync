@@ -138,15 +138,81 @@ default; add to git if you want diff-able baselines). Shape:
 }
 ```
 
-## Next steps (not in this first cut)
+## CI Gate
 
-1. **GitHub Actions gate** — run the static suite on every PR, fail
-   the PR if `classifierAccuracy < 1.0` or `memoryRecallRate < 1.0`
-   or tokens p95 regresses >20% vs `main`.
-2. **Live layer** — wire real Gemini calls behind an env flag and a
-   separate CI workflow that runs nightly (not per-PR).
-3. **Gold baseline diffing** — snapshot expected prompts in
-   `reports/baseline/*.json`; diff per PR so unintended prompt drift
+The `gate.ts` CLI wraps `run.ts` with declarative thresholds and exits
+non-zero on any rule violation — designed to be CI's single entry
+point so reviewers never read two commands to understand the check.
+
+### Running locally
+
+```bash
+# Default thresholds (ship-safe; matches CI)
+deno run \
+  --allow-read --allow-write --allow-net --allow-env --allow-run \
+  tools/eval-harness/gate.ts
+
+# Exit code: 0 pass · 1 fail · 2 CLI/IO error
+echo $?
+```
+
+Outputs:
+
+- `tools/eval-harness/reports/latest.json` — full `EvalReport`.
+- `tools/eval-harness/reports/latest.md` — GitHub-flavored markdown
+  used as the PR comment body.
+
+### Thresholds (`thresholds.json`)
+
+Six rules run against every report:
+
+| Rule | Default | Why |
+|---|---|---|
+| `max-failures-allowed` | 0 | Any case failure fails the gate. |
+| `max-skipped-allowed` | 0 | Silently skipping is how regressions hide. Skipping a case requires an explicit relaxation. |
+| `classifier-accuracy` | ≥ 1.0 | Modular prompt routing must never regress a known intent. |
+| `memory-recall-rate` | ≥ 1.0 | Sharpest quality signal. A drop means the orchestrator is silently dropping seeded facts. |
+| `max-runtime-ms` | 30000 | Catches pathological cases before the fixture set outgrows per-PR CI. |
+| `max-tokens-per-case` | 3200 per suite | Context Contract's STANDARD_BUDGET. Per-case cap — one overrun fails the gate, even if the p95 across cases looks fine. |
+
+Edit `thresholds.json` to tune — no code change required. When
+**loosening** a threshold, add an entry to `relaxations[]` with the
+date, PR link, and reason, so reviewers can audit what CI now accepts.
+
+### GitHub Actions workflow
+
+`.github/workflows/eval-harness.yml`:
+
+- Triggers on PRs to `main`/`dev` and pushes to `main`.
+- Path-filtered to `supabase/functions/**`, `tools/eval-harness/**`,
+  `src/**`, and the workflow file itself — docs-only PRs skip the job.
+- Runs `gate.ts`, uploads the full `reports/` dir as an artifact
+  (retained 30 days), and posts/updates a PR comment with the
+  rendered summary + any violations.
+- Uses a marker (`<!-- olive-eval-harness-comment -->`) so subsequent
+  runs **update** the existing comment instead of spamming.
+- Deno deps cached by lockfile hash so re-runs are seconds, not
+  minutes.
+
+### Extending
+
+When adding a new suite, add its `maxTokensPerCase` entry to
+`thresholds.json`. The gate tolerates unknown suites (forward-compat
+by design) but misses them — explicit is safer.
+
+When adding a new rule, extend `applyGate()` in
+`_shared/eval-harness/gate.ts` and add exhaustive cases to
+`gate.test.ts`. Keep rules independent so multiple violations surface
+at once (a single failure often trips two rules, which helps triage).
+
+## Next steps (not in this cut)
+
+1. **Live layer** — wire real Gemini calls behind an env flag and a
+   separate nightly workflow (not per-PR).
+2. **Gold baseline diffing** — snapshot expected prompts per suite in
+   `reports/baseline/*.json`; diff on PR so unintended prompt drift
    shows up in review.
-4. **Grow the fixture set** — engineering plan target: 60 cases across
-   3 personas × 8 intents. Currently at 10 (seed).
+3. **Grow the fixture set** — engineering plan target: 60 cases across
+   3 personas × 8 intents. Currently at 12 (seed).
+4. **Latency gates** — once we have real LLM runs, add p95 latency per
+   intent as a soft-warning threshold (warn, don't fail).

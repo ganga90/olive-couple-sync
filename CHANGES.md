@@ -1735,3 +1735,127 @@ Build + test chain:
 - `npm run build` — Vite bundle unchanged.
 - `deno test supabase/functions/_shared/` — **244 / 0 failed**.
 - `deno run tools/eval-harness/run.ts` — **12 / 12 passed, 2 ms**.
+
+---
+
+## 2026-04-21 — Option B Phase 8-A (CI gate)
+
+Builds on the static eval harness shipped earlier today. The harness
+writes a rich `EvalReport`; the gate turns that report into a pass/fail
+decision and wires it into every PR.
+
+### Scope (intentionally tight)
+
+- **Static layer only.** No live Gemini calls in CI — those would be
+  paid + flaky per PR. Nightly live-layer workflow is a follow-up.
+- **Absolute thresholds only** for first cut. Baseline-diffing vs
+  `main` is a follow-up.
+- **Deterministic rules only** (pass/fail). Soft-warning / trend
+  rules are deferred until we have a baseline to compare against.
+
+### Deliverables
+
+**`tools/eval-harness/thresholds.json`** — declarative config. Six
+rules, each tunable without a code change. A top-level `relaxations[]`
+array serves as an audit log: whenever we lower a threshold, the
+entry is required (date + PR + reason).
+
+**`supabase/functions/_shared/eval-harness/gate.ts`** — pure decision
+logic:
+
+```ts
+applyGate(report, thresholds) → { passed, violations, rulesChecked, suitesChecked }
+renderGateMarkdown(decision, report) → string  // PR-comment-ready
+```
+
+Rule set:
+
+| Rule | Default | What it catches |
+| ---- | ------- | --------------- |
+| `max-failures-allowed` | 0 | Any case failure. |
+| `max-skipped-allowed` | 0 | Silent skipping is the #1 way regressions hide. |
+| `classifier-accuracy` | ≥ 1.0 | Intent routing regression on any known intent. |
+| `memory-recall-rate` | ≥ 1.0 | Seeded facts stopped reaching the LLM prompt. |
+| `max-runtime-ms` | 30000 | Pathological cases before the suite outgrows per-PR CI. |
+| `max-tokens-per-case` | 3200 per suite | STANDARD_BUDGET overrun on any SINGLE case (not p95 — one bad case fails the gate). |
+
+Design choices:
+
+- Rules are independent: a single failing case often trips multiple
+  rules, and that redundancy helps triage.
+- Missing metrics skip their rule (not applicable). Unknown suites in
+  `maxTokensPerCase` are tolerated (forward-compat: adding a suite
+  shouldn't break old configs).
+- Same-suite overruns collapse to one violation with multiple case
+  IDs — keeps PR comments readable when a whole suite regresses.
+- Markdown renderer caps failing-case detail at 10 entries.
+
+**`gate.test.ts`** — 19 meta-tests. Covers each rule's pass/fail path,
+multiple simultaneous violations, missing-metric tolerance,
+forward-compat for unknown suites, markdown headline + body shape +
+10-case cap.
+
+**`tools/eval-harness/gate.ts`** — CLI wrapper. Single command for CI:
+
+```bash
+deno run --allow-read --allow-write --allow-net --allow-env --allow-run \
+  tools/eval-harness/gate.ts
+# exit 0 pass · 1 fail · 2 CLI/IO error
+```
+
+- Loads thresholds, fixtures, runs the static batch, applies the gate.
+- Writes `reports/latest.json` (full report) and `reports/latest.md`
+  (PR comment body) — CI uploads them as artifacts.
+- Captures git provenance (sha, branch, ci/local) for the markdown
+  footer so reviewers can trace a comment back to a commit.
+- `--thresholds` override for future staging/prod gate differentiation.
+
+**`.github/workflows/eval-harness.yml`** — CI wiring:
+
+- Triggers on PRs to `main`/`dev` + pushes to `main`. Manual
+  `workflow_dispatch` for ad-hoc runs.
+- Path-filtered to `supabase/functions/**`, `tools/eval-harness/**`,
+  `src/**`, and the workflow file. Docs-only / CHANGES-only PRs skip.
+- Deno caching keyed on lockfile + harness source hash — re-runs are
+  seconds.
+- `concurrency` group cancels in-flight runs on new commits so the
+  Actions UI stays tidy.
+- `permissions: pull-requests: write` (minimum) so the comment step
+  works; everything else is read-only.
+- Deliberately `set +e` around the gate call so the "Post PR
+  comment" step ALWAYS runs, even on gate failure. Final step
+  re-raises the exit code to fail the job.
+- PR comment uses a marker (`<!-- olive-eval-harness-comment -->`) so
+  subsequent runs **update** the existing comment instead of spamming.
+
+**`tools/eval-harness/README.md`** — expanded with: running locally,
+threshold semantics, when to add a relaxation, workflow anatomy, and
+how to extend the rule set safely.
+
+**`.gitignore`** — added `tools/eval-harness/reports/` (run
+artifacts, regenerated every run, uploaded by CI) + `.claude/`.
+
+### Verification
+
+- ✅ Gate meta-tests: 19/19 pass.
+- ✅ Full `_shared/` Deno suite: **263 passed / 0 failed** (was 244
+  before this work).
+- ✅ Gate CLI end-to-end on real fixtures: exit 0 (12/12 cases pass,
+  all thresholds met).
+- ✅ Gate CLI with deliberately-strict thresholds: exit 1, structured
+  violations printed with case IDs. Confirms the fail path.
+- ✅ `npx tsc --noEmit` clean.
+
+### Post-deploy verification (after merge)
+
+1. Open a draft PR touching any file under the workflow's path filter.
+   Expect: "Eval Harness / Static eval + gate" check appears on the
+   PR within ~1 minute.
+2. That check runs ~10-20s (first run ~40s while Deno deps warm the
+   cache). It posts a PR comment with the report summary.
+3. Push a no-op commit to confirm the comment UPDATES (one bot
+   comment per PR, not a thread).
+4. Deliberately break a case in a branch — e.g. change an
+   intent-classification fixture's `expected.classifier.intent` to
+   `foo`. Expect: the check fails, the PR comment lists the
+   violation with the exact case id.
