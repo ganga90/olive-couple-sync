@@ -2,9 +2,17 @@
 # ci_post_clone.sh — Xcode Cloud hook
 # ====================================
 # Runs after Xcode Cloud clones the repo, BEFORE `xcodebuild` kicks in.
-# Xcode Cloud discovers this file by convention: it must live at
-# <repo-root>/ci_scripts/ci_post_clone.sh and be executable. Apple docs:
-# https://developer.apple.com/documentation/xcode/writing-custom-build-scripts
+#
+# LOCATION IS LOAD-BEARING. Xcode Cloud discovers `ci_scripts/` at the
+# SAME LEVEL as the .xcodeproj / .xcworkspace file — NOT at the repo
+# root. Our workspace is `ios/App/App.xcworkspace`, so this script must
+# live at `ios/App/ci_scripts/ci_post_clone.sh`. Placing it at the
+# repo root makes Xcode Cloud silently skip the hook; the build then
+# fails with "Unable to open base configuration reference file
+# 'Pods-withOlive.release.xcconfig'" because `pod install` never ran.
+# Apple docs:
+#   https://developer.apple.com/documentation/xcode/writing-custom-build-scripts
+#   https://developer.apple.com/documentation/xcode/making-dependencies-available-to-xcode-cloud
 #
 # Why we need this:
 #   - `ios/App/Pods` is gitignored (see `ios/.gitignore`). The Pods
