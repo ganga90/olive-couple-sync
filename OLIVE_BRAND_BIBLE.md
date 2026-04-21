@@ -22,6 +22,7 @@
 10. [Logo, Iconography, Imagery](#10-logo-iconography-imagery)
 11. [Product Architecture as Brand](#11-product-architecture-as-brand)
 12. [Surface System — Consumer vs. B2B](#12-surface-system--consumer-vs-b2b)
+13. [Surface Showcase — iOS App & Marketing Website](#13-surface-showcase--ios-app--marketing-website)
 
 **Appendices**
 
@@ -1074,6 +1075,194 @@ When we launch Olive for Legal, Wealth, or Healthcare:
 3. The vocabulary translates per the [surface-specific lexicon](#surface-specific-lexicon) approach.
 4. The visual emphasis matches the audience (more restraint for healthcare; more confidence for wealth; more precision for legal).
 5. The surface always extends; it never replaces.
+
+---
+
+## 13. Surface Showcase — iOS App & Marketing Website
+
+> Olive ships two flagship surfaces that the rest of the brand orbits around: a beautiful native **iOS app** (built with Capacitor, originated at `witholive.app`) and a beautiful **marketing website** at the same domain. Both are reference implementations of everything in this bible. When in doubt about how a token, a tone, or a motion should *feel*, look at how these two ship it.
+
+This section is the canonical guide for how Olive shows up on each of those two surfaces, what's shared, and what flexes. Future surfaces (Android, watchOS, partner integrations) inherit from these two.
+
+### 13.1 The iOS App
+
+The native iOS app is Olive at her most intimate — pocket-sized, always with you, the surface where most captures actually happen.
+
+#### What makes it feel native (not a wrapped web view)
+
+Olive runs on Capacitor with deliberate hardening so it never feels like a website-in-a-jacket:
+
+- **Origin alignment.** The WebView serves under `https://witholive.app` (via `capacitor.config.ts → server.hostname`), which lets WebAuthn/Passkeys work properly and keeps users on the production Clerk tenant. Branded auth, native sign-in.
+- **Splash screen.** 2-second branded splash on `#FAF8F5` (Warm Beige) — same color as the web background so the transition into the app is invisible. No spinner. No logo bounce.
+- **Safe areas.** Every screen respects `pt-safe` and `pb-safe`. The home indicator never crowds content. The notch never crops headlines.
+- **Haptics.** Light tap on capture, medium tap on send, success notification on multi-step completions. Earned, never decorative. (See [Section 9](#9-motion--interaction).)
+- **Keyboard behavior.** Inputs auto-scroll into view. The 16px font-size minimum prevents iOS auto-zoom on focus (enforced globally in `index.css`).
+- **Scroll feel.** `contentInset: 'automatic'` plus rubber-band disabled on the body — content scrolls naturally inside cards without the whole app sloshing.
+
+#### App icon and splash
+
+- **Icon.** The Olive mark, rendered in Hunter Green (`#3A5A40`) on a soft Warm Beige squircle. iOS will round the corners; we never pre-round. The icon should look at home next to Apple Notes and Things 3 — *quiet, confident, unmistakably warm*.
+- **Splash background.** `#FAF8F5` (Warm Beige). The brand fades in, no animation. The hand-off to the first screen is seamless because the first screen has the same background color.
+- **Don't.** No gradient icons. No glossy highlights. No "AI sparkle" badges on the icon. The icon is the brand at rest.
+
+#### The mobile tab bar (the iOS spine)
+
+The bottom navigation is the most-touched UI in the entire product. It must be perfect.
+
+- **Shape.** Floating, glassmorphic, full-rounded pill detached from the screen edges (16px horizontal margin, 8px from bottom safe area). Not a flush bottom bar — *floating*.
+- **Material.** White at 80% opacity with `backdrop-blur-xl`, white-50 border for depth, soft layered shadow (`0 8px 32px rgba(0,0,0,0.08)`).
+- **Tabs.** Five tabs: Home, My Day, Lists, Calendar, Expenses. Each minimum 48px touch target. Icons are lucide-react, 20px default, scale to 24px when active. Label below in 10px Plus Jakarta Sans.
+- **Active state.** Icon scales to 110%, stroke weight thickens to 2.5, label goes semibold, and a single 1.5px Hunter Green dot glows below it (`shadow-[0_0_8px_hsl(130_22%_29%/0.5)]`). One indicator. No box highlight, no underline, no pill background. *Quiet competence.*
+- **Badges.** Only the Lists tab can show a badge — count of overdue/high-priority items. Solid `--priority-high` red circle, 20px, white bold number. Caps at "9+". Never used decoratively.
+- **Featured tab (My Day).** Slightly larger icon (24px) and a soft primary tint when inactive — a gentle visual cue that this is the daily home, without shouting.
+
+This is the tab bar shipped in production (`src/components/MobileTabBar.tsx`). Treat it as the canonical reference for any future native navigation.
+
+#### iOS-specific interaction language
+
+| Gesture / pattern | Olive treatment |
+|---|---|
+| **Pull to refresh** | Available on lists. Soft haptic on trigger. Don't show "Last updated 3 minutes ago" — Olive is always current. |
+| **Swipe to complete** (on a task) | Right swipe reveals a green "Done" with a check icon. Left swipe reveals a destructive "Delete" in `--destructive`. Optimistic — completes immediately, shows 5-second undo toast. |
+| **Long press** | On a capture: opens quick-edit bottom sheet. Light haptic. |
+| **Bottom sheets** | Replace centered modals on mobile. Slide up with `.animate-slide-up` (300ms ease-out). Drag handle at top. Dismissible by swipe-down. |
+| **Share Sheet** | Use the native iOS share sheet for "Send to Olive" flows from other apps. Don't build a custom one. |
+| **Action Sheet** | Use for 3+ destructive choices. Centered modal for ≤2 choices. |
+
+#### iOS-only brand moments
+
+Things that exist only because the user is on iOS:
+
+- **Add to Home Screen / app install** — the moment a user installs the native app is a milestone. The first-launch screen says: *"welcome back. everything's where you left it."*
+- **Widgets** *(roadmap)* — small/medium widgets showing today's captures count and the next reminder, in `.card-glass` aesthetic with Hunter Green accent.
+- **Lock-screen Live Activities** *(roadmap)* — for in-flight captures or reminders, styled with `--gradient-magic`.
+- **Siri Shortcut: "Tell Olive…"** *(roadmap)* — voice capture from anywhere on the device.
+
+When these ship, they must respect every visual and voice rule in this bible. iOS is not an excuse to break the system; it's an invitation to express it natively.
+
+### 13.2 The Marketing Website
+
+The website at `witholive.app` is where strangers become users. It must do three things in 8 seconds: name the pain, show the magic, prove she's safe to invite in.
+
+#### Architecture (top to bottom)
+
+The landing page (`src/pages/Landing.tsx`) is composed of these sections, in order — each one reinforces a moat:
+
+1. **`NewLandingNav`** — minimal top nav, logo + Beta badge, sign-in CTA on the right. Glassmorphic on scroll.
+2. **`NewLandingHero`** — the headline, the subhead, two CTAs, the trust signal. Phone animation on the right showing a real WhatsApp conversation with Olive. *Moat: brain-dump capture.*
+3. **`ChooseYourMode`** — solo / couple / small group. *Moat: collaboration with privacy boundaries.*
+4. **`SuperpowersGrid`** — 6–8 sketch-illustrated capability cards. *Moat: personal assistant via Capture-Offer-Confirm-Execute.*
+5. **`WhatsAppFirst`** — the "she lives where you already text" pitch. Animated chat. *Moat: lowest-friction surface.*
+6. **`BetaTestimonials`** — real users, real quotes, with their first name and city only. *Moat: trust through transparency.*
+7. **`NewPricing`** — Free during Beta, with what's coming next. No dark patterns.
+8. **`NewFooterCTA`** — one last "drop a thought" CTA before the footer.
+9. **`NewLandingFooter`** — minimal links, language switcher, legal.
+
+The order is deliberate. **Pain → solution → proof → invitation.** Don't reorder without a brand-lead conversation.
+
+#### The hero (the 1.5-second test)
+
+The hero is where 100% of visitors land and 60% decide whether to scroll. It must work in **1.5 seconds**.
+
+- **Eyebrow pill.** Small, Hunter-green-tinted, with a pulsing Hunter-green dot. Names the category in 3–5 words. (e.g., "your AI in your group chat")
+- **Headline.** 4xl mobile, 6xl desktop. Stone-900 (deep near-black). Tracking-tight. Leading 1.1. The headline names the pain or makes the promise. (e.g., "Stop texting into the void.")
+- **Subheadline.** Stone-600, 18–20px, generous line-height. One sentence of *concrete proof*. Never abstract.
+- **Primary CTA.** Hunter-green pill button, white text, soft Hunter-green shadow (`shadow-xl shadow-olive/25`). Label is 3–5 words, verb-first. Right-aligned arrow icon. (e.g., "Start using Olive — free →")
+- **Secondary CTA.** Outline pill, stone border, "Watch how it works" with a play icon. Scrolls to the SuperpowersGrid demo.
+- **Trust signal.** Below CTAs, a thin row: pulsing emerald dot + "Beta" pill + a one-line transparency note. (e.g., "free during beta — your data is yours.")
+- **Right side (desktop).** A phone-frame `WhatsAppChatAnimation` showing a real micro-conversation with Olive. Soft Hunter-green radial glow behind it.
+- **Right side (mobile).** Same animation, centered below the text block.
+- **Background.** No purple gradients. No gradient mesh. Just `.atmosphere-bg` over the warm beige.
+
+#### Section transitions
+
+- Sections breathe. Minimum vertical padding is `py-16` mobile, `py-24` desktop.
+- Each section has its own quiet animation entrance — `.animate-fade-up` with a slight delay on each child. Never staggered for stagger's sake; only when there are 2+ peer items.
+- Background color alternates *very* subtly between Warm Beige and Paper to give rhythm without stripes.
+- No parallax. No scroll-jacking. Olive respects the user's scroll input.
+
+#### Imagery on the website
+
+The website's visual proof is built from three repeated motifs:
+
+1. **Sketched chat bubbles** — hand-drawn style, in `WhatsAppChatAnimation` and `SuperpowersGrid`. They feel personal, not corporate. *Always* show a real-feeling conversation, never lorem-ipsum.
+2. **Phone frames** — used to display the iOS app or WhatsApp UI. Rounded corners, soft shadow, no detailed bezel — abstracted enough to feel timeless.
+3. **Squircle feature icons** — for the SuperpowersGrid. Lucide icons in `.icon-squircle-md` containers, sage-to-white gradient backgrounds, Hunter Green strokes.
+
+Don't introduce new motifs without escalating. Three motifs done well > seven done okay.
+
+#### Beta on the website
+
+The Beta badge is everywhere on the website — next to the logo, in the hero trust signal, on the pricing page. We are not hiding it. We're using it as **social proof of momentum**: *"you're early. it shows."*
+
+When we leave Beta, the badge comes off the website on the same day it comes off the app. Until then, it stays. (See [Section 4 — Beta-transparent](#4-voice--tone-principles).)
+
+#### Performance is a brand value
+
+The website must hit:
+- **LCP < 2.5s** on 4G mobile.
+- **CLS < 0.1.**
+- **First contentful paint < 1.5s.**
+
+A slow website breaks the brand promise. Olive feels fast because she *is* fast. The marketing site must feel the same way before the user has even signed up.
+
+#### SEO posture
+
+- One `<h1>` per page (the hero headline).
+- Title tag under 60 characters with the brand name and a benefit.
+- Meta description under 160 characters that names the pain and the relief.
+- All images have meaningful `alt` text written in Olive's voice — never "image1.png" and never keyword-stuffed.
+- Canonical tags on every page.
+- JSON-LD `Organization` and `SoftwareApplication` schema in the head.
+
+(See `useSEO` hook for the canonical implementation.)
+
+### 13.3 What's shared across iOS and Website
+
+The two surfaces are siblings. They must feel like the same Olive.
+
+| Element | Treatment |
+|---|---|
+| **Color tokens** | Identical. Both pull from `index.css`. |
+| **Typography** | Identical. Fraunces + Plus Jakarta Sans. |
+| **Card system** | Identical. `.card-glass`, `.card-elevated`, `.card-magic`. |
+| **Pill buttons** | Identical. `.btn-pill-primary`, `.btn-pill-magic`. |
+| **Beta badge** | Identical component (`<BetaBadge />`). |
+| **Logo** | Identical component (`<OliveLogoWithText />`). |
+| **Voice** | Identical seven non-negotiables. |
+| **Magic Gold = Olive made it** | Identical rule. |
+| **Localization** | English, Italian, Spanish on both. Auto-detect on web; system language on iOS. |
+
+### 13.4 What's different between iOS and Website
+
+The sibling resemblance is unmistakable, but the two have different jobs.
+
+| Dimension | iOS App | Website |
+|---|---|---|
+| **Job to be done** | Capture, recall, act — every day | Convert a stranger into a user in <90 seconds |
+| **Default density** | Generous — one capture, one card | Sectioned — multiple proof points per scroll |
+| **Hero animations** | Subtle — earned, sparingly | More expressive — Olive's first impression |
+| **Background** | `bg-background` (Warm Beige) flat | `.atmosphere-bg` + section variation |
+| **Navigation** | Floating glassmorphic tab bar (5 tabs) | Top nav, sticky on scroll |
+| **CTAs** | Mostly contextual ("done", "remind me") | Conversion-oriented ("Start using Olive") |
+| **Coral usage** | Rare — only high-priority alerts | More common — primary conversion CTA color, always paired with Hunter Green nearby |
+| **Imagery** | Almost none — content *is* the imagery | Sketched chat bubbles, phone frames, squircle icons |
+| **Tone** | Whisper — quiet daily companion | Confident — "here's what changes when you invite her in" |
+
+If you're ever building a third surface (Android, watchOS, partner widget), start by deciding which sibling it inherits more from — and document the differences here.
+
+### 13.5 The visual hand-off (web → iOS)
+
+The single most underrated brand moment is the **transition from website to iOS app** — the moment a user signs up on the web, opens the App Store link, installs, and launches.
+
+Olive must feel **continuous** across that hand-off:
+
+1. **Same colors.** The web hero background and the iOS splash background are both `#FAF8F5`. Visual fade.
+2. **Same wordmark.** The logo lockup is identical in both surfaces.
+3. **Same voice.** The first message Olive sends in the iOS app should pick up where the website left off. (e.g., website CTA: *"Start using Olive."* → iOS first message: *"hi. let's start light. tell me one thing on your mind."*)
+4. **Same Beta badge.** Visible on web, visible on iOS launch. Never one without the other.
+
+If a user has to *re-orient* when they move from the marketing site to the app, we've failed at brand continuity.
 
 ---
 
