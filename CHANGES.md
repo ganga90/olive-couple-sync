@@ -12,6 +12,52 @@ there are no behavioral rollbacks.
 
 ---
 
+## 2026-04-21 — Image + Caption Processing Fix
+
+### Bug · process-note mis-prioritises caption over image content
+
+**Symptom.** Sending a WhatsApp image with a short caption produced a
+degraded note vs. sending the same image alone. Repro (Pop Up Poetry flyer):
+- no caption → "Saturday Pop-Up Poetry Event at Soul Lounge Miami" (rich, entity-aware)
+- caption "Saturday event" → "Saturday Event" (caption text wins; image entity lost)
+
+**Root cause.** Three places in `process-note/index.ts` forced the caption
+to override the image-derived summary:
+1. `createSystemPrompt` CRITICAL RULES (line ~402) — "caption IS the user's
+   intent; extracted content provides supporting details only".
+2. `isCaptionContext` branch (line ~1818) — wrapped enhancedText with
+   "CRITICAL: summary MUST incorporate caption keywords".
+3. User-prompt branch for short captions (line ~1899) — restated the same
+   forcing directive.
+
+These rules were designed for **naming captions** ("Oura interview notes")
+but applied indiscriminately to **commentary captions** ("Saturday event",
+"cool", "for later"), stripping out the specific entity names the vision
+model had already extracted.
+
+**Fix.** Reframe caption semantics in all three locations:
+- Image is always the primary content source for the summary.
+- Caption augments category / priority / tags / intent.
+- Naming captions (explicitly identify the artifact) get incorporated into
+  the summary alongside image-derived entities.
+- Commentary captions (generic classification or emotion) only reinforce
+  category — never replace the summary text.
+
+Added worked examples in the system prompt covering flyers, wine labels,
+Maps screenshots, and restaurant menus so the model generalises correctly.
+
+**Files changed.**
+- `supabase/functions/process-note/index.ts` — three edits (system prompt
+  rules, enhancedText wrapper, userPrompt branch).
+
+**Verification.**
+- `deno test supabase/functions/_shared/` → 263 passed, 0 failed
+  (identical to pre-change baseline).
+- No DB migration, no new env vars, no API surface change — pure prompt
+  behaviour fix. Deploy with `supabase functions deploy process-note`.
+
+---
+
 ## 2026-04-16 — Phase 1
 
 ### Task 1-A · Formal Context Contract (context-contract.ts)

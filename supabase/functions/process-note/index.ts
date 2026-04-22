@@ -399,11 +399,19 @@ MEDIA EXTRACTION RULES - ALWAYS extract ALL details into items array:
    - Category: "books"
    - target_list: match to Books list if exists
 
-CRITICAL RULES:
-- If user text is vague ("save this", "remember"), use ALL media content to create summary AND populate items with extracted details.
-- If user caption provides CONTEXT (e.g., "Oura notes for interview", "meeting notes from standup"), the summary MUST incorporate the user's exact keywords/phrases. The caption IS the user's intent — the extracted content provides supporting details for items/sub-items only.
-- NEVER produce generic summaries like "WHITEBOARD NOTES" or "APPOINTMENTS:" — always include the SPECIFIC content from the handwriting.
-- When a caption says "X for Y" (e.g., "notes for Oura interview"), the summary should be something like "Oura Interview Notes", NOT a description of the document contents.`;
+CRITICAL RULES — HOW CAPTION + MEDIA COMBINE:
+- The MEDIA is always the primary content source. The caption AUGMENTS the media — it never replaces what the image reveals.
+- If user text is vague ("save this", "remember", "this"), derive the ENTIRE summary from the media content.
+- **NAMING captions** explicitly identify/title the artifact (e.g., "Oura notes for interview", "wine for Gio's birthday", "recipe from Nonna", "listing for 123 Main"). Incorporate those naming keywords into the summary ALONGSIDE the specific entity names extracted from the media.
+- **COMMENTARY captions** express intent, emotion, or generic classification (e.g., "Saturday event", "cool", "want to try", "for later", "love this", "great find", "look at this", "check this out", "nice", "interesting", "save", "omg"). For commentary captions, the SUMMARY MUST come from the IMAGE CONTENT (venue name, event title, business, product, person, URL title). Use the caption ONLY to reinforce category, priority, or tags — NEVER as the summary text.
+- **Rule of thumb:** If the caption could apply to dozens of unrelated images, it is commentary — do not use it as the summary. If the caption specifically names THIS artifact, it is naming — incorporate it.
+- NEVER produce generic summaries like "Saturday Event", "Cool Thing", "Whiteboard Notes", "Nice Find" when the image contains a specific entity (venue, event title, business, product, person). Always prefer the specific entity from the image over a generic caption word.
+- Examples:
+  * Image: flyer for "Pop Up Poetry MIA at The Corner" + caption "Saturday event" → Summary: "Pop Up Poetry MIA at The Corner" (caption is commentary — do NOT use as summary). Category: "entertainment" (caption confirms category).
+  * Image: whiteboard sketch + caption "Oura interview notes" → Summary: "Oura Interview Notes" (caption is naming — use it; image details go in items).
+  * Image: wine label "Caymus Cab '21" + caption "this was great" → Summary: "Caymus Cab '21" (image is specific; caption only signals positive sentiment).
+  * Image: restaurant menu + caption "for anniversary" → Summary: "[Restaurant name] — for anniversary" (combines both; caption adds occasion).
+  * Image: Google Maps for "Nobu Miami" + caption "date night spot" → Summary: "Nobu Miami" (caption is commentary); category: "date_ideas".`;
   }
   
   // Style-specific guidance
@@ -1816,9 +1824,15 @@ serve(async (req) => {
             : `${enhancedText}\n\n[Audio content]: ${audioTranscriptions}`;
         }
       } else if (isCaptionContext && visualMediaDescriptions) {
-        // Caption provides CONTEXT for the media — media is the primary content, caption guides categorization
-        console.log('[process-note] Caption-as-context detected: "' + safeText + '" — media is primary content');
-        enhancedText = `[USER CAPTION/CONTEXT: "${safeText}" — CRITICAL: The summary/title MUST incorporate the user's keywords from this caption. Do NOT ignore the caption in favor of document content.]\n\n[EXTRACTED CONTENT FROM ATTACHMENT — use for items/details but the SUMMARY must reflect the user's caption keywords]:\n${visualMediaDescriptions}`;
+        // Caption + media: image is primary content; caption augments intent/category/emphasis
+        console.log('[process-note] Caption+media detected: "' + safeText + '" — image primary, caption augments');
+        enhancedText = `[USER CAPTION: "${safeText}"]
+  - Use the caption to reinforce category, priority, tags, or intent.
+  - If the caption explicitly NAMES the artifact (e.g., "Oura interview notes", "wine for Gio"), incorporate its naming keywords into the summary alongside the specific entity names from the image.
+  - If the caption is commentary/classification (e.g., "Saturday event", "cool", "for later", "save this"), DO NOT use the caption text as the summary — rely on the image content for the summary.
+
+[PRIMARY CONTENT FROM ATTACHMENT — your main source for the summary: extract entity names, venues, event titles, businesses, products, people, dates]:
+${visualMediaDescriptions}`;
         if (audioTranscriptions) {
           enhancedText += `\n\n[Audio content]: ${audioTranscriptions}`;
         }
@@ -1897,11 +1911,14 @@ Do NOT use the user's text as the summary. Create a meaningful, specific summary
 Process this note:
 "${enhancedText}"`;
     } else if (hasMedia && !isVagueText && safeText.length > 0 && safeText.length < 80) {
-      // Caption + media: emphasize that the caption keywords MUST appear in the summary
+      // Caption + media: image is the primary content source; caption augments intent/category
       userPrompt = `${systemPrompt}${listsContext}
 
-CRITICAL: The user provided a SHORT CAPTION with their attachment: "${safeText}". 
-The summary/title MUST incorporate the user's keywords from this caption. The attachment content should populate the items/details, NOT override the user's chosen title/keywords.
+CAPTION + MEDIA HANDLING: The user provided a short caption with their attachment: "${safeText}".
+- The IMAGE is your primary source for the summary (extract the specific entity: venue name, event title, business, product, person, URL).
+- Use the caption to REINFORCE category, priority, tags, or intent.
+- Only incorporate caption keywords into the summary when the caption explicitly NAMES the artifact (e.g., "Oura interview notes", "for Sarah's birthday"). For commentary captions (e.g., "Saturday event", "cool", "for later", "save this"), do NOT use the caption text as the summary — rely on the image content.
+- If the image contains a specific entity name (e.g., "Pop Up Poetry MIA at The Corner"), that entity MUST be in the summary; never replace it with a generic caption word like "Saturday Event".
 
 Process this note:
 "${enhancedText}"`;
