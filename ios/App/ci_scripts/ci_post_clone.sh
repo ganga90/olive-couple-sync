@@ -131,7 +131,55 @@ if [ ! -f "$CAPACITOR_HELPERS" ]; then
 fi
 log "Capacitor pods_helpers present: $CAPACITOR_HELPERS"
 
-# ── 3. cd to the ios/App directory for pod install ────────────────
+# ── 3. Build the web app + sync into the native iOS project ────────
+# The Capacitor iOS target bundles `ios/App/App/public/` (the built web
+# app) and `ios/App/App/config.xml` (regenerated from capacitor.config.ts).
+# BOTH are gitignored (see `ios/.gitignore`) and regenerated on every
+# build. Without this step, xcodebuild fails with:
+#   error: The file "public" couldn't be opened because there is no such file.
+#   error: The file "config.xml" couldn't be opened because there is no such file.
+#
+# Sequence:
+#   1. `npm run build` — Vite produces `dist/` at the repo root (this
+#      is what `webDir` in capacitor.config.ts points to).
+#   2. `npx cap copy ios` — copies `dist/` → `ios/App/App/public/` and
+#      regenerates `capacitor.config.json` inside the iOS bundle.
+#   3. `npx cap update ios` — updates the iOS native project's plugin
+#      refs and writes `config.xml`.
+# Both `cap copy` and `cap update` are idempotent; neither runs
+# `pod install` (that's `cap sync`'s job, and we handle pod install
+# explicitly in section 5 so we can dump Podfile context on failure).
+
+log "Running 'npm run build' (Vite → dist/)…"
+if ! npm run build; then
+  fail "'npm run build' failed — see log above. Check vite.config.ts / package.json build script."
+fi
+
+if [ ! -f "${CI_PRIMARY_REPOSITORY_PATH}/dist/index.html" ]; then
+  fail "Expected dist/index.html after 'npm run build' — not found. Build silently produced no output?"
+fi
+log "Build output present: $(ls -la "${CI_PRIMARY_REPOSITORY_PATH}/dist" | wc -l | xargs) entries in dist/"
+
+log "Running 'npx cap copy ios' (dist/ → ios/App/App/public/)…"
+if ! npx cap copy ios; then
+  fail "'npx cap copy ios' failed. Capacitor config or webDir mismatch?"
+fi
+
+log "Running 'npx cap update ios' (plugin refs + config.xml)…"
+if ! npx cap update ios; then
+  fail "'npx cap update ios' failed. Check native plugin install state."
+fi
+
+# Verify the two files xcodebuild actually errored on last time.
+if [ ! -d "${CI_PRIMARY_REPOSITORY_PATH}/ios/App/App/public" ]; then
+  fail "ios/App/App/public/ still missing after cap copy — xcodebuild will fail to find web assets."
+fi
+if [ ! -f "${CI_PRIMARY_REPOSITORY_PATH}/ios/App/App/config.xml" ]; then
+  fail "ios/App/App/config.xml still missing after cap update — xcodebuild will fail."
+fi
+log "ios/App/App/public/ and config.xml present ✓"
+
+# ── 4. cd to the ios/App directory for pod install ────────────────
 IOS_APP_DIR="${CI_PRIMARY_REPOSITORY_PATH}/ios/App"
 if [ ! -d "$IOS_APP_DIR" ]; then
   fail "Expected iOS project at $IOS_APP_DIR but directory does not exist."
@@ -142,7 +190,7 @@ log "Working directory: $(pwd)"
 log "Contents of $IOS_APP_DIR:"
 ls -la | head -20 | sed 's/^/  /'
 
-# ── 4. Sanity-check the Podfile target name matches pbxproj ────────
+# ── 5. Sanity-check the Podfile target name matches pbxproj ────────
 # If the Podfile target name drifts from the Xcode target name (as
 # happened during the 'App' → 'withOlive' rename), `pod install` fails
 # with "target 'X' not found in project". Surface this explicitly.
@@ -153,7 +201,7 @@ fi
 PODFILE_TARGET=$(grep -E "^target '" Podfile | head -1 | sed -E "s/^target '([^']+)'.*/\\1/")
 log "Podfile declares target: '${PODFILE_TARGET:-<none>}'"
 
-# ── 5. pod install ─────────────────────────────────────────────────
+# ── 6. pod install ─────────────────────────────────────────────────
 log "Running 'pod install --repo-update'…"
 if ! pod install --repo-update; then
   EC=$?
@@ -169,7 +217,7 @@ if ! pod install --repo-update; then
   fail "pod install failed — see context above."
 fi
 
-# ── 6. Verify xcconfig files were generated ────────────────────────
+# ── 7. Verify xcconfig files were generated ────────────────────────
 TARGET_SUPPORT_DIR="Pods/Target Support Files/Pods-${PODFILE_TARGET}"
 log "Checking $TARGET_SUPPORT_DIR/ for xcconfig files…"
 if ls "$TARGET_SUPPORT_DIR"/*.xcconfig >/dev/null 2>&1; then
