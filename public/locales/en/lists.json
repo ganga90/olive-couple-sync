@@ -76,7 +76,14 @@
     "saveChanges": "Save Changes",
     "listUpdated": "List updated successfully",
     "listShared": "List shared with space. All items updated.",
-    "listMadePrivate": "List made private. All items updated."
+    "listMadePrivate": "List made private. All items updated.",
+    "privacyToggle": "Change list visibility",
+    "visibilityLabel": "List visibility",
+    "privateOption": "Private (only you)",
+    "sharedOption": "Shared with space",
+    "needsPartnerDesc": "Sharing needs someone to share with. Invite a partner or member first.",
+    "invitePartner": "Invite someone",
+    "inviteFirstToast": "Invite someone first, then share this list."
   },
   "createDialog": {
     "newList": "New List",

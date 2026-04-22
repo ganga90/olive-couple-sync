@@ -224,8 +224,23 @@ const ListCategory = () => {
                   `useSupabaseLists.updateList` and toasts success/failure.
                 */}
                 <ListPrivacyToggle
-                  listId={currentList.id}
                   isShared={!!currentList.couple_id}
+                  onToggle={async (makeShared) => {
+                    const newCoupleId =
+                      makeShared && currentCouple?.id ? currentCouple.id : null;
+                    const result = await updateList(currentList.id, {
+                      couple_id: newCoupleId,
+                    });
+                    if (result) {
+                      toast.success(
+                        makeShared
+                          ? t('listDetail.listShared')
+                          : t('listDetail.listMadePrivate')
+                      );
+                      return true;
+                    }
+                    return false;
+                  }}
                 />
 
               </div>

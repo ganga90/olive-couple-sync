@@ -76,7 +76,14 @@
     "saveChanges": "Salva Modifiche",
     "listUpdated": "Lista aggiornata",
     "listShared": "Lista condivisa con lo spazio. Tutti gli elementi aggiornati.",
-    "listMadePrivate": "Lista resa privata. Tutti gli elementi aggiornati."
+    "listMadePrivate": "Lista resa privata. Tutti gli elementi aggiornati.",
+    "privacyToggle": "Cambia visibilità della lista",
+    "visibilityLabel": "Visibilità della lista",
+    "privateOption": "Privata (solo tu)",
+    "sharedOption": "Condivisa con lo spazio",
+    "needsPartnerDesc": "Per condividere serve qualcuno con cui farlo. Invita prima un partner o un membro.",
+    "invitePartner": "Invita qualcuno",
+    "inviteFirstToast": "Invita prima qualcuno, poi condividi questa lista."
   },
   "createDialog": {
     "newList": "Nuova Lista",

@@ -76,7 +76,14 @@
     "saveChanges": "Guardar Cambios",
     "listUpdated": "Lista actualizada",
     "listShared": "Lista compartida con el espacio. Todos los elementos actualizados.",
-    "listMadePrivate": "Lista hecha privada. Todos los elementos actualizados."
+    "listMadePrivate": "Lista hecha privada. Todos los elementos actualizados.",
+    "privacyToggle": "Cambiar visibilidad de la lista",
+    "visibilityLabel": "Visibilidad de la lista",
+    "privateOption": "Privada (solo tú)",
+    "sharedOption": "Compartida con el espacio",
+    "needsPartnerDesc": "Compartir requiere a alguien con quien hacerlo. Invita primero a un miembro o pareja.",
+    "invitePartner": "Invitar a alguien",
+    "inviteFirstToast": "Invita primero a alguien y luego comparte esta lista."
   },
   "createDialog": {
     "newList": "Nueva Lista",

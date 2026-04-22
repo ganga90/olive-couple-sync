@@ -2,175 +2,179 @@ import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Badge } from "@/components/ui/badge";
-import { Lock, Users } from "lucide-react";
+import { Lock, Users, UserPlus } from "lucide-react";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
-import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { toast } from "sonner";
+import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
 /**
  * ListPrivacyToggle
  * ==================
  * Clickable Private/Shared pill for the LIST HEADER on ListCategory.
  *
- * Why a separate component from NotePrivacyToggle?
- *   - Different data source (clerk_lists vs clerk_notes) + different hook
- *     (useSupabaseLists.updateList vs useSupabaseNotes.updateNote).
- *   - Different badge visual (matches the header badge style used on the
- *     list-detail page, not the list-item row style).
+ * Previous bug: when the user had no couple, the pill rendered as a
+ * plain (non-clickable) Badge, so users on the screenshot reported
+ * "I can't tap Private to change it". Now the pill is ALWAYS an
+ * interactive Popover trigger; the popover content adapts to the
+ * user's state:
+ *   - Has couple  → Private ⇄ Shared toggle (writes couple_id on the list)
+ *   - No couple   → Shows a "Invite your partner" CTA that deep-links
+ *                   to Home where PartnerInviteCard lives.
  *
- * Why mirror NotePrivacyToggle's Popover structure?
- *   - UX consistency: tapping either the note or list pill surfaces the
- *     same Private / Shared choice affordance.
- *   - Keeps a single mental model for users: "this pill toggles who can
- *     see this thing."
- *
- * Failure-mode safety:
- *   - If the user has no couple, the pill is read-only (can't toggle to
- *     "Shared" with no one to share with). Renders as a plain badge,
- *     matching the pre-toggle behavior exactly.
- *   - The Supabase update is awaited; a toast confirms success or
- *     surfaces failure. The local `useSupabaseLists` cache already
- *     refreshes on update() so no extra re-render glue needed.
+ * Writes are delegated to the parent's `onToggle` callback so this
+ * component doesn't spawn its own `useSupabaseLists` instance (which
+ * duplicated the realtime subscription and triggered extra fetches).
+ * Realtime sync to other space members happens via the parent hook's
+ * `clerk_lists_changes` channel.
  */
 
 interface ListPrivacyToggleProps {
-  listId: string;
   /** true = list has a couple_id (shared); false = couple_id null (private). */
   isShared: boolean;
-  /** Match the page header badge sizing. */
-  size?: "sm" | "default";
+  /**
+   * Called when the user picks a new privacy state. Returns true on
+   * success so the popover can close; false/undefined keeps it open.
+   * Parent owns the Supabase update + toast.
+   */
+  onToggle: (makeShared: boolean) => Promise<boolean | void>;
+  /** Disabled while an update is in flight. */
+  disabled?: boolean;
 }
 
 export const ListPrivacyToggle: React.FC<ListPrivacyToggleProps> = ({
-  listId,
   isShared,
-  size = "sm",
+  onToggle,
+  disabled = false,
 }) => {
   const { t } = useTranslation(["lists", "common"]);
   const { currentCouple } = useSupabaseCouple();
-  const { updateList } = useSupabaseLists(currentCouple?.id || null);
+  const navigate = useLocalizedNavigate();
   const [isUpdating, setIsUpdating] = useState(false);
   const [open, setOpen] = useState(false);
 
-  // Can only toggle when the user is in a couple — the "shared" option
-  // requires a couple_id to write. No couple → show read-only pill.
-  const canToggle = !!currentCouple;
+  const hasCouple = !!currentCouple;
 
-  const handleToggle = async (makeShared: boolean) => {
-    // Idempotent: clicking the currently-active option is a no-op
-    // (also guarded by `disabled` in the button, but belt-and-braces).
+  const handleSelect = async (makeShared: boolean) => {
     if (isUpdating) return;
+    // No-op when clicking the active option.
     if (makeShared === isShared) {
       setOpen(false);
+      return;
+    }
+    // Sharing requires a couple. Without one, route to the invite flow.
+    if (makeShared && !hasCouple) {
+      setOpen(false);
+      navigate("/home");
+      toast.info(
+        t("listDetail.inviteFirstToast", {
+          defaultValue: "Invite someone first, then share this list.",
+        }),
+      );
       return;
     }
 
     setIsUpdating(true);
     try {
-      const newCoupleId = makeShared && currentCouple?.id ? currentCouple.id : null;
-      const result = await updateList(listId, { couple_id: newCoupleId });
-
-      if (result) {
-        toast.success(
-          makeShared
-            ? t("listDetail.listShared", "List shared with your space")
-            : t("listDetail.listMadePrivate", "List is now private")
-        );
-        setOpen(false);
-      } else {
-        // updateList returns null on failure; show a toast so the user
-        // knows the click did something (but didn't succeed).
-        toast.error(t("common.errorGeneric", { ns: "common", defaultValue: "Something went wrong. Please try again." }));
-      }
-    } catch (err) {
-      console.error("[ListPrivacyToggle] Update failed:", err);
-      toast.error(t("common.errorGeneric", { ns: "common", defaultValue: "Something went wrong. Please try again." }));
+      const ok = await onToggle(makeShared);
+      if (ok !== false) setOpen(false);
     } finally {
       setIsUpdating(false);
     }
   };
 
-  // No couple → read-only badge, identical to the pre-toggle render.
-  if (!canToggle) {
-    return isShared ? (
-      <Badge variant="secondary" className="text-xs bg-primary/10 text-primary flex-shrink-0 gap-1">
-        <Users className="h-3 w-3" />
-        {t("lists:badges.shared", "Shared")}
-      </Badge>
-    ) : (
-      <Badge variant="secondary" className="text-xs bg-muted text-muted-foreground flex-shrink-0 gap-1">
-        <Lock className="h-3 w-3" />
-        {t("lists:badges.private", "Private")}
-      </Badge>
-    );
-  }
+  const handleInvite = () => {
+    setOpen(false);
+    navigate("/home");
+  };
+
+  const triggerClass = isShared
+    ? "h-auto py-0.5 px-2 text-xs bg-primary/10 text-primary hover:bg-primary/15 active:bg-primary/20 flex-shrink-0 gap-1 rounded-full border-0 cursor-pointer"
+    : "h-auto py-0.5 px-2 text-xs bg-muted text-muted-foreground hover:bg-muted/80 active:bg-muted flex-shrink-0 gap-1 rounded-full border-0 cursor-pointer";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        {/*
-          Render the trigger as a Button (not a raw badge) so it inherits
-          proper focus-visible + active states + keyboard handling from
-          shadcn. Visual size is matched to the header badge so the
-          conversion looks identical to the previous static pill.
-        */}
         <Button
           type="button"
           variant="ghost"
-          size={size}
-          disabled={isUpdating}
-          // Match the badge padding/height exactly; `h-auto` lets the
-          // content set the height so the header doesn't jump when the
-          // toggle becomes interactive.
-          className={
-            isShared
-              ? "h-auto py-0.5 px-2 text-xs bg-primary/10 text-primary hover:bg-primary/15 flex-shrink-0 gap-1 rounded-full border-0"
-              : "h-auto py-0.5 px-2 text-xs bg-muted text-muted-foreground hover:bg-muted/80 flex-shrink-0 gap-1 rounded-full border-0"
-          }
-          aria-label={t("listDetail.privacyToggle", "Change list visibility")}
+          size="sm"
+          disabled={disabled || isUpdating}
+          className={triggerClass}
+          aria-label={t("listDetail.privacyToggle", {
+            defaultValue: "Change list visibility",
+          })}
         >
           {isShared ? (
             <>
               <Users className="h-3 w-3" />
-              {t("lists:badges.shared", "Shared")}
+              {t("lists:badges.shared", { defaultValue: "Shared" })}
             </>
           ) : (
             <>
               <Lock className="h-3 w-3" />
-              {t("lists:badges.private", "Private")}
+              {t("lists:badges.private", { defaultValue: "Private" })}
             </>
           )}
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent className="w-52 p-2" align="start">
+      <PopoverContent className="w-64 p-2" align="start">
         <div className="space-y-1">
           <div className="text-xs font-medium text-muted-foreground mb-2 px-1">
-            {t("listDetail.visibilityLabel", "List visibility")}
+            {t("listDetail.visibilityLabel", {
+              defaultValue: "List visibility",
+            })}
           </div>
 
           <Button
             variant={!isShared ? "default" : "ghost"}
             size="sm"
-            onClick={() => handleToggle(false)}
-            disabled={isUpdating || !isShared}
+            onClick={() => handleSelect(false)}
+            disabled={isUpdating}
             className="w-full justify-start text-xs"
           >
             <Lock className="h-3 w-3 mr-2" />
-            {t("listDetail.privateOption", "Private (only you)")}
+            {t("listDetail.privateOption", {
+              defaultValue: "Private (only you)",
+            })}
           </Button>
 
           <Button
             variant={isShared ? "default" : "ghost"}
             size="sm"
-            onClick={() => handleToggle(true)}
-            disabled={isUpdating || isShared}
+            onClick={() => handleSelect(true)}
+            disabled={isUpdating || (!hasCouple && isShared)}
             className="w-full justify-start text-xs"
           >
             <Users className="h-3 w-3 mr-2" />
-            {t("listDetail.sharedOption", "Shared with partner")}
+            {t("listDetail.sharedOption", {
+              defaultValue: "Shared with space",
+            })}
           </Button>
+
+          {!hasCouple && (
+            <>
+              <div className="h-px bg-border my-2" />
+              <p className="text-[11px] text-muted-foreground px-1 leading-snug">
+                {t("listDetail.needsPartnerDesc", {
+                  defaultValue:
+                    "Sharing needs someone to share with. Invite a partner or member first.",
+                })}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleInvite}
+                disabled={isUpdating}
+                className="w-full justify-start text-xs mt-1"
+              >
+                <UserPlus className="h-3 w-3 mr-2" />
+                {t("listDetail.invitePartner", {
+                  defaultValue: "Invite someone",
+                })}
+              </Button>
+            </>
+          )}
         </div>
       </PopoverContent>
     </Popover>
