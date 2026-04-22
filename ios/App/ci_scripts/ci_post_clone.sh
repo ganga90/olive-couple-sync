@@ -70,11 +70,68 @@ fi
 
 log "CocoaPods version: $(pod --version 2>&1)"
 
-# ── 2. cd to the ios/App directory ─────────────────────────────────
+# ── 2. Ensure node_modules exists (Capacitor Podfile requires it) ──
+# The Capacitor-generated Podfile's first line is:
+#   require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
+# That Ruby file lives INSIDE node_modules/@capacitor/ios/. Without
+# `npm install`, pod install fails with:
+#   [!] Invalid `Podfile` file: cannot load such file
+#   -- /Volumes/workspace/repository/node_modules/@capacitor/ios/scripts/pods_helpers
+# Reference: https://capacitorjs.com/docs/ios — Capacitor Pods load
+# helpers from the node_modules location, not CocoaPods' own spec repo.
+#
+# Xcode Cloud images don't preinstall Node, so install via Homebrew on
+# first run. Then run `npm ci` (strict, lockfile-based — faster and
+# more reproducible than `npm install`; falls back to `npm install` if
+# ci fails due to a lockfile drift).
+
 if [ -z "${CI_PRIMARY_REPOSITORY_PATH:-}" ]; then
   fail "CI_PRIMARY_REPOSITORY_PATH is unset. Xcode Cloud env contract violated."
 fi
 
+if command -v npm >/dev/null 2>&1; then
+  log "Node/npm found on PATH: $(command -v node) / $(command -v npm)"
+else
+  log "Node NOT on PATH — installing via Homebrew…"
+  if ! command -v brew >/dev/null 2>&1; then
+    fail "Neither 'npm' nor 'brew' is available. Cannot install Node.js."
+  fi
+  if ! brew install node; then
+    fail "brew install node failed — see log above for reason."
+  fi
+  log "Node installed via Homebrew: $(command -v node)"
+fi
+
+log "Node version: $(node --version 2>&1), npm version: $(npm --version 2>&1)"
+
+cd "$CI_PRIMARY_REPOSITORY_PATH" || fail "cd to $CI_PRIMARY_REPOSITORY_PATH failed"
+log "At repo root: $(pwd)"
+
+if [ ! -f package.json ]; then
+  fail "package.json not found at repo root — Capacitor Podfile cannot resolve node_modules path."
+fi
+
+log "Running 'npm ci' to populate node_modules…"
+if ! npm ci --no-audit --no-fund --prefer-offline; then
+  log "npm ci failed — falling back to 'npm install' (lockfile may have drifted)"
+  if ! npm install --no-audit --no-fund; then
+    fail "Both 'npm ci' and 'npm install' failed. Cannot populate node_modules."
+  fi
+fi
+
+# Sanity-check the specific Capacitor helper path the Podfile
+# require_relative-s. If this is missing, pod install will still fail
+# even with node_modules populated.
+CAPACITOR_HELPERS="${CI_PRIMARY_REPOSITORY_PATH}/node_modules/@capacitor/ios/scripts/pods_helpers.rb"
+if [ ! -f "$CAPACITOR_HELPERS" ]; then
+  log "WARNING: Capacitor helpers not found at $CAPACITOR_HELPERS after npm install."
+  log "Contents of node_modules/@capacitor/ios/scripts/ (if dir exists):"
+  ls -la "${CI_PRIMARY_REPOSITORY_PATH}/node_modules/@capacitor/ios/scripts/" 2>&1 | sed 's/^/  /' || true
+  fail "Capacitor pods_helpers is missing. Check @capacitor/ios version in package.json."
+fi
+log "Capacitor pods_helpers present: $CAPACITOR_HELPERS"
+
+# ── 3. cd to the ios/App directory for pod install ────────────────
 IOS_APP_DIR="${CI_PRIMARY_REPOSITORY_PATH}/ios/App"
 if [ ! -d "$IOS_APP_DIR" ]; then
   fail "Expected iOS project at $IOS_APP_DIR but directory does not exist."
@@ -85,7 +142,7 @@ log "Working directory: $(pwd)"
 log "Contents of $IOS_APP_DIR:"
 ls -la | head -20 | sed 's/^/  /'
 
-# ── 3. Sanity-check the Podfile target name matches pbxproj ────────
+# ── 4. Sanity-check the Podfile target name matches pbxproj ────────
 # If the Podfile target name drifts from the Xcode target name (as
 # happened during the 'App' → 'withOlive' rename), `pod install` fails
 # with "target 'X' not found in project". Surface this explicitly.
@@ -96,7 +153,7 @@ fi
 PODFILE_TARGET=$(grep -E "^target '" Podfile | head -1 | sed -E "s/^target '([^']+)'.*/\\1/")
 log "Podfile declares target: '${PODFILE_TARGET:-<none>}'"
 
-# ── 4. pod install ─────────────────────────────────────────────────
+# ── 5. pod install ─────────────────────────────────────────────────
 log "Running 'pod install --repo-update'…"
 if ! pod install --repo-update; then
   EC=$?
@@ -112,7 +169,7 @@ if ! pod install --repo-update; then
   fail "pod install failed — see context above."
 fi
 
-# ── 5. Verify xcconfig files were generated ────────────────────────
+# ── 6. Verify xcconfig files were generated ────────────────────────
 TARGET_SUPPORT_DIR="Pods/Target Support Files/Pods-${PODFILE_TARGET}"
 log "Checking $TARGET_SUPPORT_DIR/ for xcconfig files…"
 if ls "$TARGET_SUPPORT_DIR"/*.xcconfig >/dev/null 2>&1; then
