@@ -22,7 +22,6 @@ import { OptimizationReviewModal } from "@/components/OptimizationReviewModal";
 import { useOnboardingTooltip } from "@/hooks/useOnboardingTooltip";
 import { OnboardingTooltip } from "@/components/OnboardingTooltip";
 import { PartnerActivityWidget } from "@/components/PartnerActivityWidget";
-import { SpaceActivityFeed } from "@/components/SpaceActivityFeed";
 import { TrustApprovalCard } from "@/components/settings/TrustApprovalCard";
 import { InsightDiscoveryCard } from "@/components/InsightDiscoveryCard";
 import { DelegationCard } from "@/components/DelegationCard";
@@ -468,17 +467,15 @@ const Home = () => {
           {/* Insight Discovery Card - Shows AI-discovered patterns */}
           <InsightDiscoveryCard />
 
-          {/* Partner Activity Widget - Only show on mobile/tablet (moved to Context Rail on xl) */}
+          {/* Partner Activity Widget — mobile/tablet only (ContextRail handles xl+).
+              Note: a separate SpaceActivityFeed card used to render below this for multi-member
+              spaces. It was pulled: its backing `collab-events` feed wasn't updating (stuck on a
+              single stale entry on refresh), and it duplicated the partner activity story for
+              2-person couples. Bring it back only after the activity-event write path is
+              audited and a multi-member (>2) design makes it distinct from this widget. */}
           <div className="xl:hidden">
             <PartnerActivityWidget notes={notes} />
           </div>
-
-          {/* Space Activity Feed - Shows for multi-member spaces */}
-          {currentSpace && (currentSpace.member_count ?? 0) > 1 && (
-            <div className="bg-white rounded-3xl shadow-xl border border-stone-100/50 overflow-hidden animate-fade-up p-6">
-              <SpaceActivityFeed limit={10} />
-            </div>
-          )}
 
           {/* Tabs Widget - PREMIUM CARD: Subtle shadow, generous padding */}
           <div className="bg-card rounded-3xl shadow-xl border border-border/50 overflow-hidden animate-fade-up stagger-3">
