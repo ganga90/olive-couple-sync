@@ -11,7 +11,7 @@ import { useDateLocale } from '@/hooks/useDateLocale';
 import {
   Sun, Moon, Activity, Flame, TrendingUp, Dumbbell, CheckCircle2,
   Calendar, Loader2, ArrowRight, Zap, Heart, Send, Home, MessageCircle,
-  AlertCircle, RefreshCw, Brain, Shield, Bell, Mail
+  AlertCircle, RefreshCw, Brain, Shield, Bell, Mail, AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -22,6 +22,10 @@ import { PrivacyFilterPills } from '@/components/PrivacyFilterPills';
 import { useDefaultPrivacyFilter } from '@/hooks/useDefaultPrivacyFilter';
 import { EmailTriageReviewDialog } from '@/components/EmailTriageReviewDialog';
 import { AgentInsightsSection } from '@/components/AgentInsightsSection';
+import { DailyBriefingView } from '@/components/DailyBriefingView';
+import { ConflictCard } from '@/components/settings/ConflictCard';
+import { ClientPipelineCard } from '@/components/settings/ClientPipelineCard';
+import { useSpace } from '@/providers/SpaceProvider';
 
 // ─── Oura Data Types ──────────────────────────────────────────────────────────
 
@@ -150,6 +154,7 @@ const MyDay = () => {
   const { notes } = useSupabaseNotesContext();
   const { events } = useCalendarEvents();
   const { currentCouple } = useSupabaseCouple();
+  const { currentSpace } = useSpace();
   const dateLocale = useDateLocale();
   useSEO({ title: `${t('profile:myday.title')} — Olive`, description: t('profile:myday.signInPrompt') });
 
@@ -382,49 +387,90 @@ const MyDay = () => {
           </p>
         </div>
 
-        {/* ─── Morning Briefing via WhatsApp ───────────────────────────── */}
+        {/* ─── Briefing ────────────────────────────────────────────────
+            Moved from Home: DailyBriefingView is the in-app briefing.
+            The WhatsApp-delivery button sits underneath as a secondary
+            action so the primary read is always in the page.          */}
         <div className="mb-4 animate-fade-up" style={{ animationDelay: '25ms' }}>
-          <Button
-            variant="outline"
-            className="w-full justify-center gap-2 h-11 border-primary/20 hover:bg-primary/5"
-            onClick={handleRequestBriefing}
-            disabled={briefingRequested}
-          >
-            {briefingRequested ? (
-              <>
-                <CheckCircle2 className="h-4 w-4 text-[hsl(var(--success))]" />
-                {t('profile:myday.briefing.sentToWhatsApp', 'Sent to WhatsApp!')}
-              </>
-            ) : hasWhatsApp === false ? (
-              <>
-                <MessageCircle className="h-4 w-4" />
-                {t('profile:myday.briefing.linkWhatsApp', 'Link WhatsApp for Briefings')}
-              </>
-            ) : (
-              <>
-                <Send className="h-4 w-4" />
-                {t('profile:myday.briefing.button')}
-              </>
+          <DailyBriefingView />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              onClick={handleRequestBriefing}
+              disabled={briefingRequested}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full transition-colors disabled:opacity-60"
+            >
+              {briefingRequested ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--success))]" />
+                  {t('profile:myday.briefing.sentToWhatsApp', 'Sent to WhatsApp!')}
+                </>
+              ) : hasWhatsApp === false ? (
+                <>
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  {t('profile:myday.briefing.linkWhatsApp', 'Link WhatsApp for Briefings')}
+                </>
+              ) : (
+                <>
+                  <Send className="h-3.5 w-3.5" />
+                  {t('profile:myday.briefing.sendToWhatsApp', 'Send briefing to WhatsApp')}
+                </>
+              )}
+            </button>
+            {emailConnected && (
+              <button
+                onClick={() => setEmailTriageOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full transition-colors"
+              >
+                <Mail className="h-3.5 w-3.5" />
+                {t('home:emailTriage.reviewButton', 'Review my Email')}
+              </button>
             )}
-          </Button>
+          </div>
         </div>
 
-        {/* ─── Review my Email pill ───────────────────────────────────── */}
-        {emailConnected && (
-          <div className="mb-4 animate-fade-up" style={{ animationDelay: '35ms' }}>
-            <Button
-              variant="outline"
-              className="w-full justify-center gap-2 h-11 border-red-500/20 hover:bg-red-500/5"
-              onClick={() => setEmailTriageOpen(true)}
-            >
-              <Mail className="h-4 w-4 text-red-600" />
-              {t('home:emailTriage.reviewButton', 'Review my Email')}
-            </Button>
+        {/* ─── Status & Signals ────────────────────────────────────────
+            Agent Insights, Conflicts (multi-member) and Client Pipeline
+            (business). These surface patterns + cross-space intel; they
+            belong together, below the briefing.                        */}
+        <AgentInsightsSection />
+
+        {currentSpace && (currentSpace.member_count ?? 0) > 1 && (
+          <div className="card-glass p-5 mb-4 animate-fade-up" style={{ animationDelay: '45ms' }}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="icon-squircle w-10 h-10 bg-red-500/10 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5 text-red-500" />
+              </div>
+              <div>
+                <h3 className="font-serif font-semibold text-[#2A3C24]">
+                  {t('profile:myday.conflicts.title', 'Conflicts & Insights')}
+                </h3>
+                <p className="text-xs text-stone-500">
+                  {t('profile:myday.conflicts.subtitle', 'Schedule overlaps & cross-space patterns')}
+                </p>
+              </div>
+            </div>
+            <ConflictCard />
           </div>
         )}
 
-        {/* ─── Agent Insights ───────────────────────────────────────── */}
-        <AgentInsightsSection />
+        {currentSpace?.type === 'business' && (
+          <div className="card-glass p-5 mb-4 animate-fade-up" style={{ animationDelay: '55ms' }}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="icon-squircle w-10 h-10 bg-emerald-500/10 flex items-center justify-center">
+                <span className="text-emerald-500 text-lg">📊</span>
+              </div>
+              <div>
+                <h3 className="font-serif font-semibold text-[#2A3C24]">
+                  {t('profile:myday.pipeline.title', 'Client Pipeline')}
+                </h3>
+                <p className="text-xs text-stone-500">
+                  {t('profile:myday.pipeline.subtitle', 'Track your clients')}
+                </p>
+              </div>
+            </div>
+            <ClientPipelineCard />
+          </div>
+        )}
 
         {/* ─── Oura Health Scores ─────────────────────────────────────── */}
         {ouraLoading ? (

@@ -515,8 +515,17 @@
       "error": "Impossibile inviare il briefing. Riprova.",
       "close": "Chiudi",
       "sentToWhatsApp": "Briefing inviato al tuo WhatsApp!",
+      "sendToWhatsApp": "Invia briefing su WhatsApp",
       "linkWhatsApp": "Collega WhatsApp per i Briefing",
       "linkWhatsAppFirst": "Collega prima il tuo numero WhatsApp per ricevere i briefing."
+    },
+    "conflicts": {
+      "title": "Conflitti e Insight",
+      "subtitle": "Sovrapposizioni di calendario e pattern tra spazi"
+    },
+    "pipeline": {
+      "title": "Pipeline Clienti",
+      "subtitle": "Gestisci i tuoi clienti"
     }
   },
   "defaultHomeView": {

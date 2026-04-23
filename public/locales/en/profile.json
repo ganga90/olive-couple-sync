@@ -515,8 +515,17 @@
       "error": "Failed to send briefing. Please try again.",
       "close": "Close",
       "sentToWhatsApp": "Briefing sent to your WhatsApp!",
+      "sendToWhatsApp": "Send briefing to WhatsApp",
       "linkWhatsApp": "Link WhatsApp for Briefings",
       "linkWhatsAppFirst": "Link your WhatsApp number first to receive briefings."
+    },
+    "conflicts": {
+      "title": "Conflicts & Insights",
+      "subtitle": "Schedule overlaps & cross-space patterns"
+    },
+    "pipeline": {
+      "title": "Client Pipeline",
+      "subtitle": "Track your clients"
     }
   },
   "agentDetail": {

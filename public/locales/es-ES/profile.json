@@ -515,8 +515,17 @@
       "error": "No se pudo enviar el resumen. Inténtalo de nuevo.",
       "close": "Cerrar",
       "sentToWhatsApp": "¡Resumen enviado a tu WhatsApp!",
+      "sendToWhatsApp": "Enviar resumen a WhatsApp",
       "linkWhatsApp": "Vincula WhatsApp para Resúmenes",
       "linkWhatsAppFirst": "Vincula primero tu número de WhatsApp para recibir resúmenes."
+    },
+    "conflicts": {
+      "title": "Conflictos e Información",
+      "subtitle": "Solapamientos de agenda y patrones entre espacios"
+    },
+    "pipeline": {
+      "title": "Pipeline de Clientes",
+      "subtitle": "Sigue a tus clientes"
     }
   },
   "defaultHomeView": {
