@@ -10,15 +10,21 @@ export type SupabaseList = {
   is_manual: boolean;
   author_id?: string | null;
   couple_id?: string | null;
+  /** Phase 1A: space_id is the canonical scope. Mirrors couple_id for
+   *  couple-type spaces via a DB trigger. For non-couple spaces
+   *  (family/business/custom) only space_id is populated. */
+  space_id?: string | null;
   created_at: string;
   updated_at: string;
 };
 
-export const useSupabaseLists = (coupleId?: string | null) => {
+export const useSupabaseLists = (coupleId?: string | null, spaceId?: string | null) => {
   const { user } = useUser();
   const [lists, setLists] = useState<SupabaseList[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Phase 1A: prefer space_id when present (covers non-couple spaces too).
+  const scopeSpaceId = spaceId ?? coupleId ?? null;
 
   const fetchLists = useCallback(async () => {
     if (!user?.id) {
@@ -28,26 +34,27 @@ export const useSupabaseLists = (coupleId?: string | null) => {
     }
 
     setLoading(true);
-    
+
     try {
-      
+
       const supabase = getSupabase();
-      
-      // Query for personal lists (couple_id is null) and couple lists if in a couple
+
       let query = supabase
         .from("clerk_lists")
         .select("*")
         .eq("author_id", user.id);
 
-      if (coupleId) {
-        // If in a couple, also get couple lists
+      if (scopeSpaceId) {
+        // Personal lists (space_id AND couple_id null + authored by me)
+        // OR any list scoped to this space (via space_id, covers both
+        // couple-type and non-couple spaces — RLS permits either path).
         query = supabase
           .from("clerk_lists")
           .select("*")
-          .or(`and(author_id.eq.${user.id},couple_id.is.null),couple_id.eq.${coupleId}`);
+          .or(`and(author_id.eq.${user.id},couple_id.is.null,space_id.is.null),space_id.eq.${scopeSpaceId}`);
       } else {
-        // Personal lists only
-        query = query.is("couple_id", null);
+        // No space context → personal only
+        query = query.is("couple_id", null).is("space_id", null);
       }
 
       const { data, error } = await query.order("created_at", { ascending: false });
@@ -65,7 +72,7 @@ export const useSupabaseLists = (coupleId?: string | null) => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, coupleId]);
+  }, [user?.id, scopeSpaceId]);
 
   useEffect(() => {
     fetchLists();
@@ -102,35 +109,39 @@ export const useSupabaseLists = (coupleId?: string | null) => {
     }
 
     try {
-      
+
       const supabase = getSupabase();
       const normalizedName = listData.name.trim();
-      
-      // Resolve the privacy for this list
-      const resolvedCoupleId = listData.isShared === false ? null : (listData.isShared === true ? (coupleId || null) : (coupleId || null));
-      
-      // Check if list already exists with the SAME name AND SAME privacy scope
-      // Users CAN have "Work" (private) and "Work" (shared) as separate lists
+
+      // Phase 1A: resolve scope to a space_id. Setting space_id is
+      // enough — the dual-write trigger mirrors couple_id for couple-
+      // type spaces, and leaves it NULL for non-couple spaces.
+      const resolvedSpaceId = listData.isShared === false ? null : (scopeSpaceId || null);
+
+      // A list "shape" is uniquely identified by (name, scope). Users
+      // can have a private "Work" AND a shared "Work" as separate lists.
       const existingList = lists.find(list => {
         const nameMatch = list.name.toLowerCase().trim() === normalizedName.toLowerCase();
         if (!nameMatch) return false;
-        const listIsShared = list.couple_id !== null;
-        const newIsShared = resolvedCoupleId !== null;
+        const listIsShared = (list.space_id ?? list.couple_id) !== null && (list.space_id ?? list.couple_id) !== undefined;
+        const newIsShared = resolvedSpaceId !== null;
         return listIsShared === newIsShared;
       });
-      
+
       if (existingList) {
         toast.info("List already exists");
         return existingList;
       }
-      
-      const insertData = {
+
+      const insertData: Record<string, unknown> = {
         name: normalizedName,
         description: listData.description || null,
         is_manual: listData.is_manual !== false,
         author_id: user.id,
-        couple_id: resolvedCoupleId,
       };
+      if (resolvedSpaceId) {
+        insertData.space_id = resolvedSpaceId;
+      }
       
       const { data, error } = await supabase
         .from("clerk_lists")
@@ -155,41 +166,60 @@ export const useSupabaseLists = (coupleId?: string | null) => {
       toast.error(`Failed to create list: ${error.message}`);
       return null;
     }
-  }, [user?.id, coupleId, lists, fetchLists]);
+  }, [user?.id, scopeSpaceId, lists, fetchLists]);
 
-  const updateList = useCallback(async (id: string, updates: { name?: string; description?: string; couple_id?: string | null }) => {
+  const updateList = useCallback(async (id: string, updates: { name?: string; description?: string; couple_id?: string | null; space_id?: string | null }) => {
     if (!user?.id) {
       toast.error("You must be signed in to update lists");
       return null;
     }
 
     try {
-      
+
       const supabase = getSupabase();
-      
+
+      // Normalize to a single canonical scope change. If caller supplied
+      // either couple_id or space_id, treat it as a privacy change and
+      // write via space_id (trigger mirrors couple_id for couple-type).
+      const privacyChanged = 'couple_id' in updates || 'space_id' in updates;
+      const nextScope = privacyChanged
+        ? ((updates.space_id !== undefined) ? updates.space_id : (updates.couple_id ?? null))
+        : undefined;
+
+      const dbUpdates: Record<string, unknown> = {};
+      if (updates.name !== undefined) dbUpdates.name = updates.name;
+      if (updates.description !== undefined) dbUpdates.description = updates.description;
+      if (privacyChanged) {
+        // Write only space_id. The BEFORE UPDATE trigger on clerk_lists
+        // mirrors space_id → couple_id for couple-type spaces (trigger
+        // checks olive_spaces.couple_id = space_id) and leaves couple_id
+        // NULL for non-couple spaces — which is what the FK requires.
+        dbUpdates.space_id = nextScope;
+      }
+
       const { data, error } = await supabase
         .from("clerk_lists")
-        .update(updates)
+        .update(dbUpdates)
         .eq("id", id)
         .select()
         .single();
 
       if (error) throw error;
-      
-      // If couple_id was updated (privacy change), cascade to all notes in this list
-      if ('couple_id' in updates) {
+
+      // Privacy change → cascade to every note in this list.
+      // Write only space_id (same reasoning as above — trigger mirrors).
+      if (privacyChanged) {
         const { error: notesError } = await supabase
           .from("clerk_notes")
-          .update({ couple_id: updates.couple_id })
+          .update({ space_id: nextScope })
           .eq("list_id", id);
-        
+
         if (notesError) {
           console.error("[Lists] Error cascading privacy to notes:", notesError);
           // Don't throw - the list update succeeded
-        } else {
         }
       }
-      
+
       toast.success("List updated successfully");
       return data;
     } catch (error) {

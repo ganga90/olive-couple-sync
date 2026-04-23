@@ -7,6 +7,10 @@ import type { Note } from "@/types/note";
 export type SupabaseNote = {
   id: string;
   couple_id: string | null;
+  /** Phase 1A: space_id is the canonical scope. For couple-type spaces it
+   *  mirrors couple_id via a DB trigger; for non-couple spaces (family /
+   *  business / custom), couple_id is NULL and only space_id is populated. */
+  space_id?: string | null;
   author_id?: string;
   original_text: string;
   summary: string;
@@ -71,14 +75,20 @@ async function decryptSensitiveNotes(notes: SupabaseNote[], userId: string): Pro
   });
 }
 
-export const useSupabaseNotes = (coupleId?: string | null) => {
+export const useSupabaseNotes = (coupleId?: string | null, spaceId?: string | null) => {
   const { user } = useUser();
   const [notes, setNotes] = useState<SupabaseNote[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
+  // Phase 1A: prefer space_id as the canonical scope. For couple-type
+  // spaces it equals couple_id (backfilled + kept in lockstep by a DB
+  // trigger), so this is a pure superset of the old couple-only query.
+  // For non-couple spaces (family / business / custom), querying by
+  // couple_id returns nothing — space_id is the only path that works.
+  const scopeSpaceId = spaceId ?? coupleId ?? null;
 
   const fetchNotes = useCallback(async () => {
-    
+
     if (!user) {
       setNotes([]);
       setLoading(false);
@@ -87,37 +97,39 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
 
     try {
       let allNotes: SupabaseNote[] = [];
-      
-      if (coupleId) {
-        // If couple ID is provided, fetch BOTH personal notes AND couple notes
-        
-        const [personalNotesResult, coupleNotesResult] = await Promise.all([
+
+      if (scopeSpaceId) {
+        // Fetch personal notes (both couple_id AND space_id null) plus
+        // every note scoped to this space. The RLS already filters by
+        // is_couple_member OR is_space_member so the server is safe.
+        const [personalNotesResult, spaceNotesResult] = await Promise.all([
           supabase
             .from("clerk_notes")
             .select("*, is_sensitive, encrypted_original_text, encrypted_summary")
             .is("couple_id", null)
+            .is("space_id", null)
             .order("created_at", { ascending: false }),
           supabase
             .from("clerk_notes")
             .select("*, is_sensitive, encrypted_original_text, encrypted_summary")
-            .eq("couple_id", coupleId)
+            .eq("space_id", scopeSpaceId)
             .order("created_at", { ascending: false })
         ]);
 
         if (personalNotesResult.error) throw personalNotesResult.error;
-        if (coupleNotesResult.error) throw coupleNotesResult.error;
+        if (spaceNotesResult.error) throw spaceNotesResult.error;
 
-        // Combine both personal and couple notes
         allNotes = [
           ...(personalNotesResult.data || []),
-          ...(coupleNotesResult.data || [])
+          ...(spaceNotesResult.data || [])
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       } else {
-        // If no couple ID, fetch only personal notes
+        // No space context → personal notes only.
         const { data, error } = await supabase
           .from("clerk_notes")
           .select("*, is_sensitive, encrypted_original_text, encrypted_summary")
           .is("couple_id", null)
+          .is("space_id", null)
           .order("created_at", { ascending: false });
 
         if (error) throw error;
@@ -151,7 +163,7 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
     } finally {
       setLoading(false);
     }
-  }, [coupleId, user, supabase]);
+  }, [scopeSpaceId, user, supabase]);
 
   useEffect(() => {
     if (!user) {
@@ -192,20 +204,32 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
     }
 
     try {
-      
-      // Convert camelCase input to snake_case for database insert
-      // IMPORTANT: Use the couple_id from noteData directly — the provider has already
-      // resolved the correct value based on the user's privacy preference.
-      // Do NOT fallback to the hook-level coupleId, as that would override private notes.
+
+      // Convert camelCase input to snake_case for database insert.
+      //
+      // Phase 1A: prefer space_id as the canonical scope. If the caller
+      // provided space_id on noteData, use it directly. Otherwise fall
+      // back to the couple_id path (legacy + couple-type spaces).
+      //
+      // For couple-type spaces a BEFORE INSERT trigger mirrors space_id
+      // ↔ couple_id, so setting either one is equivalent on the server.
+      // For non-couple spaces (family/business/custom) only space_id is
+      // populated — the trigger does not mirror back to couple_id
+      // because there is no matching clerk_couples row.
+      const providedSpaceId = (noteData as any).space_id;
       const resolvedCoupleId = noteData.couple_id !== undefined ? noteData.couple_id : (providedCoupleId !== undefined ? providedCoupleId : coupleId);
       const insertData: any = {
         original_text: noteData.original_text,
         summary: noteData.summary,
         category: noteData.category,
         completed: noteData.completed ?? false,
-        couple_id: resolvedCoupleId ?? null,
         author_id: user.id,
       };
+      if (providedSpaceId !== undefined && providedSpaceId !== null) {
+        insertData.space_id = providedSpaceId;
+      } else {
+        insertData.couple_id = resolvedCoupleId ?? null;
+      }
       
       // Handle optional fields with proper snake_case conversion
       // Support both camelCase (from frontend) and snake_case (from types)
@@ -346,6 +370,10 @@ export const useSupabaseNotes = (coupleId?: string | null) => {
             case 'coupleId':
             case 'couple_id':
               supabaseUpdates.couple_id = value;
+              break;
+            case 'spaceId':
+            case 'space_id':
+              supabaseUpdates.space_id = value;
               break;
             case 'taskOwner':
             case 'task_owner':

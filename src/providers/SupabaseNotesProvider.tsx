@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useMemo, useCallback, useRef } from "react";
 import { useSupabaseCouple } from "./SupabaseCoupleProvider";
+import { useSpace } from "./SpaceProvider";
 import { useSupabaseNotes, SupabaseNote } from "@/hooks/useSupabaseNotes";
 import { useAuth } from "./AuthProvider";
 import { useDefaultPrivacy } from "@/hooks/useDefaultPrivacy";
@@ -104,7 +105,9 @@ const convertSupabaseNoteToNote = (
     list_id: supabaseNote.list_id || undefined,
     media_urls: supabaseNote.media_urls || undefined,
     location: supabaseNote.location as any || undefined,
-    isShared: supabaseNote.couple_id !== null,
+    // A note is "shared" if it belongs to any space (couple-type, via
+    // couple_id, or non-couple type, via space_id only).
+    isShared: supabaseNote.couple_id !== null || (supabaseNote as any).space_id != null,
     coupleId: supabaseNote.couple_id || undefined,
     is_sensitive: supabaseNote.is_sensitive || false,
   };
@@ -126,17 +129,22 @@ const convertNoteToSupabaseInsert = (note: Omit<Note, "id" | "createdAt" | "upda
 
 export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentCouple, members } = useSupabaseCouple();
+  const { currentSpace } = useSpace();
   const { user } = useAuth();
   const { defaultPrivacy } = useDefaultPrivacy();
 
-  // Track note count for auto-triggering insight analysis
+  // Phase 1A: pass BOTH couple_id (legacy) and space_id (canonical) to
+  // the hook. The hook prefers space_id. For couple-type spaces the two
+  // are equal (1:1 bridge). For non-couple spaces (family / business /
+  // custom) only space_id is populated, so passing currentSpace.id is
+  // what unlocks the data plane for those space types.
   const noteCountRef = useRef(0);
   const {
     notes: supabaseNotes, loading,
     addNote: addSupabaseNote, updateNote: updateSupabaseNote,
     deleteNote: deleteSupabaseNote, getNotesByCategory: getSupabaseNotesByCategory,
     refetch
-  } = useSupabaseNotes(currentCouple?.id || null);
+  } = useSupabaseNotes(currentCouple?.id || null, currentSpace?.id || null);
 
   const memberMap = useMemo(() => buildMemberMap(members), [members]);
 
@@ -146,43 +154,57 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   const addNote = useCallback(async (noteData: Omit<Note, "id" | "createdAt" | "updatedAt" | "addedBy">) => {
-    let resolvedCoupleId: string | null;
+    // Phase 1A: resolve the note's scope to a space_id (or null = private).
+    //
+    // Order of precedence:
+    //  1. If the note has a list_id, inherit from the list's space_id
+    //     (shared list → shared note; private list → private note).
+    //  2. Caller-supplied isShared boolean (true → current space, false → private).
+    //  3. Caller-supplied coupleId/space_id on noteData.
+    //  4. User's defaultPrivacy setting.
+    //
+    // We prefer space_id over couple_id because non-couple spaces don't
+    // have a couple row. For couple-type spaces they're equivalent (DB
+    // trigger mirrors them); passing space_id works for both cases.
+    let resolvedSpaceId: string | null;
 
-    // If the note has a list_id, look up the list's couple_id to inherit its privacy
-    // Shared lists → notes inside are shared, regardless of user's default privacy
+    const sharedSpaceId = currentSpace?.id || currentCouple?.id || null;
+
     if (noteData.list_id) {
       try {
         const listResult = await supabase
           .from("clerk_lists")
-          .select("couple_id")
+          .select("couple_id, space_id")
           .eq("id", noteData.list_id)
           .single();
-        
+
         if (listResult.data) {
-          // Inherit from the list: shared list → shared note, private list → private note
-          resolvedCoupleId = listResult.data.couple_id;
+          resolvedSpaceId = (listResult.data as any).space_id ?? listResult.data.couple_id ?? null;
         } else {
-          // Fallback to normal resolution if list not found
-          resolvedCoupleId = defaultPrivacy === "private" ? null : (currentCouple?.id || null);
+          resolvedSpaceId = defaultPrivacy === "private" ? null : sharedSpaceId;
         }
       } catch {
-        resolvedCoupleId = defaultPrivacy === "private" ? null : (currentCouple?.id || null);
+        resolvedSpaceId = defaultPrivacy === "private" ? null : sharedSpaceId;
       }
     } else if (noteData.isShared === true) {
-      resolvedCoupleId = currentCouple?.id || null;
+      resolvedSpaceId = sharedSpaceId;
     } else if (noteData.isShared === false) {
-      resolvedCoupleId = null;
+      resolvedSpaceId = null;
+    } else if ((noteData as any).spaceId !== undefined) {
+      resolvedSpaceId = (noteData as any).spaceId || null;
     } else if (noteData.coupleId !== undefined) {
-      resolvedCoupleId = noteData.coupleId || null;
+      resolvedSpaceId = noteData.coupleId || null;
     } else {
-      resolvedCoupleId = defaultPrivacy === "private" ? null : (currentCouple?.id || null);
+      resolvedSpaceId = defaultPrivacy === "private" ? null : sharedSpaceId;
     }
 
     const supabaseNoteData = {
       ...convertNoteToSupabaseInsert(noteData),
-      couple_id: resolvedCoupleId,
+      // Only set space_id — the DB trigger mirrors to couple_id for
+      // couple-type spaces, and leaves it NULL for non-couple spaces.
+      space_id: resolvedSpaceId,
     };
-    const result = await addSupabaseNote(supabaseNoteData);
+    const result = await addSupabaseNote(supabaseNoteData as any);
     if (result && user?.id) {
       // Auto-trigger insight analysis every 10 notes (fire-and-forget)
       noteCountRef.current += 1;
@@ -193,7 +215,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     }
     return result ? convertSupabaseNoteToNote(result, user, currentCouple, memberMap) : null;
-  }, [defaultPrivacy, currentCouple, addSupabaseNote, user, memberMap]);
+  }, [defaultPrivacy, currentCouple, currentSpace, addSupabaseNote, user, memberMap]);
 
   const updateNote = useCallback(async (id: string, updates: Partial<Note>) => {
     // The hook's updateNote handles field mapping internally,
