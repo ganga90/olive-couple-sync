@@ -258,13 +258,19 @@ async function generateMorningBriefing(supabase: any, userId: string): Promise<s
 
   const userName = profile?.display_name?.split(' ')[0] || 'there';
 
-  const { data: coupleMember } = await supabase
-    .from('clerk_couple_members')
-    .select('couple_id')
+  // Spaces Phase 2-3: read from olive_space_members so couple-type AND
+  // non-couple spaces (family / business / custom) both surface here.
+  // For users in multiple spaces, .single() falls back to .maybeSingle()
+  // semantics — we pick any one of their spaces (same arbitrary-pick
+  // behavior as the prior couple lookup).
+  const { data: spaceMember } = await supabase
+    .from('olive_space_members')
+    .select('space_id')
     .eq('user_id', userId)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
-  const coupleId = coupleMember?.couple_id;
+  const spaceId = spaceMember?.space_id;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -274,7 +280,7 @@ async function generateMorningBriefing(supabase: any, userId: string): Promise<s
   const { data: todayTasks } = await supabase
     .from('clerk_notes')
     .select('id, summary, priority, due_date, task_owner')
-    .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+    .or(`author_id.eq.${userId}${spaceId ? `,space_id.eq.${spaceId}` : ''}`)
     .eq('completed', false)
     .gte('due_date', today.toISOString())
     .lt('due_date', tomorrow.toISOString())
@@ -284,7 +290,7 @@ async function generateMorningBriefing(supabase: any, userId: string): Promise<s
   const { data: overdueTasks } = await supabase
     .from('clerk_notes')
     .select('id, summary, priority, due_date')
-    .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+    .or(`author_id.eq.${userId}${spaceId ? `,space_id.eq.${spaceId}` : ''}`)
     .eq('completed', false)
     .lt('due_date', today.toISOString())
     .order('due_date', { ascending: true })
@@ -293,7 +299,7 @@ async function generateMorningBriefing(supabase: any, userId: string): Promise<s
   const { data: urgentTasks } = await supabase
     .from('clerk_notes')
     .select('id, summary')
-    .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+    .or(`author_id.eq.${userId}${spaceId ? `,space_id.eq.${spaceId}` : ''}`)
     .eq('completed', false)
     .eq('priority', 'high')
     .limit(5);
@@ -545,13 +551,19 @@ async function generateEveningReview(supabase: any, userId: string): Promise<str
 
   const userName = profile?.display_name?.split(' ')[0] || 'there';
 
-  const { data: coupleMember } = await supabase
-    .from('clerk_couple_members')
-    .select('couple_id')
+  // Spaces Phase 2-3: read from olive_space_members so couple-type AND
+  // non-couple spaces (family / business / custom) both surface here.
+  // For users in multiple spaces, .single() falls back to .maybeSingle()
+  // semantics — we pick any one of their spaces (same arbitrary-pick
+  // behavior as the prior couple lookup).
+  const { data: spaceMember } = await supabase
+    .from('olive_space_members')
+    .select('space_id')
     .eq('user_id', userId)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
-  const coupleId = coupleMember?.couple_id;
+  const spaceId = spaceMember?.space_id;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -559,7 +571,7 @@ async function generateEveningReview(supabase: any, userId: string): Promise<str
   const { data: completedToday } = await supabase
     .from('clerk_notes')
     .select('id, summary')
-    .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+    .or(`author_id.eq.${userId}${spaceId ? `,space_id.eq.${spaceId}` : ''}`)
     .eq('completed', true)
     .gte('updated_at', today.toISOString())
     .limit(10);
@@ -570,7 +582,7 @@ async function generateEveningReview(supabase: any, userId: string): Promise<str
   const { data: stillPending } = await supabase
     .from('clerk_notes')
     .select('id, summary, priority')
-    .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+    .or(`author_id.eq.${userId}${spaceId ? `,space_id.eq.${spaceId}` : ''}`)
     .eq('completed', false)
     .gte('due_date', today.toISOString())
     .lt('due_date', tomorrow.toISOString())
@@ -582,7 +594,7 @@ async function generateEveningReview(supabase: any, userId: string): Promise<str
   const { data: tomorrowTasks } = await supabase
     .from('clerk_notes')
     .select('id, summary, priority')
-    .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+    .or(`author_id.eq.${userId}${spaceId ? `,space_id.eq.${spaceId}` : ''}`)
     .eq('completed', false)
     .gte('due_date', tomorrow.toISOString())
     .lt('due_date', dayAfter.toISOString())
@@ -665,13 +677,19 @@ async function generateWeeklySummary(supabase: any, userId: string): Promise<str
 
   const userName = profile?.display_name?.split(' ')[0] || 'there';
 
-  const { data: coupleMember } = await supabase
-    .from('clerk_couple_members')
-    .select('couple_id')
+  // Spaces Phase 2-3: read from olive_space_members so couple-type AND
+  // non-couple spaces (family / business / custom) both surface here.
+  // For users in multiple spaces, .single() falls back to .maybeSingle()
+  // semantics — we pick any one of their spaces (same arbitrary-pick
+  // behavior as the prior couple lookup).
+  const { data: spaceMember } = await supabase
+    .from('olive_space_members')
+    .select('space_id')
     .eq('user_id', userId)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
-  const coupleId = coupleMember?.couple_id;
+  const spaceId = spaceMember?.space_id;
 
   const now = new Date();
   const weekStart = new Date(now);
@@ -680,20 +698,20 @@ async function generateWeeklySummary(supabase: any, userId: string): Promise<str
   const { data: completedThisWeek } = await supabase
     .from('clerk_notes')
     .select('id, summary, category')
-    .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+    .or(`author_id.eq.${userId}${spaceId ? `,space_id.eq.${spaceId}` : ''}`)
     .eq('completed', true)
     .gte('updated_at', weekStart.toISOString());
 
   const { data: createdThisWeek } = await supabase
     .from('clerk_notes')
     .select('id')
-    .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+    .or(`author_id.eq.${userId}${spaceId ? `,space_id.eq.${spaceId}` : ''}`)
     .gte('created_at', weekStart.toISOString());
 
   const { data: pendingTasks } = await supabase
     .from('clerk_notes')
     .select('id, summary, priority')
-    .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+    .or(`author_id.eq.${userId}${spaceId ? `,space_id.eq.${spaceId}` : ''}`)
     .eq('completed', false)
     .order('priority', { ascending: false })
     .limit(10);
@@ -931,20 +949,23 @@ async function checkOverdueNudges(supabase: any): Promise<number> {
 
     if (recentNudge && recentNudge.length > 0) continue;
 
-    const { data: coupleMember } = await supabase
-      .from('clerk_couple_members')
-      .select('couple_id')
+    // Spaces Phase 2-3: read from olive_space_members so non-couple
+    // spaces also surface here.
+    const { data: spaceMember } = await supabase
+      .from('olive_space_members')
+      .select('space_id')
       .eq('user_id', pref.user_id)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
-    const coupleId = coupleMember?.couple_id;
+    const spaceId = spaceMember?.space_id;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const { data: overdueTasks, error } = await supabase
       .from('clerk_notes')
       .select('id, summary')
-      .or(`author_id.eq.${pref.user_id}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+      .or(`author_id.eq.${pref.user_id}${spaceId ? `,space_id.eq.${spaceId}` : ''}`)
       .eq('completed', false)
       .lt('due_date', today.toISOString())
       .limit(5);

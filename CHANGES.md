@@ -1905,3 +1905,523 @@ artifacts, regenerated every run, uploaded by CI) + `.claude/`.
    intent-classification fixture's `expected.classifier.intent` to
    `foo`. Expect: the check fails, the PR comment lists the
    violation with the exact case id.
+
+---
+
+## TASK-ONB-A — Wire onboarding scope to Spaces + seed Olive's User Soul
+
+**Branch:** `feat/onb-spaces-and-soul` · **Date:** 2026-04-26
+
+### Why
+Onboarding captured rich quiz signal (scope, mental load, partner name) and
+threw it away. Every new user got a hardcoded couple-typed `"My Space"`,
+the rest of the Space type templates (family / business / household / custom)
+sat unused, and the User Soul layer was never written — so Olive's context
+assembly had nothing to personalize tone, focus, or relationships from.
+
+### What
+
+1. **New beat in onboarding: `spaceCreate`.** Sits between `quiz` and
+   `regional`. Renders `SpaceNameStep` with smart per-scope defaults
+   (`Ganga's Space`, `Ganga & Sarah`, `The Smith Household`,
+   `Ganga's Workspace`). Tooltip clarifies users can create more Spaces
+   later — addresses the "I didn't know I could make more" dead end.
+
+2. **Scope drives space type.** New `SCOPE_TO_SPACE_TYPE` map:
+   `Just Me → custom`, `Me & My Partner → couple`, `My Family → family`,
+   `My Business → business`. Couple keeps `createCouple()` so the
+   `clerk_couples` bridge + sync trigger stay intact; non-couple types
+   route through `useSpace().createSpace()` → `olive-space-manage` →
+   `generateSpaceSoul()` (existing infrastructure, finally invoked).
+
+3. **New edge function `onboarding-finalize`.** Builds a User Soul
+   payload matching `renderUserSoul()`'s expected shape and calls
+   `upsertSoulLayer("user", "user", userId, …, "onboarding")`. Also
+   augments the auto-generated Space Soul by merging mental-load focus
+   areas into `proactive_focus` so heartbeat agents pick them up.
+
+4. **New client helper `seedOnboardingSoul`** (`src/lib/onboarding-soul.ts`).
+   Best-effort wrapper — failures are logged but never block onboarding.
+
+5. **`handleDemoSubmit` / `handleComplete` no longer auto-create
+   `"My Space"`.** The space already exists by the time the user reaches
+   the demo step. A defensive `ensureSpaceExists()` fallback handles the
+   edge case of skipping `spaceCreate` (creates a couple-typed solo space
+   so the `clerk_notes.couple_id` FK stays satisfied).
+
+### Files
+
+| Path | Change |
+|---|---|
+| `supabase/functions/onboarding-finalize/index.ts` | NEW — User Soul writer + Space Soul augment |
+| `supabase/functions/onboarding-finalize/buildUserSoulContent.test.ts` | NEW — 8 unit tests |
+| `src/lib/onboarding-soul.ts` | NEW — client wrapper |
+| `src/components/onboarding/SpaceNameStep.tsx` | NEW — naming beat with smart defaults |
+| `src/pages/Onboarding.tsx` | MOD — adds `spaceCreate` step, `useSpace` integration, scope→type routing, soul seeding, defensive `ensureSpaceExists` |
+
+### Backwards compatibility
+- Couple flow unchanged: `Me & My Partner` still hits `create_couple` RPC,
+  sync trigger still creates the matching `olive_spaces` row, all legacy
+  hooks scoped on `clerk_couples.id` keep working.
+- Existing users (with `localStorage["olive_onboarding_completed"]` or
+  any `clerk_notes` row) bypass onboarding entirely (gated in `Root.tsx`).
+- Resumable: `spaceAnswers` (name + partner + spaceId) persists to
+  `localStorage` alongside the rest of the onboarding state.
+
+### Verification
+- ✅ `npx tsc --noEmit -p tsconfig.app.json` — 0 errors
+- ✅ `deno check supabase/functions/onboarding-finalize/index.ts` — clean
+- ✅ `deno test supabase/functions/onboarding-finalize/` — 8/8 pass
+- ✅ `deno test supabase/functions/_shared/ --ignore=…/time-resolver.test.ts` —
+  263/0 (the time-resolver failure is in a pre-existing WIP file unrelated
+  to this task)
+- ✅ `npx vite build` — succeeds
+
+---
+
+## TASK-ONB-B — Onboarding instrumentation (events table + funnel view + client hook)
+
+**Branch:** `feat/onb-instrumentation` (built on `feat/onb-spaces-and-soul`) · **Date:** 2026-04-26
+
+### Why
+After TASK-ONB-A wired quiz answers into Spaces + the Soul system, we had
+no way to measure whether the new flow actually moves the needle on
+completion, time-to-first-capture, or D1 retention. The only signal was
+a single `olive_memory_chunks` row tagged `onboarding_completed` — useless
+for per-beat drop-off, skip rate, or A/B comparison. This PR adds the
+event log + funnel view that every downstream onboarding PR (C/D/E)
+needs to be measurable.
+
+### What
+
+1. **Migration `20260426010000_onboarding_events_instrumentation.sql`** —
+   creates `olive_onboarding_events` (append-only, RLS scoped to
+   `auth.jwt()->>'sub'`) plus three indexes (per-user timeline,
+   per-event-type, per-beat). Service role bypasses RLS via separate
+   policy for cross-user dashboard queries.
+
+2. **View `v_onboarding_funnel`** — daily funnel using a `user_first_events`
+   CTE so we avoid correlated subqueries. Reports starts, space-created,
+   first-capture, wa-connected, wa-skipped, completed counts plus null-safe
+   pct ratios and average `seconds_to_first_capture` / `seconds_total`.
+
+3. **Hook `src/hooks/useOnboardingEvent.ts`** — fire-and-forget telemetry
+   that writes directly to the table via the authenticated Supabase client
+   (no extra edge function on the hot path). Idempotent `flow_started` via
+   `sessionStorage` to dedup React StrictMode double-mounts and refresh
+   resumes. Stable callback identity across renders.
+
+4. **`Onboarding.tsx` instrumentation** — fires the full event matrix:
+   - `flow_started` once per session (on mount)
+   - `beat_started` on every step transition (effect on `currentStep`)
+   - `beat_completed` in `goToNextStep`
+   - `beat_skipped` via new `skipBeat()` helper wired to all 3 skip links
+     plus the demo "Skip and go to Home" link
+   - `space_created` + `soul_seeded` in `handleSpaceCreate`
+   - `wa_connected` in `handleConnectWhatsApp` (intent, pre-redirect)
+   - `calendar_connected` in `handleConnectCalendar` (intent, pre-redirect)
+   - `capture_sent` in `handleDemoSubmit` with `latency_ms` for Gemini
+     round-trip monitoring
+   - `flow_completed` in `markOnboardingCompleted` with `duration_seconds`
+     + `completed_steps` array
+   - `error` on `process-note` failure with the underlying message
+
+### Files
+
+| Path | Change |
+|---|---|
+| `supabase/migrations/20260426010000_onboarding_events_instrumentation.sql` | NEW — table + RLS + view |
+| `src/hooks/useOnboardingEvent.ts` | NEW — fire-and-forget client hook |
+| `src/pages/Onboarding.tsx` | MOD — wires the hook into 11 event call sites + new `skipBeat()` helper |
+
+### Why no edge function
+Events are write-once, low-stakes, and high-frequency on the hot path of
+new-user activation. Forcing each through an edge function adds 80–200ms
+of HTTP overhead per beat plus a deploy gate that would block measurement.
+RLS enforces `user_id = auth.jwt()->>'sub'` on every INSERT — no client
+can fabricate events for another user.
+
+### Why no client-side tests
+The repo has no Vitest / Jest configured. Adding it for one hook is out
+of scope for this PR. Coverage strategy: TypeScript + production build +
+manual QA on Vercel preview, with the funnel view itself acting as a
+runtime contract test (if events stop flowing, the view goes empty).
+
+### Verification
+- ✅ `npx tsc --noEmit -p tsconfig.app.json` — 0 errors
+- ✅ `deno test supabase/functions/_shared/ --ignore=…/time-resolver.test.ts` —
+  276/0 (regression check; my changes don't touch `_shared/`)
+- ✅ `npx vite build` — succeeds
+- ✅ Migration audit: idempotent (uses `IF NOT EXISTS` + `DO $$ IF NOT EXISTS`
+  policy guards), no destructive ops, view is `CREATE OR REPLACE`
+
+### Sample query for the dashboard
+```sql
+SELECT day, started, completed, pct_completed,
+       avg_seconds_to_first_capture, avg_seconds_total
+FROM v_onboarding_funnel
+WHERE day > CURRENT_DATE - INTERVAL '14 days'
+ORDER BY day DESC;
+```
+
+### Deploy notes
+- One migration: `supabase db push`
+- No new edge functions
+- No env var changes
+
+---
+
+## TASK-ONB-C — Live capture preview + Space invite step
+
+**Branch:** `feat/onb-live-parse-invite` (built on `feat/onb-instrumentation`) · **Date:** 2026-04-26
+
+### Why
+The demo step submitted to `process-note`, fired a generic toast, and
+navigated away. The user never SAW Olive understand them — the aha
+happened off-screen. Separately, every shared-Space type (couple /
+family / business) was a single-player setup at end of onboarding, so
+the moat (collaboration with privacy boundaries) was invisible until
+the user manually figured out invites in Settings.
+
+This PR addresses both: render the parsed result inline with a
+staggered "Olive understood:" preview, and add a one-tap WhatsApp-share
+invite step that auto-skips for solo Spaces.
+
+### What
+
+1. **`CapturePreview.tsx`** — animated rendering of `process-note`'s
+   structured response. Handles both single-note and multi-note shapes
+   (`{multiple: true, notes: [...]}`). Maps each note to one of five
+   variants (`shopping`, `calendar`, `reminder`, `expense`, `note`)
+   based on a documented priority order (receipt > shopping w/ items >
+   due_date > generic items > fallback). Locale-aware date formatting
+   via existing `useDateLocale`. Exposes `onAnimationComplete` so the
+   parent can fire `capture_previewed` and reveal the "Take me home" CTA.
+
+2. **`InviteSpaceStep.tsx`** — generates an `olive_space_invites` token
+   via the existing `useSpace().createInvite()` hook (which routes to
+   the `olive-space-manage` edge function). Builds a `wa.me` share URL
+   with editable prefilled copy that adapts to space type ("your
+   partner" / "your family" / "your team"). Shows the link with a copy
+   button; both share paths are independently usable.
+
+3. **New `shareSpace` step** — sits between `spaceCreate` and
+   `regional`. Auto-skipped for solo (`custom`) spaces via a dedicated
+   useEffect that fires `beat_auto_skipped` with `reason: solo_space`
+   so the funnel can distinguish "auto-skipped because solo" from
+   "user tapped skip on a couple/family space".
+
+4. **Demo step now has two modes** — input (default) and preview.
+   `handleDemoSubmit` captures the `process-note` response into
+   `demoResult` state, which flips the card to preview mode. The user
+   explicitly taps "Take me home" once the animation finishes — no
+   auto-navigation that would steal the aha.
+
+5. **4th demo chip "Gate code 4821#"** — mirrors the landing-page demo
+   and proves the "save random strings" use case, a high-frequency
+   capture for couples / families that no other note app handles cleanly.
+
+6. **New telemetry events** added to `useOnboardingEvent`:
+   - `beat_auto_skipped` — for solo-space auto-skip
+   - `capture_previewed` — fires when the preview animation finishes
+   - `invite_generated` — when `createInvite` returns a token (carries
+     `token_prefix` for accept-rate correlation)
+   - `invite_shared` — when the user taps "Done — Continue" after
+     generating the link (signals intent-to-send)
+
+### Files
+
+| Path | Change |
+|---|---|
+| `src/components/onboarding/CapturePreview.tsx` | NEW — animated parse preview, 1 result → N rows with stagger |
+| `src/components/onboarding/InviteSpaceStep.tsx` | NEW — invite generator + WhatsApp share + copy link |
+| `src/pages/Onboarding.tsx` | MOD — `shareSpace` step, auto-skip effect, two-mode demo step, 4th chip, 4 new events |
+| `src/hooks/useOnboardingEvent.ts` | MOD — 4 new event types in the union |
+| `public/locales/en/onboarding.json` | MOD — 4 new strings (chip4, previewHeader, previewSubtext, takeMeHome) |
+| `supabase/functions/_shared/onboarding-capture-preview-logic.test.ts` | NEW — 14 tests covering normalize() + buildRow() priority order |
+
+### Backwards compatibility
+- Solo Spaces (Just Me) skip `shareSpace` automatically — same flow length as before
+- Existing skip paths still work — `skipBeat()` fires `beat_skipped` then advances
+- `process-note` contract unchanged — the new code reads its existing JSON shape
+- Failing `process-note` invocation falls back to the existing toast + retry path; no preview shown
+
+### Verification
+- ✅ `npx tsc --noEmit -p tsconfig.app.json` — 0 errors
+- ✅ `deno test supabase/functions/_shared/onboarding-capture-preview-logic.test.ts` — 14/14 pass
+- ✅ `deno test supabase/functions/onboarding-finalize/` — 8/8 (ONB-A regression)
+- ✅ `deno test supabase/functions/_shared/` — 277/0 (excludes pre-existing time-resolver WIP failure)
+- ✅ `npx vite build` — succeeds
+
+### Deploy notes
+- No new edge functions
+- No migrations
+- No env var changes
+
+---
+
+## TASK-ONB-D — Onboarding version flag + lean v2 flow shape
+
+**Branch:** `feat/onb-version-flag` (built on `feat/onb-live-parse-invite`) · **Date:** 2026-04-26
+
+### Why
+ONB-A wired quiz → Spaces. ONB-B made the funnel measurable. ONB-C
+delivered the aha + invite. The flow is still 8 beats long though, and
+two of them are demonstrably low-value:
+  - **regional** — timezone/language already auto-detect; the confirm
+    step is a tax for a value the user never sees
+  - **calendar** — Google OAuth is a heavy ask before the user has felt
+    a single benefit; better surfaced just-in-time when a capture has
+    a `due_date`
+Plus the mental-load substep of the quiz adds an interaction without
+materially shaping the soul (scope alone drives space type, mental load
+seeds domain_knowledge that heartbeat agents will learn anyway).
+
+This PR adds a per-user `onboarding_version` flag, assigns new users to
+`v2` automatically, and makes those three drops conditional. ONB-B's
+funnel can now slice every metric by cohort.
+
+### What
+
+1. **Migration `20260426020000_onboarding_version_flag.sql`** —
+   `ALTER TABLE olive_user_preferences ADD COLUMN onboarding_version TEXT
+   NOT NULL DEFAULT 'v1'`. Partial index for non-default cohorts. Default
+   is `'v1'` so existing users keep the legacy flow; the frontend assigns
+   `v2` for net-new users.
+
+2. **`useOnboardingVersion` hook** —
+   - Reads `olive_user_preferences.onboarding_version` (maybeSingle).
+   - For users without a row OR with the default `v1` AND no completed
+     onboarding marker, UPSERTs `v2` and reports `justAssigned: true`
+     so the parent fires `version_assigned` exactly once per user.
+   - Returning users (already have `localStorage.olive_onboarding_completed`)
+     stay on `v1` so the cohort is representative.
+   - Defensive: read failure → fallback to `v1` in-session, never blocks
+     onboarding.
+
+3. **`src/lib/onboarding-flow.ts`** — pure helpers:
+   - `FULL_STEPS_ORDER` — canonical 8-beat list
+   - `getStepsForVersion(v)` — drops `regional` + `calendar` for v2
+   - `getQuizStepsForVersion(v)` — 2 for v1, 1 for v2
+   - `isStepActive(step, v)` — used for v2 stale-state correction
+
+4. **`Onboarding.tsx` refactor** — replaced the file-level `STEPS_ORDER`
+   const + `QUIZ_TOTAL_STEPS` const with version-aware values computed
+   inside the component:
+   ```ts
+   const stepsOrder = useMemo(() => getStepsForVersion(effectiveVersion), [effectiveVersion]);
+   const quizTotalSteps = getQuizStepsForVersion(effectiveVersion);
+   ```
+   All 6 STEPS_ORDER references and 3 QUIZ_TOTAL_STEPS references now
+   resolve through these.
+
+5. **Three new effects in Onboarding.tsx**:
+   - **`version_assigned` fires once** when the hook reports
+     `justAssigned: true` — this is the A/B-slice signal for ONB-B's funnel.
+   - **Stale-step corrector**: if a refresh restores
+     `state.currentStep === 'regional'|'calendar'` for a v2 user, fires
+     `beat_auto_skipped` with `reason: dropped_in_v2` and advances to
+     the next active beat. Prevents black-screen states.
+   - **v2 silent regional persistence**: timezone + language still get
+     written to `clerk_profiles` and `i18n.changeLanguage` runs — just
+     without a confirm screen. v2 users get the same downstream behavior,
+     one fewer click.
+
+6. **New telemetry event** `version_assigned` added to the
+   `useOnboardingEvent` union with payload `{version: "v1" | "v2"}`.
+
+### Files
+
+| Path | Change |
+|---|---|
+| `supabase/migrations/20260426020000_onboarding_version_flag.sql` | NEW — column + partial index + comment |
+| `src/hooks/useOnboardingVersion.ts` | NEW — read + assign + sticky logic |
+| `src/lib/onboarding-flow.ts` | NEW — pure step-shape helpers |
+| `src/pages/Onboarding.tsx` | MOD — version-aware step list, 3 new effects, removed file-level `STEPS_ORDER` const |
+| `src/hooks/useOnboardingEvent.ts` | MOD — `version_assigned` added to event union |
+| `supabase/functions/_shared/onboarding-flow-logic.test.ts` | NEW — 9 tests covering version/step matrix |
+| `CHANGES.md` | MOD — TASK-ONB-D entry |
+
+### Backwards compatibility
+- v1 cohort behavior is byte-identical to pre-PR. The full 8-beat flow,
+  the 2-step quiz, the regional confirm, the Calendar OAuth — all
+  unchanged when `version === 'v1'`.
+- Existing user flows (Settings, Calendar reconnect, Profile edit) are
+  not touched; this PR only changes the *first-time* onboarding shape.
+- The migration is purely additive (ADD COLUMN) and idempotent. RLS
+  inherited from `olive_user_preferences` (already user-scoped).
+
+### Verification
+- ✅ `npx tsc --noEmit -p tsconfig.app.json` — 0 errors
+- ✅ `deno test supabase/functions/_shared/onboarding-flow-logic.test.ts` —
+  9/9 pass
+- ✅ Full regression: `deno test supabase/functions/_shared/
+  supabase/functions/onboarding-finalize/` —
+  **294/0** (excludes pre-existing time-resolver WIP failure)
+- ✅ `npx vite build` — succeeds
+- ✅ Migration audit: idempotent (`ADD COLUMN IF NOT EXISTS`), partial
+  index also `IF NOT EXISTS`, no destructive ops
+
+### Sample funnel slice (after ONB-B's view is extended)
+Once we add `JOIN olive_user_preferences ... ON e.user_id = p.user_id`
+to v_onboarding_funnel and a `GROUP BY p.onboarding_version`, every
+metric becomes A/B-comparable:
+```sql
+SELECT
+  p.onboarding_version,
+  COUNT(DISTINCT e.user_id) FILTER (WHERE e.event = 'flow_started') AS started,
+  COUNT(DISTINCT e.user_id) FILTER (WHERE e.event = 'flow_completed') AS completed,
+  ROUND(AVG(EXTRACT(EPOCH FROM (
+    e2.created_at - e1.created_at
+  )))) AS avg_seconds_to_capture
+FROM olive_onboarding_events e
+JOIN olive_user_preferences p ON p.user_id = e.user_id
+LEFT JOIN olive_onboarding_events e1 ON e1.user_id = e.user_id AND e1.event = 'flow_started'
+LEFT JOIN olive_onboarding_events e2 ON e2.user_id = e.user_id AND e2.event = 'capture_sent'
+WHERE e.created_at > NOW() - INTERVAL '14 days'
+GROUP BY p.onboarding_version;
+```
+A view-extension PR is the natural follow-up once we have v2 data in.
+
+### Out of scope (next PRs)
+- **JIT Calendar prompt** on the Home page when a process-note response
+  carries a `due_date` and the user hasn't connected — replaces the
+  in-onboarding Calendar OAuth that v2 dropped. Separate file/area.
+- **TASK-ONB-E** — receipt screen + Day-2 heartbeat nudge.
+- v_onboarding_funnel extension to slice by `onboarding_version`.
+
+### Deploy notes
+- One migration: `supabase db push`
+- No new edge functions
+- No env var changes
+
+---
+
+## TASK-ONB-E — Receipt screen + JIT Calendar prompt + funnel slice-by-version
+
+**Branch:** `feat/onb-receipt-and-jit` (built on `feat/onb-version-flag`) · **Date:** 2026-04-26
+
+### Why
+Three remaining gaps after ONB-A → D:
+
+1. The flow ends abruptly. Users dump their first capture and land on
+   Home with no Olive-side acknowledgment of what just happened. There's
+   no transparency moment — and no "come back tomorrow, I'll know more"
+   hook to drive D2 retention.
+2. ONB-D dropped Calendar OAuth from v2 onboarding (rightly — it's a
+   heavy ask before any value is felt). But there was no replacement —
+   v2 users who type "dentist Tuesday 3pm" have nowhere to be prompted
+   to connect Google Calendar at the moment they'd actually benefit.
+3. ONB-B's `v_onboarding_funnel` view has no `onboarding_version`
+   column, so the dashboard can't slice metrics by cohort even though
+   ONB-D made the assignment available.
+
+### What
+
+1. **`ReceiptStep.tsx`** — new closing beat. Renders 3–5 bullets pulled
+   from live state (Clerk first name, active Space name + type-aware
+   audience phrase, demo capture summary, mental-load focuses) plus a
+   forward-looking promise. Falls back to the user's most-recent
+   `clerk_notes` row if the demo step was skipped, so even skip-path
+   users get a meaningful "you told me about…" line. CTA "Open my day"
+   is the canonical mark-complete + navigate-home path.
+
+2. **`receipt` step added to canonical flow** — sits at the end of
+   `FULL_STEPS_ORDER` for both v1 and v2. `handleComplete` (skip path)
+   and `handleFinishFromPreview` (capture path) now both `goToNextStep`
+   into the receipt instead of navigating directly home — so the
+   "what does Olive know" moment is universal regardless of demo path.
+   New `handleReceiptDone` is the only place we mark complete + navigate.
+
+3. **`CalendarJitCard.tsx`** — a small inline card for the Home page
+   that surfaces only when the user has a future-dated `clerk_notes` row
+   AND no `calendar_connections` row. Single CTA "Connect Google Calendar"
+   (uses the existing `calendar-auth-url` edge function), one dismissal X
+   (sessionStorage-scoped per user, re-prompts next visit). Three
+   telemetry events: `calendar_jit_prompted`, `calendar_jit_clicked`,
+   `calendar_jit_dismissed` — so we can compute JIT-conversion rate and
+   compare it to the in-onboarding Calendar step it replaces.
+
+4. **Mounted on Home** — added `<CalendarJitCard />` next to the
+   existing `<TimezoneSyncCard />` so both surface in the same prominent
+   "post-onboarding context" zone.
+
+5. **Migration `20260426030000_funnel_view_slice_by_version.sql`** —
+   replaces `v_onboarding_funnel` with a version-aware version (one
+   row per `(day, version)`) that joins `olive_user_preferences` to
+   pick up `onboarding_version`. Also adds new columns for
+   `invites_generated` (ONB-C) and `receipt_seen` (this PR). New
+   companion view `v_onboarding_funnel_total` rolls up across
+   versions with weighted-average ratios (so a 1000-user cohort and
+   a 2-user cohort don't get equal weight in average-of-averages).
+
+6. **Three new telemetry events** in `useOnboardingEvent`:
+   `calendar_jit_prompted`, `calendar_jit_clicked`,
+   `calendar_jit_dismissed`.
+
+### Files
+
+| Path | Change |
+|---|---|
+| `src/components/onboarding/ReceiptStep.tsx` | NEW — final transparency beat |
+| `src/components/onboarding/CalendarJitCard.tsx` | NEW — Home-page JIT prompt |
+| `src/lib/onboarding-flow.ts` | MOD — `receipt` added to `FULL_STEPS_ORDER` |
+| `src/pages/Onboarding.tsx` | MOD — receipt mount + handler refactor (skip + capture paths funnel through receipt) |
+| `src/pages/Home.tsx` | MOD — mount `<CalendarJitCard />` next to `<TimezoneSyncCard />` |
+| `src/hooks/useOnboardingEvent.ts` | MOD — 3 new event types in union |
+| `supabase/migrations/20260426030000_funnel_view_slice_by_version.sql` | NEW — view extension + companion total view |
+| `supabase/functions/_shared/onboarding-flow-logic.test.ts` | MOD — updated counts, new "receipt is last" test (10 tests total now) |
+| `CHANGES.md` | MOD — TASK-ONB-E entry |
+
+### Backwards compatibility
+- `v_onboarding_funnel`'s shape gains a `version` column + a few new
+  count columns. Pre-existing dashboards that select-* will see new
+  columns appended; any column-by-name SELECTs are byte-identical for
+  the columns that existed.
+- `v_onboarding_funnel_total` is the migration path for any consumer
+  that expects the pre-PR row shape (no `version` column).
+- ReceiptStep is rendered as a NEW step at the end. Onboarding length
+  grows by one beat for both cohorts. Skip path no longer bypasses
+  the receipt — but the receipt is short, single-CTA, and always
+  rendable. (Funnel will tell us if we need to allow skipping it.)
+- `CalendarJitCard` is invisible (returns `null`) for any user who
+  doesn't meet all eligibility criteria. Zero impact on existing Home
+  layout for connected users.
+
+### Verification
+- ✅ `npx tsc --noEmit -p tsconfig.app.json` — 0 errors
+- ✅ Flow-logic tests — 10/10 pass (1 new "receipt is last beat")
+- ✅ Full regression: `_shared/` + `onboarding-finalize/` —
+  **295/0** (excludes pre-existing time-resolver WIP failure)
+- ✅ `npx vite build` — succeeds
+- ✅ Migration audit: idempotent (`CREATE OR REPLACE VIEW`), no
+  destructive ops, both views are reads-only
+
+### Sample dashboard query
+```sql
+-- Per-cohort funnel for last 14 days
+SELECT day, version, started, first_capture, completed,
+       pct_completed, avg_seconds_to_first_capture
+FROM v_onboarding_funnel
+WHERE day > CURRENT_DATE - INTERVAL '14 days'
+ORDER BY day DESC, version;
+
+-- Cross-cohort rollup (when you don't care about A/B)
+SELECT * FROM v_onboarding_funnel_total
+WHERE day > CURRENT_DATE - INTERVAL '14 days';
+```
+
+### Out of scope (explicit follow-up)
+- **Day-2 heartbeat nudge** — adds a job_type to `olive-heartbeat` that
+  fires 24h after `flow_completed`. Touches outbound WA delivery (not
+  isolated enough for this PR). Receipt screen seeds the expectation;
+  the nudge closes the loop.
+- The receipt screen reads from in-memory state + a single fallback
+  query. A richer version could pull from `olive_soul_layers` directly
+  to surface "I've already learned X about you" — saved for a future
+  pass once we have data on receipt completion rate.
+
+### Deploy notes
+- One migration: `supabase db push`
+- No new edge functions
+- No env var changes

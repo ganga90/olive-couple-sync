@@ -33,5 +33,7 @@ supabase/.temp/
 # CI uploads these as artifacts (see .github/workflows/eval-harness.yml);
 # there's no reason to track the latest-run output in git.
 tools/eval-harness/reports/
-# Agent-local config directory (Claude Code). Per-developer state.
-.claude/
+# Claude Code: per-developer state — do not commit. The rest of .claude/ (the
+# Olive Brain System: skills, context, session log, changelog, onboarding)
+# IS tracked and shared across the team. See .claude/CLAUDE_CODE_ONBOARDING.md.
+.claude/settings.local.json

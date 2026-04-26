@@ -4,6 +4,7 @@ import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@1.0.0";
 import { encryptNoteFields, isEncryptionAvailable } from "../_shared/encryption.ts";
 import { resilientGenerateContent } from "../_shared/resilient-genai.ts";
 import { detectAndCreateExpense, detectCurrency, extractAmount, mapCategoryToExpenseCategory } from "../_shared/expense-detector.ts";
+import { resolveScope } from "../_shared/space-scope.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,7 +35,7 @@ async function saveExtractedLinks(
   supabase: SupabaseClient,
   urls: string[],
   userId: string,
-  coupleId?: string,
+  scope: { spaceId?: string | null; coupleId?: string | null },
   sourceNoteId?: string
 ): Promise<void> {
   if (urls.length === 0) return;
@@ -44,12 +45,17 @@ async function saveExtractedLinks(
   // Process links in parallel (non-blocking)
   const promises = urls.slice(0, 5).map(async (url) => {  // Limit to 5 links per note
     try {
+      // Forward both scope hints. couple_id is only present for couple-type
+      // spaces (frontend sets it to null for family/business/custom spaces),
+      // so passing it here is FK-safe. space_id is the canonical forward
+      // path; once save-link migrates it will prefer space_id.
       const { data, error } = await supabase.functions.invoke('save-link', {
         body: {
           url,
           user_id: userId,
-          couple_id: coupleId,
-          source_note_id: sourceNoteId
+          space_id: scope.spaceId ?? null,
+          couple_id: scope.coupleId ?? null,
+          source_note_id: sourceNoteId,
         }
       });
 
@@ -843,7 +849,7 @@ async function processReceiptImage(
   supabase: any,
   base64Image: string,
   userId: string,
-  coupleId?: string
+  spaceId?: string
 ): Promise<{ success: boolean; transaction?: any; alert?: boolean; message?: string }> {
   try {
     console.log('[process-note] Invoking process-receipt for receipt image...');
@@ -852,7 +858,7 @@ async function processReceiptImage(
       body: {
         base64_image: base64Image,
         user_id: userId,
-        couple_id: coupleId
+        space_id: spaceId,
       }
     });
 
@@ -1460,12 +1466,14 @@ async function extractKnowledge(
   processedResult: any,
   originalText: string,
   userId: string,
-  coupleId?: string,
+  scope: { spaceId?: string | null; coupleId?: string | null },
 ) {
   try {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 
-    // Only call if the edge function exists (deployed)
+    // Forward both scope hints. couple_id is only present for couple-type
+    // spaces (frontend sets it to null for family/business/custom spaces),
+    // so it is always FK-safe. space_id is the forward path.
     const response = await fetch(`${SUPABASE_URL}/functions/v1/olive-knowledge-extract`, {
       method: 'POST',
       headers: {
@@ -1474,7 +1482,8 @@ async function extractKnowledge(
       },
       body: JSON.stringify({
         user_id: userId,
-        couple_id: coupleId || null,
+        space_id: scope.spaceId ?? null,
+        couple_id: scope.coupleId ?? null,
         original_text: originalText,
         summary: processedResult.summary || null,
         category: processedResult.category || null,
@@ -1507,7 +1516,7 @@ async function extractKnowledge(
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
           },
-          body: JSON.stringify({ user_id: userId, couple_id: coupleId || null }),
+          body: JSON.stringify({ user_id: userId, space_id: scope.spaceId ?? null, couple_id: scope.coupleId ?? null }),
         }).catch(e => console.warn('[Community Detect] Fire-and-forget error:', e));
       }
     }
@@ -1539,7 +1548,13 @@ serve(async (req) => {
       throw new Error('Supabase configuration is missing');
     }
 
-    const { text, user_id, couple_id, timezone, media, mediaTypes, style, partner_names, is_sensitive, source, list_id: explicit_list_id } = await req.json();
+    const { text, user_id, couple_id, space_id, timezone, media, mediaTypes, style, partner_names, is_sensitive, source, list_id: explicit_list_id } = await req.json();
+    // Spaces Phase 2-1: resolve canonical scope (prefer space_id; fall back to
+    // couple_id for legacy callers). For couple-type spaces these are the same
+    // UUID via the 1:1 bridge; for non-couple spaces (family / business / custom)
+    // only space_id is set. Every downstream filter / write uses `spaceId` so
+    // the function works for ALL space types.
+    const { spaceId } = resolveScope({ space_id, couple_id });
     
     // Validate required fields - allow empty text if media is present
     if (!user_id) {
@@ -1599,7 +1614,7 @@ serve(async (req) => {
             const receiptCheck = await detectReceipt(genai, base64Image, mimeType);
 
             if (receiptCheck.isReceipt && receiptCheck.confidence >= 0.7) {
-              localReceiptResult = await processReceiptImage(supabase, base64Image, user_id, couple_id);
+              localReceiptResult = await processReceiptImage(supabase, base64Image, user_id, spaceId ?? undefined);
               if (localReceiptResult.success && localReceiptResult.transaction) {
                 const txn = localReceiptResult.transaction;
                 results.push(`[Receipt] ${txn.merchant} - $${txn.amount} (${txn.category}) on ${txn.date}`);
@@ -1684,12 +1699,15 @@ serve(async (req) => {
       ...mediaDescriptions.map(d => d.replace(/^\[.*?\]\s*/, '').substring(0, 200))
     ].filter(Boolean).join(' ');
 
-    // Build lists query
-    let listsQueryBuilder = couple_id
+    // Build lists query — scoped via space_id (canonical column).
+    // For couple-type spaces, space_id === couple_id via the dual-write trigger,
+    // so this returns the same rows. For non-couple spaces, this is the only
+    // path that returns shared lists (couple_id is NULL there).
+    let listsQueryBuilder = spaceId
       ? supabase.from('clerk_lists').select('id, name, description, is_manual')
-          .or(`and(author_id.eq.${user_id},couple_id.is.null),couple_id.eq.${couple_id}`)
+          .or(`and(author_id.eq.${user_id},space_id.is.null),space_id.eq.${spaceId}`)
       : supabase.from('clerk_lists').select('id, name, description, is_manual')
-          .eq('author_id', user_id).is('couple_id', null);
+          .eq('author_id', user_id).is('space_id', null);
 
     // Run all three in parallel
     const [memoryResult, listsResult, patternsResult] = await Promise.all([
@@ -1861,25 +1879,30 @@ When the note text mentions any of these names, use the EXACT name for task_owne
 - If the note starts with a name (e.g., "${partner_names[0]} check 401k"), assign task_owner to "${partner_names[0]}"
 - If the note says "tell ${partner_names[0]} to...", assign task_owner to "${partner_names[0]}"
 - The first name mentioned as the actor/doer is the task_owner`;
-    } else if (couple_id) {
-      // Fetch member names from the members table (supports multi-member spaces)
+    } else if (spaceId) {
+      // Fetch member names. olive_space_members works for ALL space types
+      // (couple, family, business, custom) — including the 3-row mirror
+      // populated by sync triggers for couple-type spaces. Joining with
+      // clerk_profiles via user_id gives us display_name uniformly.
       try {
-        const { data: membersData } = await supabase
-          .from('clerk_couple_members')
-          .select('display_name')
-          .eq('couple_id', couple_id);
-        
-        if (membersData && membersData.length > 0) {
-          const names = membersData.map((m: any) => m.display_name).filter(Boolean);
-          if (names.length > 0) {
-            coupleNamesContext = `\n\n**SPACE MEMBER NAMES**: ${names.join(', ')}
+        const { data: spaceMembers } = await supabase
+          .from('olive_space_members')
+          .select('user_id, nickname, clerk_profiles:user_id (display_name)')
+          .eq('space_id', spaceId);
+
+        const namesFromSpace = (spaceMembers || [])
+          .map((m: any) => m.nickname || m.clerk_profiles?.display_name)
+          .filter(Boolean);
+
+        if (namesFromSpace.length > 0) {
+          coupleNamesContext = `\n\n**SPACE MEMBER NAMES**: ${namesFromSpace.join(', ')}
 When the note text mentions any of these names, use the EXACT name for task_owner assignment.
-- If the note starts with a name (e.g., "${names[0]} check 401k"), assign task_owner to "${names[0]}"
-- If the note says "tell ${names[0]} to...", assign task_owner to "${names[0]}"
+- If the note starts with a name (e.g., "${namesFromSpace[0]} check 401k"), assign task_owner to "${namesFromSpace[0]}"
+- If the note says "tell ${namesFromSpace[0]} to...", assign task_owner to "${namesFromSpace[0]}"
 - The first name mentioned as the actor/doer is the task_owner`;
-          }
-        } else {
-          // Final fallback: legacy couple fields
+        } else if (couple_id) {
+          // Final fallback for legacy couples that may not yet have a
+          // matching olive_spaces row backfilled (defensive only).
           const { data: coupleData } = await supabase
             .from('clerk_couples')
             .select('you_name, partner_name')
@@ -2552,6 +2575,9 @@ Process this note:
       console.log('[findOrCreateList] No match found, creating new list:', listName);
       
       try {
+        // Spaces Phase 2-1: write space_id only. The BEFORE INSERT trigger on
+        // clerk_lists derives couple_id for couple-type spaces and leaves it
+        // NULL for non-couple spaces (avoiding the clerk_couples FK violation).
         const { data: newList, error: createError } = await supabase
           .from('clerk_lists')
           .insert([{
@@ -2559,11 +2585,11 @@ Process this note:
             description: `Auto-generated for ${listName.toLowerCase()}`,
             is_manual: false,
             author_id: user_id,
-            couple_id: couple_id || null,
+            space_id: spaceId || null,
           }])
           .select()
           .single();
-          
+
         if (createError) {
           // Handle race condition: if another note in the same batch already created this list,
           // fetch the existing one instead of returning null
@@ -2573,7 +2599,7 @@ Process this note:
               .from('clerk_lists')
               .select('*')
               .ilike('name', listName)
-              .or(couple_id ? `couple_id.eq.${couple_id}` : `author_id.eq.${user_id}`)
+              .or(spaceId ? `space_id.eq.${spaceId}` : `author_id.eq.${user_id}`)
               .limit(1)
               .single();
             if (existingList) {
@@ -2701,7 +2727,7 @@ Process this note:
     // AUTO-DETECT EXPENSES: Check if note contains monetary amounts
     // ======================================================================
     const expenseDetected = detectAndCreateExpense(
-      supabase, result, safeText, user_id, couple_id,
+      supabase, result, safeText, user_id, spaceId ?? undefined,
       mediaUrls.length > 0 ? mediaUrls[0] : null,
       source
     );
@@ -2732,7 +2758,7 @@ Process this note:
     // Feeds the knowledge graph (olive_entities + olive_relationships)
     // ======================================================================
     if (safeText.trim().length >= 10) {
-      extractKnowledge(supabase, result, safeText, user_id, couple_id).catch(err => {
+      extractKnowledge(supabase, result, safeText, user_id, { spaceId, coupleId: couple_id ?? null }).catch(err => {
         console.warn('[Knowledge Extract] Non-blocking error:', err);
       });
     }
@@ -2741,7 +2767,7 @@ Process this note:
     const extractedUrls = extractUrls(safeText);
     if (extractedUrls.length > 0) {
       console.log('[process-note] Found', extractedUrls.length, 'URLs in note text');
-      saveExtractedLinks(supabase, extractedUrls, user_id, couple_id).catch(err => {
+      saveExtractedLinks(supabase, extractedUrls, user_id, { spaceId, coupleId: couple_id ?? null }).catch(err => {
         console.warn('[Link Extraction] Non-blocking error:', err);
       });
     }

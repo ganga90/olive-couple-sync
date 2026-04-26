@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Capacitor } from "@capacitor/core";
@@ -11,8 +11,15 @@ import { useSEO } from "@/hooks/useSEO";
 import { OliveLogo } from "@/components/OliveLogo";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace, type SpaceType } from "@/providers/SpaceProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
+import { seedOnboardingSoul } from "@/lib/onboarding-soul";
+import { useOnboardingEvent } from "@/hooks/useOnboardingEvent";
+import {
+  SpaceNameStep,
+  type OnboardingScope,
+} from "@/components/onboarding/SpaceNameStep";
 import {
   ArrowRight,
   ArrowLeft,
@@ -39,18 +46,30 @@ import { LANGUAGES } from "@/lib/i18n/languages";
 import { cn } from "@/lib/utils";
 import { OnboardingDemo } from "@/components/OnboardingDemo";
 import { QRCodeSVG } from "qrcode.react";
-
-type OnboardingStep =
-  | "demoPreview"
-  | "quiz"
-  | "regional"
-  | "whatsapp"
-  | "calendar"
-  | "demo";
+import {
+  CapturePreview,
+  type ProcessNoteResult,
+} from "@/components/onboarding/CapturePreview";
+import { InviteSpaceStep } from "@/components/onboarding/InviteSpaceStep";
+import { ReceiptStep } from "@/components/onboarding/ReceiptStep";
+import {
+  getStepsForVersion,
+  getQuizStepsForVersion,
+  isStepActive,
+  type OnboardingStep,
+} from "@/lib/onboarding-flow";
+import { useOnboardingVersion } from "@/hooks/useOnboardingVersion";
 
 interface QuizAnswers {
   scope: string | null;
   mentalLoad: string[];
+}
+
+interface SpaceAnswers {
+  spaceName: string;
+  partnerName: string;
+  spaceId: string | null;       // populated once the space is created
+  spaceType: SpaceType | null;  // mirrored client-side so shareSpace knows audience
 }
 
 const ONBOARDING_STATE_KEY = "olive_onboarding_state";
@@ -59,6 +78,7 @@ interface OnboardingState {
   currentStep: OnboardingStep;
   quizStep: number;
   quizAnswers: QuizAnswers;
+  spaceAnswers: SpaceAnswers;
   completedSteps: OnboardingStep[];
 }
 
@@ -67,23 +87,48 @@ const defaultQuizAnswers: QuizAnswers = {
   mentalLoad: [],
 };
 
+const defaultSpaceAnswers: SpaceAnswers = {
+  spaceName: "",
+  partnerName: "",
+  spaceId: null,
+  spaceType: null,
+};
+
 const defaultState: OnboardingState = {
   currentStep: "demoPreview",
   quizStep: 0,
   quizAnswers: defaultQuizAnswers,
+  spaceAnswers: defaultSpaceAnswers,
   completedSteps: [],
 };
 
-const STEPS_ORDER: OnboardingStep[] = [
-  "demoPreview",
-  "quiz",
-  "regional",
-  "whatsapp",
-  "calendar",
-  "demo",
-];
+// The full ordered flow lives in src/lib/onboarding-flow.ts so the
+// v1 vs v2 step-list logic is testable in isolation. We compute the
+// effective list per-render via getStepsForVersion(version). v1 = full
+// 8-beat flow; v2 drops `regional` and `calendar` (handled silently /
+// JIT respectively).
+//
+// `spaceCreate` sits right after the quiz so we have the scope answer in
+// hand to pick a space type + smart default name. `shareSpace` follows
+// immediately so invite intent is captured at peak motivation — but is
+// auto-skipped for solo (`custom`) spaces (see useEffect below).
 
-const QUIZ_TOTAL_STEPS = 2;
+// Maps the quiz scope answer to the canonical space_type used by
+// olive_spaces / olive-space-manage. Keep in sync with SCOPE_TO_USER_CONTEXT
+// in supabase/functions/onboarding-finalize/index.ts.
+const SCOPE_TO_SPACE_TYPE: Record<string, SpaceType> = {
+  "Just Me": "custom",
+  "Me & My Partner": "couple",
+  "My Family": "family",
+  "My Business": "business",
+};
+
+// Step counts now derive per-version via getStepsForVersion +
+// getQuizStepsForVersion in src/lib/onboarding-flow.ts. The constants
+// above are documented in onboarding-flow's source. The const below is
+// retained as the FALLBACK quiz total used while the version is loading
+// — matches v1 to keep "Step 1 of N" labels stable on first paint.
+const QUIZ_TOTAL_STEPS_FALLBACK = 2;
 
 // Common timezones
 const TIMEZONES = [
@@ -110,6 +155,25 @@ const Onboarding = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { createCouple, currentCouple } = useSupabaseCouple();
+  const { createSpace, switchSpace, spaces } = useSpace();
+  const fireEvent = useOnboardingEvent();
+
+  // Version flag drives which beats render. While the lookup is
+  // in-flight we render the v1 shape so first paint never collapses
+  // (a flash of fewer steps would feel like a refresh bug).
+  const { version: onboardingVersion, justAssigned: versionJustAssigned } =
+    useOnboardingVersion();
+  const effectiveVersion = onboardingVersion || "v1";
+  const stepsOrder = useMemo(
+    () => getStepsForVersion(effectiveVersion),
+    [effectiveVersion],
+  );
+  const quizTotalSteps = getQuizStepsForVersion(effectiveVersion);
+
+  // Captured at first render so duration metrics (time-to-first-capture,
+  // total flow time) can be computed client-side as a sanity check
+  // against server-side timestamps.
+  const flowStartRef = useRef<number>(Date.now());
 
   const [state, setState] = useState<OnboardingState>(() => {
     try {
@@ -120,6 +184,7 @@ const Onboarding = () => {
           ...defaultState,
           ...parsed,
           quizAnswers: { ...defaultQuizAnswers, ...parsed.quizAnswers },
+          spaceAnswers: { ...defaultSpaceAnswers, ...parsed.spaceAnswers },
         };
       }
     } catch {}
@@ -131,13 +196,144 @@ const Onboarding = () => {
   const [demoText, setDemoText] = useState("");
   const [isProcessingDemo, setIsProcessingDemo] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isCreatingSpace, setIsCreatingSpace] = useState(false);
   const [whatsappLink, setWhatsappLink] = useState("");
   const [isDesktop, setIsDesktop] = useState(false);
+
+  // Demo-step capture preview state. When `process-note` returns, we
+  // store the structured result here and switch the demo card from
+  // "input" mode to "preview" mode. The user explicitly taps "Take me
+  // home" to leave — auto-navigation would steal the aha.
+  const [demoResult, setDemoResult] =
+    useState<ProcessNoteResult | null>(null);
+  const [previewAnimComplete, setPreviewAnimComplete] = useState(false);
 
   // Regional settings
   const [selectedTimezone, setSelectedTimezone] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState("");
   const [hasAutoDetected, setHasAutoDetected] = useState(false);
+
+  // Telemetry — fire flow_started exactly once per session, then
+  // beat_started on every step transition. The hook itself dedups
+  // flow_started across StrictMode double-invocations + refresh-resumes
+  // via sessionStorage, so we can call it unconditionally on mount.
+  useEffect(() => {
+    fireEvent("flow_started", { beat: state.currentStep });
+    // Intentionally not depending on `state.currentStep` — flow_started
+    // is a one-shot session-level event. beat_started for subsequent
+    // beats is fired by the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    fireEvent("beat_started", { beat: state.currentStep });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.currentStep]);
+
+  // Fire version_assigned exactly once per user, the moment the hook
+  // assigns a non-default cohort. This is what slices the funnel — every
+  // metric in v_onboarding_funnel becomes A/B-comparable downstream.
+  useEffect(() => {
+    if (!onboardingVersion) return; // still loading
+    if (!versionJustAssigned) return; // pre-existing assignment, no event
+    fireEvent("version_assigned", { version: onboardingVersion });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onboardingVersion, versionJustAssigned]);
+
+  // v2 corrective: if a refresh / resume restores a stale state.currentStep
+  // pointing at a beat that v2 has dropped (regional or calendar), advance
+  // to the next active beat in the v2 list. Without this, a user mid-flow
+  // when their version flag flipped could be stuck on a screen that no
+  // longer renders. Defensive — the assignment is sticky, so this only
+  // fires for users whose state was persisted before they were assigned.
+  useEffect(() => {
+    if (!onboardingVersion) return;
+    if (isStepActive(state.currentStep, onboardingVersion)) return;
+    // Find the next active beat in canonical order. Falls back to the
+    // last beat (demo) so the user always lands on something renderable.
+    const idx = stepsOrder.indexOf(state.currentStep);
+    const next =
+      idx >= 0 && idx + 1 < stepsOrder.length
+        ? stepsOrder[idx + 1]
+        : stepsOrder[stepsOrder.length - 1];
+    fireEvent("beat_auto_skipped", {
+      beat: state.currentStep,
+      reason: "dropped_in_v2",
+    });
+    setState((prev) => ({ ...prev, currentStep: next }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onboardingVersion, state.currentStep, stepsOrder]);
+
+  // v2 silent regional persistence: with the regional confirm step
+  // dropped, v2 users still need their auto-detected timezone +
+  // language saved to clerk_profiles so reminders fire at the right
+  // local time. We do that here as a side-effect once both the
+  // detection has run AND the user is known.
+  useEffect(() => {
+    if (onboardingVersion !== "v2") return;
+    if (!hasAutoDetected) return;
+    if (!user?.id) return;
+    (async () => {
+      try {
+        await supabase.from("clerk_profiles").upsert(
+          {
+            id: user.id,
+            timezone: selectedTimezone,
+            language_preference: selectedLanguage,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" },
+        );
+        // Mirror the language change so any v2-step that renders next
+        // is already localized. Skipped if user is already on the right
+        // locale to avoid an unnecessary remount.
+        if (selectedLanguage && selectedLanguage !== i18n.language) {
+          await i18n.changeLanguage(selectedLanguage);
+          localStorage.setItem("i18nextLng", selectedLanguage);
+        }
+      } catch (err) {
+        // Non-blocking. Falling back to UTC + English is acceptable.
+        console.warn("[onboarding] v2 silent regional save failed:", err);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onboardingVersion, hasAutoDetected, user?.id]);
+
+  // Auto-skip the shareSpace beat for solo Spaces. The step is
+  // structurally meaningless when there's nobody to invite, but keeping
+  // it in STEPS_ORDER avoids special-casing the linear flow logic.
+  // We fire a distinct event so the funnel can distinguish "auto-skipped
+  // because solo" from "user tapped skip on a couple/family space".
+  useEffect(() => {
+    if (state.currentStep !== "shareSpace") return;
+    if (
+      state.spaceAnswers.spaceType &&
+      state.spaceAnswers.spaceType !== "custom"
+    ) {
+      return; // shared space — let the user see the invite UI
+    }
+    fireEvent("beat_auto_skipped", {
+      beat: "shareSpace",
+      reason: "solo_space",
+    });
+    // Defer the advance by a tick so the beat_started event for
+    // shareSpace lands first — keeps the funnel's per-beat order
+    // consistent (start → auto_skip → start of next beat).
+    const t = window.setTimeout(() => {
+      setState((prev) => ({
+        ...prev,
+        // Cast: Set widens 'shareSpace' literal to string. The runtime
+        // value is always one of OnboardingStep — STEPS_ORDER guarantees it.
+        completedSteps: [
+          ...new Set<OnboardingStep>([...prev.completedSteps, "shareSpace"]),
+        ],
+        currentStep:
+          stepsOrder[stepsOrder.indexOf("shareSpace") + 1] || prev.currentStep,
+      }));
+    }, 0);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.currentStep, state.spaceAnswers.spaceType]);
 
   // Auto-detect timezone and language
   useEffect(() => {
@@ -168,13 +364,13 @@ const Onboarding = () => {
     localStorage.setItem(ONBOARDING_STATE_KEY, JSON.stringify(state));
   }, [state]);
 
-  const currentStepIndex = STEPS_ORDER.indexOf(state.currentStep);
-  const totalVisualSteps = STEPS_ORDER.length;
+  const currentStepIndex = stepsOrder.indexOf(state.currentStep);
+  const totalVisualSteps = stepsOrder.length;
 
   // Progress: quiz substeps count within the quiz step
   const getProgress = () => {
     if (state.currentStep === "quiz") {
-      const quizFraction = (state.quizStep + 1) / QUIZ_TOTAL_STEPS;
+      const quizFraction = (state.quizStep + 1) / quizTotalSteps;
       return ((currentStepIndex + quizFraction) / totalVisualSteps) * 100;
     }
     return ((currentStepIndex + 1) / totalVisualSteps) * 100;
@@ -190,13 +386,26 @@ const Onboarding = () => {
 
   const goToNextStep = () => {
     const nextIndex = currentStepIndex + 1;
-    if (nextIndex < STEPS_ORDER.length) {
+    if (nextIndex < stepsOrder.length) {
+      // Mark the leaving step as completed in telemetry. The hook
+      // separately fires beat_started for the new step via the effect
+      // tied to state.currentStep.
+      fireEvent("beat_completed", { beat: state.currentStep });
       setState((prev) => ({
         ...prev,
         completedSteps: [...new Set([...prev.completedSteps, state.currentStep])],
       }));
-      goToStep(STEPS_ORDER[nextIndex]);
+      goToStep(stepsOrder[nextIndex]);
     }
+  };
+
+  // Skip-button helper — emits a beat_skipped event before advancing so
+  // the funnel can distinguish "completed via primary CTA" from "tapped
+  // skip link". Visually skipping is still useful signal (the user got
+  // through the beat), so we also fire beat_completed via goToNextStep.
+  const skipBeat = () => {
+    fireEvent("beat_skipped", { beat: state.currentStep });
+    goToNextStep();
   };
 
   const goToPrevStep = () => {
@@ -205,12 +414,12 @@ const Onboarding = () => {
       return;
     }
     const prevIndex = currentStepIndex - 1;
-    if (prevIndex >= 0) goToStep(STEPS_ORDER[prevIndex]);
+    if (prevIndex >= 0) goToStep(stepsOrder[prevIndex]);
   };
 
   // Quiz helpers
   const goToNextQuizStep = () => {
-    if (state.quizStep < QUIZ_TOTAL_STEPS - 1) {
+    if (state.quizStep < quizTotalSteps - 1) {
       setIsAnimating(true);
       setTimeout(() => {
         setState((prev) => ({ ...prev, quizStep: prev.quizStep + 1 }));
@@ -273,6 +482,117 @@ const Onboarding = () => {
     }
   };
 
+  // Create the user's first Space and seed Olive's User Soul + augment the
+  // Space Soul that olive-space-manage auto-generated. This is the moment
+  // when the quiz answers stop being inert text and become Olive's
+  // operating context for every downstream message.
+  const handleSpaceCreate = async (values: {
+    spaceName: string;
+    partnerName: string;
+  }) => {
+    if (!user?.id) {
+      goToNextStep();
+      return;
+    }
+
+    setIsCreatingSpace(true);
+    try {
+      const scope = state.quizAnswers.scope;
+      const spaceType: SpaceType = scope
+        ? SCOPE_TO_SPACE_TYPE[scope] || "custom"
+        : "custom";
+
+      let spaceId: string | null = null;
+
+      if (spaceType === "couple") {
+        // Couple type: keep using create_couple RPC. The
+        // sync_couple_to_space trigger creates the matching olive_spaces
+        // row with the same UUID, so legacy couple-scoped flows keep
+        // working unchanged. Note: the trigger does NOT call
+        // generateSpaceSoul — onboarding-finalize compensates by writing
+        // the user soul AND augmenting the space soul once it exists.
+        const couple = await createCouple({
+          title: values.spaceName,
+          you_name: user?.firstName || "",
+          partner_name: values.partnerName,
+        });
+        spaceId = couple?.id || null;
+
+        // The sync trigger fires INSERT on olive_spaces but
+        // generateSpaceSoul is only invoked by olive-space-manage. For
+        // couple paths we rely on onboarding-finalize.augmentSpaceSoul
+        // (which upserts) to create the soul row if missing — see the
+        // edge function.
+      } else {
+        // Non-couple types (solo / family / business / household / custom):
+        // route through olive-space-manage so the Space Soul template
+        // for the chosen type is generated automatically.
+        const newSpace = await createSpace({
+          name: values.spaceName,
+          type: spaceType,
+          settings: { onboarding_source: "quiz", scope },
+        });
+        spaceId = newSpace?.id || null;
+        if (newSpace) switchSpace(newSpace);
+      }
+
+      // Persist the chosen names + spaceId + spaceType so a refresh
+      // resumes correctly AND the downstream shareSpace step knows which
+      // audience copy to render without re-deriving from scope.
+      setState((prev) => ({
+        ...prev,
+        spaceAnswers: {
+          spaceName: values.spaceName,
+          partnerName: values.partnerName,
+          spaceId,
+          spaceType,
+        },
+      }));
+
+      // Telemetry: space_created fires once we have a confirmed spaceId,
+      // regardless of whether it came via createCouple or createSpace.
+      // The space_type label keeps the funnel sliceable by scope.
+      fireEvent("space_created", {
+        beat: "spaceCreate",
+        space_type: spaceType,
+        scope,
+        ok: Boolean(spaceId),
+      });
+
+      // Best-effort: seed the User Soul + augment the Space Soul. This is
+      // the bridge from quiz answers → Olive's operating context. Failures
+      // are logged but never block onboarding completion.
+      seedOnboardingSoul({
+        userId: user.id,
+        spaceId,
+        scope,
+        mentalLoad: state.quizAnswers.mentalLoad,
+        displayName: user?.firstName || undefined,
+        timezone: selectedTimezone || undefined,
+        language: selectedLanguage || undefined,
+        partnerName: values.partnerName || undefined,
+      }).then((res) => {
+        // Capture the soul-seeding outcome separately so a successful
+        // space_created with a failed soul_seeded is visible in the funnel.
+        fireEvent("soul_seeded", { ok: res.ok });
+      });
+
+      goToNextStep();
+    } catch (err) {
+      // Don't trap the user — let them continue. They can rename / recreate
+      // the space later from the Space switcher.
+      console.error("[Onboarding] Space creation failed:", err);
+      toast.error(
+        t("space.errorFallback", {
+          defaultValue: "We hit a snag creating your Space. You can fix this later in Settings.",
+        })
+      );
+      goToNextStep();
+    } finally {
+      setIsCreatingSpace(false);
+    }
+  };
+
   const handleRegionalConfirm = async () => {
     setLoading(true);
     try {
@@ -304,6 +624,12 @@ const Onboarding = () => {
       const { data, error } = await supabase.functions.invoke("generate-whatsapp-link", { body: {} });
       if (!error && data?.whatsappLink) {
         setWhatsappLink(data.whatsappLink);
+        // The user clicked "Connect" and got a working link. We log
+        // wa_connected at this point — not on inbound message receipt —
+        // because the inbound webhook isn't observable from the client.
+        // The funnel can later be cross-referenced with whatsapp-webhook
+        // logs to compute the link → first-message conversion separately.
+        fireEvent("wa_connected", { beat: "whatsapp" });
         if (!isDesktop) window.open(data.whatsappLink, "_blank");
       } else {
         toast.error(t("whatsapp.errorFallback", { defaultValue: "You can connect later in Settings." }));
@@ -325,6 +651,11 @@ const Onboarding = () => {
         body: { user_id: user.id, redirect_origin: origin },
       });
       if (!error && data?.auth_url) {
+        // Fired pre-redirect: the user CHOSE to connect. Whether OAuth
+        // actually completes is observable via the calendar-callback
+        // edge function logs and the calendar_connections table — the
+        // funnel here measures intent, not outcome.
+        fireEvent("calendar_connected", { beat: "calendar", stage: "redirected" });
         localStorage.setItem(ONBOARDING_STATE_KEY, JSON.stringify({
           ...state,
           currentStep: "demo",
@@ -341,6 +672,20 @@ const Onboarding = () => {
   const markOnboardingCompleted = async () => {
     localStorage.setItem("olive_onboarding_completed", "true");
     localStorage.removeItem(ONBOARDING_STATE_KEY);
+
+    // Telemetry: emit flow_completed with both the wall-clock duration
+    // and the path the user took. duration_seconds rounds to whole
+    // seconds — the JSONB payload preserves higher precision via ms.
+    const ms = Date.now() - flowStartRef.current;
+    fireEvent("flow_completed", {
+      duration_seconds: Math.round(ms / 1000),
+      duration_ms: ms,
+      completed_steps: state.completedSteps,
+      space_type: state.quizAnswers.scope
+        ? SCOPE_TO_SPACE_TYPE[state.quizAnswers.scope] || "custom"
+        : "custom",
+    });
+
     if (user?.id) {
       try {
         await supabase.from("olive_memory_chunks").insert({
@@ -355,23 +700,58 @@ const Onboarding = () => {
     }
   };
 
+  // Fallback: if the user reached the demo step without a Space (skipped
+  // spaceCreate, or it failed silently), create a minimal solo space so
+  // process-note has a scope to attach to. Returns the couple_id (legacy
+  // foreign key on clerk_notes) when one exists.
+  const ensureSpaceExists = async (): Promise<string | null> => {
+    if (state.spaceAnswers.spaceId) return currentCouple?.id || null;
+    if (currentCouple) return currentCouple.id;
+    try {
+      // Default fallback is a couple-typed "My Space" so legacy code paths
+      // (clerk_notes.couple_id FK, partner-name lookups) keep working.
+      // Users who actually wanted a non-couple Space picked one in the
+      // spaceCreate step — reaching here means they skipped or errored.
+      const couple = await createCouple({
+        title: "My Space",
+        you_name: user?.firstName || "",
+        partner_name: "",
+      });
+      return couple?.id || null;
+    } catch {
+      return null;
+    }
+  };
+
   const handleDemoSubmit = async () => {
     if (!demoText.trim()) return;
     setIsProcessingDemo(true);
+    const startedAt = Date.now();
     try {
-      // Auto-create solo space if no couple exists
-      if (!currentCouple) {
-        await createCouple({ title: "My Space", you_name: user?.firstName || "", partner_name: "" });
-      }
+      const coupleId = await ensureSpaceExists();
 
-      const { error } = await supabase.functions.invoke("process-note", {
-        body: { text: demoText.trim(), user_id: user?.id, couple_id: currentCouple?.id || null },
+      const { data, error } = await supabase.functions.invoke("process-note", {
+        body: { text: demoText.trim(), user_id: user?.id, couple_id: coupleId },
       });
       if (error) throw error;
-      toast.success(t("demo.success", { defaultValue: "Your first task is ready! 🎉" }));
-      await markOnboardingCompleted();
-      navigate(getLocalizedPath("/home"));
-    } catch {
+      // capture_sent measures the moment Olive successfully ingests the
+      // user's first brain-dump. latency_ms is process-note's round-trip
+      // — useful for spotting Gemini slowdowns that hurt the aha moment.
+      fireEvent("capture_sent", {
+        beat: "demo",
+        latency_ms: Date.now() - startedAt,
+        chars: demoText.trim().length,
+      });
+      // Switch the demo card from input mode to preview mode. We do NOT
+      // navigate yet — let the user see Olive understand them, then tap
+      // through. CapturePreview's onAnimationComplete fires
+      // capture_previewed and reveals the "Take me home" CTA.
+      setDemoResult((data as ProcessNoteResult) || { summary: "Captured", category: "note" });
+    } catch (err: any) {
+      fireEvent("error", {
+        beat: "demo",
+        error: err?.message || "process_note_failed",
+      });
       toast.error(t("demo.error", { defaultValue: "Something went wrong. Let's try again." }));
     } finally {
       setIsProcessingDemo(false);
@@ -379,12 +759,32 @@ const Onboarding = () => {
   };
 
   const handleComplete = async () => {
-    // Auto-create solo space if needed
-    if (!currentCouple) {
-      try {
-        await createCouple({ title: "My Space", you_name: user?.firstName || "", partner_name: "" });
-      } catch {}
-    }
+    // The user reached the demo step but tapped "Skip and go to Home"
+    // instead of submitting a brain-dump. Record the skip distinctly so
+    // we can measure whether moving the demo earlier in the flow would
+    // convert these dropouts into capture_sent events.
+    fireEvent("beat_skipped", { beat: "demo", path: "skip_to_home" });
+    await ensureSpaceExists();
+    // Both skip and capture paths funnel through the receipt beat now —
+    // the receipt is the only place we mark onboarding complete + navigate
+    // away. Keeps the "what does Olive know" transparency moment universal.
+    goToNextStep(); // → receipt
+  };
+
+  // Called after the user has SEEN their first capture organized in the
+  // preview pane and explicitly chose to advance. Distinguished from
+  // handleComplete (which is for skip-without-capture) so the funnel can
+  // measure how many users reach the aha moment.
+  const handleFinishFromPreview = () => {
+    setIsProcessingDemo(false);
+    goToNextStep(); // → receipt
+  };
+
+  // Final beat handler — called from ReceiptStep's "Open my day" CTA.
+  // This is the ONLY place we mark onboarding completed + navigate to
+  // the home screen, so flow_completed telemetry is canonical regardless
+  // of whether the user captured something or skipped through demo.
+  const handleReceiptDone = async () => {
     await markOnboardingCompleted();
     navigate(getLocalizedPath("/home"));
   };
@@ -404,10 +804,14 @@ const Onboarding = () => {
     { value: "Health & Fitness", label: t("quiz.mentalLoad.health"), desc: t("quiz.mentalLoad.healthDesc"), icon: Heart },
   ];
 
+  // The "Gate code" chip mirrors the landing-page demo and proves the
+  // "save random strings" use case (a high-frequency real-world capture
+  // for couples / families that no other note app handles cleanly).
   const demoChips = [
     t("demo.chip1", { defaultValue: "Remind me to call Mom tomorrow at 5pm" }),
     t("demo.chip2", { defaultValue: "Add milk, eggs, and bread to grocery list" }),
     t("demo.chip3", { defaultValue: "Dinner with Sarah next Friday at 7pm" }),
+    t("demo.chip4", { defaultValue: "Gate code 4821#" }),
   ];
 
   const renderQuizStep = () => {
@@ -475,7 +879,7 @@ const Onboarding = () => {
               {t("quiz.next", { defaultValue: "Next" })}
               <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
             </Button>
-            <button onClick={goToNextStep} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={skipBeat} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
               {t("quiz.skipQuiz", { defaultValue: "Skip personalization" })}
             </button>
           </div>
@@ -552,7 +956,7 @@ const Onboarding = () => {
           </div>
           <p className="text-xs text-muted-foreground text-center mt-1">
             {state.currentStep === "quiz"
-              ? t("quiz.step", { current: state.quizStep + 1, total: QUIZ_TOTAL_STEPS })
+              ? t("quiz.step", { current: state.quizStep + 1, total: quizTotalSteps })
               : `${currentStepIndex + 1} / ${totalVisualSteps}`}
           </p>
         </div>
@@ -573,7 +977,52 @@ const Onboarding = () => {
         {/* Step 2: Quiz (scope + mental load) */}
         {state.currentStep === "quiz" && renderQuizStep()}
 
-        {/* Step 3: Regional Settings (simplified) */}
+        {/* Step 3: Space creation — first time the quiz answers shape Olive */}
+        {state.currentStep === "spaceCreate" && (
+          <SpaceNameStep
+            scope={(state.quizAnswers.scope as OnboardingScope | null) || null}
+            firstName={user?.firstName || ""}
+            lastName={user?.lastName || ""}
+            initialValues={{
+              spaceName: state.spaceAnswers.spaceName,
+              partnerName: state.spaceAnswers.partnerName,
+            }}
+            loading={isCreatingSpace}
+            onBack={goToPrevStep}
+            onSubmit={handleSpaceCreate}
+          />
+        )}
+
+        {/* Step 3.5: Share Space — invite link for non-solo spaces.
+            Solo spaces auto-skip via the effect on state.currentStep. */}
+        {state.currentStep === "shareSpace" &&
+          state.spaceAnswers.spaceType &&
+          state.spaceAnswers.spaceType !== "custom" && (
+            <InviteSpaceStep
+              spaceId={state.spaceAnswers.spaceId}
+              spaceType={state.spaceAnswers.spaceType}
+              spaceName={state.spaceAnswers.spaceName || "your Space"}
+              onInviteGenerated={(token) => {
+                fireEvent("invite_generated", {
+                  beat: "shareSpace",
+                  space_type: state.spaceAnswers.spaceType,
+                  // Token recorded so we can correlate accept-rate
+                  // post-onboarding without re-querying olive_space_invites.
+                  token_prefix: token.slice(0, 8),
+                });
+              }}
+              onContinue={() => {
+                fireEvent("invite_shared", {
+                  beat: "shareSpace",
+                  space_type: state.spaceAnswers.spaceType,
+                });
+                goToNextStep();
+              }}
+              onSkip={skipBeat}
+            />
+          )}
+
+        {/* Step 4: Regional Settings (simplified) */}
         {state.currentStep === "regional" && (
           <div className="w-full max-w-md animate-fade-up space-y-6">
             <div className="flex justify-center mb-2">
@@ -716,7 +1165,7 @@ const Onboarding = () => {
               </>
             )}
 
-            <button onClick={goToNextStep} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={skipBeat} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
               {t("skip", { defaultValue: "Skip for now" })}
             </button>
           </div>
@@ -758,7 +1207,7 @@ const Onboarding = () => {
               {t("calendar.connectButton")}
               <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
             </Button>
-            <button onClick={goToNextStep} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={skipBeat} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
               {t("skip", { defaultValue: "Skip" })}
             </button>
           </div>
@@ -767,54 +1216,116 @@ const Onboarding = () => {
         {/* Step 6: Live Demo — first brain dump */}
         {state.currentStep === "demo" && (
           <div className="w-full max-w-md animate-fade-up space-y-6">
-            <div className="text-center space-y-2">
-              <h1 className="text-2xl font-bold text-foreground font-serif">{t("demo.header")}</h1>
-              <p className="text-muted-foreground">{t("demo.subtext")}</p>
-            </div>
-            <div className="flex flex-wrap gap-2 justify-center">
-              {demoChips.map((chip, i) => (
-                <button
-                  key={i}
-                  onClick={() => setDemoText(chip)}
-                  className={cn(
-                    "px-3 py-1.5 text-xs rounded-full border transition-all",
-                    demoText === chip
-                      ? "bg-primary/10 border-primary text-primary"
-                      : "bg-card border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                  )}
-                >
-                  {chip}
+            {/* Two modes:
+                  (1) input  — chips + textarea + Send (default)
+                  (2) preview — CapturePreview animated rows + Take me home
+                The flip happens when demoResult populates after a
+                successful process-note response. We never go back from
+                preview to input — the user has captured something. */}
+            {!demoResult ? (
+              <>
+                <div className="text-center space-y-2">
+                  <h1 className="text-2xl font-bold text-foreground font-serif">{t("demo.header")}</h1>
+                  <p className="text-muted-foreground">{t("demo.subtext")}</p>
+                </div>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {demoChips.map((chip, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setDemoText(chip)}
+                      className={cn(
+                        "px-3 py-1.5 text-xs rounded-full border transition-all",
+                        demoText === chip
+                          ? "bg-primary/10 border-primary text-primary"
+                          : "bg-card border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                      )}
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+                <Card className="p-4 bg-card/80 border-border/50 shadow-card">
+                  <Textarea
+                    value={demoText}
+                    onChange={(e) => setDemoText(e.target.value)}
+                    placeholder={t("demo.placeholder")}
+                    className="min-h-[120px] border-0 focus-visible:ring-0 resize-none text-base p-0 shadow-none"
+                    disabled={isProcessingDemo}
+                  />
+                  <div className="flex justify-end mt-3">
+                    <Button onClick={handleDemoSubmit} disabled={!demoText.trim() || isProcessingDemo} className="group">
+                      {isProcessingDemo ? (
+                        <>
+                          <Sparkles className="w-4 h-4 mr-2 animate-spin" />
+                          {t("demo.processing")}
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 mr-2" />
+                          {t("demo.submit")}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </Card>
+                <button onClick={handleComplete} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  {t("demo.skipToHome")}
                 </button>
-              ))}
-            </div>
-            <Card className="p-4 bg-card/80 border-border/50 shadow-card">
-              <Textarea
-                value={demoText}
-                onChange={(e) => setDemoText(e.target.value)}
-                placeholder={t("demo.placeholder")}
-                className="min-h-[120px] border-0 focus-visible:ring-0 resize-none text-base p-0 shadow-none"
-                disabled={isProcessingDemo}
-              />
-              <div className="flex justify-end mt-3">
-                <Button onClick={handleDemoSubmit} disabled={!demoText.trim() || isProcessingDemo} className="group">
-                  {isProcessingDemo ? (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2 animate-spin" />
-                      {t("demo.processing")}
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4 mr-2" />
-                      {t("demo.submit")}
-                    </>
-                  )}
+              </>
+            ) : (
+              <>
+                <div className="text-center space-y-2">
+                  <h1 className="text-2xl font-bold text-foreground font-serif">
+                    {t("demo.previewHeader", { defaultValue: "Done. That just happened." })}
+                  </h1>
+                  <p className="text-muted-foreground">
+                    {t("demo.previewSubtext", {
+                      defaultValue:
+                        "This is what Olive does — every brain-dump becomes structure.",
+                    })}
+                  </p>
+                </div>
+                <Card className="p-4 bg-card/80 border-border/50 shadow-card">
+                  <CapturePreview
+                    result={demoResult}
+                    onAnimationComplete={() => {
+                      if (previewAnimComplete) return;
+                      setPreviewAnimComplete(true);
+                      // Funnel: capture_previewed marks "user actually
+                      // saw the parse result", separating eyeball-time
+                      // from raw capture_sent. Drop-off between these
+                      // two is a useful signal for animation tuning.
+                      fireEvent("capture_previewed", { beat: "demo" });
+                    }}
+                  />
+                </Card>
+                <Button
+                  onClick={handleFinishFromPreview}
+                  disabled={!previewAnimComplete}
+                  className="w-full h-12 text-base group"
+                >
+                  {t("demo.takeMeHome", { defaultValue: "Take me home" })}
+                  <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
                 </Button>
-              </div>
-            </Card>
-            <button onClick={handleComplete} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
-              {t("demo.skipToHome")}
-            </button>
+              </>
+            )}
           </div>
+        )}
+
+        {/* Step 7: Receipt — Olive's transparency moment.
+            Renders four bullets pulled from the live data we wrote during
+            onboarding. The CTA is the canonical "mark complete + navigate
+            home" path; both demo-capture and demo-skip paths funnel here. */}
+        {state.currentStep === "receipt" && (
+          <ReceiptStep
+            firstName={user?.firstName || ""}
+            spaceName={state.spaceAnswers.spaceName}
+            spaceType={state.spaceAnswers.spaceType}
+            demoResult={demoResult}
+            mentalLoad={state.quizAnswers.mentalLoad}
+            userId={user?.id}
+            onContinue={handleReceiptDone}
+          />
         )}
       </section>
 

@@ -120,13 +120,20 @@ const EXPENSE_CATEGORY_ICONS: Record<string, string> = {
 /**
  * Detect and create an expense from note text.
  * Returns silently on failure (non-blocking).
+ *
+ * Spaces Phase 2-1: the third positional argument is now `spaceId`
+ * (was `coupleId`). Callers in this codebase have been migrated.
+ * For couple-type spaces space_id === couple_id (1:1 bridge), so the
+ * downstream BEFORE INSERT trigger on `expenses` mirrors couple_id.
+ * For non-couple spaces (family / business / custom), couple_id stays
+ * NULL — which is what the FK to clerk_couples requires.
  */
 export async function detectAndCreateExpense(
   supabase: SupabaseClient,
   result: any,
   originalText: string,
   userId: string,
-  coupleId?: string,
+  spaceId?: string,
   receiptUrl?: string | null,
   source?: string
 ): Promise<void> {
@@ -150,13 +157,16 @@ export async function detectAndCreateExpense(
 
   const trackingMode = profile?.expense_tracking_mode || 'individual';
   const defaultSplit = profile?.expense_default_split || 'you_paid_split';
-  const isShared = trackingMode === 'shared' && !!coupleId;
+  const isShared = trackingMode === 'shared' && !!spaceId;
 
   const noteId = result.id || result.notes?.[0]?.id || null;
 
   const expenseData = {
     user_id: userId,
-    couple_id: isShared ? coupleId : null,
+    // Write space_id only. The BEFORE INSERT trigger on `expenses`
+    // derives couple_id (only for couple-type spaces, never for
+    // family / business / custom — keeping the clerk_couples FK safe).
+    space_id: isShared ? spaceId : null,
     note_id: noteId,
     name: expenseName,
     amount,

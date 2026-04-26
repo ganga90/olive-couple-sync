@@ -24,6 +24,8 @@ interface SearchRequest {
   action: 'search_notes' | 'search_memory' | 'search_all' | 'generate_embedding';
   user_id?: string;
   couple_id?: string;
+  /** Spaces Phase 2-2: canonical scope. Prefer over couple_id. */
+  space_id?: string;
   query: string;
   filters?: SearchFilters;
   limit?: number;
@@ -320,12 +322,16 @@ serve(async (req) => {
       action,
       user_id,
       couple_id,
+      space_id,
       query,
       filters = {},
       limit = 20,
       vector_weight = 0.7,
       use_entity_prepass = false,
     } = body;
+    // Spaces Phase 2-2: canonical scope. For couple-type spaces both fields
+    // hold the same UUID; for non-couple spaces only space_id is populated.
+    const scopeSpaceId: string | null = space_id ?? couple_id ?? null;
 
     // Phase 4-D: optional entity pre-pass. Runs before search so the
     // caller can decide whether to include entity context in its prompt.
@@ -374,7 +380,7 @@ serve(async (req) => {
           const { data, error } = await supabase
             .from('clerk_notes')
             .select('id, original_text, summary, category, due_date, priority, completed')
-            .or(`author_id.eq.${user_id}${couple_id ? `,couple_id.eq.${couple_id}` : ''}`)
+            .or(`author_id.eq.${user_id}${scopeSpaceId ? `,space_id.eq.${scopeSpaceId}` : ''}`)
             .textSearch('search_vector', query)
             .limit(limit);
 
@@ -408,7 +414,7 @@ serve(async (req) => {
         const results = await searchNotes(
           supabase,
           user_id,
-          couple_id || null,
+          scopeSpaceId,
           query,
           embedding,
           filters,

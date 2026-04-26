@@ -34,6 +34,7 @@ import { PartnerInviteCard } from "@/components/PartnerInviteCard";
 import { PersonalizeCard } from "@/components/PersonalizeCard";
 import { SetupFeaturesCard } from "@/components/SetupFeaturesCard";
 import { TimezoneSyncCard } from "@/components/TimezoneSyncCard";
+import { CalendarJitCard } from "@/components/onboarding/CalendarJitCard";
 import { supabase } from "@/lib/supabaseClient";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useKeyboardShortcuts, APP_SHORTCUTS } from "@/hooks/useKeyboardShortcuts";
@@ -343,6 +344,12 @@ const Home = () => {
           </div>
 
           <TimezoneSyncCard />
+
+          {/* JIT Calendar prompt — surfaces only when the user has a future-
+              dated note AND no calendar connection. Replaces the in-onboarding
+              Calendar OAuth that v2 dropped (TASK-ONB-D). Self-dismisses if
+              not eligible — no UI flash. */}
+          <CalendarJitCard />
 
           {/* Brain-dump Input - Inline, directly usable */}
           <div className="relative animate-fade-up stagger-1">
