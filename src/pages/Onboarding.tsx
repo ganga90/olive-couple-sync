@@ -11,8 +11,14 @@ import { useSEO } from "@/hooks/useSEO";
 import { OliveLogo } from "@/components/OliveLogo";
 import { useLocalizedHref } from "@/hooks/useLocalizedNavigate";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace, type SpaceType } from "@/providers/SpaceProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
+import { seedOnboardingSoul } from "@/lib/onboarding-soul";
+import {
+  SpaceNameStep,
+  type OnboardingScope,
+} from "@/components/onboarding/SpaceNameStep";
 import {
   ArrowRight,
   ArrowLeft,
@@ -43,6 +49,7 @@ import { QRCodeSVG } from "qrcode.react";
 type OnboardingStep =
   | "demoPreview"
   | "quiz"
+  | "spaceCreate"
   | "regional"
   | "whatsapp"
   | "calendar"
@@ -53,12 +60,19 @@ interface QuizAnswers {
   mentalLoad: string[];
 }
 
+interface SpaceAnswers {
+  spaceName: string;
+  partnerName: string;
+  spaceId: string | null; // populated once the space is created
+}
+
 const ONBOARDING_STATE_KEY = "olive_onboarding_state";
 
 interface OnboardingState {
   currentStep: OnboardingStep;
   quizStep: number;
   quizAnswers: QuizAnswers;
+  spaceAnswers: SpaceAnswers;
   completedSteps: OnboardingStep[];
 }
 
@@ -67,21 +81,43 @@ const defaultQuizAnswers: QuizAnswers = {
   mentalLoad: [],
 };
 
+const defaultSpaceAnswers: SpaceAnswers = {
+  spaceName: "",
+  partnerName: "",
+  spaceId: null,
+};
+
 const defaultState: OnboardingState = {
   currentStep: "demoPreview",
   quizStep: 0,
   quizAnswers: defaultQuizAnswers,
+  spaceAnswers: defaultSpaceAnswers,
   completedSteps: [],
 };
 
+// `spaceCreate` sits right after the quiz so we have the scope answer in
+// hand to pick a space type + smart default name. Putting it before
+// regional/whatsapp/calendar means every downstream beat (and the demo
+// brain-dump) writes scoped to the right space_id from the start.
 const STEPS_ORDER: OnboardingStep[] = [
   "demoPreview",
   "quiz",
+  "spaceCreate",
   "regional",
   "whatsapp",
   "calendar",
   "demo",
 ];
+
+// Maps the quiz scope answer to the canonical space_type used by
+// olive_spaces / olive-space-manage. Keep in sync with SCOPE_TO_USER_CONTEXT
+// in supabase/functions/onboarding-finalize/index.ts.
+const SCOPE_TO_SPACE_TYPE: Record<string, SpaceType> = {
+  "Just Me": "custom",
+  "Me & My Partner": "couple",
+  "My Family": "family",
+  "My Business": "business",
+};
 
 const QUIZ_TOTAL_STEPS = 2;
 
@@ -110,6 +146,7 @@ const Onboarding = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { createCouple, currentCouple } = useSupabaseCouple();
+  const { createSpace, switchSpace, spaces } = useSpace();
 
   const [state, setState] = useState<OnboardingState>(() => {
     try {
@@ -120,6 +157,7 @@ const Onboarding = () => {
           ...defaultState,
           ...parsed,
           quizAnswers: { ...defaultQuizAnswers, ...parsed.quizAnswers },
+          spaceAnswers: { ...defaultSpaceAnswers, ...parsed.spaceAnswers },
         };
       }
     } catch {}
@@ -131,6 +169,7 @@ const Onboarding = () => {
   const [demoText, setDemoText] = useState("");
   const [isProcessingDemo, setIsProcessingDemo] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isCreatingSpace, setIsCreatingSpace] = useState(false);
   const [whatsappLink, setWhatsappLink] = useState("");
   const [isDesktop, setIsDesktop] = useState(false);
 
@@ -273,6 +312,102 @@ const Onboarding = () => {
     }
   };
 
+  // Create the user's first Space and seed Olive's User Soul + augment the
+  // Space Soul that olive-space-manage auto-generated. This is the moment
+  // when the quiz answers stop being inert text and become Olive's
+  // operating context for every downstream message.
+  const handleSpaceCreate = async (values: {
+    spaceName: string;
+    partnerName: string;
+  }) => {
+    if (!user?.id) {
+      goToNextStep();
+      return;
+    }
+
+    setIsCreatingSpace(true);
+    try {
+      const scope = state.quizAnswers.scope;
+      const spaceType: SpaceType = scope
+        ? SCOPE_TO_SPACE_TYPE[scope] || "custom"
+        : "custom";
+
+      let spaceId: string | null = null;
+
+      if (spaceType === "couple") {
+        // Couple type: keep using create_couple RPC. The
+        // sync_couple_to_space trigger creates the matching olive_spaces
+        // row with the same UUID, so legacy couple-scoped flows keep
+        // working unchanged. Note: the trigger does NOT call
+        // generateSpaceSoul — onboarding-finalize compensates by writing
+        // the user soul AND augmenting the space soul once it exists.
+        const couple = await createCouple({
+          title: values.spaceName,
+          you_name: user?.firstName || "",
+          partner_name: values.partnerName,
+        });
+        spaceId = couple?.id || null;
+
+        // The sync trigger fires INSERT on olive_spaces but
+        // generateSpaceSoul is only invoked by olive-space-manage. For
+        // couple paths we rely on onboarding-finalize.augmentSpaceSoul
+        // (which upserts) to create the soul row if missing — see the
+        // edge function.
+      } else {
+        // Non-couple types (solo / family / business / household / custom):
+        // route through olive-space-manage so the Space Soul template
+        // for the chosen type is generated automatically.
+        const newSpace = await createSpace({
+          name: values.spaceName,
+          type: spaceType,
+          settings: { onboarding_source: "quiz", scope },
+        });
+        spaceId = newSpace?.id || null;
+        if (newSpace) switchSpace(newSpace);
+      }
+
+      // Persist the chosen names + spaceId so a refresh resumes correctly.
+      setState((prev) => ({
+        ...prev,
+        spaceAnswers: {
+          spaceName: values.spaceName,
+          partnerName: values.partnerName,
+          spaceId,
+        },
+      }));
+
+      // Best-effort: seed the User Soul + augment the Space Soul. This is
+      // the bridge from quiz answers → Olive's operating context. Failures
+      // are logged but never block onboarding completion.
+      seedOnboardingSoul({
+        userId: user.id,
+        spaceId,
+        scope,
+        mentalLoad: state.quizAnswers.mentalLoad,
+        displayName: user?.firstName || undefined,
+        timezone: selectedTimezone || undefined,
+        language: selectedLanguage || undefined,
+        partnerName: values.partnerName || undefined,
+      }).catch(() => {
+        /* already logged inside seedOnboardingSoul */
+      });
+
+      goToNextStep();
+    } catch (err) {
+      // Don't trap the user — let them continue. They can rename / recreate
+      // the space later from the Space switcher.
+      console.error("[Onboarding] Space creation failed:", err);
+      toast.error(
+        t("space.errorFallback", {
+          defaultValue: "We hit a snag creating your Space. You can fix this later in Settings.",
+        })
+      );
+      goToNextStep();
+    } finally {
+      setIsCreatingSpace(false);
+    }
+  };
+
   const handleRegionalConfirm = async () => {
     setLoading(true);
     try {
@@ -355,17 +490,37 @@ const Onboarding = () => {
     }
   };
 
+  // Fallback: if the user reached the demo step without a Space (skipped
+  // spaceCreate, or it failed silently), create a minimal solo space so
+  // process-note has a scope to attach to. Returns the couple_id (legacy
+  // foreign key on clerk_notes) when one exists.
+  const ensureSpaceExists = async (): Promise<string | null> => {
+    if (state.spaceAnswers.spaceId) return currentCouple?.id || null;
+    if (currentCouple) return currentCouple.id;
+    try {
+      // Default fallback is a couple-typed "My Space" so legacy code paths
+      // (clerk_notes.couple_id FK, partner-name lookups) keep working.
+      // Users who actually wanted a non-couple Space picked one in the
+      // spaceCreate step — reaching here means they skipped or errored.
+      const couple = await createCouple({
+        title: "My Space",
+        you_name: user?.firstName || "",
+        partner_name: "",
+      });
+      return couple?.id || null;
+    } catch {
+      return null;
+    }
+  };
+
   const handleDemoSubmit = async () => {
     if (!demoText.trim()) return;
     setIsProcessingDemo(true);
     try {
-      // Auto-create solo space if no couple exists
-      if (!currentCouple) {
-        await createCouple({ title: "My Space", you_name: user?.firstName || "", partner_name: "" });
-      }
+      const coupleId = await ensureSpaceExists();
 
       const { error } = await supabase.functions.invoke("process-note", {
-        body: { text: demoText.trim(), user_id: user?.id, couple_id: currentCouple?.id || null },
+        body: { text: demoText.trim(), user_id: user?.id, couple_id: coupleId },
       });
       if (error) throw error;
       toast.success(t("demo.success", { defaultValue: "Your first task is ready! 🎉" }));
@@ -379,12 +534,7 @@ const Onboarding = () => {
   };
 
   const handleComplete = async () => {
-    // Auto-create solo space if needed
-    if (!currentCouple) {
-      try {
-        await createCouple({ title: "My Space", you_name: user?.firstName || "", partner_name: "" });
-      } catch {}
-    }
+    await ensureSpaceExists();
     await markOnboardingCompleted();
     navigate(getLocalizedPath("/home"));
   };
@@ -573,7 +723,23 @@ const Onboarding = () => {
         {/* Step 2: Quiz (scope + mental load) */}
         {state.currentStep === "quiz" && renderQuizStep()}
 
-        {/* Step 3: Regional Settings (simplified) */}
+        {/* Step 3: Space creation — first time the quiz answers shape Olive */}
+        {state.currentStep === "spaceCreate" && (
+          <SpaceNameStep
+            scope={(state.quizAnswers.scope as OnboardingScope | null) || null}
+            firstName={user?.firstName || ""}
+            lastName={user?.lastName || ""}
+            initialValues={{
+              spaceName: state.spaceAnswers.spaceName,
+              partnerName: state.spaceAnswers.partnerName,
+            }}
+            loading={isCreatingSpace}
+            onBack={goToPrevStep}
+            onSubmit={handleSpaceCreate}
+          />
+        )}
+
+        {/* Step 4: Regional Settings (simplified) */}
         {state.currentStep === "regional" && (
           <div className="w-full max-w-md animate-fade-up space-y-6">
             <div className="flex justify-center mb-2">
