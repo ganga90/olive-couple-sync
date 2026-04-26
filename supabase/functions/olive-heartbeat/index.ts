@@ -163,6 +163,57 @@ async function sendWhatsAppMessage(
     return false;
   }
 
+  // ─── Engagement-aware proactivity gate ────────────────────────────
+  // Reads `olive_engagement_metrics.score` and maps to the proactivity
+  // ladder defined in olive-trust-gate (silent / minimal / conservative
+  // / normal / full). Until now the score was computed but never
+  // enforced — Olive sent the same volume of nudges to a user who
+  // engages with everything as to one who ignores 80% of messages.
+  //
+  // Mapping mirrors olive-trust-gate.ts:getEngagement():
+  //   score < 20  → silent       block ALL (even 'high'-priority is muted)
+  //   score < 40  → minimal      allow only 'high'
+  //   score < 60  → conservative allow 'normal' + 'high', block 'low'
+  //   score >= 60 → normal/full  allow all
+  //
+  // Gated on soul_enabled so users without a soul (legacy / opt-out)
+  // keep current behavior byte-for-byte. Fail-soft: any error allows
+  // the send to proceed rather than silently dropping it.
+  try {
+    const { data: prefs } = await supabase
+      .from('olive_user_preferences')
+      .select('soul_enabled')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (prefs?.soul_enabled) {
+      const { data: metrics } = await supabase
+        .from('olive_engagement_metrics')
+        .select('score')
+        .eq('user_id', userId)
+        .maybeSingle();
+      const score = (metrics?.score ?? 50) as number;
+
+      let blocked = false;
+      let level = 'normal';
+      if (score < 20) {
+        level = 'silent'; blocked = true;
+      } else if (score < 40) {
+        level = 'minimal'; blocked = priority !== 'high';
+      } else if (score < 60) {
+        level = 'conservative'; blocked = priority === 'low';
+      }
+
+      if (blocked) {
+        console.log(`[Heartbeat] Engagement gate blocked send to ${userId} — level=${level} score=${score} priority=${priority}`);
+        return false;
+      }
+    }
+  } catch (gateErr) {
+    // Non-blocking: a gate failure must never silently drop messages.
+    console.warn(`[Heartbeat] Engagement gate failed for ${userId} (allowing send):`, gateErr);
+  }
+
   try {
     const response = await supabase.functions.invoke('whatsapp-gateway', {
       body: {

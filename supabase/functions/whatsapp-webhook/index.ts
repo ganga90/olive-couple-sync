@@ -873,6 +873,33 @@ async function callAI(
   let contents: any;
   let effectiveSystemPrompt = systemPrompt;
 
+  // ─── Soul integration ─────────────────────────────────────────────
+  // When the caller passes a userId (CHAT, CONTEXTUAL_ASK, etc. — the
+  // user-facing reply paths), prepend the soul stack so tone, verbosity,
+  // emoji_level, response_style, and domain knowledge come from the
+  // user's soul, not from a hardcoded "You are Olive..." string. Utility
+  // calls without userId (expense categorization, rewriter, formatter,
+  // recap, classifier) stay unaffected. Fail-soft: any error logs and
+  // we fall back to the un-personalized prompt.
+  if (userId) {
+    try {
+      const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+      const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+        const { createClient: createSoulClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+        const { assembleSoulContext } = await import("../_shared/soul.ts");
+        const sb = createSoulClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        const soulResult = await assembleSoulContext(sb, { userId });
+        if (soulResult.hasSoul) {
+          effectiveSystemPrompt = `${soulResult.prompt}\n\n---\n\n${effectiveSystemPrompt}`;
+          console.log(`[callAI] Soul loaded: ${soulResult.layersLoaded.join(',')} tokens=${soulResult.tokensUsed}`);
+        }
+      }
+    } catch (err) {
+      console.warn('[callAI] Soul assembly failed (non-blocking):', err);
+    }
+  }
+
   if (mediaUrls && mediaUrls.length > 0) {
     const { downloadMediaToBase64, MULTIMODAL_SYSTEM_PROMPT_SUFFIX } = await import("../_shared/media-utils.ts");
     const parts: any[] = [{ text: userMessage || 'Analyze this media.' }];

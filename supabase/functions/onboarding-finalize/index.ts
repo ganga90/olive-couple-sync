@@ -94,6 +94,50 @@ const MENTAL_LOAD_TO_FOCUS: Record<string, string[]> = {
   "Health & Fitness": ["workout_reminders", "meal_planning", "sleep_tracking"],
 };
 
+// ─── Default trust matrix ──────────────────────────────────────────────
+//
+// Mirrors the matrix in olive-soul-seed (which is no longer reachable from
+// the client). Levels: 0=inform, 1=suggest, 2=act+report, 3=autonomous.
+// Safe/reversible defaults run autonomously; anything that touches another
+// person or money starts at suggest-or-lower until trust is earned.
+
+const DEFAULT_TRUST_MATRIX: Record<string, number> = {
+  categorize_note: 3,
+  create_reminder: 3,
+  create_task: 3,
+  process_receipt: 3,
+  save_memory: 3,
+  send_whatsapp_to_self: 2,
+  assign_task: 1,
+  send_whatsapp_to_partner: 1,
+  send_whatsapp_to_client: 0,
+  modify_budget: 1,
+  delete_note: 1,
+  send_invoice: 0,
+  book_appointment: 0,
+};
+
+function buildTrustMatrix(scope: string | null | undefined): Record<string, number> {
+  const matrix: Record<string, number> = { ...DEFAULT_TRUST_MATRIX };
+
+  // Couple/family contexts: partner messaging and task assignment are
+  // expected day-one — keep at "suggest" so the user sees the first few
+  // before reflection promotes to autonomous.
+  if (scope === "Me & My Partner" || scope === "My Family") {
+    matrix.send_whatsapp_to_partner = 1;
+    matrix.assign_task = 1;
+  }
+
+  // Business contexts: never auto-message a client or send an invoice
+  // until the user explicitly grants trust.
+  if (scope === "My Business") {
+    matrix.send_whatsapp_to_client = 0;
+    matrix.send_invoice = 0;
+  }
+
+  return matrix;
+}
+
 interface FinalizeBody {
   user_id: string;
   space_id?: string | null;
@@ -230,7 +274,43 @@ serve(async (req) => {
       "onboarding",
     );
 
-    // 2. Augment the Space Soul with mental-load focus areas (best effort).
+    // 2. Write the Trust Soul layer. Without this, every action falls back
+    // to hardcoded defaults in olive-trust-gate and there is no per-user
+    // record to evolve via reflection. Scope shapes the starting matrix.
+    const trustSoul = await upsertSoulLayer(
+      supabase,
+      "trust",
+      "user",
+      body.user_id,
+      { trust_matrix: buildTrustMatrix(body.scope ?? null) },
+      "onboarding",
+    );
+
+    // 3. Initialize engagement metrics so olive-soul-evolve and the
+    // proactivity gate have a row to read on day one.
+    await supabase
+      .from("olive_engagement_metrics")
+      .upsert(
+        {
+          user_id: body.user_id,
+          score: 50,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      );
+
+    // 4. Flip the soul_enabled feature flag. Until this is true the entire
+    // soul stack is short-circuited inside assembleSoulContext. PR #6
+    // wrote the layer but never flipped this — without step 4 the user
+    // soul we just wrote in step 1 is never loaded into a Gemini call.
+    await supabase
+      .from("olive_user_preferences")
+      .upsert(
+        { user_id: body.user_id, soul_enabled: true },
+        { onConflict: "user_id" },
+      );
+
+    // 5. Augment the Space Soul with mental-load focus areas (best effort).
     let spaceSoulAugmented = false;
     if (body.space_id && body.mental_load && body.mental_load.length > 0) {
       try {
@@ -249,6 +329,8 @@ serve(async (req) => {
       JSON.stringify({
         ok: true,
         user_soul_id: userSoul?.id ?? null,
+        trust_soul_id: trustSoul?.id ?? null,
+        soul_enabled: true,
         space_soul_augmented: spaceSoulAugmented,
       }),
       {
