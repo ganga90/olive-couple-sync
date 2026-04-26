@@ -89,9 +89,13 @@
     "chip1": "Remind me to call Mom tomorrow at 5pm",
     "chip2": "Add milk, eggs, and bread to grocery list",
     "chip3": "Dinner with Sarah next Friday at 7pm",
+    "chip4": "Gate code 4821#",
     "processing": "Organizing...",
     "submit": "Send to Olive",
-    "skipToHome": "Skip and go to Home"
+    "skipToHome": "Skip and go to Home",
+    "previewHeader": "Done. That just happened.",
+    "previewSubtext": "This is what Olive does — every brain-dump becomes structure.",
+    "takeMeHome": "Take me home"
   },
   "quiz": {
     "step": "Step {{current}} of {{total}}",
