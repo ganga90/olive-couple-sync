@@ -1,0 +1,8 @@
+# Raw notes folder
+
+Drop unedited founder notes here — voice memos transcribed, scratch ideas,
+investor decks in flight, raw user feedback, anything that isn't ready for the
+context files yet.
+
+Claude Code will READ from this folder for context. Claude will NEVER modify
+files here. Editing raw notes is a founder-only action.
