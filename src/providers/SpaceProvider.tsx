@@ -83,20 +83,28 @@ export const SpaceProvider: React.FC<{ children: React.ReactNode }> = ({
     refetch,
   } = useSpaces();
 
-  // Bridge: auto-sync from couple selection → space selection
-  // This ensures existing couple users automatically get the right space
+  // Bridge: auto-sync from couple selection → space selection.
+  //
+  // This is INITIAL-LOAD ONLY: if the user has a couple but no space
+  // selected yet (legacy users opening the app for the first time
+  // post-Spaces), pick the matching couple-type space. Once a space
+  // IS selected — even a non-couple one (family / business / custom) —
+  // we never auto-switch back, otherwise the bridge fights every
+  // user-initiated SpaceSwitcher change.
+  //
+  // The previous version always re-pinned to the matching couple
+  // because `currentSpace.couple_id !== currentCouple.id` is true for
+  // family / business / custom spaces (their couple_id is NULL), so
+  // users could never stay on a non-couple space.
   const { currentCouple } = useSupabaseCouple();
 
   useEffect(() => {
     if (!currentCouple || !spaces.length || loading) return;
+    if (currentSpace) return; // user already has a space — never override
 
-    // If the current couple matches a space (same UUID), auto-select it
-    // Only auto-switch if no space is selected or if the space doesn't match the couple
-    if (!currentSpace || currentSpace.couple_id !== currentCouple.id) {
-      const matchingSpace = spaces.find((s) => s.couple_id === currentCouple.id);
-      if (matchingSpace) {
-        switchSpace(matchingSpace);
-      }
+    const matchingSpace = spaces.find((s) => s.couple_id === currentCouple.id);
+    if (matchingSpace) {
+      switchSpace(matchingSpace);
     }
   }, [currentCouple, spaces, currentSpace, loading, switchSpace]);
 
