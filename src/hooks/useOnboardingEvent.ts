@@ -34,11 +34,15 @@ export type OnboardingEvent =
   | "beat_started"
   | "beat_completed"
   | "beat_skipped"
+  | "beat_auto_skipped"
   | "space_created"
   | "soul_seeded"
   | "wa_connected"
   | "calendar_connected"
   | "capture_sent"
+  | "capture_previewed"
+  | "invite_generated"
+  | "invite_shared"
   | "flow_completed"
   | "error";
 

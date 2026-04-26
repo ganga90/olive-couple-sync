@@ -2068,3 +2068,92 @@ ORDER BY day DESC;
 - One migration: `supabase db push`
 - No new edge functions
 - No env var changes
+
+---
+
+## TASK-ONB-C — Live capture preview + Space invite step
+
+**Branch:** `feat/onb-live-parse-invite` (built on `feat/onb-instrumentation`) · **Date:** 2026-04-26
+
+### Why
+The demo step submitted to `process-note`, fired a generic toast, and
+navigated away. The user never SAW Olive understand them — the aha
+happened off-screen. Separately, every shared-Space type (couple /
+family / business) was a single-player setup at end of onboarding, so
+the moat (collaboration with privacy boundaries) was invisible until
+the user manually figured out invites in Settings.
+
+This PR addresses both: render the parsed result inline with a
+staggered "Olive understood:" preview, and add a one-tap WhatsApp-share
+invite step that auto-skips for solo Spaces.
+
+### What
+
+1. **`CapturePreview.tsx`** — animated rendering of `process-note`'s
+   structured response. Handles both single-note and multi-note shapes
+   (`{multiple: true, notes: [...]}`). Maps each note to one of five
+   variants (`shopping`, `calendar`, `reminder`, `expense`, `note`)
+   based on a documented priority order (receipt > shopping w/ items >
+   due_date > generic items > fallback). Locale-aware date formatting
+   via existing `useDateLocale`. Exposes `onAnimationComplete` so the
+   parent can fire `capture_previewed` and reveal the "Take me home" CTA.
+
+2. **`InviteSpaceStep.tsx`** — generates an `olive_space_invites` token
+   via the existing `useSpace().createInvite()` hook (which routes to
+   the `olive-space-manage` edge function). Builds a `wa.me` share URL
+   with editable prefilled copy that adapts to space type ("your
+   partner" / "your family" / "your team"). Shows the link with a copy
+   button; both share paths are independently usable.
+
+3. **New `shareSpace` step** — sits between `spaceCreate` and
+   `regional`. Auto-skipped for solo (`custom`) spaces via a dedicated
+   useEffect that fires `beat_auto_skipped` with `reason: solo_space`
+   so the funnel can distinguish "auto-skipped because solo" from
+   "user tapped skip on a couple/family space".
+
+4. **Demo step now has two modes** — input (default) and preview.
+   `handleDemoSubmit` captures the `process-note` response into
+   `demoResult` state, which flips the card to preview mode. The user
+   explicitly taps "Take me home" once the animation finishes — no
+   auto-navigation that would steal the aha.
+
+5. **4th demo chip "Gate code 4821#"** — mirrors the landing-page demo
+   and proves the "save random strings" use case, a high-frequency
+   capture for couples / families that no other note app handles cleanly.
+
+6. **New telemetry events** added to `useOnboardingEvent`:
+   - `beat_auto_skipped` — for solo-space auto-skip
+   - `capture_previewed` — fires when the preview animation finishes
+   - `invite_generated` — when `createInvite` returns a token (carries
+     `token_prefix` for accept-rate correlation)
+   - `invite_shared` — when the user taps "Done — Continue" after
+     generating the link (signals intent-to-send)
+
+### Files
+
+| Path | Change |
+|---|---|
+| `src/components/onboarding/CapturePreview.tsx` | NEW — animated parse preview, 1 result → N rows with stagger |
+| `src/components/onboarding/InviteSpaceStep.tsx` | NEW — invite generator + WhatsApp share + copy link |
+| `src/pages/Onboarding.tsx` | MOD — `shareSpace` step, auto-skip effect, two-mode demo step, 4th chip, 4 new events |
+| `src/hooks/useOnboardingEvent.ts` | MOD — 4 new event types in the union |
+| `public/locales/en/onboarding.json` | MOD — 4 new strings (chip4, previewHeader, previewSubtext, takeMeHome) |
+| `supabase/functions/_shared/onboarding-capture-preview-logic.test.ts` | NEW — 14 tests covering normalize() + buildRow() priority order |
+
+### Backwards compatibility
+- Solo Spaces (Just Me) skip `shareSpace` automatically — same flow length as before
+- Existing skip paths still work — `skipBeat()` fires `beat_skipped` then advances
+- `process-note` contract unchanged — the new code reads its existing JSON shape
+- Failing `process-note` invocation falls back to the existing toast + retry path; no preview shown
+
+### Verification
+- ✅ `npx tsc --noEmit -p tsconfig.app.json` — 0 errors
+- ✅ `deno test supabase/functions/_shared/onboarding-capture-preview-logic.test.ts` — 14/14 pass
+- ✅ `deno test supabase/functions/onboarding-finalize/` — 8/8 (ONB-A regression)
+- ✅ `deno test supabase/functions/_shared/` — 277/0 (excludes pre-existing time-resolver WIP failure)
+- ✅ `npx vite build` — succeeds
+
+### Deploy notes
+- No new edge functions
+- No migrations
+- No env var changes

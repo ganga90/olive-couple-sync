@@ -46,11 +46,17 @@ import { LANGUAGES } from "@/lib/i18n/languages";
 import { cn } from "@/lib/utils";
 import { OnboardingDemo } from "@/components/OnboardingDemo";
 import { QRCodeSVG } from "qrcode.react";
+import {
+  CapturePreview,
+  type ProcessNoteResult,
+} from "@/components/onboarding/CapturePreview";
+import { InviteSpaceStep } from "@/components/onboarding/InviteSpaceStep";
 
 type OnboardingStep =
   | "demoPreview"
   | "quiz"
   | "spaceCreate"
+  | "shareSpace"
   | "regional"
   | "whatsapp"
   | "calendar"
@@ -64,7 +70,8 @@ interface QuizAnswers {
 interface SpaceAnswers {
   spaceName: string;
   partnerName: string;
-  spaceId: string | null; // populated once the space is created
+  spaceId: string | null;       // populated once the space is created
+  spaceType: SpaceType | null;  // mirrored client-side so shareSpace knows audience
 }
 
 const ONBOARDING_STATE_KEY = "olive_onboarding_state";
@@ -86,6 +93,7 @@ const defaultSpaceAnswers: SpaceAnswers = {
   spaceName: "",
   partnerName: "",
   spaceId: null,
+  spaceType: null,
 };
 
 const defaultState: OnboardingState = {
@@ -97,13 +105,16 @@ const defaultState: OnboardingState = {
 };
 
 // `spaceCreate` sits right after the quiz so we have the scope answer in
-// hand to pick a space type + smart default name. Putting it before
-// regional/whatsapp/calendar means every downstream beat (and the demo
-// brain-dump) writes scoped to the right space_id from the start.
+// hand to pick a space type + smart default name. `shareSpace` follows
+// immediately so invite intent is captured at peak motivation — but is
+// auto-skipped for solo (`custom`) spaces (see useEffect below).
+// Putting both before regional/whatsapp/calendar means every downstream
+// beat writes scoped to the right space_id from the start.
 const STEPS_ORDER: OnboardingStep[] = [
   "demoPreview",
   "quiz",
   "spaceCreate",
+  "shareSpace",
   "regional",
   "whatsapp",
   "calendar",
@@ -180,6 +191,14 @@ const Onboarding = () => {
   const [whatsappLink, setWhatsappLink] = useState("");
   const [isDesktop, setIsDesktop] = useState(false);
 
+  // Demo-step capture preview state. When `process-note` returns, we
+  // store the structured result here and switch the demo card from
+  // "input" mode to "preview" mode. The user explicitly taps "Take me
+  // home" to leave — auto-navigation would steal the aha.
+  const [demoResult, setDemoResult] =
+    useState<ProcessNoteResult | null>(null);
+  const [previewAnimComplete, setPreviewAnimComplete] = useState(false);
+
   // Regional settings
   const [selectedTimezone, setSelectedTimezone] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState("");
@@ -201,6 +220,42 @@ const Onboarding = () => {
     fireEvent("beat_started", { beat: state.currentStep });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.currentStep]);
+
+  // Auto-skip the shareSpace beat for solo Spaces. The step is
+  // structurally meaningless when there's nobody to invite, but keeping
+  // it in STEPS_ORDER avoids special-casing the linear flow logic.
+  // We fire a distinct event so the funnel can distinguish "auto-skipped
+  // because solo" from "user tapped skip on a couple/family space".
+  useEffect(() => {
+    if (state.currentStep !== "shareSpace") return;
+    if (
+      state.spaceAnswers.spaceType &&
+      state.spaceAnswers.spaceType !== "custom"
+    ) {
+      return; // shared space — let the user see the invite UI
+    }
+    fireEvent("beat_auto_skipped", {
+      beat: "shareSpace",
+      reason: "solo_space",
+    });
+    // Defer the advance by a tick so the beat_started event for
+    // shareSpace lands first — keeps the funnel's per-beat order
+    // consistent (start → auto_skip → start of next beat).
+    const t = window.setTimeout(() => {
+      setState((prev) => ({
+        ...prev,
+        // Cast: Set widens 'shareSpace' literal to string. The runtime
+        // value is always one of OnboardingStep — STEPS_ORDER guarantees it.
+        completedSteps: [
+          ...new Set<OnboardingStep>([...prev.completedSteps, "shareSpace"]),
+        ],
+        currentStep:
+          STEPS_ORDER[STEPS_ORDER.indexOf("shareSpace") + 1] || prev.currentStep,
+      }));
+    }, 0);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.currentStep, state.spaceAnswers.spaceType]);
 
   // Auto-detect timezone and language
   useEffect(() => {
@@ -403,13 +458,16 @@ const Onboarding = () => {
         if (newSpace) switchSpace(newSpace);
       }
 
-      // Persist the chosen names + spaceId so a refresh resumes correctly.
+      // Persist the chosen names + spaceId + spaceType so a refresh
+      // resumes correctly AND the downstream shareSpace step knows which
+      // audience copy to render without re-deriving from scope.
       setState((prev) => ({
         ...prev,
         spaceAnswers: {
           spaceName: values.spaceName,
           partnerName: values.partnerName,
           spaceId,
+          spaceType,
         },
       }));
 
@@ -594,7 +652,7 @@ const Onboarding = () => {
     try {
       const coupleId = await ensureSpaceExists();
 
-      const { error } = await supabase.functions.invoke("process-note", {
+      const { data, error } = await supabase.functions.invoke("process-note", {
         body: { text: demoText.trim(), user_id: user?.id, couple_id: coupleId },
       });
       if (error) throw error;
@@ -606,9 +664,11 @@ const Onboarding = () => {
         latency_ms: Date.now() - startedAt,
         chars: demoText.trim().length,
       });
-      toast.success(t("demo.success", { defaultValue: "Your first task is ready! 🎉" }));
-      await markOnboardingCompleted();
-      navigate(getLocalizedPath("/home"));
+      // Switch the demo card from input mode to preview mode. We do NOT
+      // navigate yet — let the user see Olive understand them, then tap
+      // through. CapturePreview's onAnimationComplete fires
+      // capture_previewed and reveals the "Take me home" CTA.
+      setDemoResult((data as ProcessNoteResult) || { summary: "Captured", category: "note" });
     } catch (err: any) {
       fireEvent("error", {
         beat: "demo",
@@ -631,6 +691,16 @@ const Onboarding = () => {
     navigate(getLocalizedPath("/home"));
   };
 
+  // Called after the user has SEEN their first capture organized in the
+  // preview pane and explicitly chose to leave for the home screen.
+  // Distinguished from handleComplete (which is for skip-without-capture)
+  // so the funnel can measure how many users get to the aha moment.
+  const handleFinishFromPreview = async () => {
+    setIsProcessingDemo(false);
+    await markOnboardingCompleted();
+    navigate(getLocalizedPath("/home"));
+  };
+
   // Quiz options
   const scopeOptions = [
     { value: "Just Me", label: t("quiz.scope.justMe"), desc: t("quiz.scope.justMeDesc"), icon: User },
@@ -646,10 +716,14 @@ const Onboarding = () => {
     { value: "Health & Fitness", label: t("quiz.mentalLoad.health"), desc: t("quiz.mentalLoad.healthDesc"), icon: Heart },
   ];
 
+  // The "Gate code" chip mirrors the landing-page demo and proves the
+  // "save random strings" use case (a high-frequency real-world capture
+  // for couples / families that no other note app handles cleanly).
   const demoChips = [
     t("demo.chip1", { defaultValue: "Remind me to call Mom tomorrow at 5pm" }),
     t("demo.chip2", { defaultValue: "Add milk, eggs, and bread to grocery list" }),
     t("demo.chip3", { defaultValue: "Dinner with Sarah next Friday at 7pm" }),
+    t("demo.chip4", { defaultValue: "Gate code 4821#" }),
   ];
 
   const renderQuizStep = () => {
@@ -830,6 +904,35 @@ const Onboarding = () => {
             onSubmit={handleSpaceCreate}
           />
         )}
+
+        {/* Step 3.5: Share Space — invite link for non-solo spaces.
+            Solo spaces auto-skip via the effect on state.currentStep. */}
+        {state.currentStep === "shareSpace" &&
+          state.spaceAnswers.spaceType &&
+          state.spaceAnswers.spaceType !== "custom" && (
+            <InviteSpaceStep
+              spaceId={state.spaceAnswers.spaceId}
+              spaceType={state.spaceAnswers.spaceType}
+              spaceName={state.spaceAnswers.spaceName || "your Space"}
+              onInviteGenerated={(token) => {
+                fireEvent("invite_generated", {
+                  beat: "shareSpace",
+                  space_type: state.spaceAnswers.spaceType,
+                  // Token recorded so we can correlate accept-rate
+                  // post-onboarding without re-querying olive_space_invites.
+                  token_prefix: token.slice(0, 8),
+                });
+              }}
+              onContinue={() => {
+                fireEvent("invite_shared", {
+                  beat: "shareSpace",
+                  space_type: state.spaceAnswers.spaceType,
+                });
+                goToNextStep();
+              }}
+              onSkip={skipBeat}
+            />
+          )}
 
         {/* Step 4: Regional Settings (simplified) */}
         {state.currentStep === "regional" && (
@@ -1025,53 +1128,99 @@ const Onboarding = () => {
         {/* Step 6: Live Demo — first brain dump */}
         {state.currentStep === "demo" && (
           <div className="w-full max-w-md animate-fade-up space-y-6">
-            <div className="text-center space-y-2">
-              <h1 className="text-2xl font-bold text-foreground font-serif">{t("demo.header")}</h1>
-              <p className="text-muted-foreground">{t("demo.subtext")}</p>
-            </div>
-            <div className="flex flex-wrap gap-2 justify-center">
-              {demoChips.map((chip, i) => (
-                <button
-                  key={i}
-                  onClick={() => setDemoText(chip)}
-                  className={cn(
-                    "px-3 py-1.5 text-xs rounded-full border transition-all",
-                    demoText === chip
-                      ? "bg-primary/10 border-primary text-primary"
-                      : "bg-card border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                  )}
-                >
-                  {chip}
+            {/* Two modes:
+                  (1) input  — chips + textarea + Send (default)
+                  (2) preview — CapturePreview animated rows + Take me home
+                The flip happens when demoResult populates after a
+                successful process-note response. We never go back from
+                preview to input — the user has captured something. */}
+            {!demoResult ? (
+              <>
+                <div className="text-center space-y-2">
+                  <h1 className="text-2xl font-bold text-foreground font-serif">{t("demo.header")}</h1>
+                  <p className="text-muted-foreground">{t("demo.subtext")}</p>
+                </div>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {demoChips.map((chip, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setDemoText(chip)}
+                      className={cn(
+                        "px-3 py-1.5 text-xs rounded-full border transition-all",
+                        demoText === chip
+                          ? "bg-primary/10 border-primary text-primary"
+                          : "bg-card border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                      )}
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+                <Card className="p-4 bg-card/80 border-border/50 shadow-card">
+                  <Textarea
+                    value={demoText}
+                    onChange={(e) => setDemoText(e.target.value)}
+                    placeholder={t("demo.placeholder")}
+                    className="min-h-[120px] border-0 focus-visible:ring-0 resize-none text-base p-0 shadow-none"
+                    disabled={isProcessingDemo}
+                  />
+                  <div className="flex justify-end mt-3">
+                    <Button onClick={handleDemoSubmit} disabled={!demoText.trim() || isProcessingDemo} className="group">
+                      {isProcessingDemo ? (
+                        <>
+                          <Sparkles className="w-4 h-4 mr-2 animate-spin" />
+                          {t("demo.processing")}
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 mr-2" />
+                          {t("demo.submit")}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </Card>
+                <button onClick={handleComplete} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  {t("demo.skipToHome")}
                 </button>
-              ))}
-            </div>
-            <Card className="p-4 bg-card/80 border-border/50 shadow-card">
-              <Textarea
-                value={demoText}
-                onChange={(e) => setDemoText(e.target.value)}
-                placeholder={t("demo.placeholder")}
-                className="min-h-[120px] border-0 focus-visible:ring-0 resize-none text-base p-0 shadow-none"
-                disabled={isProcessingDemo}
-              />
-              <div className="flex justify-end mt-3">
-                <Button onClick={handleDemoSubmit} disabled={!demoText.trim() || isProcessingDemo} className="group">
-                  {isProcessingDemo ? (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2 animate-spin" />
-                      {t("demo.processing")}
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4 mr-2" />
-                      {t("demo.submit")}
-                    </>
-                  )}
+              </>
+            ) : (
+              <>
+                <div className="text-center space-y-2">
+                  <h1 className="text-2xl font-bold text-foreground font-serif">
+                    {t("demo.previewHeader", { defaultValue: "Done. That just happened." })}
+                  </h1>
+                  <p className="text-muted-foreground">
+                    {t("demo.previewSubtext", {
+                      defaultValue:
+                        "This is what Olive does — every brain-dump becomes structure.",
+                    })}
+                  </p>
+                </div>
+                <Card className="p-4 bg-card/80 border-border/50 shadow-card">
+                  <CapturePreview
+                    result={demoResult}
+                    onAnimationComplete={() => {
+                      if (previewAnimComplete) return;
+                      setPreviewAnimComplete(true);
+                      // Funnel: capture_previewed marks "user actually
+                      // saw the parse result", separating eyeball-time
+                      // from raw capture_sent. Drop-off between these
+                      // two is a useful signal for animation tuning.
+                      fireEvent("capture_previewed", { beat: "demo" });
+                    }}
+                  />
+                </Card>
+                <Button
+                  onClick={handleFinishFromPreview}
+                  disabled={!previewAnimComplete}
+                  className="w-full h-12 text-base group"
+                >
+                  {t("demo.takeMeHome", { defaultValue: "Take me home" })}
+                  <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
                 </Button>
-              </div>
-            </Card>
-            <button onClick={handleComplete} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
-              {t("demo.skipToHome")}
-            </button>
+              </>
+            )}
           </div>
         )}
       </section>
