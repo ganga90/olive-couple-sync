@@ -1905,3 +1905,74 @@ artifacts, regenerated every run, uploaded by CI) + `.claude/`.
    intent-classification fixture's `expected.classifier.intent` to
    `foo`. Expect: the check fails, the PR comment lists the
    violation with the exact case id.
+
+---
+
+## TASK-ONB-A — Wire onboarding scope to Spaces + seed Olive's User Soul
+
+**Branch:** `feat/onb-spaces-and-soul` · **Date:** 2026-04-26
+
+### Why
+Onboarding captured rich quiz signal (scope, mental load, partner name) and
+threw it away. Every new user got a hardcoded couple-typed `"My Space"`,
+the rest of the Space type templates (family / business / household / custom)
+sat unused, and the User Soul layer was never written — so Olive's context
+assembly had nothing to personalize tone, focus, or relationships from.
+
+### What
+
+1. **New beat in onboarding: `spaceCreate`.** Sits between `quiz` and
+   `regional`. Renders `SpaceNameStep` with smart per-scope defaults
+   (`Ganga's Space`, `Ganga & Sarah`, `The Smith Household`,
+   `Ganga's Workspace`). Tooltip clarifies users can create more Spaces
+   later — addresses the "I didn't know I could make more" dead end.
+
+2. **Scope drives space type.** New `SCOPE_TO_SPACE_TYPE` map:
+   `Just Me → custom`, `Me & My Partner → couple`, `My Family → family`,
+   `My Business → business`. Couple keeps `createCouple()` so the
+   `clerk_couples` bridge + sync trigger stay intact; non-couple types
+   route through `useSpace().createSpace()` → `olive-space-manage` →
+   `generateSpaceSoul()` (existing infrastructure, finally invoked).
+
+3. **New edge function `onboarding-finalize`.** Builds a User Soul
+   payload matching `renderUserSoul()`'s expected shape and calls
+   `upsertSoulLayer("user", "user", userId, …, "onboarding")`. Also
+   augments the auto-generated Space Soul by merging mental-load focus
+   areas into `proactive_focus` so heartbeat agents pick them up.
+
+4. **New client helper `seedOnboardingSoul`** (`src/lib/onboarding-soul.ts`).
+   Best-effort wrapper — failures are logged but never block onboarding.
+
+5. **`handleDemoSubmit` / `handleComplete` no longer auto-create
+   `"My Space"`.** The space already exists by the time the user reaches
+   the demo step. A defensive `ensureSpaceExists()` fallback handles the
+   edge case of skipping `spaceCreate` (creates a couple-typed solo space
+   so the `clerk_notes.couple_id` FK stays satisfied).
+
+### Files
+
+| Path | Change |
+|---|---|
+| `supabase/functions/onboarding-finalize/index.ts` | NEW — User Soul writer + Space Soul augment |
+| `supabase/functions/onboarding-finalize/buildUserSoulContent.test.ts` | NEW — 8 unit tests |
+| `src/lib/onboarding-soul.ts` | NEW — client wrapper |
+| `src/components/onboarding/SpaceNameStep.tsx` | NEW — naming beat with smart defaults |
+| `src/pages/Onboarding.tsx` | MOD — adds `spaceCreate` step, `useSpace` integration, scope→type routing, soul seeding, defensive `ensureSpaceExists` |
+
+### Backwards compatibility
+- Couple flow unchanged: `Me & My Partner` still hits `create_couple` RPC,
+  sync trigger still creates the matching `olive_spaces` row, all legacy
+  hooks scoped on `clerk_couples.id` keep working.
+- Existing users (with `localStorage["olive_onboarding_completed"]` or
+  any `clerk_notes` row) bypass onboarding entirely (gated in `Root.tsx`).
+- Resumable: `spaceAnswers` (name + partner + spaceId) persists to
+  `localStorage` alongside the rest of the onboarding state.
+
+### Verification
+- ✅ `npx tsc --noEmit -p tsconfig.app.json` — 0 errors
+- ✅ `deno check supabase/functions/onboarding-finalize/index.ts` — clean
+- ✅ `deno test supabase/functions/onboarding-finalize/` — 8/8 pass
+- ✅ `deno test supabase/functions/_shared/ --ignore=…/time-resolver.test.ts` —
+  263/0 (the time-resolver failure is in a pre-existing WIP file unrelated
+  to this task)
+- ✅ `npx vite build` — succeeds
