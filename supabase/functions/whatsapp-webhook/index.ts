@@ -41,6 +41,7 @@ import {
   parseStoredTimestamp,
 } from "../_shared/timezone-calendar.ts";
 import { parseExpenseText } from "../_shared/expense-detector.ts";
+import { captureReplyReflection } from "../_shared/reflection-capture.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1913,6 +1914,23 @@ serve(async (req) => {
     console.log('Authenticated user:', profile.id, profile.display_name);
     const userId = profile.id;
     _authenticatedUserId = userId; // Enable reply() to save outbound context
+
+    // ─── Reflection capture (Phase C-1.a) ──────────────────────────
+    // If this inbound message is a strong-signal reaction ("thanks",
+    // "stop", "perfect", etc.) AND there's a recent proactive outbound
+    // to anchor against, write an `olive_reflections` row. Feeds the
+    // OBSERVE → REFLECT → EVOLVE loop with natural-signal data that
+    // until now was being thrown away. Fire-and-forget — never blocks
+    // the user-facing reply path.
+    if (messageBody) {
+      captureReplyReflection(supabase, userId, messageBody)
+        .then((res) => {
+          if (res.captured) {
+            console.log(`[ReflectionCapture] outcome=${res.outcome} for user=${userId}`);
+          }
+        })
+        .catch((err) => console.warn('[ReflectionCapture] error (non-blocking):', err));
+    }
 
     // Phase 1-D: Increment thread counters on olive_gateway_sessions.
     // Fire-and-forget — never blocks message handling. Used by Phase 2
