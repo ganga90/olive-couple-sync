@@ -3605,9 +3605,14 @@ Description: "${parsedExpense.description}"`;
       const questionPatterns = /^(which|what|where|who|how|do i|did i|any |are there|have i|cuál|qué|dónde|quién|cómo|tengo|hay|quali|cosa|dove|chi|come|ho )\b/i;
       const isQuestionMark = (effectiveMessage || '').trim().endsWith('?');
       const isContentQuestion = questionPatterns.test((effectiveMessage || '').trim()) || isQuestionMark;
-      
-      if (isContentQuestion && queryType === 'general') {
-        console.log('[WhatsApp] SEARCH escalating to CONTEXTUAL_ASK — question detected:', effectiveMessage?.substring(0, 60));
+      const dashboardQueryTypes = new Set(['urgent', 'today', 'tomorrow', 'this_week', 'overdue', 'recent']);
+
+      // Escalate any content question that did not match a dashboard slot to CONTEXTUAL_ASK.
+      // Previously gated on queryType === 'general', which silently dropped questions when the
+      // classifier set queryType to null/undefined or any non-dashboard value — leading to
+      // generic dashboard summaries for content questions like "What's my Waymo discount code?".
+      if (isContentQuestion && !dashboardQueryTypes.has(queryType as string)) {
+        console.log('[WhatsApp] SEARCH escalating to CONTEXTUAL_ASK — question detected:', effectiveMessage?.substring(0, 60), 'queryType:', queryType);
         // Re-route: jump to CONTEXTUAL_ASK handler by overriding intent
         intent = 'CONTEXTUAL_ASK' as any;
         // Fall through — the CONTEXTUAL_ASK handler below will pick it up
@@ -4572,32 +4577,125 @@ Description: "${parsedExpense.description}"`;
         .limit(15);
       
       const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
-      
+
+      // ---- Fix 3: Anchor on the named list when the user references one ----
+      // Use the same matcher as SEARCH (singularize + normalize + AI hint priority).
+      // This guarantees that "What's in my book list?" anchors on the user's
+      // "Books" list even if their book titles never contain the word "book".
+      let anchoredListMatch: { listId: string; listName: string; matchedVia: string } | null = null;
+      try {
+        const { findUserList } = await import("../_shared/list-matcher.ts");
+        const aiListNameHint = (intentResult as any)._listName as string | undefined;
+        anchoredListMatch = findUserList(
+          effectiveMessage || '',
+          (lists || []).map(l => ({ id: l.id, name: l.name as string, description: (l as any).description })),
+          aiListNameHint,
+        );
+        if (anchoredListMatch) {
+          console.log('[CONTEXTUAL_ASK] Anchored on list:', anchoredListMatch.listName, 'via:', anchoredListMatch.matchedVia);
+        }
+      } catch (matcherErr) {
+        console.warn('[CONTEXTUAL_ASK] list-matcher import failed (non-blocking):', matcherErr);
+      }
+
+      // ---- Fix 4: Semantic retrieval via embeddings ----
+      // The word-overlap scorer below is brittle: "What's my Waymo discount code?" works
+      // because notes contain the word "waymo", but "What's the address of the place
+      // Maria mentioned?" misses entirely. Add embedding similarity as a parallel signal.
+      // The find_similar_notes RPC already exists (used by dedup at line ~6286), and
+      // clerk_notes.embedding is populated on insert. This is purely additive.
+      const semanticHits = new Map<string, number>(); // task_id -> similarity score
+      try {
+        const queryEmbedding = await generateEmbedding(effectiveMessage || '');
+        if (queryEmbedding) {
+          const { data: vectorMatches } = await supabase.rpc('find_similar_notes', {
+            p_user_id: userId,
+            p_couple_id: coupleId,
+            p_query_embedding: JSON.stringify(queryEmbedding),
+            p_threshold: 0.55,
+            p_limit: 8,
+          });
+          if (vectorMatches && Array.isArray(vectorMatches)) {
+            for (const m of vectorMatches as Array<{ id: string; similarity: number }>) {
+              semanticHits.set(m.id, m.similarity);
+            }
+            console.log('[CONTEXTUAL_ASK] Semantic retrieval found', semanticHits.size, 'matches');
+          }
+        }
+      } catch (vecErr) {
+        // Non-blocking — fall back to word-overlap scoring alone
+        console.warn('[CONTEXTUAL_ASK] Semantic retrieval failed (non-blocking):', vecErr);
+      }
+
       // ---- Smart relevance: find items most relevant to the question ----
       const questionLower = (effectiveMessage || '').toLowerCase();
       const questionWords = questionLower.split(/\s+/).filter(w => w.length > 2);
-      
-      // Score each task by relevance to the question
+
+      // Score each task by relevance to the question (combines: word overlap +
+      // semantic similarity + anchored list boost). Each signal contributes
+      // independently, so a hit on any one is enough to surface the item.
       const scoredTasks = (allTasks || []).map(task => {
         const summaryLower = task.summary.toLowerCase();
         const originalLower = (task.original_text || '').toLowerCase();
         const combined = `${summaryLower} ${originalLower}`;
-        
+
         let score = 0;
         questionWords.forEach(w => {
           if (combined.includes(w)) score += 1;
           if (summaryLower.includes(w)) score += 1; // bonus for summary match
         });
+        // Semantic similarity contribution (Fix 4): scale 0.55–1.0 → 2–5 points.
+        // Threshold 0.55 → 2 pts (just above relevant cutoff), 1.0 → 5 pts.
+        const sim = semanticHits.get(task.id);
+        if (typeof sim === 'number' && sim >= 0.55) {
+          score += Math.round(2 + (sim - 0.55) * (3 / 0.45));
+        }
+        // Boost: items in the anchored list win, regardless of word overlap.
+        // This is the structural fix for "book list" failures — the user's
+        // saved books may not contain the word "book", but they *are* in the
+        // Books list, and that's what the user asked about.
+        if (anchoredListMatch && task.list_id === anchoredListMatch.listId) {
+          score += 5;
+        }
         return { ...task, relevanceScore: score };
       });
-      
+
       // Separate highly relevant items (show full detail) from the rest (show summary only)
       const relevantTasks = scoredTasks.filter(t => t.relevanceScore >= 2).sort((a, b) => b.relevanceScore - a.relevanceScore);
       const otherTasks = scoredTasks.filter(t => t.relevanceScore < 2);
-      
+
       // Build context: FULL DETAILS for relevant items
       let savedItemsContext = '';
-      
+
+      // ---- Fix 3 (cont.): Inject the anchored list at the TOP of context ----
+      // The LLM now sees a clearly labeled section with the exact list the user
+      // asked about — full contents, no truncation, before any scoring noise.
+      if (anchoredListMatch) {
+        const listTasks = (allTasks || []).filter(t => t.list_id === anchoredListMatch!.listId);
+        const activeListTasks = listTasks.filter(t => !t.completed);
+        const completedListTasks = listTasks.filter(t => t.completed);
+        savedItemsContext += `\n## YOU ASKED ABOUT THE "${anchoredListMatch.listName}" LIST (${activeListTasks.length} active, ${completedListTasks.length} completed):\n`;
+        if (activeListTasks.length === 0 && completedListTasks.length === 0) {
+          savedItemsContext += `(this list exists but has no items yet)\n`;
+        } else {
+          activeListTasks.forEach((task, idx) => {
+            const dueInfo = task.due_date ? ` | Due: ${formatFriendlyDate(task.due_date)}` : '';
+            savedItemsContext += `\n${idx + 1}. ○ ${task.summary}${dueInfo}\n`;
+            if (task.original_text && task.original_text !== task.summary) {
+              savedItemsContext += `   Full details: ${task.original_text.substring(0, 800)}\n`;
+            }
+            if (task.items && task.items.length > 0) {
+              task.items.forEach((item: string) => {
+                savedItemsContext += `   • ${item}\n`;
+              });
+            }
+          });
+          if (completedListTasks.length > 0 && completedListTasks.length <= 5) {
+            savedItemsContext += `\nCompleted items: ${completedListTasks.map(t => t.summary).join(', ')}\n`;
+          }
+        }
+      }
+
       if (relevantTasks.length > 0) {
         savedItemsContext += '\n## MOST RELEVANT SAVED ITEMS (full details):\n';
         relevantTasks.slice(0, 10).forEach(task => {
@@ -4739,8 +4837,21 @@ Description: "${parsedExpense.description}"`;
 
       // Build system prompt — HYBRID when web search context is available
       const isHybridResponse = webSearchContext.length > 0;
+
+      // ── Identity & no-guess guard rails (shared by both prompt variants) ──
+      // These prevent the failure mode where Gemini, given a thin context block,
+      // hallucinates references to unrelated apps ("Olive Tree app", "My Book List app")
+      // or invents data not present in the user's saved items.
+      const OLIVE_IDENTITY_RULES = `
+ABSOLUTE IDENTITY RULES:
+- You are Olive, the assistant inside the user's Olive app at witholive.app. There is no other "Olive" app, no "Olive Tree" app, no "My Book List" app, no external "Olive Inventory". Never reference other apps the user could use instead.
+- The user's data lives in this app. You access it through the SAVED DATA sections below — that is your ONLY source of truth about the user's lists, notes, tasks, calendar, and memories.
+- If a SAVED DATA section is missing or empty for what the user asked, you say "🌿 I don't have that yet — want me to save it?" and stop. NEVER invent items, NEVER suggest external apps, NEVER speculate from general knowledge about what they "might have."
+- When the user names a list ("my book list", "my travel list", "my X list"), look first at the "## YOU ASKED ABOUT THE [list name] LIST" section if present, then the "### [list name]:" section under "ALL LISTS AND SAVED ITEMS". If neither has the list or it's empty, say the list is empty (or doesn't exist yet) — do not pretend it has items.`;
+
       let systemPrompt = isHybridResponse
         ? `You are Olive, a world-class AI assistant — like a brilliant friend who knows the world AND the user's life. The user asked a general knowledge question.
+${OLIVE_IDENTITY_RULES}
 
 CRITICAL INSTRUCTIONS:
 1. Lead with a comprehensive, knowledgeable answer using the WEB SEARCH RESULTS — be the expert. Give real, specific recommendations.
@@ -4763,13 +4874,14 @@ USER'S QUESTION: ${effectiveMessage}
 
 Answer comprehensively using web knowledge, then naturally connect to any relevant personal context.`
         : `You are Olive, a friendly and intelligent AI assistant for the Olive app. The user is asking a question about their saved items, calendar, or personal data.
+${OLIVE_IDENTITY_RULES}
 
 CRITICAL INSTRUCTIONS:
 1. You MUST answer based on the user's actual saved data provided below — including the "Full details" field which contains rich information like addresses, flight arrival/departure times, booking references, ingredients, etc.
 2. Be SPECIFIC and PRECISE — if the user asks "when do I land?", look at the full details for arrival time; if they ask for an address, extract it from the details.
 3. If you find a relevant saved item, extract the EXACT answer from its full details, don't just repeat the summary.
 4. If they ask for recommendations, ONLY suggest items from their saved lists.
-5. If you can't find what they're looking for in their data, say so clearly.
+5. If you can't find what they're looking for in their data, say "🌿 I don't have that yet — want me to save it?" — never speculate, never reference external apps.
 6. Be concise (max 500 chars for WhatsApp) but include all key details the user asked for.
 7. Use emojis sparingly for warmth.
 8. When mentioning dates, always include the day of the week and time if available.
@@ -4792,6 +4904,30 @@ Respond with helpful, specific information extracted from their saved data. Answ
       const ctxLangName = LANG_NAMES[userLang] || LANG_NAMES[userLang.split('-')[0]] || 'English';
       if (ctxLangName !== 'English') {
         systemPrompt += `\n\nIMPORTANT: Respond entirely in ${ctxLangName}.`;
+      }
+
+      // ── Prompt-audit log (Fix 6) ──
+      // Without this, when a user reports "Olive gave me a generic answer for X", we have no
+      // way to tell whether retrieval starved the LLM or the LLM ignored what it had.
+      try {
+        console.log('[CONTEXTUAL_ASK_PROMPT_AUDIT]', JSON.stringify({
+          user_id: userId,
+          q: (effectiveMessage || '').substring(0, 120),
+          intent_q_type: (intentResult as any).queryType ?? null,
+          hybrid: isHybridResponse,
+          relevant_count: relevantTasks.length,
+          other_count: otherTasks.length,
+          lists_count: lists?.length || 0,
+          ai_list_name: (intentResult as any)._listName ?? null,
+          saved_chars: savedItemsContext.length,
+          web_chars: webSearchContext.length,
+          mem_chars: memoryContext.length + ctxAskMemoryFileContext.length,
+          cal_chars: calendarContext.length,
+          total_prompt_chars: systemPrompt.length,
+        }));
+      } catch (auditErr) {
+        // Non-blocking — never fail a user reply on a logging issue
+        console.warn('[CONTEXTUAL_ASK_PROMPT_AUDIT] log failed:', auditErr);
       }
 
       try {
