@@ -192,3 +192,76 @@ Deno.test("buildUserSoulContent: source field marks origin for analytics + Refle
   const out = buildUserSoulContent({ user_id: "u1" });
   assertEquals(out.source, "onboarding");
 });
+
+// ─── Trust Matrix Builder ─────────────────────────────────────────────
+//
+// Mirrors the buildTrustMatrix() helper in index.ts. Same drift-protection
+// pattern as buildUserSoulContent above — if the source helper changes,
+// these tests fail loudly and remind the human to update both.
+
+const DEFAULT_TRUST_MATRIX: Record<string, number> = {
+  categorize_note: 3,
+  create_reminder: 3,
+  create_task: 3,
+  process_receipt: 3,
+  save_memory: 3,
+  send_whatsapp_to_self: 2,
+  assign_task: 1,
+  send_whatsapp_to_partner: 1,
+  send_whatsapp_to_client: 0,
+  modify_budget: 1,
+  delete_note: 1,
+  send_invoice: 0,
+  book_appointment: 0,
+};
+
+function buildTrustMatrix(scope: string | null | undefined): Record<string, number> {
+  const matrix: Record<string, number> = { ...DEFAULT_TRUST_MATRIX };
+  if (scope === "Me & My Partner" || scope === "My Family") {
+    matrix.send_whatsapp_to_partner = 1;
+    matrix.assign_task = 1;
+  }
+  if (scope === "My Business") {
+    matrix.send_whatsapp_to_client = 0;
+    matrix.send_invoice = 0;
+  }
+  return matrix;
+}
+
+Deno.test("buildTrustMatrix: Just Me preserves defaults", () => {
+  const m = buildTrustMatrix("Just Me");
+  assertEquals(m.categorize_note, 3);
+  assertEquals(m.send_whatsapp_to_partner, 1);
+  assertEquals(m.send_whatsapp_to_client, 0);
+});
+
+Deno.test("buildTrustMatrix: never autonomous on high-risk actions, regardless of scope", () => {
+  // These actions must never start at level 3 — trust escalation only
+  // promotes them through explicit user opt-in. The escalation logic in
+  // olive-trust-gate also caps them at 2; this is the seed-side guard.
+  for (const scope of ["Just Me", "Me & My Partner", "My Family", "My Business", null]) {
+    const m = buildTrustMatrix(scope);
+    assertEquals(m.send_whatsapp_to_client <= 2, true, `client comms for scope=${scope}`);
+    assertEquals(m.send_invoice <= 2, true, `invoice for scope=${scope}`);
+    assertEquals(m.book_appointment <= 2, true, `booking for scope=${scope}`);
+  }
+});
+
+Deno.test("buildTrustMatrix: My Business locks down outbound client + invoice", () => {
+  const m = buildTrustMatrix("My Business");
+  assertEquals(m.send_whatsapp_to_client, 0);
+  assertEquals(m.send_invoice, 0);
+});
+
+Deno.test("buildTrustMatrix: family scope still lets partner messaging be suggestible", () => {
+  // Family group surface is multi-member — assign_task and partner messages
+  // should be at level 1 (suggest), not 0 (inform-only).
+  const m = buildTrustMatrix("My Family");
+  assertEquals(m.send_whatsapp_to_partner, 1);
+  assertEquals(m.assign_task, 1);
+});
+
+Deno.test("buildTrustMatrix: null scope returns canonical default matrix", () => {
+  const m = buildTrustMatrix(null);
+  assertEquals(m, DEFAULT_TRUST_MATRIX);
+});
