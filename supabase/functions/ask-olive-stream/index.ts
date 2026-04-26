@@ -285,7 +285,7 @@ async function streamGeminiResponse(
 async function handleAction(
   supabase: any,
   userId: string,
-  coupleId: string | null,
+  spaceId: string | null,
   message: string,
   classifiedIntent: ClassifiedIntent
 ): Promise<Record<string, any> | null> {
@@ -298,7 +298,7 @@ async function handleAction(
         body: {
           text: message,
           user_id: userId,
-          couple_id: coupleId,
+          space_id: spaceId,
           source: 'web_chat',
         },
       });
@@ -341,8 +341,8 @@ async function handleAction(
       .ilike('summary', `%${taskName.substring(0, 40)}%`)
       .limit(1);
 
-    if (coupleId) {
-      query = query.or(`author_id.eq.${userId},couple_id.eq.${coupleId}`);
+    if (spaceId) {
+      query = query.or(`author_id.eq.${userId},space_id.eq.${spaceId}`);
     } else {
       query = query.eq('author_id', userId);
     }
@@ -370,8 +370,8 @@ async function handleAction(
       .ilike('summary', `%${taskName.substring(0, 40)}%`)
       .limit(1);
 
-    if (coupleId) {
-      query = query.or(`author_id.eq.${userId},couple_id.eq.${coupleId}`);
+    if (spaceId) {
+      query = query.or(`author_id.eq.${userId},space_id.eq.${spaceId}`);
     } else {
       query = query.eq('author_id', userId);
     }
@@ -402,8 +402,8 @@ async function handleAction(
       .ilike('summary', `%${taskName.substring(0, 40)}%`)
       .limit(1);
 
-    if (coupleId) {
-      query = query.or(`author_id.eq.${userId},couple_id.eq.${coupleId}`);
+    if (spaceId) {
+      query = query.or(`author_id.eq.${userId},space_id.eq.${spaceId}`);
     } else {
       query = query.eq('author_id', userId);
     }
@@ -447,8 +447,8 @@ async function handleAction(
       .ilike('summary', `%${taskName.substring(0, 40)}%`)
       .limit(1);
 
-    if (coupleId) {
-      query = query.or(`author_id.eq.${userId},couple_id.eq.${coupleId}`);
+    if (spaceId) {
+      query = query.or(`author_id.eq.${userId},space_id.eq.${spaceId}`);
     } else {
       query = query.eq('author_id', userId);
     }
@@ -480,7 +480,7 @@ async function handleAction(
         body: {
           text: message,
           user_id: userId,
-          couple_id: coupleId,
+          space_id: spaceId,
           source: 'web_chat',
         },
       });
@@ -494,10 +494,16 @@ async function handleAction(
   // ── ASSIGN TASK (P4) ──
   if (intent === 'assign') {
     const taskName = classifiedIntent.target_task_name;
-    if (!taskName || !coupleId) return null;
+    if (!taskName || !spaceId) return null;
 
-    // Find partner
-    const { data: members } = await supabase.rpc('get_space_members', { p_couple_id: coupleId });
+    // Find partner (or any other member). Use olive_space_members so this
+    // works for non-couple spaces too — the legacy get_space_members RPC
+    // only reads clerk_couple_members and would return empty for family /
+    // business / custom spaces.
+    const { data: members } = await supabase
+      .from('olive_space_members')
+      .select('user_id, nickname, clerk_profiles:user_id (display_name)')
+      .eq('space_id', spaceId);
     const partner = members?.find((m: any) => m.user_id !== userId);
     if (!partner) return null;
 
@@ -506,7 +512,7 @@ async function handleAction(
       .select('id, summary')
       .eq('completed', false)
       .ilike('summary', `%${taskName.substring(0, 40)}%`)
-      .or(`author_id.eq.${userId},couple_id.eq.${coupleId}`)
+      .or(`author_id.eq.${userId},space_id.eq.${spaceId}`)
       .limit(1);
 
     const { data: tasks } = await query;
@@ -518,7 +524,10 @@ async function handleAction(
       .eq('id', tasks[0].id);
 
     if (error) return null;
-    return { action: 'task_assigned', id: tasks[0].id, summary: tasks[0].summary, assignee: partner.display_name };
+    const assigneeName = (partner as any).nickname
+      || (partner as any).clerk_profiles?.display_name
+      || 'Member';
+    return { action: 'task_assigned', id: tasks[0].id, summary: tasks[0].summary, assignee: assigneeName };
   }
 
   // ── MOVE TASK (P4) ──
@@ -532,7 +541,7 @@ async function handleAction(
       .from('clerk_lists')
       .select('id, name')
       .ilike('name', `%${listName}%`)
-      .or(coupleId ? `author_id.eq.${userId},couple_id.eq.${coupleId}` : `author_id.eq.${userId}`)
+      .or(spaceId ? `author_id.eq.${userId},space_id.eq.${spaceId}` : `author_id.eq.${userId}`)
       .limit(1);
 
     const { data: lists } = await listQuery;
@@ -546,7 +555,7 @@ async function handleAction(
       // Create list
       const { data: newList, error: listErr } = await supabase
         .from('clerk_lists')
-        .insert({ name: listName, author_id: userId, couple_id: coupleId })
+        .insert({ name: listName, author_id: userId, space_id: spaceId })
         .select('id, name')
         .single();
       if (listErr || !newList) return null;
@@ -562,8 +571,8 @@ async function handleAction(
       .ilike('summary', `%${taskName.substring(0, 40)}%`)
       .limit(1);
 
-    if (coupleId) {
-      taskQuery = taskQuery.or(`author_id.eq.${userId},couple_id.eq.${coupleId}`);
+    if (spaceId) {
+      taskQuery = taskQuery.or(`author_id.eq.${userId},space_id.eq.${spaceId}`);
     } else {
       taskQuery = taskQuery.eq('author_id', userId);
     }
@@ -612,7 +621,13 @@ serve(async (req) => {
   }
 
   try {
-    const { message, context, user_id, couple_id } = await req.json();
+    const { message, context, user_id, couple_id, space_id } = await req.json();
+    // Spaces Phase 2-2: prefer space_id (canonical) over couple_id (legacy).
+    // For couple-type spaces both are the same UUID via the 1:1 bridge, so
+    // existing 2-person and 3-10 person couple-type spaces are unaffected.
+    // For non-couple spaces (family / business / custom), only space_id is
+    // populated and is the only path that returns the user's shared notes.
+    const scopeSpaceId: string | null = space_id ?? couple_id ?? null;
 
     if (!GEMINI_KEY) throw new Error('GEMINI_API key not configured');
     if (!message?.trim()) throw new Error('Empty message');
@@ -638,7 +653,7 @@ serve(async (req) => {
           supabase
             .from('clerk_notes')
             .select('id, summary, due_date, priority')
-            .or(couple_id ? `author_id.eq.${user_id},couple_id.eq.${couple_id}` : `author_id.eq.${user_id}`)
+            .or(scopeSpaceId ? `author_id.eq.${user_id},space_id.eq.${scopeSpaceId}` : `author_id.eq.${user_id}`)
             .eq('completed', false)
             .order('created_at', { ascending: false })
             .limit(20),
@@ -705,7 +720,7 @@ serve(async (req) => {
     console.log(`[ask-olive-stream] Route: tier=${route.responseTier}, reason=${route.reason}`);
 
     // ── Step 3: Fetch context (parallel with intent-specific work) ─
-    const serverCtxPromise = fetchServerContext(user_id, couple_id, effectiveType, message);
+    const serverCtxPromise = fetchServerContext(user_id, scopeSpaceId ?? undefined, effectiveType, message);
 
     // ── Step 4: Intent-specific handling ──────────────────────────
 
@@ -847,7 +862,7 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
       const serverCtx = await serverCtxPromise;
       const supabase = getServiceSupabase();
 
-      const actionResult = await handleAction(supabase, user_id, couple_id, message, classifiedIntent);
+      const actionResult = await handleAction(supabase, user_id, scopeSpaceId, message, classifiedIntent);
 
       if (actionResult) {
         const confirmPrompt = `You are Olive. You just performed an action for the user. Confirm what you did warmly and briefly. Include the specific details. ${OLIVE_CHAT_PROMPT}`;

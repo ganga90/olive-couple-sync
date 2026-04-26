@@ -431,7 +431,7 @@ async function executeTaskAction(
   supabase: SupabaseClient,
   intent: ClassifiedIntent,
   userId: string,
-  coupleId: string | null,
+  spaceId: string | null,
   userMessage: string = ''
 ): Promise<ActionResult | null> {
   const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind', 'move', 'assign'];
@@ -498,8 +498,8 @@ async function executeTaskAction(
         .order('created_at', { ascending: false })
         .limit(1);
 
-      if (coupleId) {
-        query = query.or(`author_id.eq.${userId},couple_id.eq.${coupleId}`);
+      if (spaceId) {
+        query = query.or(`author_id.eq.${userId},space_id.eq.${spaceId}`);
       } else {
         query = query.eq('author_id', userId);
       }
@@ -517,7 +517,7 @@ async function executeTaskAction(
       const { data: tasks } = await supabase
         .from('clerk_notes')
         .select('id, summary, due_date, priority')
-        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+        .or(`author_id.eq.${userId}${spaceId ? `,space_id.eq.${spaceId}` : ''}`)
         .eq('completed', false)
         .ilike('summary', `%${taskSummary}%`)
         .limit(1);
@@ -538,7 +538,7 @@ async function executeTaskAction(
             body: {
               text: taskSummary,
               user_id: userId,
-              couple_id: coupleId,
+              space_id: spaceId,
               source: 'web_chat',
             },
           });
@@ -736,7 +736,7 @@ async function executeTaskAction(
         const { data: userLists } = await supabase
           .from('clerk_lists')
           .select('id, name')
-          .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
+          .or(`author_id.eq.${userId}${spaceId ? `,space_id.eq.${spaceId}` : ''}`);
 
         const listMatch = userLists?.find((l: any) =>
           l.name.toLowerCase().includes(targetListName.toLowerCase()) ||
@@ -748,7 +748,7 @@ async function executeTaskAction(
           const formattedName = targetListName.trim().split(/\s+/).map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
           const { data: newList } = await supabase
             .from('clerk_lists')
-            .insert({ name: formattedName, author_id: userId, couple_id: coupleId || null, is_manual: true })
+            .insert({ name: formattedName, author_id: userId, space_id: spaceId || null, is_manual: true })
             .select('id, name')
             .single();
 
@@ -766,13 +766,13 @@ async function executeTaskAction(
       }
 
       case 'assign': {
-        if (!coupleId) return { type: 'assign', success: false, details: { error: 'no_couple' } };
+        if (!spaceId) return { type: 'assign', success: false, details: { error: 'no_couple' } };
 
         // Find partner
         const { data: partnerMemberForAssign } = await supabase
           .from('clerk_couple_members')
           .select('user_id, display_name')
-          .eq('couple_id', coupleId)
+          .eq('space_id', spaceId)
           .neq('user_id', userId)
           .limit(1)
           .maybeSingle();
@@ -792,15 +792,15 @@ async function executeTaskAction(
         const partnerMsgContent = intent.parameters?.partner_message_content || intent.target_task_name || '';
         const partnerAction = intent.parameters?.partner_action || 'tell';
 
-        if (!coupleId || !partnerMsgContent) {
-          return { type: 'partner_message', success: false, details: { error: !coupleId ? 'no_couple' : 'no_content' } };
+        if (!spaceId || !partnerMsgContent) {
+          return { type: 'partner_message', success: false, details: { error: !spaceId ? 'no_couple' : 'no_content' } };
         }
 
         // Find partner
         const { data: partnerMember } = await supabase
           .from('clerk_couple_members')
           .select('user_id')
-          .eq('couple_id', coupleId)
+          .eq('space_id', spaceId)
           .neq('user_id', userId)
           .limit(1)
           .single();
@@ -813,7 +813,7 @@ async function executeTaskAction(
         const { data: coupleInfo } = await supabase
           .from('clerk_couples')
           .select('you_name, partner_name, created_by')
-          .eq('id', coupleId)
+          .eq('id', spaceId)
           .single();
 
         const isCreator = coupleInfo?.created_by === userId;
@@ -839,10 +839,10 @@ async function executeTaskAction(
         if (isTaskLike) {
           try {
             const { data: processData } = await supabase.functions.invoke('process-note', {
-              body: { text: partnerMsgContent, user_id: userId, couple_id: coupleId }
+              body: { text: partnerMsgContent, user_id: userId, space_id: spaceId }
             });
             const noteData = {
-              author_id: userId, couple_id: coupleId,
+              author_id: userId, space_id: spaceId,
               original_text: partnerMsgContent,
               summary: processData?.summary || partnerMsgContent,
               category: processData?.category || 'task',
@@ -915,6 +915,7 @@ serve(async (req) => {
       message,
       user_id,
       couple_id,
+      space_id,
       context,
       // Media support (Epic 5)
       media_urls,
@@ -933,6 +934,9 @@ serve(async (req) => {
     const actualMessage = message || userMessage;
     const actualUserId = user_id || body.user_id;
     const actualCoupleId = couple_id || body.couple_id || null;
+    // Spaces Phase 2-2: prefer space_id (canonical); fall back to couple_id
+    // for legacy callers. For couple-type spaces both are the same UUID.
+    const actualSpaceId: string | null = space_id || body.space_id || actualCoupleId || null;
     const actualMediaUrls: string[] = media_urls || [];
 
     console.log('[Ask Olive Individual] Mode:', isGlobalChat ? 'global_chat' : 'note_specific');
@@ -1080,7 +1084,7 @@ serve(async (req) => {
           supabase
             .from('clerk_notes')
             .select('id, summary, due_date, priority')
-            .or(`author_id.eq.${actualUserId}${actualCoupleId ? `,couple_id.eq.${actualCoupleId}` : ''}`)
+            .or(`author_id.eq.${actualUserId}${actualSpaceId ? `,space_id.eq.${actualSpaceId}` : ''}`)
             .eq('completed', false)
             .order('created_at', { ascending: false })
             .limit(30),
@@ -1108,7 +1112,7 @@ serve(async (req) => {
           supabase
             .from('clerk_lists')
             .select('id, name')
-            .or(`author_id.eq.${actualUserId}${actualCoupleId ? `,couple_id.eq.${actualCoupleId}` : ''}`)
+            .or(`author_id.eq.${actualUserId}${actualSpaceId ? `,space_id.eq.${actualSpaceId}` : ''}`)
             .limit(20),
         ]);
 
@@ -1180,7 +1184,7 @@ serve(async (req) => {
             const taskActions = ['complete', 'set_priority', 'set_due', 'delete', 'partner_message', 'remind', 'move', 'assign'];
             if (taskActions.includes(aiResult.intent)) {
             console.log(`[Ask Olive Individual] Task action detected: ${aiResult.intent} (confidence: ${aiResult.confidence})`);
-            actionResult = await executeTaskAction(supabase, aiResult, actualUserId, actualCoupleId, actualMessage);
+            actionResult = await executeTaskAction(supabase, aiResult, actualUserId, actualSpaceId, actualMessage);
 
             // Save the referenced entity to web session for future pronoun/ordinal resolution
             if (actionResult?.success && actionResult.task_id && actionResult.task_summary) {
@@ -1200,7 +1204,7 @@ serve(async (req) => {
                 const { data: existingLists } = await supabase
                   .from('clerk_lists')
                   .select('id, name')
-                  .or(`author_id.eq.${actualUserId}${actualCoupleId ? `,couple_id.eq.${actualCoupleId}` : ''}`);
+                  .or(`author_id.eq.${actualUserId}${actualSpaceId ? `,space_id.eq.${actualSpaceId}` : ''}`);
 
                 const normalizedName = listName.toLowerCase().trim();
                 const existingMatch = existingLists?.find((l: any) => l.name.toLowerCase().trim() === normalizedName);
@@ -1212,7 +1216,7 @@ serve(async (req) => {
                   const effectiveCoupleId = actualCoupleId || null;
                   const { data: newList, error: createErr } = await supabase
                     .from('clerk_lists')
-                    .insert({ name: formattedName, author_id: actualUserId, couple_id: effectiveCoupleId, is_manual: true, description: 'Created via Olive chat' })
+                    .insert({ name: formattedName, author_id: actualUserId, space_id: actualSpaceId, is_manual: true, description: 'Created via Olive chat' })
                     .select('id, name')
                     .single();
 
@@ -1234,7 +1238,7 @@ serve(async (req) => {
                 const { data: allLists } = await supabase
                   .from('clerk_lists')
                   .select('id, name')
-                  .or(`author_id.eq.${actualUserId}${actualCoupleId ? `,couple_id.eq.${actualCoupleId}` : ''}`);
+                  .or(`author_id.eq.${actualUserId}${actualSpaceId ? `,space_id.eq.${actualSpaceId}` : ''}`);
 
                 const searchNorm = targetListName.toLowerCase().trim();
                 const matchedList = allLists?.find((l: any) => {
@@ -1290,7 +1294,7 @@ serve(async (req) => {
                 body: {
                   text: actualMessage,
                   user_id: actualUserId,
-                  couple_id: actualCoupleId,
+                  space_id: actualSpaceId,
                   source: 'web_chat',
                   force_priority: aiResult.parameters?.is_urgent ? 'high' : undefined,
                 },
@@ -1410,7 +1414,7 @@ serve(async (req) => {
                   .from('expenses')
                   .insert({
                     user_id: actualUserId,
-                    couple_id: actualCoupleId || null,
+                    space_id: actualSpaceId,
                     amount,
                     name: merchant,
                     category,
@@ -1447,7 +1451,7 @@ serve(async (req) => {
             const { data: fullNotes } = await supabase
               .from('clerk_notes')
               .select('id, summary, original_text, category, list_id, items, tags, priority, due_date, reminder_time, completed, created_at')
-              .or(`author_id.eq.${actualUserId}${actualCoupleId ? `,couple_id.eq.${actualCoupleId}` : ''}`)
+              .or(`author_id.eq.${actualUserId}${actualSpaceId ? `,space_id.eq.${actualSpaceId}` : ''}`)
               .order('created_at', { ascending: false })
               .limit(200);
 
