@@ -31,6 +31,7 @@ import { supabase } from "@/lib/supabaseClient";
 // only enforcement.
 export type OnboardingEvent =
   | "flow_started"
+  | "version_assigned"
   | "beat_started"
   | "beat_completed"
   | "beat_skipped"
