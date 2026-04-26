@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace } from "@/providers/SpaceProvider";
 import { useSEO } from "@/hooks/useSEO";
 import { Input } from "@/components/ui/input";
 import { Link, useNavigate } from "react-router-dom";
@@ -133,7 +134,8 @@ const Lists = () => {
   // defaultPrivacy is for creation, not view filtering
   const { notes, refetch: refetchNotes } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouple();
-  const { lists, loading, deleteList, refetch } = useSupabaseLists(currentCouple?.id || null);
+  const { currentSpace } = useSpace();
+  const { lists, loading, deleteList, refetch } = useSupabaseLists(currentCouple?.id || null, currentSpace?.id || null);
   
   // Organize Agent
   const {
@@ -144,7 +146,7 @@ const Lists = () => {
     setIsModalOpen,
     analyze,
     applyPlan,
-  } = useOrganizeAgent({ coupleId: currentCouple?.id, onComplete: () => { refetch(); refetchNotes(); } });
+  } = useOrganizeAgent({ coupleId: currentCouple?.id, spaceId: currentSpace?.id, onComplete: () => { refetch(); refetchNotes(); } });
   
   useSEO({ title: `${t('title')} — Olive`, description: t('empty.createFirstList') });
 

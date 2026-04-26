@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace } from "@/providers/SpaceProvider";
 import { categories } from "@/constants/categories";
 
 const categoryIcons: Record<string, any> = {
@@ -62,8 +63,9 @@ export const CreateNoteDialog: React.FC<CreateNoteDialogProps> = ({
   const [loading, setLoading] = useState(false);
 
   const { currentCouple } = useSupabaseCouple();
+  const { currentSpace } = useSpace();
   const { addNote } = useSupabaseNotesContext();
-  const { lists } = useSupabaseLists(currentCouple?.id || null);
+  const { lists } = useSupabaseLists(currentCouple?.id || null, currentSpace?.id || null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

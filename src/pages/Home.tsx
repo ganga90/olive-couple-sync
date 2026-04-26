@@ -113,7 +113,7 @@ const Home = () => {
     setIsModalOpen,
     analyze,
     applyPlan,
-  } = useOrganizeAgent({ coupleId: currentCouple?.id, onComplete: refetchNotes });
+  } = useOrganizeAgent({ coupleId: currentCouple?.id, spaceId: currentSpace?.id, onComplete: refetchNotes });
   
   // Onboarding tooltip for Organize feature
   const organizeOnboarding = useOnboardingTooltip('organize_feature');

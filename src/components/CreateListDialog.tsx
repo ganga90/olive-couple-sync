@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Plus, Lock, Users } from "lucide-react";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace } from "@/providers/SpaceProvider";
 import { useDefaultPrivacy } from "@/hooks/useDefaultPrivacy";
 
 interface CreateListDialogProps {
@@ -30,7 +31,8 @@ export const CreateListDialog: React.FC<CreateListDialogProps> = ({ onListCreate
   const [loading, setLoading] = useState(false);
   
   const { currentCouple } = useSupabaseCouple();
-  const { createList } = useSupabaseLists(currentCouple?.id || null);
+  const { currentSpace } = useSpace();
+  const { createList } = useSupabaseLists(currentCouple?.id || null, currentSpace?.id || null);
   const { defaultPrivacy } = useDefaultPrivacy();
 
   // Sync default privacy when dialog opens or preference changes

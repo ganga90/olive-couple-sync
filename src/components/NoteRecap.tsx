@@ -69,7 +69,7 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
   const { user } = useAuth();
   const { currentCouple, members } = useSupabaseCouple();
   const { currentSpace, getMembers } = useSpace();
-  const { lists, createList, loading: listsLoading } = useSupabaseLists(currentCouple?.id || null);
+  const { lists, createList, loading: listsLoading } = useSupabaseLists(currentCouple?.id || null, currentSpace?.id || null);
 
   // Multi-member owners: fetch space members if available
   const [spaceMembers, setSpaceMembers] = useState<Array<{user_id: string; display_name?: string}>>([]);

@@ -49,8 +49,8 @@ const NoteDetails = () => {
   const { t } = useTranslation('notes');
   const { notes, deleteNote, updateNote } = useSupabaseNotesContext();
   const { currentCouple, you, partner } = useSupabaseCouple();
-  const { lists } = useSupabaseLists(currentCouple?.id);
   const { currentSpace, getMembers } = useSpace();
+  const { lists } = useSupabaseLists(currentCouple?.id, currentSpace?.id);
   const askOliveOnboarding = useOnboardingTooltip('ask-olive-chat');
   const { connection: calendarConnection } = useCalendarEvents();
   const note = useMemo(() => notes.find((n) => n.id === id), [notes, id]);

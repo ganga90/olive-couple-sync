@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseCouples } from "@/hooks/useSupabaseCouples";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
+import { useSpace } from "@/providers/SpaceProvider";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import {
@@ -20,7 +21,8 @@ export const DataExport = () => {
   const { user } = useUser();
   const { notes } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouples();
-  const { lists } = useSupabaseLists(currentCouple?.id);
+  const { currentSpace } = useSpace();
+  const { lists } = useSupabaseLists(currentCouple?.id, currentSpace?.id);
   const userId = user?.id;
 
   const [exportingNotes, setExportingNotes] = useState(false);

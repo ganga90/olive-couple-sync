@@ -7,16 +7,17 @@ import { OrganizationPlan } from "@/types/organization";
 
 interface UseOrganizeAgentOptions {
   coupleId?: string | null;
+  spaceId?: string | null;
   onComplete?: () => void;
 }
 
-export const useOrganizeAgent = ({ coupleId, onComplete }: UseOrganizeAgentOptions = {}) => {
+export const useOrganizeAgent = ({ coupleId, spaceId, onComplete }: UseOrganizeAgentOptions = {}) => {
   const { t } = useTranslation(['organize', 'common']);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [plan, setPlan] = useState<OrganizationPlan | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { createList, refetch: refetchLists } = useSupabaseLists(coupleId);
+  const { createList, refetch: refetchLists } = useSupabaseLists(coupleId, spaceId);
 
   const analyze = useCallback(async (scope: "all" | "list" = "all", listId?: string) => {
     setIsAnalyzing(true);

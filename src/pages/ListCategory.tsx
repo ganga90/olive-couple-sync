@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace } from "@/providers/SpaceProvider";
 import { useSEO } from "@/hooks/useSEO";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -34,7 +35,8 @@ const ListCategory = () => {
   const { t } = useTranslation(['lists', 'common']);
   const { notes, updateNote, deleteNote } = useSupabaseNotesContext();
   const { currentCouple, you, partner } = useSupabaseCouple();
-  const { lists, loading, updateList, deleteList } = useSupabaseLists(currentCouple?.id || null);
+  const { currentSpace } = useSpace();
+  const { lists, loading, updateList, deleteList } = useSupabaseLists(currentCouple?.id || null, currentSpace?.id || null);
   
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editName, setEditName] = useState("");

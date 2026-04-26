@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace } from "@/providers/SpaceProvider";
 import { supabase } from "@/lib/supabaseClient";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
@@ -184,11 +185,12 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
 
   const { user } = useAuth();
   const { currentCouple, you } = useSupabaseCouple();
+  const { currentSpace } = useSpace();
   const { t } = useTranslation("common");
 
   // Fetch user's notes and lists for context
-  const { notes, loading: notesLoading, refetch: refetchNotes } = useSupabaseNotes(currentCouple?.id);
-  const { lists, loading: listsLoading } = useSupabaseLists(currentCouple?.id);
+  const { notes, loading: notesLoading, refetch: refetchNotes } = useSupabaseNotes(currentCouple?.id, currentSpace?.id);
+  const { lists, loading: listsLoading } = useSupabaseLists(currentCouple?.id, currentSpace?.id);
 
   // Memoize the formatted context to avoid recalculating on every render
   const userContext = useMemo(() => {

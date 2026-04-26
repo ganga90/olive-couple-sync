@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useSupabaseLists } from "@/hooks/useSupabaseLists";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace } from "@/providers/SpaceProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,7 +25,8 @@ export const UniversalSearch: React.FC = () => {
   const { user } = useAuth();
   const { notes } = useSupabaseNotesContext();
   const { currentCouple } = useSupabaseCouple();
-  const { lists } = useSupabaseLists(currentCouple?.id || null);
+  const { currentSpace } = useSpace();
+  const { lists } = useSupabaseLists(currentCouple?.id || null, currentSpace?.id || null);
   const [searchQuery, setSearchQuery] = useState("");
   const [memoryResults, setMemoryResults] = useState<MemorySearchResult[]>([]);
   const [memorySearching, setMemorySearching] = useState(false);

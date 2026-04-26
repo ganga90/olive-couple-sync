@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Calendar } from '@/components/ui/calendar';
 import { Users, CalendarDays, ArrowRight, List, CheckSquare, TrendingUp, Clock, UserPlus, Wallet, PieChart } from 'lucide-react';
 import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
+import { useSpace } from '@/providers/SpaceProvider';
 import { useSupabaseNotesContext } from '@/providers/SupabaseNotesProvider';
 import { useSupabaseLists } from '@/hooks/useSupabaseLists';
 import { useLanguage } from '@/providers/LanguageProvider';
@@ -17,8 +18,9 @@ export const ContextRail: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { partner, currentCouple } = useSupabaseCouple();
+  const { currentSpace } = useSpace();
   const { notes } = useSupabaseNotesContext();
-  const { lists } = useSupabaseLists(currentCouple?.id || null);
+  const { lists } = useSupabaseLists(currentCouple?.id || null, currentSpace?.id || null);
   const { getLocalizedPath, stripLocalePath } = useLanguage();
   const { user } = useAuth();
   
