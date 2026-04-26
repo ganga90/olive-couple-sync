@@ -6,6 +6,7 @@ import { resilientGenerateContent } from "../_shared/resilient-genai.ts";
 import { detectAndCreateExpense, detectCurrency, extractAmount, mapCategoryToExpenseCategory } from "../_shared/expense-detector.ts";
 import { resolveScope } from "../_shared/space-scope.ts";
 import { assembleSoulContext } from "../_shared/soul.ts";
+import { checkTrustForAction } from "../_shared/trust-gate-check.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -2653,9 +2654,27 @@ Process this note:
     };
 
     // Process notes (handle both single and multiple)
-    const notes = processedResponse.multiple && processedResponse.notes 
-      ? processedResponse.notes 
+    const notes = processedResponse.multiple && processedResponse.notes
+      ? processedResponse.notes
       : [processedResponse.notes?.[0] || processedResponse];
+
+    // ─── Trust gate prep (Phase C-2.b) ────────────────────────────
+    // Fetch the user's own display name once so we can distinguish
+    // self-assignment ("Me to buy milk" → user's own name) from
+    // other-assignment ("Marco to buy milk" → partner). Only the
+    // latter goes through the trust gate; self-assignment runs
+    // autonomously, matching the existing UX.
+    let userOwnNameLower: string | null = null;
+    try {
+      const { data: ownProfile } = await supabase
+        .from('clerk_profiles')
+        .select('display_name')
+        .eq('id', user_id)
+        .maybeSingle();
+      userOwnNameLower = (ownProfile as any)?.display_name?.toLowerCase()?.trim() || null;
+    } catch (ownErr) {
+      console.warn('[process-note] Own display_name lookup failed (non-blocking):', ownErr);
+    }
 
     const processedNotes = await Promise.all(
       notes.map(async (note: any) => {
@@ -2674,12 +2693,54 @@ Process this note:
 
         // Use explicit list_id from request if provided (e.g., adding note from within a specific list)
         // Otherwise, use AI routing to find/create the appropriate list
-        const listId = explicit_list_id 
+        const listId = explicit_list_id
           ? explicit_list_id
-          : (note.category 
-            ? await findOrCreateList(note.category, note.tags || [], note.target_list, summary) 
+          : (note.category
+            ? await findOrCreateList(note.category, note.tags || [], note.target_list, summary)
             : null);
-        
+
+        // ─── Trust gate (Phase C-2.b) ─────────────────────────────
+        // The AI may have set task_owner = "Marco" (a partner). That's
+        // an `assign_task` action — affects another person, requires
+        // trust to do silently. Self-assignment (task_owner matches
+        // the requesting user's name) runs autonomously. Soul-gated
+        // and fail-soft inside the helper, so users without
+        // soul_enabled keep current behavior byte-for-byte.
+        let resolvedTaskOwner: string | null = note.task_owner || null;
+        let pendingAssignment: { intended_owner: string; action_id: string } | null = null;
+
+        if (resolvedTaskOwner) {
+          const ownerLower = String(resolvedTaskOwner).toLowerCase().trim();
+          const isSelfAssignment = userOwnNameLower !== null && ownerLower === userOwnNameLower;
+
+          if (!isSelfAssignment) {
+            const trust = await checkTrustForAction(supabase, {
+              userId: user_id,
+              actionType: 'assign_task',
+              spaceId: spaceId || undefined,
+              actionPayload: {
+                task_summary: summary,
+                task_owner: resolvedTaskOwner,
+                category: note.category || 'task',
+              },
+              actionDescription: `assign "${(summary as string).slice(0, 60)}" to ${resolvedTaskOwner}`,
+              triggerType: 'reactive',
+            });
+
+            if (!trust.allowed) {
+              console.log(
+                `[process-note] assign_task gated (${trust.trust_level_name})`
+                + ` → queued ${trust.action_id}, clearing task_owner`,
+              );
+              pendingAssignment = {
+                intended_owner: resolvedTaskOwner,
+                action_id: trust.action_id || '',
+              };
+              resolvedTaskOwner = null; // Don't persist the assignment until approved.
+            }
+          }
+        }
+
         return {
           summary,
           category: note.category || "task",
@@ -2690,10 +2751,16 @@ Process this note:
           priority: note.priority || "medium",
           tags: note.tags || [],
           items: note.items || [],
-          task_owner: note.task_owner || null,
+          task_owner: resolvedTaskOwner,
           list_id: listId,
           original_text: safeText,
-          media_urls: mediaUrls.length > 0 ? mediaUrls : null
+          media_urls: mediaUrls.length > 0 ? mediaUrls : null,
+          // Set when the gate queued the assignment for approval. Callers
+          // (web app, whatsapp-webhook) may surface this to inform the
+          // user that their assignment is pending — the queued row is in
+          // olive_trust_actions and the notification is in
+          // olive_trust_notifications.
+          pending_assignment: pendingAssignment,
         };
       })
     );
