@@ -42,6 +42,7 @@ import {
 } from "../_shared/timezone-calendar.ts";
 import { parseExpenseText } from "../_shared/expense-detector.ts";
 import { captureReplyReflection } from "../_shared/reflection-capture.ts";
+import { checkTrustForAction } from "../_shared/trust-gate-check.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6563,6 +6564,53 @@ If the user's message is long and conversational — asking for help with someth
         partnerWhatsAppMsg = `${emoji} ${senderName} is asking:\n\n${partnerMessageContent}\n\nReply to let them know 🫒`;
       } else {
         partnerWhatsAppMsg = `${emoji} Message from ${senderName}:\n\n${savedTask?.summary || partnerMessageContent}\n\n🫒 Olive`;
+      }
+
+      // ─── Trust gate (Phase C-2.a) ──────────────────────────────────
+      // Messaging another human on the user's behalf is the textbook
+      // externally-visible action: it affects someone else, with the
+      // user's name attached. Olive must ask first unless the user has
+      // explicitly granted autonomy on `send_whatsapp_to_partner`.
+      // Gated on soul_enabled inside the helper. Fail-soft: a gate
+      // error allows the send to proceed (better than silently dropping
+      // a relay the user just asked for).
+      const partnerTrust = await checkTrustForAction(supabase, {
+        userId,
+        actionType: 'send_whatsapp_to_partner',
+        spaceId: coupleId || undefined,
+        actionPayload: {
+          partner_id: partnerId,
+          partner_name: partnerName,
+          message_preview: partnerWhatsAppMsg.slice(0, 200),
+          saved_task_id: savedTask?.id || null,
+        },
+        actionDescription: `send a WhatsApp to ${partnerName}: "${partnerMessageContent.slice(0, 100)}"`,
+        triggerType: 'reactive',
+      });
+
+      if (!partnerTrust.allowed) {
+        console.log(
+          `[PARTNER_MESSAGE] Trust gate ${partnerTrust.trust_level_name} blocked send`
+            + ` — queued as ${partnerTrust.action_id}`,
+        );
+        // The task (if task-like) was already saved above. Confirm to
+        // the user that the relay is pending their approval — they'll
+        // see a card in the app and can approve there.
+        if (savedTask) {
+          return reply(
+            `📋 I saved "${savedTask.summary}" and queued a message to ${partnerName}`
+              + ` for your approval. Open Olive to confirm — or reply "do it"`
+              + ` and I'll send it now.`,
+          );
+        }
+        return reply(
+          `✋ I've queued a message to ${partnerName} for your approval.`
+            + ` Open Olive to confirm — or reply "do it" and I'll send it now.`,
+        );
+      }
+
+      if (partnerTrust.failed_open) {
+        console.warn('[PARTNER_MESSAGE] Trust gate failed open — proceeding with send');
       }
 
       // 5. Send DIRECTLY via Meta API (no gateway intermediary)
