@@ -1,466 +1,524 @@
+/**
+ * NativeWelcome — first-launch screen for the iOS app (Capacitor).
+ *
+ * Routed from src/pages/Root.tsx when Capacitor.isNativePlatform() is true
+ * AND the user is not authenticated. This is the iOS sibling of the web
+ * Landing page (witholive.app). They share brand DNA (color tokens,
+ * typography, voice) but flex on density and tone per
+ * OLIVE_BRAND_BIBLE.md §13.4:
+ *
+ *   - iOS: generous, intimate, headline-led, one decision at a time
+ *   - Web: sectioned, marketing-dense, conversion-led
+ *
+ * Design rules enforced here (cross-reference brand bible):
+ *   §6  Color: Hunter Green dominant, Coral for primary conversion CTA
+ *       only, Magic Gold reserved for AI moments (not used on this page).
+ *       NO violet/rose/blue/teal — those were the prior implementation's
+ *       biggest brand drift.
+ *   §7  Typography: Fraunces serif for the brand promise, Plus Jakarta
+ *       Sans for everything else.
+ *   §8  Surfaces: .card-glass language (frosted glass on warm sand),
+ *       squircle icons, pill buttons, generous radii.
+ *   §4  Voice: warm but not saccharine; no decorative emoji; the leaf
+ *       (🌿) is reserved for Olive-authored lines, which this page does
+ *       not have.
+ *   §13.1 iOS: pt-safe / pb-safe respected, 48px minimum touch targets,
+ *       earned animations (no stagger-for-stagger's-sake).
+ *
+ * Information architecture:
+ *   1. Hero — headline + subhead + primary + secondary CTA. The 1.5-second
+ *      test must pass here; everything else is proof that scrolls below.
+ *   2. How it works — three-step Drop / Organize / Find squircle row.
+ *   3. Modes — single tab strip (Solo / Couple / Family / Business) with
+ *      one card revealed at a time. Mirrors web's ChooseYourMode but
+ *      one-card-deep instead of three-cards-wide.
+ *   4. Channels — "Lives where you already text" with WhatsApp + voice
+ *      + photo + link affordances.
+ *   5. Repeat CTA — same buttons as the hero, so a user who scrolled the
+ *      proof never has to scroll back up to convert.
+ */
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 import { Button } from "@/components/ui/button";
+import { BetaBadge } from "@/components/BetaBadge";
 import { cn } from "@/lib/utils";
 import {
-  ChevronRight,
+  ArrowRight,
   MessageCircle,
   Mic,
-  Image,
+  Image as ImageIcon,
   Link2,
   Send,
   Sparkles,
   Search,
-  Star,
-  CheckCircle2,
+  Heart,
+  Users,
+  Briefcase,
+  User,
+  Check,
 } from "lucide-react";
 import oliveLogoImage from "@/assets/olive-logo.jpg";
 
-/**
- * NativeWelcome - iOS-native onboarding screen for Olive
- *
- * Mirrors the web landing page (witholive.app) structure:
- * - "She remembers, so you don't have to."
- * - Three modes: Personal, Partner, Business
- * - How it works: Drop → Organize → Find
- * - WhatsApp-first messaging
- * - Beta testimonials
- *
- * Design principles:
- * - Full-screen immersive scrollable experience
- * - Warm, organic color palette (Olive brand)
- * - Large touch targets (44pt minimum)
- * - iOS safe area respect for notch/Dynamic Island
- */
+type ModeKey = "solo" | "couple" | "family" | "business";
 
-type ModeType = "personal" | "partner" | "business";
+// Lucide icons type their strokeWidth as `number | string`. We widen
+// our `icon` prop to match so we can pass any lucide-react icon without
+// fighting the type system.
+type IconComponent = React.ComponentType<{
+  className?: string;
+  strokeWidth?: number | string;
+}>;
+
+interface ModeContent {
+  key: ModeKey;
+  icon: IconComponent;
+  label: string;
+  tagline: string;
+  pain: string;
+  features: string[];
+}
 
 const NativeWelcome = () => {
   const { t } = useTranslation("auth");
   const navigate = useLocalizedNavigate();
-  const [selectedMode, setSelectedMode] = useState<ModeType>("partner");
+  // Default to "couple" — the highest-converting wedge per the brand bible's
+  // audience-specific cuts (couples = consumer flagship, the deepest pain).
+  const [selectedMode, setSelectedMode] = useState<ModeKey>("couple");
 
-  const modes = [
+  // ─── Mode content ──────────────────────────────────────────────────
+  // Wording adapted from OLIVE_BRAND_BIBLE.md §3 audience cuts. No icons
+  // in color other than Hunter Green — selection state is signaled by
+  // border + subtle bg tint, NOT by a unique color per mode.
+  const modes: ModeContent[] = [
     {
-      key: "personal" as ModeType,
-      emoji: "🧘",
-      label: t("nativeWelcome.modePersonal", "Personal"),
-      tagline: t("nativeWelcome.modePersonalTag", "For You."),
-      pain: t(
-        "nativeWelcome.modePersonalPain",
-        "You text yourself reminders, links, and ideas. They disappear into the void. Olive catches them all."
-      ),
+      key: "solo",
+      icon: User,
+      label: t("nativeWelcome.modeSoloLabel", { defaultValue: "Solo" }),
+      tagline: t("nativeWelcome.modeSoloTag", {
+        defaultValue: "For your own brain.",
+      }),
+      pain: t("nativeWelcome.modeSoloPain", {
+        defaultValue:
+          "You text yourself reminders, links, ideas. They die in a chat with yourself. Olive catches them all.",
+      }),
       features: [
-        t("nativeWelcome.personalFeat1", "Auto-sorts notes by category"),
-        t("nativeWelcome.personalFeat2", "Smart reminders from your messages"),
-        t("nativeWelcome.personalFeat3", "Voice note transcription"),
+        t("nativeWelcome.modeSoloFeat1", {
+          defaultValue: "Auto-sorts every brain dump",
+        }),
+        t("nativeWelcome.modeSoloFeat2", {
+          defaultValue: "Reminders pulled from your messages",
+        }),
+        t("nativeWelcome.modeSoloFeat3", {
+          defaultValue: "Voice notes transcribed automatically",
+        }),
       ],
-      bg: "bg-violet-50",
-      border: "border-violet-400",
-      chipBg: "bg-violet-100",
-      chipText: "text-violet-700",
     },
     {
-      key: "partner" as ModeType,
-      emoji: "❤️",
-      label: t("nativeWelcome.modePartner", "Partner"),
-      tagline: t("nativeWelcome.modePartnerTag", "For You & Your Partner."),
-      pain: t(
-        "nativeWelcome.modePartnerPain",
-        "One of you remembers everything. The other forgets. Olive keeps you both on the same page."
-      ),
+      key: "couple",
+      icon: Heart,
+      label: t("nativeWelcome.modeCoupleLabel", { defaultValue: "Couple" }),
+      tagline: t("nativeWelcome.modeCoupleTag", {
+        defaultValue: "For you and your partner.",
+      }),
+      pain: t("nativeWelcome.modeCouplePain", {
+        defaultValue:
+          "One of you remembers everything. The other forgets. Olive holds both sides — without anyone having to nag.",
+      }),
       features: [
-        t("nativeWelcome.partnerFeat1", "Shared lists and budgets"),
-        t("nativeWelcome.partnerFeat2", "Partner nudges & reminders"),
-        t("nativeWelcome.partnerFeat3", "Shared memory vault"),
+        t("nativeWelcome.modeCoupleFeat1", {
+          defaultValue: "Shared lists and calendars",
+        }),
+        t("nativeWelcome.modeCoupleFeat2", {
+          defaultValue: "Partner reminders without the nag",
+        }),
+        t("nativeWelcome.modeCoupleFeat3", {
+          defaultValue: "Private memory, scoped per Space",
+        }),
       ],
-      bg: "bg-rose-50",
-      border: "border-rose-400",
-      chipBg: "bg-rose-100",
-      chipText: "text-rose-700",
     },
     {
-      key: "business" as ModeType,
-      emoji: "💼",
-      label: t("nativeWelcome.modeBusiness", "Business"),
-      tagline: t("nativeWelcome.modeBusinessTag", "For Your Business."),
-      pain: t(
-        "nativeWelcome.modeBusinessPain",
-        "Log decisions, scan receipts, and track expenses — all from your phone. No spreadsheets needed."
-      ),
+      key: "family",
+      icon: Users,
+      label: t("nativeWelcome.modeFamilyLabel", { defaultValue: "Family" }),
+      tagline: t("nativeWelcome.modeFamilyTag", {
+        defaultValue: "For everyone in the house.",
+      }),
+      pain: t("nativeWelcome.modeFamilyPain", {
+        defaultValue:
+          "Soccer practice, grandma's recipe, the gate code — everything your family is too busy to write down. Olive remembers it all.",
+      }),
       features: [
-        t("nativeWelcome.businessFeat1", "Receipt scanning & expenses"),
-        t("nativeWelcome.businessFeat2", "Decision logging"),
-        t("nativeWelcome.businessFeat3", "Export to CSV & integrations"),
+        t("nativeWelcome.modeFamilyFeat1", {
+          defaultValue: "Shared family calendar",
+        }),
+        t("nativeWelcome.modeFamilyFeat2", {
+          defaultValue: "Group reminders for everyone",
+        }),
+        t("nativeWelcome.modeFamilyFeat3", {
+          defaultValue: "Photo-captured recipes & lists",
+        }),
       ],
-      bg: "bg-blue-50",
-      border: "border-blue-400",
-      chipBg: "bg-blue-100",
-      chipText: "text-blue-700",
+    },
+    {
+      key: "business",
+      icon: Briefcase,
+      label: t("nativeWelcome.modeBusinessLabel", {
+        defaultValue: "Business",
+      }),
+      tagline: t("nativeWelcome.modeBusinessTag", {
+        defaultValue: "For your team.",
+      }),
+      pain: t("nativeWelcome.modeBusinessPain", {
+        defaultValue:
+          "Client decisions, deadlines, expenses — log them once, find them forever. No spreadsheet required.",
+      }),
+      features: [
+        t("nativeWelcome.modeBusinessFeat1", {
+          defaultValue: "Receipt scan to expense",
+        }),
+        t("nativeWelcome.modeBusinessFeat2", {
+          defaultValue: "Client briefs, auto-compiled",
+        }),
+        t("nativeWelcome.modeBusinessFeat3", {
+          defaultValue: "Decision log per client",
+        }),
+      ],
     },
   ];
 
-  const howItWorks = [
+  const activeMode = modes.find((m) => m.key === selectedMode)!;
+
+  // ─── How-it-works steps ────────────────────────────────────────────
+  // Three squircle icons in a row. Hunter Green only — the brand bible
+  // explicitly forbids color-per-step gradients. Earned consistency.
+  const steps = [
     {
       icon: Send,
-      title: t("nativeWelcome.step1Title", "Drop It"),
-      desc: t(
-        "nativeWelcome.step1Desc",
-        "Text, voice note, photo, link — just send it to Olive on WhatsApp. Don't organize it. Just dump it."
-      ),
-      gradient: "from-violet-500 to-purple-500",
+      title: t("nativeWelcome.stepDropTitle", { defaultValue: "Drop it" }),
+      desc: t("nativeWelcome.stepDropDesc", {
+        defaultValue: "Text, voice, photo, or link — just send it.",
+      }),
     },
     {
       icon: Sparkles,
-      title: t("nativeWelcome.step2Title", "She Organizes"),
-      desc: t(
-        "nativeWelcome.step2Desc",
-        "Olive reads the chaos and files it. Groceries to grocery list. Dates to calendar. Ideas get saved. Automatically."
-      ),
-      gradient: "from-amber-500 to-orange-500",
+      title: t("nativeWelcome.stepOrganizeTitle", {
+        defaultValue: "She organizes",
+      }),
+      desc: t("nativeWelcome.stepOrganizeDesc", {
+        defaultValue: "Olive reads it, files it, remembers it.",
+      }),
     },
     {
       icon: Search,
-      title: t("nativeWelcome.step3Title", "You Find It"),
-      desc: t(
-        "nativeWelcome.step3Desc",
-        "Everything is clean, searchable, and shareable. Ask Olive anything — she remembers it all."
-      ),
-      gradient: "from-emerald-500 to-teal-500",
+      title: t("nativeWelcome.stepFindTitle", {
+        defaultValue: "Find it later",
+      }),
+      desc: t("nativeWelcome.stepFindDesc", {
+        defaultValue: "Ask Olive anything. She knows where it is.",
+      }),
     },
   ];
 
-  const testimonials = [
-    {
-      avatar: "👩‍💼",
-      quote: t(
-        "nativeWelcome.testimonial1",
-        "I used to text myself 10 things a day. Now I text Olive and everything just... appears organized."
-      ),
-      name: "Sarah K.",
-      role: t("nativeWelcome.testimonial1Role", "Busy Mom & Freelancer"),
-    },
-    {
-      avatar: "❤️",
-      quote: t(
-        "nativeWelcome.testimonial2",
-        "We stopped fighting about who forgot what. Olive is the neutral third party every couple needs."
-      ),
-      name: "Marcus & Jen",
-      role: t("nativeWelcome.testimonial2Role", "Couple, NYC"),
-    },
+  // ─── Channel affordances ───────────────────────────────────────────
+  // Plain stroke icons in Hunter Green at low weight — these are
+  // descriptive, not brand moments. Cross-reference the channels named
+  // in OLIVE_SYSTEM_PROMPT input channels list.
+  const channels = [
+    { icon: MessageCircle, label: t("nativeWelcome.channelWa", { defaultValue: "WhatsApp" }) },
+    { icon: Mic, label: t("nativeWelcome.channelVoice", { defaultValue: "Voice" }) },
+    { icon: ImageIcon, label: t("nativeWelcome.channelPhotos", { defaultValue: "Photos" }) },
+    { icon: Link2, label: t("nativeWelcome.channelLinks", { defaultValue: "Links" }) },
   ];
 
-  const inputTypes = [
-    { icon: Mic, label: t("nativeWelcome.inputVoice", "Voice notes") },
-    { icon: Image, label: t("nativeWelcome.inputPhotos", "Photos") },
-    { icon: Link2, label: t("nativeWelcome.inputLinks", "Links") },
-    {
-      icon: MessageCircle,
-      label: t("nativeWelcome.inputTexts", "Text messages"),
-    },
-  ];
-
-  const active = modes.find((m) => m.key === selectedMode)!;
+  // ─── Handlers ──────────────────────────────────────────────────────
+  // Primary path is /sign-up (functional account creation). The brand
+  // bible's web hero uses the same destination for consistency. The
+  // /request-access flow is reserved for the waitlist — accessible via
+  // a less prominent link (not on this screen by default; can be added
+  // back if waitlist returns).
+  const handleGetStarted = () => navigate("/sign-up");
+  const handleSignIn = () => navigate("/sign-in");
 
   return (
     <main
-      className="min-h-screen flex flex-col bg-gradient-to-b from-[#FDFDF8] via-[#F8F6F0] to-[#EAE8E0]"
+      className="min-h-screen bg-gradient-soft flex flex-col"
       style={{
+        // Respect notch + home indicator. The screen is scrollable; safe
+        // areas are applied to the OUTER main so all sections inherit.
         paddingTop: "env(safe-area-inset-top, 0px)",
         paddingBottom: "env(safe-area-inset-bottom, 0px)",
       }}
     >
-      {/* ── Hero ─────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex flex-col items-center px-6 pt-10 pb-6">
-        {/* Badge */}
-        <div className="flex items-center gap-2 mb-4 animate-fade-up">
-          <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-          <span className="text-sm font-medium text-primary">
-            {t("nativeWelcome.badge", "Meet your personal assistant")}
-          </span>
-        </div>
-
-        {/* Logo */}
-        <div
-          className="relative mb-5 animate-fade-up"
-          style={{ animationDelay: "0.1s" }}
-        >
-          <div className="absolute inset-0 blur-3xl bg-primary/20 rounded-full scale-150" />
+      {/* ─── Hero (1.5-second test) ─────────────────────────────── */}
+      <section className="px-6 pt-8 pb-6 flex flex-col items-center text-center">
+        {/* Logo + Beta badge — uses BetaBadge component per brand bible §13.3 */}
+        <div className="flex items-center gap-3 mb-6">
           <div
             className={cn(
-              "relative w-20 h-20 rounded-2xl flex items-center justify-center",
-              "bg-white shadow-[0_8px_32px_rgba(58,90,64,0.15)]",
-              "border border-primary/10"
+              "w-12 h-12 rounded-2xl flex items-center justify-center",
+              "bg-white shadow-card border border-primary/10",
             )}
           >
             <img
               src={oliveLogoImage}
               alt="Olive"
-              className="w-14 h-14 object-contain rounded-xl"
+              className="w-9 h-9 object-contain rounded-xl"
             />
           </div>
+          <span className="font-bold text-xl text-primary tracking-tight">
+            Olive
+          </span>
+          <BetaBadge size="md" />
         </div>
 
-        {/* Headline */}
-        <h1
-          className="text-3xl font-bold text-foreground tracking-tight text-center mb-3 animate-fade-up leading-tight"
-          style={{ animationDelay: "0.15s" }}
-        >
-          {t(
-            "nativeWelcome.headline",
-            "She remembers, so you don't have to."
-          )}
-        </h1>
-
-        {/* Subheadline */}
-        <p
-          className="text-base text-muted-foreground text-center animate-fade-up leading-relaxed px-2"
-          style={{ animationDelay: "0.2s" }}
-        >
-          {t(
-            "nativeWelcome.subheadline",
-            "Gate codes, grocery lists, brilliant ideas — drop anything to Olive. She organizes it all and gives it back, clean and sorted."
-          )}
-        </p>
-
-        {/* Social Proof */}
-        <div
-          className="flex items-center gap-2 mt-4 animate-fade-up"
-          style={{ animationDelay: "0.25s" }}
-        >
-          <div className="flex -space-x-1 text-sm">
-            <span>😊</span>
-            <span>🙌</span>
-            <span>💪</span>
-            <span>✨</span>
-          </div>
-          <span className="text-sm text-muted-foreground">
-            {t(
-              "nativeWelcome.socialProof",
-              "Loved by 500+ people who stopped losing things"
-            )}
+        {/* Eyebrow — category-naming, NOT "personal assistant" framing
+            (brand bible anti-positioning §1) */}
+        <div className="inline-flex items-center gap-2 mb-5 px-3 py-1.5 rounded-full bg-primary/10">
+          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+          <span className="text-xs font-medium text-primary">
+            {t("nativeWelcome.eyebrow", {
+              defaultValue: "Shared memory for the people you care about",
+            })}
           </span>
         </div>
-      </div>
 
-      {/* ── Choose Your Mode ─────────────────────────────── */}
-      <div
-        className="px-6 pb-4 animate-fade-up"
-        style={{ animationDelay: "0.3s" }}
-      >
-        <p className="text-lg font-bold text-center mb-1">
-          {t("nativeWelcome.modeHeadline", "Olive fits your life.")}
+        {/* Headline — Fraunces serif per brand bible §7 (this is the
+            brand-promise moment that earns serif). Tracking-tight and
+            tight leading per the type spec. */}
+        <h1
+          className="font-serif font-bold text-4xl sm:text-5xl text-foreground tracking-tight leading-[1.1] mb-4 px-2"
+          style={{
+            // Use the slightly deeper green for headings per brand bible
+            // §7 ("All Fraunces headings use a deep variant of brand
+            // green, hsl(130 25% 18%)").
+            color: "hsl(130 25% 18%)",
+          }}
+        >
+          {t("nativeWelcome.headline", {
+            defaultValue: "She remembers, so you don't have to.",
+          })}
+        </h1>
+
+        {/* Subheadline — concrete proof, never abstract (brand bible §13.2) */}
+        <p className="text-base sm:text-lg text-muted-foreground leading-relaxed max-w-md mb-7 px-2">
+          {t("nativeWelcome.subheadline", {
+            defaultValue:
+              "Drop anything — gate codes, grocery lists, dinner plans. Olive organizes it all and gives it back, clean and sorted, the moment you need it.",
+          })}
         </p>
-        <p className="text-xs text-muted-foreground text-center mb-4">
-          {t(
-            "nativeWelcome.modeSubheadline",
-            "Whether you're keeping your own life together, syncing with a partner, or running a business — Olive adapts."
-          )}
-        </p>
 
-        {/* Mode Toggle */}
-        <div className="flex gap-2 mb-4">
-          {modes.map((mode) => (
-            <button
-              key={mode.key}
-              onClick={() => setSelectedMode(mode.key)}
-              className={cn(
-                "flex-1 py-2.5 px-2 rounded-xl border-2 transition-all duration-200",
-                "active:scale-[0.97]",
-                selectedMode === mode.key
-                  ? `${mode.border} ${mode.bg}`
-                  : "border-transparent bg-white/60"
-              )}
-            >
-              <span className="text-lg block text-center">{mode.emoji}</span>
-              <p className="font-semibold text-xs text-center mt-0.5">
-                {mode.label}
-              </p>
-            </button>
-          ))}
-        </div>
-
-        {/* Active Mode Detail */}
-        <div
+        {/* Primary CTA — Coral pill per brand bible §6 ("primary
+            conversion CTA color"). 48px min touch target; soft shadow. */}
+        <Button
+          onClick={handleGetStarted}
           className={cn(
-            "rounded-2xl p-4 border transition-all duration-200",
-            active.bg,
-            active.border
+            "w-full max-w-sm h-14 rounded-full text-base font-semibold",
+            "bg-accent hover:bg-accent/90 text-accent-foreground",
+            "shadow-lg shadow-accent/25",
+            "active:scale-[0.98] transition-transform duration-150",
+            "group",
           )}
         >
-          <p className="font-bold text-sm mb-1">{active.tagline}</p>
-          <p className="text-xs text-muted-foreground mb-3">{active.pain}</p>
-          <div className="flex flex-wrap gap-2">
-            {active.features.map((feat, i) => (
+          {t("nativeWelcome.ctaPrimary", { defaultValue: "Get started — free" })}
+          <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
+        </Button>
+
+        {/* Secondary CTA — ghost/text-only, Hunter Green */}
+        <Button
+          onClick={handleSignIn}
+          variant="ghost"
+          className={cn(
+            "w-full max-w-sm h-12 mt-2 rounded-full text-base font-medium",
+            "text-primary hover:bg-primary/5",
+            "active:scale-[0.98] transition-transform duration-150",
+          )}
+        >
+          {t("nativeWelcome.ctaSignIn", {
+            defaultValue: "I already have an account",
+          })}
+        </Button>
+
+        {/* Trust signal — Beta-transparent (brand bible §4) */}
+        <p className="text-xs text-muted-foreground mt-4 px-4">
+          {t("nativeWelcome.trustSignal", {
+            defaultValue: "Free during Beta. Your data stays yours.",
+          })}
+        </p>
+      </section>
+
+      {/* ─── How it works — Drop / Organize / Find ─────────────── */}
+      <section className="px-6 py-8 border-t border-border/40">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center mb-5">
+          {t("nativeWelcome.howLabel", { defaultValue: "How it works" })}
+        </p>
+
+        {/* Three squircle icons. Hunter-green-only per §6 — never the
+            old multi-color gradient row. */}
+        <div className="grid grid-cols-3 gap-3 max-w-md mx-auto">
+          {steps.map((step, i) => {
+            const StepIcon = step.icon;
+            return (
+              <div key={i} className="flex flex-col items-center text-center">
+                <div
+                  className={cn(
+                    "w-14 h-14 mb-3 flex items-center justify-center",
+                    "rounded-[28%] bg-gradient-to-br from-sage/40 to-white",
+                    "border border-primary/15 shadow-sm",
+                  )}
+                >
+                  <StepIcon className="w-6 h-6 text-primary" strokeWidth={2.25} />
+                </div>
+                <p className="font-semibold text-sm text-foreground leading-tight">
+                  {step.title}
+                </p>
+                <p className="text-xs text-muted-foreground leading-snug mt-1">
+                  {step.desc}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ─── Modes — single-card depth, not three-card width ────── */}
+      <section className="px-6 py-8 border-t border-border/40">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center mb-2">
+          {t("nativeWelcome.modesLabel", { defaultValue: "Olive fits how you live" })}
+        </p>
+        <p className="text-sm text-muted-foreground text-center mb-5 max-w-md mx-auto">
+          {t("nativeWelcome.modesSubtext", {
+            defaultValue:
+              "Same Olive. The Space adapts to who's in it — solo brain dump, couple, family, or team.",
+          })}
+        </p>
+
+        {/* Mode tabs. 64px tall (h-16). Selected state = Hunter Green
+            border + subtle primary tint. NO per-mode color — the brand
+            stays unified across modes (§6 60-30-10 rule). */}
+        <div className="grid grid-cols-4 gap-2 mb-4 max-w-md mx-auto">
+          {modes.map((mode) => {
+            const Icon = mode.icon;
+            const isActive = mode.key === selectedMode;
+            return (
+              <button
+                key={mode.key}
+                onClick={() => setSelectedMode(mode.key)}
+                className={cn(
+                  "h-16 rounded-2xl flex flex-col items-center justify-center gap-1",
+                  "transition-all duration-200 active:scale-[0.97]",
+                  "border-2",
+                  isActive
+                    ? "border-primary bg-primary/5"
+                    : "border-transparent bg-white/60 hover:bg-white",
+                )}
+                aria-pressed={isActive}
+              >
+                <Icon
+                  className={cn(
+                    "w-5 h-5",
+                    isActive ? "text-primary" : "text-muted-foreground",
+                  )}
+                  strokeWidth={2.25}
+                />
+                <span
+                  className={cn(
+                    "text-[11px] font-semibold leading-tight",
+                    isActive ? "text-primary" : "text-muted-foreground",
+                  )}
+                >
+                  {mode.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Selected mode card — .card-glass language per §8. */}
+        <div
+          className={cn(
+            "max-w-md mx-auto rounded-3xl p-5",
+            "bg-white/80 backdrop-blur-xl",
+            "border border-primary/15 shadow-card",
+          )}
+        >
+          <p className="font-serif font-bold text-lg text-foreground mb-2">
+            {activeMode.tagline}
+          </p>
+          <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+            {activeMode.pain}
+          </p>
+          <ul className="space-y-2">
+            {activeMode.features.map((feat, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-foreground">
+                <Check className="w-4 h-4 mt-0.5 flex-shrink-0 text-primary" />
+                <span>{feat}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* ─── Channels — "lives where you already text" ───────────── */}
+      <section className="px-6 py-8 border-t border-border/40">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center mb-2">
+          {t("nativeWelcome.channelsLabel", {
+            defaultValue: "Lives where you already text",
+          })}
+        </p>
+        <p className="text-sm text-muted-foreground text-center mb-5 max-w-md mx-auto">
+          {t("nativeWelcome.channelsSubtext", {
+            defaultValue:
+              "No new app to learn. Forward a voice note from WhatsApp, snap a photo, paste a link — it all lands with Olive.",
+          })}
+        </p>
+
+        <div className="flex justify-center gap-3 max-w-md mx-auto">
+          {channels.map((c, i) => {
+            const ChannelIcon = c.icon;
+            return (
               <div
                 key={i}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium",
-                  active.chipBg,
-                  active.chipText
+                  "flex-1 flex flex-col items-center gap-1.5 py-3 rounded-2xl",
+                  "bg-white/60 border border-border/40",
                 )}
               >
-                <CheckCircle2 className="w-3 h-3" />
-                {feat}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── How It Works ─────────────────────────────────── */}
-      <div
-        className="px-6 pb-4 animate-fade-up"
-        style={{ animationDelay: "0.4s" }}
-      >
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center mb-3">
-          {t("nativeWelcome.howLabel", "✨ How It Works")}
-        </p>
-        <div className="flex gap-2">
-          {howItWorks.map((step, index) => (
-            <div
-              key={index}
-              className="flex-1 p-3 rounded-xl bg-white/70 backdrop-blur-sm border border-white/80 shadow-sm"
-            >
-              <div
-                className={cn(
-                  "w-9 h-9 rounded-lg flex items-center justify-center mb-2",
-                  "bg-gradient-to-br",
-                  step.gradient
-                )}
-              >
-                <step.icon className="w-4 h-4 text-white" />
-              </div>
-              <p className="font-semibold text-xs text-foreground leading-tight">
-                {step.title}
-              </p>
-              <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
-                {step.desc}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── WhatsApp First ────────────────────────────────── */}
-      <div
-        className="px-6 pb-4 animate-fade-up"
-        style={{ animationDelay: "0.5s" }}
-      >
-        <div className="bg-white/50 backdrop-blur-sm rounded-2xl p-4 border border-white/80">
-          <div className="flex items-center justify-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-[#25D366]/10 flex items-center justify-center">
-              <MessageCircle className="w-4 h-4 text-[#25D366]" />
-            </div>
-            <p className="font-semibold text-sm">
-              {t(
-                "nativeWelcome.worksWhere",
-                "Works where you already live."
-              )}
-            </p>
-          </div>
-          <p className="text-xs text-muted-foreground text-center mb-3">
-            {t(
-              "nativeWelcome.worksWhereDesc",
-              "No new apps to learn. Just forward a voice note, a photo, or a link to Olive on WhatsApp. She handles the rest."
-            )}
-          </p>
-          <div className="flex justify-center gap-4">
-            {inputTypes.map((input, index) => (
-              <div key={index} className="flex flex-col items-center gap-1">
-                <div className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center">
-                  <input.icon className="w-4 h-4 text-muted-foreground" />
-                </div>
-                <span className="text-[9px] text-muted-foreground">
-                  {input.label}
+                <ChannelIcon className="w-5 h-5 text-primary" strokeWidth={2} />
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  {c.label}
                 </span>
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
-      </div>
+      </section>
 
-      {/* ── Testimonials ──────────────────────────────────── */}
-      <div
-        className="px-6 pb-4 animate-fade-up"
-        style={{ animationDelay: "0.55s" }}
-      >
-        <div className="space-y-2">
-          {testimonials.map((item, i) => (
-            <div
-              key={i}
-              className="bg-white/70 backdrop-blur-sm rounded-xl p-3 border border-white/80 shadow-sm"
-            >
-              <div className="flex items-start gap-3">
-                <span className="text-2xl">{item.avatar}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-foreground italic leading-snug">
-                    &ldquo;{item.quote}&rdquo;
-                  </p>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <span className="text-xs font-semibold text-foreground">
-                      {item.name}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {item.role}
-                    </span>
-                    <div className="flex ml-auto">
-                      {[...Array(5)].map((_, s) => (
-                        <Star
-                          key={s}
-                          className="w-3 h-3 text-amber-400 fill-amber-400"
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── CTA Section ───────────────────────────────────── */}
-      <div
-        className="px-6 pb-8 pt-2 space-y-3 mt-auto animate-fade-up"
-        style={{ animationDelay: "0.6s" }}
-      >
+      {/* ─── Repeat CTA — sticky-feeling final invitation ────────── */}
+      <section className="px-6 pt-6 pb-10 mt-auto">
         <Button
-          onClick={() => navigate("/request-access")}
-          size="lg"
+          onClick={handleGetStarted}
           className={cn(
-            "w-full h-14 rounded-2xl text-lg font-semibold",
-            "bg-primary hover:bg-primary/90 text-primary-foreground",
-            "shadow-lg shadow-primary/25",
-            "active:scale-[0.98] transition-all duration-200"
+            "w-full max-w-sm mx-auto h-14 rounded-full text-base font-semibold",
+            "bg-accent hover:bg-accent/90 text-accent-foreground",
+            "shadow-lg shadow-accent/25",
+            "active:scale-[0.98] transition-transform duration-150",
+            "group flex",
           )}
         >
-          {t("nativeWelcome.ctaPrimary", "Request Beta Access")}
-          <ChevronRight className="w-5 h-5 ml-1" />
+          {t("nativeWelcome.ctaPrimary", { defaultValue: "Get started — free" })}
+          <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
         </Button>
 
-        <Button
-          onClick={() => navigate("/sign-in")}
-          variant="ghost"
-          size="lg"
-          className={cn(
-            "w-full h-12 rounded-2xl text-base font-medium",
-            "text-primary hover:bg-primary/5",
-            "active:scale-[0.98] transition-all duration-200"
-          )}
+        <button
+          onClick={handleSignIn}
+          className="w-full text-sm text-primary hover:underline mt-3 py-2 font-medium"
         >
-          {t("nativeWelcome.signIn", "I already have an account")}
-        </Button>
-
-        <p className="text-xs text-muted-foreground text-center">
-          {t(
-            "nativeWelcome.freeNote",
-            "Free during Beta. No credit card required."
-          )}
-        </p>
-      </div>
+          {t("nativeWelcome.ctaSignIn", {
+            defaultValue: "I already have an account",
+          })}
+        </button>
+      </section>
     </main>
   );
 };
