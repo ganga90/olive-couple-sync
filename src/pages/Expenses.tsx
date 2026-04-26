@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSupabaseCouple } from '@/providers/SupabaseCoupleProvider';
+import { useSpace } from '@/providers/SpaceProvider';
 import { useExpenses, Expense, ExpenseSplitType, getCategoryIcon, getCurrencySymbol, EXPENSE_CATEGORY_ICONS, BudgetLimit } from '@/hooks/useExpenses';
 import { format, subDays, startOfMonth, startOfWeek } from 'date-fns';
 import {
@@ -39,6 +40,7 @@ interface AddExpenseDialogProps {
   onOpenChange: (v: boolean) => void;
   onAdd: (data: any) => void;
   coupleId?: string | null;
+  spaceId?: string | null;
   userId?: string;
   youName: string;
   partnerName: string;
@@ -48,7 +50,7 @@ interface AddExpenseDialogProps {
 }
 
 const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
-  open, onOpenChange, onAdd, coupleId, userId, youName, partnerName, hasPartner, defaultCurrency, defaultSplit
+  open, onOpenChange, onAdd, coupleId, spaceId, userId, youName, partnerName, hasPartner, defaultCurrency, defaultSplit
 }) => {
   const { t } = useTranslation('expenses');
   const [name, setName] = useState('');
@@ -158,7 +160,10 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
       split_type: splitType,
       paid_by: (splitType === 'partner_paid_split' || splitType === 'partner_owed_full') ? 'partner' : userId,
       is_shared: splitType !== 'individual',
-      couple_id: splitType !== 'individual' ? coupleId : null,
+      // Phase 1B: write space_id; trigger derives couple_id (only for
+      // couple-type spaces). For non-couple spaces couple_id stays NULL,
+      // which is correct (no clerk_couples row to FK to).
+      space_id: splitType !== 'individual' ? (spaceId ?? coupleId ?? null) : null,
       expense_date: now.toISOString(),
       receipt_url: receiptUrl,
       is_recurring: isRecurring,
@@ -770,6 +775,7 @@ const ExpensesPage: React.FC = () => {
   const { t } = useTranslation('expenses');
   const { user } = useAuth();
   const { currentCouple, you, partner } = useSupabaseCouple();
+  const { currentSpace } = useSpace();
   const {
     expenses, activeExpenses, archivedExpenses, loading, analytics, netBalance, netBalanceByCurrency, preferences,
     addExpense, updateExpense, deleteExpense, settleExpenses,
@@ -1262,6 +1268,7 @@ const ExpensesPage: React.FC = () => {
         onOpenChange={setAddOpen}
         onAdd={addExpense}
         coupleId={currentCouple?.id}
+        spaceId={currentSpace?.id}
         userId={user?.id}
         youName={youName}
         partnerName={partnerName}

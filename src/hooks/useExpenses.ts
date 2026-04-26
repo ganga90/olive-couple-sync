@@ -3,6 +3,7 @@ import { useSafeUser as useUser } from "@/hooks/useSafeClerk";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/lib/supabaseClient";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace } from "@/providers/SpaceProvider";
 import { toast } from "sonner";
 
 // ============================================================================
@@ -135,6 +136,7 @@ export function getCurrencySymbol(currency: string): string {
 export function useExpenses() {
   const { user } = useUser();
   const { currentCouple } = useSupabaseCouple();
+  const { currentSpace } = useSpace();
   const { t } = useTranslation('expenses');
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [settlements, setSettlements] = useState<ExpenseSettlement[]>([]);
@@ -149,6 +151,11 @@ export function useExpenses() {
 
   const userId = user?.id;
   const coupleId = currentCouple?.id;
+  // Phase 1B: prefer space_id as the canonical scope. For couple-type
+  // spaces it equals couple_id (1:1 bridge), so 2-person couples behave
+  // identically. For non-couple spaces (family / business / custom),
+  // space_id is the only path that returns rows — couple_id is NULL.
+  const spaceId = currentSpace?.id ?? coupleId ?? null;
 
   // Fetch user expense preferences
   const fetchPreferences = useCallback(async () => {
@@ -226,8 +233,10 @@ export function useExpenses() {
         .select('*')
         .order('expense_date', { ascending: false });
 
-      if (coupleId) {
-        query = query.or(`couple_id.eq.${coupleId},and(user_id.eq.${userId},couple_id.is.null)`);
+      if (spaceId) {
+        // Personal expenses (no scope, authored by me) + every space-scoped expense.
+        // RLS gates to is_couple_member OR is_space_member, so this is safe.
+        query = query.or(`space_id.eq.${spaceId},and(user_id.eq.${userId},couple_id.is.null,space_id.is.null)`);
       } else {
         query = query.eq('user_id', userId);
       }
@@ -240,7 +249,7 @@ export function useExpenses() {
     } finally {
       setLoading(false);
     }
-  }, [userId, coupleId]);
+  }, [userId, spaceId]);
 
   // Fetch settlements
   const fetchSettlements = useCallback(async () => {
@@ -251,8 +260,8 @@ export function useExpenses() {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (coupleId) {
-        query = query.eq('couple_id', coupleId);
+      if (spaceId) {
+        query = query.eq('space_id', spaceId);
       } else {
         query = query.eq('user_id', userId);
       }
@@ -263,7 +272,7 @@ export function useExpenses() {
     } catch (err) {
       console.error('[useExpenses] settlements fetch error:', err);
     }
-  }, [userId, coupleId]);
+  }, [userId, spaceId]);
 
   // Fetch budget limits
   const fetchBudgetLimits = useCallback(async () => {
@@ -293,8 +302,8 @@ export function useExpenses() {
   useEffect(() => {
     if (!userId) return;
 
-    const channelFilter = coupleId
-      ? `couple_id=eq.${coupleId}`
+    const channelFilter = spaceId
+      ? `space_id=eq.${spaceId}`
       : `user_id=eq.${userId}`;
 
     const channel = supabase
@@ -321,7 +330,7 @@ export function useExpenses() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId, coupleId]);
+  }, [userId, spaceId]);
 
   // Add expense
   const addExpense = useCallback(async (expense: Omit<Expense, 'id' | 'created_at' | 'updated_at'>) => {
@@ -417,7 +426,10 @@ export function useExpenses() {
         const { data: settlement, error: settleErr } = await supabase
           .from('expense_settlements')
           .insert({
-            couple_id: coupleId || null,
+            // Phase 1B: write space_id; the trigger mirrors couple_id
+            // for couple-type spaces and leaves it NULL for non-couple
+            // spaces (FK-safe).
+            space_id: spaceId || null,
             user_id: userId,
             settled_by: userId,
             total_amount: totalAmount,
@@ -457,7 +469,7 @@ export function useExpenses() {
       console.error('[useExpenses] settle error:', err);
       toast.error(t('toast.settleError', 'Failed to settle expenses'));
     }
-  }, [userId, coupleId, expenses]);
+  }, [userId, spaceId, expenses]);
 
   // Budget limit CRUD
   const setBudgetLimit = useCallback(async (category: string, monthlyLimit: number) => {
