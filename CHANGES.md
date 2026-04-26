@@ -2294,3 +2294,134 @@ A view-extension PR is the natural follow-up once we have v2 data in.
 - One migration: `supabase db push`
 - No new edge functions
 - No env var changes
+
+---
+
+## TASK-ONB-E — Receipt screen + JIT Calendar prompt + funnel slice-by-version
+
+**Branch:** `feat/onb-receipt-and-jit` (built on `feat/onb-version-flag`) · **Date:** 2026-04-26
+
+### Why
+Three remaining gaps after ONB-A → D:
+
+1. The flow ends abruptly. Users dump their first capture and land on
+   Home with no Olive-side acknowledgment of what just happened. There's
+   no transparency moment — and no "come back tomorrow, I'll know more"
+   hook to drive D2 retention.
+2. ONB-D dropped Calendar OAuth from v2 onboarding (rightly — it's a
+   heavy ask before any value is felt). But there was no replacement —
+   v2 users who type "dentist Tuesday 3pm" have nowhere to be prompted
+   to connect Google Calendar at the moment they'd actually benefit.
+3. ONB-B's `v_onboarding_funnel` view has no `onboarding_version`
+   column, so the dashboard can't slice metrics by cohort even though
+   ONB-D made the assignment available.
+
+### What
+
+1. **`ReceiptStep.tsx`** — new closing beat. Renders 3–5 bullets pulled
+   from live state (Clerk first name, active Space name + type-aware
+   audience phrase, demo capture summary, mental-load focuses) plus a
+   forward-looking promise. Falls back to the user's most-recent
+   `clerk_notes` row if the demo step was skipped, so even skip-path
+   users get a meaningful "you told me about…" line. CTA "Open my day"
+   is the canonical mark-complete + navigate-home path.
+
+2. **`receipt` step added to canonical flow** — sits at the end of
+   `FULL_STEPS_ORDER` for both v1 and v2. `handleComplete` (skip path)
+   and `handleFinishFromPreview` (capture path) now both `goToNextStep`
+   into the receipt instead of navigating directly home — so the
+   "what does Olive know" moment is universal regardless of demo path.
+   New `handleReceiptDone` is the only place we mark complete + navigate.
+
+3. **`CalendarJitCard.tsx`** — a small inline card for the Home page
+   that surfaces only when the user has a future-dated `clerk_notes` row
+   AND no `calendar_connections` row. Single CTA "Connect Google Calendar"
+   (uses the existing `calendar-auth-url` edge function), one dismissal X
+   (sessionStorage-scoped per user, re-prompts next visit). Three
+   telemetry events: `calendar_jit_prompted`, `calendar_jit_clicked`,
+   `calendar_jit_dismissed` — so we can compute JIT-conversion rate and
+   compare it to the in-onboarding Calendar step it replaces.
+
+4. **Mounted on Home** — added `<CalendarJitCard />` next to the
+   existing `<TimezoneSyncCard />` so both surface in the same prominent
+   "post-onboarding context" zone.
+
+5. **Migration `20260426030000_funnel_view_slice_by_version.sql`** —
+   replaces `v_onboarding_funnel` with a version-aware version (one
+   row per `(day, version)`) that joins `olive_user_preferences` to
+   pick up `onboarding_version`. Also adds new columns for
+   `invites_generated` (ONB-C) and `receipt_seen` (this PR). New
+   companion view `v_onboarding_funnel_total` rolls up across
+   versions with weighted-average ratios (so a 1000-user cohort and
+   a 2-user cohort don't get equal weight in average-of-averages).
+
+6. **Three new telemetry events** in `useOnboardingEvent`:
+   `calendar_jit_prompted`, `calendar_jit_clicked`,
+   `calendar_jit_dismissed`.
+
+### Files
+
+| Path | Change |
+|---|---|
+| `src/components/onboarding/ReceiptStep.tsx` | NEW — final transparency beat |
+| `src/components/onboarding/CalendarJitCard.tsx` | NEW — Home-page JIT prompt |
+| `src/lib/onboarding-flow.ts` | MOD — `receipt` added to `FULL_STEPS_ORDER` |
+| `src/pages/Onboarding.tsx` | MOD — receipt mount + handler refactor (skip + capture paths funnel through receipt) |
+| `src/pages/Home.tsx` | MOD — mount `<CalendarJitCard />` next to `<TimezoneSyncCard />` |
+| `src/hooks/useOnboardingEvent.ts` | MOD — 3 new event types in union |
+| `supabase/migrations/20260426030000_funnel_view_slice_by_version.sql` | NEW — view extension + companion total view |
+| `supabase/functions/_shared/onboarding-flow-logic.test.ts` | MOD — updated counts, new "receipt is last" test (10 tests total now) |
+| `CHANGES.md` | MOD — TASK-ONB-E entry |
+
+### Backwards compatibility
+- `v_onboarding_funnel`'s shape gains a `version` column + a few new
+  count columns. Pre-existing dashboards that select-* will see new
+  columns appended; any column-by-name SELECTs are byte-identical for
+  the columns that existed.
+- `v_onboarding_funnel_total` is the migration path for any consumer
+  that expects the pre-PR row shape (no `version` column).
+- ReceiptStep is rendered as a NEW step at the end. Onboarding length
+  grows by one beat for both cohorts. Skip path no longer bypasses
+  the receipt — but the receipt is short, single-CTA, and always
+  rendable. (Funnel will tell us if we need to allow skipping it.)
+- `CalendarJitCard` is invisible (returns `null`) for any user who
+  doesn't meet all eligibility criteria. Zero impact on existing Home
+  layout for connected users.
+
+### Verification
+- ✅ `npx tsc --noEmit -p tsconfig.app.json` — 0 errors
+- ✅ Flow-logic tests — 10/10 pass (1 new "receipt is last beat")
+- ✅ Full regression: `_shared/` + `onboarding-finalize/` —
+  **295/0** (excludes pre-existing time-resolver WIP failure)
+- ✅ `npx vite build` — succeeds
+- ✅ Migration audit: idempotent (`CREATE OR REPLACE VIEW`), no
+  destructive ops, both views are reads-only
+
+### Sample dashboard query
+```sql
+-- Per-cohort funnel for last 14 days
+SELECT day, version, started, first_capture, completed,
+       pct_completed, avg_seconds_to_first_capture
+FROM v_onboarding_funnel
+WHERE day > CURRENT_DATE - INTERVAL '14 days'
+ORDER BY day DESC, version;
+
+-- Cross-cohort rollup (when you don't care about A/B)
+SELECT * FROM v_onboarding_funnel_total
+WHERE day > CURRENT_DATE - INTERVAL '14 days';
+```
+
+### Out of scope (explicit follow-up)
+- **Day-2 heartbeat nudge** — adds a job_type to `olive-heartbeat` that
+  fires 24h after `flow_completed`. Touches outbound WA delivery (not
+  isolated enough for this PR). Receipt screen seeds the expectation;
+  the nudge closes the loop.
+- The receipt screen reads from in-memory state + a single fallback
+  query. A richer version could pull from `olive_soul_layers` directly
+  to surface "I've already learned X about you" — saved for a future
+  pass once we have data on receipt completion rate.
+
+### Deploy notes
+- One migration: `supabase db push`
+- No new edge functions
+- No env var changes

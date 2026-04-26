@@ -29,10 +29,15 @@ export type OnboardingStep =
   | "regional"
   | "whatsapp"
   | "calendar"
-  | "demo";
+  | "demo"
+  | "receipt";
 
 // Canonical full-flow ordering. v1 uses this verbatim. v2 derives a
 // filtered list by dropping the steps in V2_DROPPED_STEPS below.
+//
+// `receipt` is the closing transparency beat — Olive echoes back the
+// 3–4 facts she just learned. Lives on both v1 and v2 because the
+// retention upside (Day-2 hook) applies regardless of cohort.
 export const FULL_STEPS_ORDER: OnboardingStep[] = [
   "demoPreview",
   "quiz",
@@ -42,6 +47,7 @@ export const FULL_STEPS_ORDER: OnboardingStep[] = [
   "whatsapp",
   "calendar",
   "demo",
+  "receipt",
 ];
 
 const V2_DROPPED_STEPS: ReadonlySet<OnboardingStep> = new Set([

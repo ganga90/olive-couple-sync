@@ -51,6 +51,7 @@ import {
   type ProcessNoteResult,
 } from "@/components/onboarding/CapturePreview";
 import { InviteSpaceStep } from "@/components/onboarding/InviteSpaceStep";
+import { ReceiptStep } from "@/components/onboarding/ReceiptStep";
 import {
   getStepsForVersion,
   getQuizStepsForVersion,
@@ -760,20 +761,30 @@ const Onboarding = () => {
   const handleComplete = async () => {
     // The user reached the demo step but tapped "Skip and go to Home"
     // instead of submitting a brain-dump. Record the skip distinctly so
-    // we can measure whether moving the demo earlier in the flow (planned
-    // for TASK-ONB-D) would convert these dropouts into capture_sent events.
+    // we can measure whether moving the demo earlier in the flow would
+    // convert these dropouts into capture_sent events.
     fireEvent("beat_skipped", { beat: "demo", path: "skip_to_home" });
     await ensureSpaceExists();
-    await markOnboardingCompleted();
-    navigate(getLocalizedPath("/home"));
+    // Both skip and capture paths funnel through the receipt beat now —
+    // the receipt is the only place we mark onboarding complete + navigate
+    // away. Keeps the "what does Olive know" transparency moment universal.
+    goToNextStep(); // → receipt
   };
 
   // Called after the user has SEEN their first capture organized in the
-  // preview pane and explicitly chose to leave for the home screen.
-  // Distinguished from handleComplete (which is for skip-without-capture)
-  // so the funnel can measure how many users get to the aha moment.
-  const handleFinishFromPreview = async () => {
+  // preview pane and explicitly chose to advance. Distinguished from
+  // handleComplete (which is for skip-without-capture) so the funnel can
+  // measure how many users reach the aha moment.
+  const handleFinishFromPreview = () => {
     setIsProcessingDemo(false);
+    goToNextStep(); // → receipt
+  };
+
+  // Final beat handler — called from ReceiptStep's "Open my day" CTA.
+  // This is the ONLY place we mark onboarding completed + navigate to
+  // the home screen, so flow_completed telemetry is canonical regardless
+  // of whether the user captured something or skipped through demo.
+  const handleReceiptDone = async () => {
     await markOnboardingCompleted();
     navigate(getLocalizedPath("/home"));
   };
@@ -1299,6 +1310,22 @@ const Onboarding = () => {
               </>
             )}
           </div>
+        )}
+
+        {/* Step 7: Receipt — Olive's transparency moment.
+            Renders four bullets pulled from the live data we wrote during
+            onboarding. The CTA is the canonical "mark complete + navigate
+            home" path; both demo-capture and demo-skip paths funnel here. */}
+        {state.currentStep === "receipt" && (
+          <ReceiptStep
+            firstName={user?.firstName || ""}
+            spaceName={state.spaceAnswers.spaceName}
+            spaceType={state.spaceAnswers.spaceType}
+            demoResult={demoResult}
+            mentalLoad={state.quizAnswers.mentalLoad}
+            userId={user?.id}
+            onContinue={handleReceiptDone}
+          />
         )}
       </section>
 
