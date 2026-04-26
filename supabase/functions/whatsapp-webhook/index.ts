@@ -3279,23 +3279,40 @@ Description: "${parsedExpense.description}"`;
       }
 
       if (specificList && tasks) {
-        const relevantTasks = tasks.filter(t => t.list_id === specificList && !t.completed);
-        
+        // ── Fix 7: targeted list fetch (do NOT rely on the 100-recency window) ──
+        // The outer `tasks` array is `LIMIT 100 ORDER BY created_at DESC`. Heavy users
+        // (hundreds of notes spanning months) have lists like "Books" whose items are
+        // older than the 100-most-recent slice — those items get filtered out and the
+        // user sees "Your Books list is empty!" even though the list has 12 items.
+        // Solution: when we have a specific list, fetch its contents directly with no
+        // recency cap, scoped by user/couple to respect RLS-equivalent visibility.
+        const { data: listTasksDirect } = await supabase
+          .from('clerk_notes')
+          .select('id, summary, due_date, completed, priority, category, list_id, items, task_owner, original_text')
+          .eq('list_id', specificList)
+          .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+          .order('created_at', { ascending: false });
+
+        const allListTasks = listTasksDirect || [];
+        const relevantTasks = allListTasks.filter(t => !t.completed);
+        const completedInList = allListTasks.filter(t => t.completed);
+
+        console.log('[WhatsApp/SEARCH] Targeted list fetch:', matchedListName, '→', allListTasks.length, 'total |', relevantTasks.length, 'active');
+
         if (relevantTasks.length === 0) {
-          const completedInList = tasks.filter(t => t.list_id === specificList && t.completed);
           const emptyMsg = completedInList.length > 0
             ? `Your ${matchedListName} list is all done! ✅ (${completedInList.length} completed item${completedInList.length > 1 ? 's' : ''})`
             : `Your ${matchedListName} list is empty! 🎉`;
           return reply(emptyMsg);
         }
-        
+
         const itemsList = relevantTasks.map((t, i) => {
           const items = t.items && t.items.length > 0 ? `\n  ${t.items.join('\n  ')}` : '';
           const priority = t.priority === 'high' ? ' 🔥' : '';
           const dueInfo = t.due_date ? ` (Due: ${formatFriendlyDate(t.due_date)})` : '';
           return `${i + 1}. ${t.summary}${priority}${dueInfo}${items}`;
         }).join('\n\n');
-        
+
         const searchListResponse = `📋 ${matchedListName} (${relevantTasks.length}):\n\n${itemsList}\n\n💡 Say "done with [task]" to complete items`;
         // Save the first task as referenced entity AND the full numbered list for ordinal references
         await saveReferencedEntity(relevantTasks[0], searchListResponse, relevantTasks.map(t => ({ id: t.id, summary: t.summary })));
@@ -4667,13 +4684,29 @@ Description: "${parsedExpense.description}"`;
       // Build context: FULL DETAILS for relevant items
       let savedItemsContext = '';
 
-      // ---- Fix 3 (cont.): Inject the anchored list at the TOP of context ----
+      // ---- Fix 3 (cont.) + Fix 8: Inject the anchored list at the TOP of context ----
       // The LLM now sees a clearly labeled section with the exact list the user
       // asked about — full contents, no truncation, before any scoring noise.
+      //
+      // Fix 8: targeted list fetch. The outer `allTasks` is `LIMIT 200 ORDER BY
+      // created_at DESC`. Heavy users (hundreds of notes spanning months) have lists
+      // like "Books" whose items predate the 200-recency window — those items get
+      // dropped, the section comes out empty, and the LLM correctly says "I don't
+      // have that yet" per the OLIVE_IDENTITY_RULES. Fetch the list directly here
+      // with no recency cap, scoped to user/couple.
       if (anchoredListMatch) {
-        const listTasks = (allTasks || []).filter(t => t.list_id === anchoredListMatch!.listId);
+        const { data: listTasksDirect } = await supabase
+          .from('clerk_notes')
+          .select('id, summary, original_text, due_date, completed, priority, items, reminder_time, created_at')
+          .eq('list_id', anchoredListMatch.listId)
+          .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+          .order('created_at', { ascending: false });
+
+        const listTasks = listTasksDirect || [];
         const activeListTasks = listTasks.filter(t => !t.completed);
         const completedListTasks = listTasks.filter(t => t.completed);
+        console.log('[CONTEXTUAL_ASK] Targeted list fetch:', anchoredListMatch.listName, '→', listTasks.length, 'total |', activeListTasks.length, 'active');
+
         savedItemsContext += `\n## YOU ASKED ABOUT THE "${anchoredListMatch.listName}" LIST (${activeListTasks.length} active, ${completedListTasks.length} completed):\n`;
         if (activeListTasks.length === 0 && completedListTasks.length === 0) {
           savedItemsContext += `(this list exists but has no items yet)\n`;
