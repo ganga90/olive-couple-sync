@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Capacitor } from "@capacitor/core";
@@ -15,6 +15,7 @@ import { useSpace, type SpaceType } from "@/providers/SpaceProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
 import { seedOnboardingSoul } from "@/lib/onboarding-soul";
+import { useOnboardingEvent } from "@/hooks/useOnboardingEvent";
 import {
   SpaceNameStep,
   type OnboardingScope,
@@ -147,6 +148,12 @@ const Onboarding = () => {
   const { user } = useAuth();
   const { createCouple, currentCouple } = useSupabaseCouple();
   const { createSpace, switchSpace, spaces } = useSpace();
+  const fireEvent = useOnboardingEvent();
+
+  // Captured at first render so duration metrics (time-to-first-capture,
+  // total flow time) can be computed client-side as a sanity check
+  // against server-side timestamps.
+  const flowStartRef = useRef<number>(Date.now());
 
   const [state, setState] = useState<OnboardingState>(() => {
     try {
@@ -177,6 +184,23 @@ const Onboarding = () => {
   const [selectedTimezone, setSelectedTimezone] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState("");
   const [hasAutoDetected, setHasAutoDetected] = useState(false);
+
+  // Telemetry — fire flow_started exactly once per session, then
+  // beat_started on every step transition. The hook itself dedups
+  // flow_started across StrictMode double-invocations + refresh-resumes
+  // via sessionStorage, so we can call it unconditionally on mount.
+  useEffect(() => {
+    fireEvent("flow_started", { beat: state.currentStep });
+    // Intentionally not depending on `state.currentStep` — flow_started
+    // is a one-shot session-level event. beat_started for subsequent
+    // beats is fired by the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    fireEvent("beat_started", { beat: state.currentStep });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.currentStep]);
 
   // Auto-detect timezone and language
   useEffect(() => {
@@ -230,12 +254,25 @@ const Onboarding = () => {
   const goToNextStep = () => {
     const nextIndex = currentStepIndex + 1;
     if (nextIndex < STEPS_ORDER.length) {
+      // Mark the leaving step as completed in telemetry. The hook
+      // separately fires beat_started for the new step via the effect
+      // tied to state.currentStep.
+      fireEvent("beat_completed", { beat: state.currentStep });
       setState((prev) => ({
         ...prev,
         completedSteps: [...new Set([...prev.completedSteps, state.currentStep])],
       }));
       goToStep(STEPS_ORDER[nextIndex]);
     }
+  };
+
+  // Skip-button helper — emits a beat_skipped event before advancing so
+  // the funnel can distinguish "completed via primary CTA" from "tapped
+  // skip link". Visually skipping is still useful signal (the user got
+  // through the beat), so we also fire beat_completed via goToNextStep.
+  const skipBeat = () => {
+    fireEvent("beat_skipped", { beat: state.currentStep });
+    goToNextStep();
   };
 
   const goToPrevStep = () => {
@@ -376,6 +413,16 @@ const Onboarding = () => {
         },
       }));
 
+      // Telemetry: space_created fires once we have a confirmed spaceId,
+      // regardless of whether it came via createCouple or createSpace.
+      // The space_type label keeps the funnel sliceable by scope.
+      fireEvent("space_created", {
+        beat: "spaceCreate",
+        space_type: spaceType,
+        scope,
+        ok: Boolean(spaceId),
+      });
+
       // Best-effort: seed the User Soul + augment the Space Soul. This is
       // the bridge from quiz answers → Olive's operating context. Failures
       // are logged but never block onboarding completion.
@@ -388,8 +435,10 @@ const Onboarding = () => {
         timezone: selectedTimezone || undefined,
         language: selectedLanguage || undefined,
         partnerName: values.partnerName || undefined,
-      }).catch(() => {
-        /* already logged inside seedOnboardingSoul */
+      }).then((res) => {
+        // Capture the soul-seeding outcome separately so a successful
+        // space_created with a failed soul_seeded is visible in the funnel.
+        fireEvent("soul_seeded", { ok: res.ok });
       });
 
       goToNextStep();
@@ -439,6 +488,12 @@ const Onboarding = () => {
       const { data, error } = await supabase.functions.invoke("generate-whatsapp-link", { body: {} });
       if (!error && data?.whatsappLink) {
         setWhatsappLink(data.whatsappLink);
+        // The user clicked "Connect" and got a working link. We log
+        // wa_connected at this point — not on inbound message receipt —
+        // because the inbound webhook isn't observable from the client.
+        // The funnel can later be cross-referenced with whatsapp-webhook
+        // logs to compute the link → first-message conversion separately.
+        fireEvent("wa_connected", { beat: "whatsapp" });
         if (!isDesktop) window.open(data.whatsappLink, "_blank");
       } else {
         toast.error(t("whatsapp.errorFallback", { defaultValue: "You can connect later in Settings." }));
@@ -460,6 +515,11 @@ const Onboarding = () => {
         body: { user_id: user.id, redirect_origin: origin },
       });
       if (!error && data?.auth_url) {
+        // Fired pre-redirect: the user CHOSE to connect. Whether OAuth
+        // actually completes is observable via the calendar-callback
+        // edge function logs and the calendar_connections table — the
+        // funnel here measures intent, not outcome.
+        fireEvent("calendar_connected", { beat: "calendar", stage: "redirected" });
         localStorage.setItem(ONBOARDING_STATE_KEY, JSON.stringify({
           ...state,
           currentStep: "demo",
@@ -476,6 +536,20 @@ const Onboarding = () => {
   const markOnboardingCompleted = async () => {
     localStorage.setItem("olive_onboarding_completed", "true");
     localStorage.removeItem(ONBOARDING_STATE_KEY);
+
+    // Telemetry: emit flow_completed with both the wall-clock duration
+    // and the path the user took. duration_seconds rounds to whole
+    // seconds — the JSONB payload preserves higher precision via ms.
+    const ms = Date.now() - flowStartRef.current;
+    fireEvent("flow_completed", {
+      duration_seconds: Math.round(ms / 1000),
+      duration_ms: ms,
+      completed_steps: state.completedSteps,
+      space_type: state.quizAnswers.scope
+        ? SCOPE_TO_SPACE_TYPE[state.quizAnswers.scope] || "custom"
+        : "custom",
+    });
+
     if (user?.id) {
       try {
         await supabase.from("olive_memory_chunks").insert({
@@ -516,6 +590,7 @@ const Onboarding = () => {
   const handleDemoSubmit = async () => {
     if (!demoText.trim()) return;
     setIsProcessingDemo(true);
+    const startedAt = Date.now();
     try {
       const coupleId = await ensureSpaceExists();
 
@@ -523,10 +598,22 @@ const Onboarding = () => {
         body: { text: demoText.trim(), user_id: user?.id, couple_id: coupleId },
       });
       if (error) throw error;
+      // capture_sent measures the moment Olive successfully ingests the
+      // user's first brain-dump. latency_ms is process-note's round-trip
+      // — useful for spotting Gemini slowdowns that hurt the aha moment.
+      fireEvent("capture_sent", {
+        beat: "demo",
+        latency_ms: Date.now() - startedAt,
+        chars: demoText.trim().length,
+      });
       toast.success(t("demo.success", { defaultValue: "Your first task is ready! 🎉" }));
       await markOnboardingCompleted();
       navigate(getLocalizedPath("/home"));
-    } catch {
+    } catch (err: any) {
+      fireEvent("error", {
+        beat: "demo",
+        error: err?.message || "process_note_failed",
+      });
       toast.error(t("demo.error", { defaultValue: "Something went wrong. Let's try again." }));
     } finally {
       setIsProcessingDemo(false);
@@ -534,6 +621,11 @@ const Onboarding = () => {
   };
 
   const handleComplete = async () => {
+    // The user reached the demo step but tapped "Skip and go to Home"
+    // instead of submitting a brain-dump. Record the skip distinctly so
+    // we can measure whether moving the demo earlier in the flow (planned
+    // for TASK-ONB-D) would convert these dropouts into capture_sent events.
+    fireEvent("beat_skipped", { beat: "demo", path: "skip_to_home" });
     await ensureSpaceExists();
     await markOnboardingCompleted();
     navigate(getLocalizedPath("/home"));
@@ -625,7 +717,7 @@ const Onboarding = () => {
               {t("quiz.next", { defaultValue: "Next" })}
               <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
             </Button>
-            <button onClick={goToNextStep} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={skipBeat} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
               {t("quiz.skipQuiz", { defaultValue: "Skip personalization" })}
             </button>
           </div>
@@ -882,7 +974,7 @@ const Onboarding = () => {
               </>
             )}
 
-            <button onClick={goToNextStep} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={skipBeat} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
               {t("skip", { defaultValue: "Skip for now" })}
             </button>
           </div>
@@ -924,7 +1016,7 @@ const Onboarding = () => {
               {t("calendar.connectButton")}
               <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
             </Button>
-            <button onClick={goToNextStep} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={skipBeat} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
               {t("skip", { defaultValue: "Skip" })}
             </button>
           </div>

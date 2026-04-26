@@ -1976,3 +1976,95 @@ assembly had nothing to personalize tone, focus, or relationships from.
   263/0 (the time-resolver failure is in a pre-existing WIP file unrelated
   to this task)
 - ✅ `npx vite build` — succeeds
+
+---
+
+## TASK-ONB-B — Onboarding instrumentation (events table + funnel view + client hook)
+
+**Branch:** `feat/onb-instrumentation` (built on `feat/onb-spaces-and-soul`) · **Date:** 2026-04-26
+
+### Why
+After TASK-ONB-A wired quiz answers into Spaces + the Soul system, we had
+no way to measure whether the new flow actually moves the needle on
+completion, time-to-first-capture, or D1 retention. The only signal was
+a single `olive_memory_chunks` row tagged `onboarding_completed` — useless
+for per-beat drop-off, skip rate, or A/B comparison. This PR adds the
+event log + funnel view that every downstream onboarding PR (C/D/E)
+needs to be measurable.
+
+### What
+
+1. **Migration `20260426010000_onboarding_events_instrumentation.sql`** —
+   creates `olive_onboarding_events` (append-only, RLS scoped to
+   `auth.jwt()->>'sub'`) plus three indexes (per-user timeline,
+   per-event-type, per-beat). Service role bypasses RLS via separate
+   policy for cross-user dashboard queries.
+
+2. **View `v_onboarding_funnel`** — daily funnel using a `user_first_events`
+   CTE so we avoid correlated subqueries. Reports starts, space-created,
+   first-capture, wa-connected, wa-skipped, completed counts plus null-safe
+   pct ratios and average `seconds_to_first_capture` / `seconds_total`.
+
+3. **Hook `src/hooks/useOnboardingEvent.ts`** — fire-and-forget telemetry
+   that writes directly to the table via the authenticated Supabase client
+   (no extra edge function on the hot path). Idempotent `flow_started` via
+   `sessionStorage` to dedup React StrictMode double-mounts and refresh
+   resumes. Stable callback identity across renders.
+
+4. **`Onboarding.tsx` instrumentation** — fires the full event matrix:
+   - `flow_started` once per session (on mount)
+   - `beat_started` on every step transition (effect on `currentStep`)
+   - `beat_completed` in `goToNextStep`
+   - `beat_skipped` via new `skipBeat()` helper wired to all 3 skip links
+     plus the demo "Skip and go to Home" link
+   - `space_created` + `soul_seeded` in `handleSpaceCreate`
+   - `wa_connected` in `handleConnectWhatsApp` (intent, pre-redirect)
+   - `calendar_connected` in `handleConnectCalendar` (intent, pre-redirect)
+   - `capture_sent` in `handleDemoSubmit` with `latency_ms` for Gemini
+     round-trip monitoring
+   - `flow_completed` in `markOnboardingCompleted` with `duration_seconds`
+     + `completed_steps` array
+   - `error` on `process-note` failure with the underlying message
+
+### Files
+
+| Path | Change |
+|---|---|
+| `supabase/migrations/20260426010000_onboarding_events_instrumentation.sql` | NEW — table + RLS + view |
+| `src/hooks/useOnboardingEvent.ts` | NEW — fire-and-forget client hook |
+| `src/pages/Onboarding.tsx` | MOD — wires the hook into 11 event call sites + new `skipBeat()` helper |
+
+### Why no edge function
+Events are write-once, low-stakes, and high-frequency on the hot path of
+new-user activation. Forcing each through an edge function adds 80–200ms
+of HTTP overhead per beat plus a deploy gate that would block measurement.
+RLS enforces `user_id = auth.jwt()->>'sub'` on every INSERT — no client
+can fabricate events for another user.
+
+### Why no client-side tests
+The repo has no Vitest / Jest configured. Adding it for one hook is out
+of scope for this PR. Coverage strategy: TypeScript + production build +
+manual QA on Vercel preview, with the funnel view itself acting as a
+runtime contract test (if events stop flowing, the view goes empty).
+
+### Verification
+- ✅ `npx tsc --noEmit -p tsconfig.app.json` — 0 errors
+- ✅ `deno test supabase/functions/_shared/ --ignore=…/time-resolver.test.ts` —
+  276/0 (regression check; my changes don't touch `_shared/`)
+- ✅ `npx vite build` — succeeds
+- ✅ Migration audit: idempotent (uses `IF NOT EXISTS` + `DO $$ IF NOT EXISTS`
+  policy guards), no destructive ops, view is `CREATE OR REPLACE`
+
+### Sample query for the dashboard
+```sql
+SELECT day, started, completed, pct_completed,
+       avg_seconds_to_first_capture, avg_seconds_total
+FROM v_onboarding_funnel
+WHERE day > CURRENT_DATE - INTERVAL '14 days'
+ORDER BY day DESC;
+```
+
+### Deploy notes
+- One migration: `supabase db push`
+- No new edge functions
+- No env var changes
