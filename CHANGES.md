@@ -2425,3 +2425,113 @@ WHERE day > CURRENT_DATE - INTERVAL '14 days';
 - One migration: `supabase db push`
 - No new edge functions
 - No env var changes
+
+---
+
+## TASK-IOS-LANDING — Redesign NativeWelcome screen for brand alignment
+
+**Branch:** `feat/ios-native-welcome-redesign` · **Date:** 2026-04-26
+
+### Why
+The iOS first-launch screen (`NativeWelcome.tsx`) had drifted significantly
+from the brand. Concrete violations against `OLIVE_BRAND_BIBLE.md`:
+
+- **Color (§6, anti-pattern §E.6):** used violet, rose, and blue tints
+  for mode chips and rainbow gradients (`from-violet-500`, `from-amber-500`,
+  `from-emerald-500`) on the how-it-works icons. Brand bible: Hunter Green
+  dominant, Coral for primary conversion CTA only, Magic Gold reserved for
+  AI moments. No purple, no rainbow.
+- **Voice (§4):** decorative emoji everywhere — "🧘 Personal", "❤️ Partner",
+  "💼 Business" mode chips; "👩‍💼", "❤️" testimonial avatars; "😊 🙌 💪 ✨"
+  social-proof bar; "✨ How It Works" prefix. Brand bible: warm but not
+  saccharine, no decorative emoji, the leaf (🌿) is reserved for
+  Olive-authored lines only.
+- **Anti-positioning (§1):** eyebrow read "Meet your personal assistant" —
+  the brand bible's first anti-positioning rule is "Olive is NOT an AI
+  assistant — that's a commodity category in 2026."
+- **Typography (§7):** headline used Plus Jakarta Sans bold instead of
+  Fraunces serif — the brand-promise moment is exactly what earns serif.
+- **Density (§13.4):** crammed hero + modes + how-it-works + WhatsApp +
+  testimonials into one viewport. Brand bible: iOS density is "generous —
+  one capture, one card", not webpage-dense.
+- **CTA framing:** primary said "Request Beta Access" (waitlist gate)
+  rather than the canonical "Get started — free" → `/sign-up` that the
+  web hero uses.
+- **Touch targets:** mode toggle buttons used `py-2.5` (~28px tall),
+  below the brand bible's 48px minimum.
+- **Components:** custom-rolled logo container instead of the shared
+  `<BetaBadge />` component. Hand-off broken between web and iOS.
+
+### What
+
+Wholesale rewrite of `src/pages/NativeWelcome.tsx`. Same export, same
+route (`/native-welcome`), same translation namespace (`auth.nativeWelcome`)
+for backwards compatibility. New design enforces the brand bible:
+
+1. **Hero passes the 1.5-second test.** Logo + Beta badge, eyebrow pill,
+   Fraunces serif headline (deep Hunter Green at `hsl(130 25% 18%)` per
+   §7), one-sentence concrete-proof subhead, Coral primary CTA, ghost
+   secondary CTA, Beta-transparent trust signal.
+2. **How it works.** Three squircle icons (Hunter Green strokes only,
+   sage-to-white gradient backgrounds per §8) — no rainbow gradients.
+3. **Modes.** Single tab strip (Solo / Couple / Family / Business) with
+   one card revealed at a time. Selection state = Hunter Green border +
+   subtle primary tint, NOT a unique color per mode. Default is Couple
+   (the brand bible's flagship consumer wedge).
+4. **Channels.** Four affordances (WhatsApp / Voice / Photos / Links) in
+   a unified card row — no mock chat UI.
+5. **Repeat CTA.** Same pair as the hero, so a user who scrolled the
+   proof never has to scroll back up to convert.
+
+### Backwards compatibility
+
+- Same export (`NativeWelcome` default), same route in `App.tsx`, same
+  `auth.nativeWelcome` translation namespace. Drop-in replacement.
+- All 10 legacy translation keys (`tagline`, `feature*Title`,
+  `getStarted`, `signIn`, `chatTeaser`) are no longer rendered, but they
+  remain in the locale files in case any non-React caller (e.g. App
+  Store screenshots, marketing collateral) references them. They can be
+  pruned in a follow-up cleanup.
+- Three locales (en, es-ES, it-IT) updated with 45 matching keys each.
+- Defaults via `t(key, { defaultValue: ... })` so the screen renders
+  correctly even if a future locale ships without the new keys.
+
+### Files
+
+| Path | Change |
+|---|---|
+| `src/pages/NativeWelcome.tsx` | Full rewrite — 468 lines → ~430 lines, all on-brand |
+| `public/locales/en/auth.json` | `nativeWelcome` block updated with 45 keys |
+| `public/locales/es-ES/auth.json` | Same — translated |
+| `public/locales/it-IT/auth.json` | Same — translated |
+| `CHANGES.md` | TASK-IOS-LANDING entry |
+
+### Verification
+- ✅ `npx tsc --noEmit -p tsconfig.app.json` — 0 errors
+- ✅ `npx vite build` — succeeds
+- ✅ All 3 locale JSON files parse cleanly with matching 45-key shape
+- ✅ All design tokens used (`bg-accent`, `text-primary`, `font-serif`,
+  `bg-gradient-soft`, `from-sage`) verified in `tailwind.config.ts` /
+  `src/index.css`
+- ✅ All copy adheres to brand bible §4 (no exclamation points, no
+  decorative emoji, "shared memory" framing not "personal assistant")
+- ✅ Safe-area aware (`env(safe-area-inset-top)` + `env(safe-area-inset-bottom)`
+  on the outer `main`)
+- ✅ All touch targets ≥48px (h-12 ghost button, h-14 primary CTA,
+  h-16 mode tabs)
+
+### Deploy notes
+- **Frontend-only change.** No migrations, no edge functions, no env vars.
+- Vercel preview will deploy automatically on push.
+- iOS app will pick this up on next OTA / TestFlight build (Capacitor's
+  WebView serves from `https://witholive.app` per `capacitor.config.ts`,
+  so no native rebuild required if you're shipping over-the-air).
+
+### Out of scope
+- Pruning the 10 legacy `nativeWelcome` keys from locale files —
+  intentionally retained for one release cycle in case external assets
+  reference them.
+- Adding new motifs (sketched chat bubbles, phone frames) — brand bible
+  §13.2 caps imagery to three motifs done well; this screen leans on
+  typography + cards + squircle icons (already in the system) without
+  introducing new ones.
