@@ -260,7 +260,14 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 7. **Relative references.** "Last task", "the latest one", "previous task", "l'ultima attività", "última tarea" → preserve the EXACT phrase in target_task_name. The system resolves it. These are action intents, never "create".
 8. **Questions about data = contextual_ask, NOT search.** "When is X?", "What did I save about Y?", "Do I have any Z?", "Which restaurants I have?", "What's in my travel list?" → contextual_ask. The word "search" is reserved for DASHBOARD commands like "show my tasks" or "what's urgent". If the user is asking a QUESTION (interrogative) about specific content → contextual_ask. If they want a dashboard/summary view → search.
 9. **New items with details = create.** If the message contains a date, time, location, or appointment-like details AND does NOT use modification verbs (change, update, postpone, reschedule, move), it is always "create". Example: "Oliva vet visit at Banfield on 20-Mar at 5pm" → CREATE.
-10. **Ambiguity resolution hierarchy:** (a) If the message ends with "?" → contextual_ask or search, NEVER create. (b) If the message is a SINGLE WORD or short phrase that EXACTLY matches an existing list name → search. (c) If the message is a noun phrase (no verb, no question mark) that does NOT match a list name → CREATE (brain dump). (d) If the message has a verb at the start → CREATE (imperative task). (e) Only use "search" for explicit dashboard requests like "show my tasks", "what's urgent?", "what's due today?".
+10. **Ambiguity resolution hierarchy:** (a) If the message ends with "?" → contextual_ask or search per Rule 10a below, NEVER create. (b) If the message is a SINGLE WORD or short phrase that EXACTLY matches an existing list name → search. (c) If the message is a noun phrase (no verb, no question mark) that does NOT match a list name → CREATE (brain dump). (d) If the message has a verb at the start → CREATE (imperative task). (e) Only use "search" for explicit dashboard requests like "show my tasks", "what's urgent?", "what's due today?".
+
+10a. **HARD RULE — list-content questions are ALWAYS contextual_ask:** Any interrogative form asking what is INSIDE a list, or asking about the user's own data on a topic, is "contextual_ask" — NOT "search". The user wants an answer synthesized from their data, not a static dump. Set list_name whenever the user names a list. Concretely:
+   - "What's in my X list?", "What's on my X list?", "What do I have in X?", "What's in X?" → **contextual_ask**, list_name="X"
+   - "What's my [thing]?" (e.g., "What's my Waymo discount code?", "What's my flight number?", "What's my locker combination?") → **contextual_ask** (the user expects retrieval of saved content)
+   - "What books are on my list?", "Which restaurants do I have?", "Do I have any travel plans?", "Any date ideas?" → **contextual_ask**
+   - "When is the dentist?", "Where did I save the recipe?", "What time is my flight?" → **contextual_ask**
+   "search" is reserved EXCLUSIVELY for explicit dashboard verbs ("show", "open", "display") OR the fixed dashboard phrases ("what's urgent", "what's due today", "what's overdue", "what's due this week"). If the message is a question without those exact verbs/phrases → **contextual_ask**.
 11. **Language:** The user speaks ${userLanguage}. Understand their message natively in that language.
 12. **Confidence:** 0.9+ clear, 0.7-0.9 moderate, 0.5-0.7 uncertain, <0.5 very ambiguous.
 13. For chat_type, use: briefing, weekly_summary, daily_focus, productivity_tips, progress_check, motivation, planning, greeting, assistant, general. Use "assistant" when the user wants help composing, drafting, writing, or creating content (emails, messages, texts, plans).
@@ -283,7 +290,11 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
 - "Crea una lista per la spesa" → create_list (list_name="Spesa")
 - "Crea una lista sobre viajes" → create_list (list_name="Viajes")
 - "Show my groceries list" → search (dashboard view of existing list)
-- "What's in my travel list?" → search or contextual_ask (querying existing data)
+- "What's in my travel list?" → **contextual_ask** (list_name="travel") — Rule 10a: list-content question
+- "What's in my book list?" → **contextual_ask** (list_name="book") — Rule 10a: list-content question
+- "What's my Waymo discount code?" → **contextual_ask** — Rule 10a: retrieving saved content
+- "What books are on my list?" → **contextual_ask** (list_name="books") — Rule 10a: list-content question
+- "Do I have any travel plans?" → **contextual_ask** — Rule 10a: querying saved content
 - "Recap my work list" → list_recap (detailed analytical review)
 - "Review my groceries" → list_recap (detailed review with insights)
 - "Summarize my travel list" → list_recap (AI-generated summary)
