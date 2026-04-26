@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.0.0";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { GEMINI_KEY, getModel } from "../_shared/gemini.ts";
+import { assembleSoulContext } from "../_shared/soul.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -64,10 +65,29 @@ serve(async (req) => {
     // Fetch user memories and skills for context personalization
     let memoryContext = '';
     let skillContext = '';
-    
+    let soulPromptPrefix = '';
+
     if (user_id && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-      
+
+      // Soul: prepend the user's assembled soul stack so tone, verbosity,
+      // domain knowledge, and relationships shape the per-note assistance.
+      // Cast: ask-olive pins @supabase/supabase-js@2.45.0 while soul.ts
+      // uses @2 (latest); same-shape cast through unknown.
+      try {
+        const soulResult = await assembleSoulContext(
+          supabase as unknown as Parameters<typeof assembleSoulContext>[0],
+          { userId: user_id }
+        );
+        if (soulResult.hasSoul) {
+          soulPromptPrefix = `${soulResult.prompt}\n\n---\n\n`;
+          console.log('[Ask Olive] Soul loaded:', soulResult.layersLoaded.join(','), 'tokens=', soulResult.tokensUsed);
+        }
+      } catch (soulErr) {
+        // Non-blocking: missing soul falls back to the static SYSTEM_PROMPT.
+        console.warn('[Ask Olive] Soul assembly failed:', soulErr);
+      }
+
       // Fetch memories
       try {
         const { data: memoryData } = await supabase.functions.invoke('manage-memories', {
@@ -135,7 +155,7 @@ serve(async (req) => {
       }
     }
 
-    const contextualPrompt = `${SYSTEM_PROMPT}
+    const contextualPrompt = `${soulPromptPrefix}${SYSTEM_PROMPT}
 
 ${memoryContext ? memoryContext + '\n\n' : ''}${skillContext}
 
