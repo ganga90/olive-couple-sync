@@ -44,6 +44,9 @@ export type OnboardingEvent =
   | "capture_previewed"
   | "invite_generated"
   | "invite_shared"
+  | "calendar_jit_prompted"
+  | "calendar_jit_clicked"
+  | "calendar_jit_dismissed"
   | "flow_completed"
   | "error";
 

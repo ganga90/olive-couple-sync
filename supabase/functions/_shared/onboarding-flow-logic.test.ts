@@ -17,7 +17,8 @@ type OnboardingStep =
   | "regional"
   | "whatsapp"
   | "calendar"
-  | "demo";
+  | "demo"
+  | "receipt";
 
 const FULL_STEPS_ORDER: OnboardingStep[] = [
   "demoPreview",
@@ -28,6 +29,7 @@ const FULL_STEPS_ORDER: OnboardingStep[] = [
   "whatsapp",
   "calendar",
   "demo",
+  "receipt",
 ];
 
 const V2_DROPPED_STEPS: ReadonlySet<OnboardingStep> = new Set([
@@ -54,24 +56,23 @@ function isStepActive(
 
 // ─── getStepsForVersion ───────────────────────────────────────────────
 
-Deno.test("getStepsForVersion(v1): returns the full canonical 8-beat flow", () => {
+Deno.test("getStepsForVersion(v1): returns the full canonical 9-beat flow", () => {
   const steps = getStepsForVersion("v1");
-  assertEquals(steps.length, 8);
+  assertEquals(steps.length, 9);
   assertEquals(steps[0], "demoPreview");
-  assertEquals(steps[steps.length - 1], "demo");
+  assertEquals(steps[steps.length - 1], "receipt");
 });
 
 Deno.test("getStepsForVersion(v2): drops 'regional' and 'calendar'", () => {
   const steps = getStepsForVersion("v2");
   assertEquals(steps.includes("regional"), false);
   assertEquals(steps.includes("calendar"), false);
-  assertEquals(steps.length, 6);
+  assertEquals(steps.length, 7);
 });
 
 Deno.test("getStepsForVersion(v2): preserves canonical order for retained beats", () => {
   // The relative order of demoPreview → quiz → spaceCreate → shareSpace →
-  // whatsapp → demo must be preserved. We verify by checking pairwise
-  // adjacency holds in the v2 list.
+  // whatsapp → demo → receipt must be preserved. We verify pairwise.
   const steps = getStepsForVersion("v2");
   assertEquals(steps[0], "demoPreview");
   assertEquals(steps[1], "quiz");
@@ -79,6 +80,7 @@ Deno.test("getStepsForVersion(v2): preserves canonical order for retained beats"
   assertEquals(steps[3], "shareSpace");
   assertEquals(steps[4], "whatsapp");
   assertEquals(steps[5], "demo");
+  assertEquals(steps[6], "receipt");
 });
 
 Deno.test("getStepsForVersion(v1): is a fresh array — caller mutation can't leak", () => {
@@ -87,7 +89,20 @@ Deno.test("getStepsForVersion(v1): is a fresh array — caller mutation can't le
   const a = getStepsForVersion("v1");
   a.pop();
   const b = getStepsForVersion("v1");
-  assertEquals(b.length, 8);
+  assertEquals(b.length, 9);
+});
+
+Deno.test("getStepsForVersion: 'receipt' is the last beat in both versions", () => {
+  // Receipt is the closing transparency beat — it must always be last
+  // so the navigate-to-home CTA marks the entire flow as complete.
+  assertEquals(
+    getStepsForVersion("v1")[getStepsForVersion("v1").length - 1],
+    "receipt",
+  );
+  assertEquals(
+    getStepsForVersion("v2")[getStepsForVersion("v2").length - 1],
+    "receipt",
+  );
 });
 
 // ─── getQuizStepsForVersion ───────────────────────────────────────────
