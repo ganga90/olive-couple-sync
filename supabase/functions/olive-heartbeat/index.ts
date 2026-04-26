@@ -1049,6 +1049,104 @@ async function checkOverdueNudges(supabase: any): Promise<number> {
   return nudgeCount;
 }
 
+// ─── Ignored-reflection scan (Phase C-1.c) ────────────────────────────────────
+// For every proactive outbound that's at least 48h old (so the user had time to
+// react) but younger than 7 days (don't bother with ancient history), check
+// whether the user did anything in Olive after we sent it. If they didn't,
+// write an `ignored` reflection so olive-soul-evolve can learn that this
+// type of nudge isn't landing.
+//
+// Dedup is via olive_heartbeat_log.reflection_captured (added in
+// 20260427000000_heartbeat_log_reflection_captured.sql). Each row gets
+// exactly one decision; the partial index keeps the working set bounded.
+
+async function captureIgnoredReflections(supabase: any): Promise<number> {
+  const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // The partial index `idx_heartbeat_log_pending_reflection` makes this fast.
+  const { data: pending, error } = await supabase
+    .from('olive_heartbeat_log')
+    .select('id, user_id, job_type, message_preview, created_at')
+    .eq('status', 'sent')
+    .eq('reflection_captured', false)
+    .gte('created_at', sevenDaysAgo)
+    .lt('created_at', fortyEightHoursAgo)
+    .limit(100); // bounded per-tick work
+
+  if (error) {
+    console.warn('[Heartbeat] captureIgnoredReflections query error:', error);
+    return 0;
+  }
+  if (!pending || pending.length === 0) return 0;
+
+  let written = 0;
+
+  for (const entry of pending) {
+    try {
+      // Gate on soul_enabled — legacy users never produce reflections.
+      const { data: prefs } = await supabase
+        .from('olive_user_preferences')
+        .select('soul_enabled')
+        .eq('user_id', entry.user_id)
+        .maybeSingle();
+
+      if (!prefs?.soul_enabled) {
+        // Mark captured so we don't keep scanning this row forever.
+        await supabase
+          .from('olive_heartbeat_log')
+          .update({ reflection_captured: true })
+          .eq('id', entry.id);
+        continue;
+      }
+
+      // Did the user create a note (any channel) since the outbound?
+      // We use note creation as the engagement proxy — it's the most
+      // common high-confidence signal that the user came back to Olive.
+      // C-1.a captures explicit accept/reject reactions separately, so
+      // anything not captured there + no note activity = ignored.
+      const { count: notesAfter } = await supabase
+        .from('clerk_notes')
+        .select('id', { count: 'exact', head: true })
+        .eq('author_id', entry.user_id)
+        .gte('created_at', entry.created_at);
+
+      const isIgnored = (notesAfter || 0) === 0;
+
+      if (isIgnored) {
+        await supabase.from('olive_reflections').insert({
+          user_id: entry.user_id,
+          action_type: entry.job_type,
+          action_detail: {
+            outbound_id: entry.id,
+            outbound_preview: entry.message_preview,
+            window_hours: 48,
+            sent_at: entry.created_at,
+          },
+          outcome: 'ignored',
+          lesson: `User did not engage with Olive in the 48h after this ${entry.job_type}`,
+          // Lower confidence than accepted/rejected from C-1.a — "ignored"
+          // is inferred from absence of signal, not from a positive cue.
+          confidence: 0.6,
+        });
+        written++;
+      }
+
+      // Always mark decided, regardless of outcome. The reflection (if any)
+      // is now in olive_reflections; this flag is dedup-only.
+      await supabase
+        .from('olive_heartbeat_log')
+        .update({ reflection_captured: true })
+        .eq('id', entry.id);
+    } catch (rowErr) {
+      // One bad row must not poison the whole batch.
+      console.warn(`[Heartbeat] captureIgnoredReflections row ${entry.id} failed:`, rowErr);
+    }
+  }
+
+  return written;
+}
+
 // ─── Job processing ───────────────────────────────────────────────────────────
 
 async function processHeartbeatJobs(supabase: any): Promise<{ processed: number; failed: number }> {
@@ -1528,6 +1626,12 @@ serve(async (req) => {
 
         const nudges = await checkOverdueNudges(supabase);
         console.log(`[Heartbeat] Sent ${nudges} overdue nudges`);
+
+        // Phase C-1.c: capture `ignored` reflections for proactive outbounds
+        // that the user never reacted to. Bounded to 100 rows per tick by
+        // the function itself, so this is a safe addition to every tick.
+        const ignored = await captureIgnoredReflections(supabase);
+        console.log(`[Heartbeat] Captured ${ignored} ignored-reflection rows`);
 
         // Process background agents
         const agentsInvoked = await processBackgroundAgents(supabase);
