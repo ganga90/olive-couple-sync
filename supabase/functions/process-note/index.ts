@@ -5,6 +5,7 @@ import { encryptNoteFields, isEncryptionAvailable } from "../_shared/encryption.
 import { resilientGenerateContent } from "../_shared/resilient-genai.ts";
 import { detectAndCreateExpense, detectCurrency, extractAmount, mapCategoryToExpenseCategory } from "../_shared/expense-detector.ts";
 import { resolveScope } from "../_shared/space-scope.ts";
+import { assembleSoulContext } from "../_shared/soul.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1921,8 +1922,36 @@ When the note text mentions any of these names, use the EXACT name for task_owne
       }
     }
 
-    const systemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions, detectedStyle, memoryContext + coupleNamesContext, existingListNames);
-    
+    const baseSystemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions, detectedStyle, memoryContext + coupleNamesContext, existingListNames);
+
+    // ─── Soul integration ─────────────────────────────────────────────
+    // Prepend the user's soul stack (identity, user_context, domain
+    // knowledge, relationships, communication preferences). The renderer
+    // in `_shared/soul.ts` clamps to ~2,500 tokens and short-circuits
+    // when `soul_enabled = false`, so this is a no-op for users without
+    // a soul. For everyone else it gives Gemini real signal about who
+    // they are — a realtor's "showing tomorrow" categorizes differently
+    // than a parent's "school showing tomorrow".
+    let soulPromptPrefix = "";
+    try {
+      // Cast: process-note pins @supabase/supabase-js@2.45.0 while soul.ts
+      // uses @2 (latest). Different module instances → distinct
+      // SupabaseClient class identities even though runtime is identical.
+      // Same-shape cast is safer than re-pinning across the file.
+      const soulResult = await assembleSoulContext(supabase as unknown as Parameters<typeof assembleSoulContext>[0], {
+        userId: user_id,
+        spaceId,
+      });
+      if (soulResult.hasSoul) {
+        soulPromptPrefix = `${soulResult.prompt}\n\n---\n\n`;
+        console.log('[process-note] Soul loaded:', soulResult.layersLoaded.join(','), 'tokens=', soulResult.tokensUsed);
+      }
+    } catch (err) {
+      // Soul assembly must never block note processing.
+      console.warn('[process-note] Soul assembly failed (non-blocking):', err);
+    }
+    const systemPrompt = soulPromptPrefix + baseSystemPrompt;
+
     // Build user prompt with explicit media-first instruction when text is vague
     let userPrompt: string;
     if (isVagueText && hasMedia) {
