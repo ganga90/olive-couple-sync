@@ -58,7 +58,11 @@ import {
   User,
   Check,
 } from "lucide-react";
-import oliveLogoImage from "@/assets/olive-logo.jpg";
+// Use the full brand-mark asset (3D torus + "Olive" wordmark together).
+// The full file already includes the wordmark, so the hero doesn't need
+// a separately-typeset "Olive" text node. The legacy `olive-logo.jpg`
+// asset is retained for places that still want the small flat icon.
+import oliveLogoFullImage from "@/assets/olive-logo-full.png";
 
 type ModeKey = "solo" | "couple" | "family" | "business";
 
@@ -252,25 +256,19 @@ const NativeWelcome = () => {
     >
       {/* ─── Hero (1.5-second test) ─────────────────────────────── */}
       <section className="px-6 pt-8 pb-6 flex flex-col items-center text-center">
-        {/* Logo + Beta badge — uses BetaBadge component per brand bible §13.3 */}
-        <div className="flex items-center gap-3 mb-6">
-          <div
-            className={cn(
-              "w-12 h-12 rounded-2xl flex items-center justify-center",
-              "bg-white shadow-card border border-primary/10",
-            )}
-          >
-            <img
-              src={oliveLogoImage}
-              alt="Olive"
-              className="w-9 h-9 object-contain rounded-xl"
-            />
-          </div>
-          <span className="font-bold text-xl text-primary tracking-tight">
-            Olive
-          </span>
-          <BetaBadge size="md" />
-        </div>
+        {/* Brand mark — single centered image (icon + wordmark together).
+            We don't wrap it in a card or squircle: the asset is the brand
+            moment and stands on its own. Beta badge sits below as a small
+            accent so the trust signal is co-present without competing. */}
+        <img
+          src={oliveLogoFullImage}
+          alt="Olive"
+          // Sized so the wordmark is unmistakably readable at arm's length
+          // on a phone (~96–112px tall) but doesn't dominate the hero.
+          className="h-24 sm:h-28 w-auto object-contain mb-3 select-none"
+          draggable={false}
+        />
+        <BetaBadge size="md" className="mb-6" />
 
         {/* Eyebrow — category-naming, NOT "personal assistant" framing
             (brand bible anti-positioning §1) */}
