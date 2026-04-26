@@ -263,9 +263,11 @@ const NativeWelcome = () => {
         <img
           src={oliveLogoFullImage}
           alt="Olive"
-          // Sized so the wordmark is unmistakably readable at arm's length
-          // on a phone (~96–112px tall) but doesn't dominate the hero.
-          className="h-24 sm:h-28 w-auto object-contain mb-3 select-none"
+          // Sized for the square brand-mark asset (icon stacked above
+          // wordmark). h-32 mobile / h-36 sm+ gives the 3D mark presence
+          // without crowding the headline below. Capped via max-w so a
+          // future wider asset doesn't overflow narrow viewports.
+          className="h-32 sm:h-36 w-auto max-w-[16rem] object-contain mb-3 select-none"
           draggable={false}
         />
         <BetaBadge size="md" className="mb-6" />
