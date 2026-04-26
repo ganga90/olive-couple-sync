@@ -2157,3 +2157,140 @@ invite step that auto-skips for solo Spaces.
 - No new edge functions
 - No migrations
 - No env var changes
+
+---
+
+## TASK-ONB-D — Onboarding version flag + lean v2 flow shape
+
+**Branch:** `feat/onb-version-flag` (built on `feat/onb-live-parse-invite`) · **Date:** 2026-04-26
+
+### Why
+ONB-A wired quiz → Spaces. ONB-B made the funnel measurable. ONB-C
+delivered the aha + invite. The flow is still 8 beats long though, and
+two of them are demonstrably low-value:
+  - **regional** — timezone/language already auto-detect; the confirm
+    step is a tax for a value the user never sees
+  - **calendar** — Google OAuth is a heavy ask before the user has felt
+    a single benefit; better surfaced just-in-time when a capture has
+    a `due_date`
+Plus the mental-load substep of the quiz adds an interaction without
+materially shaping the soul (scope alone drives space type, mental load
+seeds domain_knowledge that heartbeat agents will learn anyway).
+
+This PR adds a per-user `onboarding_version` flag, assigns new users to
+`v2` automatically, and makes those three drops conditional. ONB-B's
+funnel can now slice every metric by cohort.
+
+### What
+
+1. **Migration `20260426020000_onboarding_version_flag.sql`** —
+   `ALTER TABLE olive_user_preferences ADD COLUMN onboarding_version TEXT
+   NOT NULL DEFAULT 'v1'`. Partial index for non-default cohorts. Default
+   is `'v1'` so existing users keep the legacy flow; the frontend assigns
+   `v2` for net-new users.
+
+2. **`useOnboardingVersion` hook** —
+   - Reads `olive_user_preferences.onboarding_version` (maybeSingle).
+   - For users without a row OR with the default `v1` AND no completed
+     onboarding marker, UPSERTs `v2` and reports `justAssigned: true`
+     so the parent fires `version_assigned` exactly once per user.
+   - Returning users (already have `localStorage.olive_onboarding_completed`)
+     stay on `v1` so the cohort is representative.
+   - Defensive: read failure → fallback to `v1` in-session, never blocks
+     onboarding.
+
+3. **`src/lib/onboarding-flow.ts`** — pure helpers:
+   - `FULL_STEPS_ORDER` — canonical 8-beat list
+   - `getStepsForVersion(v)` — drops `regional` + `calendar` for v2
+   - `getQuizStepsForVersion(v)` — 2 for v1, 1 for v2
+   - `isStepActive(step, v)` — used for v2 stale-state correction
+
+4. **`Onboarding.tsx` refactor** — replaced the file-level `STEPS_ORDER`
+   const + `QUIZ_TOTAL_STEPS` const with version-aware values computed
+   inside the component:
+   ```ts
+   const stepsOrder = useMemo(() => getStepsForVersion(effectiveVersion), [effectiveVersion]);
+   const quizTotalSteps = getQuizStepsForVersion(effectiveVersion);
+   ```
+   All 6 STEPS_ORDER references and 3 QUIZ_TOTAL_STEPS references now
+   resolve through these.
+
+5. **Three new effects in Onboarding.tsx**:
+   - **`version_assigned` fires once** when the hook reports
+     `justAssigned: true` — this is the A/B-slice signal for ONB-B's funnel.
+   - **Stale-step corrector**: if a refresh restores
+     `state.currentStep === 'regional'|'calendar'` for a v2 user, fires
+     `beat_auto_skipped` with `reason: dropped_in_v2` and advances to
+     the next active beat. Prevents black-screen states.
+   - **v2 silent regional persistence**: timezone + language still get
+     written to `clerk_profiles` and `i18n.changeLanguage` runs — just
+     without a confirm screen. v2 users get the same downstream behavior,
+     one fewer click.
+
+6. **New telemetry event** `version_assigned` added to the
+   `useOnboardingEvent` union with payload `{version: "v1" | "v2"}`.
+
+### Files
+
+| Path | Change |
+|---|---|
+| `supabase/migrations/20260426020000_onboarding_version_flag.sql` | NEW — column + partial index + comment |
+| `src/hooks/useOnboardingVersion.ts` | NEW — read + assign + sticky logic |
+| `src/lib/onboarding-flow.ts` | NEW — pure step-shape helpers |
+| `src/pages/Onboarding.tsx` | MOD — version-aware step list, 3 new effects, removed file-level `STEPS_ORDER` const |
+| `src/hooks/useOnboardingEvent.ts` | MOD — `version_assigned` added to event union |
+| `supabase/functions/_shared/onboarding-flow-logic.test.ts` | NEW — 9 tests covering version/step matrix |
+| `CHANGES.md` | MOD — TASK-ONB-D entry |
+
+### Backwards compatibility
+- v1 cohort behavior is byte-identical to pre-PR. The full 8-beat flow,
+  the 2-step quiz, the regional confirm, the Calendar OAuth — all
+  unchanged when `version === 'v1'`.
+- Existing user flows (Settings, Calendar reconnect, Profile edit) are
+  not touched; this PR only changes the *first-time* onboarding shape.
+- The migration is purely additive (ADD COLUMN) and idempotent. RLS
+  inherited from `olive_user_preferences` (already user-scoped).
+
+### Verification
+- ✅ `npx tsc --noEmit -p tsconfig.app.json` — 0 errors
+- ✅ `deno test supabase/functions/_shared/onboarding-flow-logic.test.ts` —
+  9/9 pass
+- ✅ Full regression: `deno test supabase/functions/_shared/
+  supabase/functions/onboarding-finalize/` —
+  **294/0** (excludes pre-existing time-resolver WIP failure)
+- ✅ `npx vite build` — succeeds
+- ✅ Migration audit: idempotent (`ADD COLUMN IF NOT EXISTS`), partial
+  index also `IF NOT EXISTS`, no destructive ops
+
+### Sample funnel slice (after ONB-B's view is extended)
+Once we add `JOIN olive_user_preferences ... ON e.user_id = p.user_id`
+to v_onboarding_funnel and a `GROUP BY p.onboarding_version`, every
+metric becomes A/B-comparable:
+```sql
+SELECT
+  p.onboarding_version,
+  COUNT(DISTINCT e.user_id) FILTER (WHERE e.event = 'flow_started') AS started,
+  COUNT(DISTINCT e.user_id) FILTER (WHERE e.event = 'flow_completed') AS completed,
+  ROUND(AVG(EXTRACT(EPOCH FROM (
+    e2.created_at - e1.created_at
+  )))) AS avg_seconds_to_capture
+FROM olive_onboarding_events e
+JOIN olive_user_preferences p ON p.user_id = e.user_id
+LEFT JOIN olive_onboarding_events e1 ON e1.user_id = e.user_id AND e1.event = 'flow_started'
+LEFT JOIN olive_onboarding_events e2 ON e2.user_id = e.user_id AND e2.event = 'capture_sent'
+WHERE e.created_at > NOW() - INTERVAL '14 days'
+GROUP BY p.onboarding_version;
+```
+A view-extension PR is the natural follow-up once we have v2 data in.
+
+### Out of scope (next PRs)
+- **JIT Calendar prompt** on the Home page when a process-note response
+  carries a `due_date` and the user hasn't connected — replaces the
+  in-onboarding Calendar OAuth that v2 dropped. Separate file/area.
+- **TASK-ONB-E** — receipt screen + Day-2 heartbeat nudge.
+- v_onboarding_funnel extension to slice by `onboarding_version`.
+
+### Deploy notes
+- One migration: `supabase db push`
+- No new edge functions
+- No env var changes

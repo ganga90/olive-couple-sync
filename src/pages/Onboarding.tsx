@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Capacitor } from "@capacitor/core";
@@ -51,16 +51,13 @@ import {
   type ProcessNoteResult,
 } from "@/components/onboarding/CapturePreview";
 import { InviteSpaceStep } from "@/components/onboarding/InviteSpaceStep";
-
-type OnboardingStep =
-  | "demoPreview"
-  | "quiz"
-  | "spaceCreate"
-  | "shareSpace"
-  | "regional"
-  | "whatsapp"
-  | "calendar"
-  | "demo";
+import {
+  getStepsForVersion,
+  getQuizStepsForVersion,
+  isStepActive,
+  type OnboardingStep,
+} from "@/lib/onboarding-flow";
+import { useOnboardingVersion } from "@/hooks/useOnboardingVersion";
 
 interface QuizAnswers {
   scope: string | null;
@@ -104,22 +101,16 @@ const defaultState: OnboardingState = {
   completedSteps: [],
 };
 
+// The full ordered flow lives in src/lib/onboarding-flow.ts so the
+// v1 vs v2 step-list logic is testable in isolation. We compute the
+// effective list per-render via getStepsForVersion(version). v1 = full
+// 8-beat flow; v2 drops `regional` and `calendar` (handled silently /
+// JIT respectively).
+//
 // `spaceCreate` sits right after the quiz so we have the scope answer in
 // hand to pick a space type + smart default name. `shareSpace` follows
 // immediately so invite intent is captured at peak motivation — but is
 // auto-skipped for solo (`custom`) spaces (see useEffect below).
-// Putting both before regional/whatsapp/calendar means every downstream
-// beat writes scoped to the right space_id from the start.
-const STEPS_ORDER: OnboardingStep[] = [
-  "demoPreview",
-  "quiz",
-  "spaceCreate",
-  "shareSpace",
-  "regional",
-  "whatsapp",
-  "calendar",
-  "demo",
-];
 
 // Maps the quiz scope answer to the canonical space_type used by
 // olive_spaces / olive-space-manage. Keep in sync with SCOPE_TO_USER_CONTEXT
@@ -131,7 +122,12 @@ const SCOPE_TO_SPACE_TYPE: Record<string, SpaceType> = {
   "My Business": "business",
 };
 
-const QUIZ_TOTAL_STEPS = 2;
+// Step counts now derive per-version via getStepsForVersion +
+// getQuizStepsForVersion in src/lib/onboarding-flow.ts. The constants
+// above are documented in onboarding-flow's source. The const below is
+// retained as the FALLBACK quiz total used while the version is loading
+// — matches v1 to keep "Step 1 of N" labels stable on first paint.
+const QUIZ_TOTAL_STEPS_FALLBACK = 2;
 
 // Common timezones
 const TIMEZONES = [
@@ -160,6 +156,18 @@ const Onboarding = () => {
   const { createCouple, currentCouple } = useSupabaseCouple();
   const { createSpace, switchSpace, spaces } = useSpace();
   const fireEvent = useOnboardingEvent();
+
+  // Version flag drives which beats render. While the lookup is
+  // in-flight we render the v1 shape so first paint never collapses
+  // (a flash of fewer steps would feel like a refresh bug).
+  const { version: onboardingVersion, justAssigned: versionJustAssigned } =
+    useOnboardingVersion();
+  const effectiveVersion = onboardingVersion || "v1";
+  const stepsOrder = useMemo(
+    () => getStepsForVersion(effectiveVersion),
+    [effectiveVersion],
+  );
+  const quizTotalSteps = getQuizStepsForVersion(effectiveVersion);
 
   // Captured at first render so duration metrics (time-to-first-capture,
   // total flow time) can be computed client-side as a sanity check
@@ -221,6 +229,75 @@ const Onboarding = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.currentStep]);
 
+  // Fire version_assigned exactly once per user, the moment the hook
+  // assigns a non-default cohort. This is what slices the funnel — every
+  // metric in v_onboarding_funnel becomes A/B-comparable downstream.
+  useEffect(() => {
+    if (!onboardingVersion) return; // still loading
+    if (!versionJustAssigned) return; // pre-existing assignment, no event
+    fireEvent("version_assigned", { version: onboardingVersion });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onboardingVersion, versionJustAssigned]);
+
+  // v2 corrective: if a refresh / resume restores a stale state.currentStep
+  // pointing at a beat that v2 has dropped (regional or calendar), advance
+  // to the next active beat in the v2 list. Without this, a user mid-flow
+  // when their version flag flipped could be stuck on a screen that no
+  // longer renders. Defensive — the assignment is sticky, so this only
+  // fires for users whose state was persisted before they were assigned.
+  useEffect(() => {
+    if (!onboardingVersion) return;
+    if (isStepActive(state.currentStep, onboardingVersion)) return;
+    // Find the next active beat in canonical order. Falls back to the
+    // last beat (demo) so the user always lands on something renderable.
+    const idx = stepsOrder.indexOf(state.currentStep);
+    const next =
+      idx >= 0 && idx + 1 < stepsOrder.length
+        ? stepsOrder[idx + 1]
+        : stepsOrder[stepsOrder.length - 1];
+    fireEvent("beat_auto_skipped", {
+      beat: state.currentStep,
+      reason: "dropped_in_v2",
+    });
+    setState((prev) => ({ ...prev, currentStep: next }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onboardingVersion, state.currentStep, stepsOrder]);
+
+  // v2 silent regional persistence: with the regional confirm step
+  // dropped, v2 users still need their auto-detected timezone +
+  // language saved to clerk_profiles so reminders fire at the right
+  // local time. We do that here as a side-effect once both the
+  // detection has run AND the user is known.
+  useEffect(() => {
+    if (onboardingVersion !== "v2") return;
+    if (!hasAutoDetected) return;
+    if (!user?.id) return;
+    (async () => {
+      try {
+        await supabase.from("clerk_profiles").upsert(
+          {
+            id: user.id,
+            timezone: selectedTimezone,
+            language_preference: selectedLanguage,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" },
+        );
+        // Mirror the language change so any v2-step that renders next
+        // is already localized. Skipped if user is already on the right
+        // locale to avoid an unnecessary remount.
+        if (selectedLanguage && selectedLanguage !== i18n.language) {
+          await i18n.changeLanguage(selectedLanguage);
+          localStorage.setItem("i18nextLng", selectedLanguage);
+        }
+      } catch (err) {
+        // Non-blocking. Falling back to UTC + English is acceptable.
+        console.warn("[onboarding] v2 silent regional save failed:", err);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onboardingVersion, hasAutoDetected, user?.id]);
+
   // Auto-skip the shareSpace beat for solo Spaces. The step is
   // structurally meaningless when there's nobody to invite, but keeping
   // it in STEPS_ORDER avoids special-casing the linear flow logic.
@@ -250,7 +327,7 @@ const Onboarding = () => {
           ...new Set<OnboardingStep>([...prev.completedSteps, "shareSpace"]),
         ],
         currentStep:
-          STEPS_ORDER[STEPS_ORDER.indexOf("shareSpace") + 1] || prev.currentStep,
+          stepsOrder[stepsOrder.indexOf("shareSpace") + 1] || prev.currentStep,
       }));
     }, 0);
     return () => window.clearTimeout(t);
@@ -286,13 +363,13 @@ const Onboarding = () => {
     localStorage.setItem(ONBOARDING_STATE_KEY, JSON.stringify(state));
   }, [state]);
 
-  const currentStepIndex = STEPS_ORDER.indexOf(state.currentStep);
-  const totalVisualSteps = STEPS_ORDER.length;
+  const currentStepIndex = stepsOrder.indexOf(state.currentStep);
+  const totalVisualSteps = stepsOrder.length;
 
   // Progress: quiz substeps count within the quiz step
   const getProgress = () => {
     if (state.currentStep === "quiz") {
-      const quizFraction = (state.quizStep + 1) / QUIZ_TOTAL_STEPS;
+      const quizFraction = (state.quizStep + 1) / quizTotalSteps;
       return ((currentStepIndex + quizFraction) / totalVisualSteps) * 100;
     }
     return ((currentStepIndex + 1) / totalVisualSteps) * 100;
@@ -308,7 +385,7 @@ const Onboarding = () => {
 
   const goToNextStep = () => {
     const nextIndex = currentStepIndex + 1;
-    if (nextIndex < STEPS_ORDER.length) {
+    if (nextIndex < stepsOrder.length) {
       // Mark the leaving step as completed in telemetry. The hook
       // separately fires beat_started for the new step via the effect
       // tied to state.currentStep.
@@ -317,7 +394,7 @@ const Onboarding = () => {
         ...prev,
         completedSteps: [...new Set([...prev.completedSteps, state.currentStep])],
       }));
-      goToStep(STEPS_ORDER[nextIndex]);
+      goToStep(stepsOrder[nextIndex]);
     }
   };
 
@@ -336,12 +413,12 @@ const Onboarding = () => {
       return;
     }
     const prevIndex = currentStepIndex - 1;
-    if (prevIndex >= 0) goToStep(STEPS_ORDER[prevIndex]);
+    if (prevIndex >= 0) goToStep(stepsOrder[prevIndex]);
   };
 
   // Quiz helpers
   const goToNextQuizStep = () => {
-    if (state.quizStep < QUIZ_TOTAL_STEPS - 1) {
+    if (state.quizStep < quizTotalSteps - 1) {
       setIsAnimating(true);
       setTimeout(() => {
         setState((prev) => ({ ...prev, quizStep: prev.quizStep + 1 }));
@@ -868,7 +945,7 @@ const Onboarding = () => {
           </div>
           <p className="text-xs text-muted-foreground text-center mt-1">
             {state.currentStep === "quiz"
-              ? t("quiz.step", { current: state.quizStep + 1, total: QUIZ_TOTAL_STEPS })
+              ? t("quiz.step", { current: state.quizStep + 1, total: quizTotalSteps })
               : `${currentStepIndex + 1} / ${totalVisualSteps}`}
           </p>
         </div>
