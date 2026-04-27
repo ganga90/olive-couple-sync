@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Lock, Users, UserPlus } from "lucide-react";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace } from "@/providers/SpaceProvider";
 import { toast } from "sonner";
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 
@@ -47,12 +48,23 @@ export const ListPrivacyToggle: React.FC<ListPrivacyToggleProps> = ({
   disabled = false,
 }) => {
   const { t } = useTranslation(["lists", "common"]);
-  const { currentCouple } = useSupabaseCouple();
+  const { currentCouple, members } = useSupabaseCouple();
+  const { currentSpace } = useSpace();
   const navigate = useLocalizedNavigate();
   const [isUpdating, setIsUpdating] = useState(false);
   const [open, setOpen] = useState(false);
 
   const hasCouple = !!currentCouple;
+  // Phase 3-3: pill copy + popover header should reflect the actual
+  // member count when the list is shared. For 2-person spaces this
+  // matches the existing single "Shared" framing; for 3-10 spaces it
+  // becomes "Shared · N" so the user understands the audience.
+  const memberCount = members.length || (currentSpace?.member_count ?? 0);
+  const sharedMemberNames = useMemo(
+    () => members.map((m) => m.display_name).filter(Boolean),
+    [members],
+  );
+  const isMultiMember = memberCount > 2;
 
   const handleSelect = async (makeShared: boolean) => {
     if (isUpdating) return;
@@ -107,7 +119,9 @@ export const ListPrivacyToggle: React.FC<ListPrivacyToggleProps> = ({
           {isShared ? (
             <>
               <Users className="h-3 w-3" />
-              {t("lists:badges.shared", { defaultValue: "Shared" })}
+              {isMultiMember
+                ? `${t("lists:badges.shared", { defaultValue: "Shared" })} · ${memberCount}`
+                : t("lists:badges.shared", { defaultValue: "Shared" })}
             </>
           ) : (
             <>
@@ -151,6 +165,25 @@ export const ListPrivacyToggle: React.FC<ListPrivacyToggleProps> = ({
               defaultValue: "Shared with space",
             })}
           </Button>
+
+          {/* Phase 3-3: when the list IS shared, show who's in the audience.
+              Lets the user verify what "Shared" actually means in a 3-10
+              member space (where the count alone is ambiguous). */}
+          {isShared && sharedMemberNames.length > 0 && (
+            <>
+              <div className="h-px bg-border my-2" />
+              <div className="px-1 space-y-1">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {t("listDetail.visibleTo", {
+                    defaultValue: "Visible to",
+                  })}
+                </p>
+                <p className="text-[11px] text-foreground/80 leading-snug">
+                  {sharedMemberNames.join(", ")}
+                </p>
+              </div>
+            </>
+          )}
 
           {!hasCouple && (
             <>
