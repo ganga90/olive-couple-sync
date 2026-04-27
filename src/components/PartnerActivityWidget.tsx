@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Users, ArrowRight, UserPlus } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace } from "@/providers/SpaceProvider";
 import { useLanguage } from "@/providers/LanguageProvider";
 import { formatDistanceToNow } from "date-fns";
 import { useDateLocale } from "@/hooks/useDateLocale";
@@ -14,43 +15,61 @@ interface PartnerActivityWidgetProps {
   notes: Note[];
 }
 
+// Phase 3-1: Lift the 2-member cap. Show recent shared activity from
+// every other member of the current space (not just "the partner").
+// Display up to MAX_VISIBLE_ACTIVITIES rows so the widget stays
+// glanceable on Home; deeper history lives on the Space Activity page.
+const MAX_VISIBLE_ACTIVITIES = 5;
+
 export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ notes }) => {
   const { t } = useTranslation(['home', 'common']);
   const navigate = useNavigate();
   const { user } = useAuth();
   const { partner, currentCouple, members, getMemberName } = useSupabaseCouple();
+  const { currentSpace } = useSpace();
   const { getLocalizedPath } = useLanguage();
   const dateLocale = useDateLocale();
 
   const partnerName = partner || t('common:common.partner');
   const userId = user?.id;
 
-  // Get recent partner activity from shared notes only
-  const partnerActivity = useMemo(() => {
-    if (!userId || !currentCouple) return [];
+  // The widget renders when EITHER:
+  //   (a) The user is in a couple-type space (legacy 2-person case), OR
+  //   (b) The user is in a non-couple space with at least one other
+  //       member (family / business / custom — Phase 3 unblocks them).
+  // Both reduce to "current space has anyone besides me".
+  const otherMembersCount = useMemo(() => {
+    return members.filter(m => m.user_id !== userId).length;
+  }, [members, userId]);
 
-    // Filter for shared notes (with coupleId) added by partner (not by current user)
-    // Use authorId (raw user ID) for filtering, not addedBy (display name)
-    const partnerNotes = notes
+  const isMultiMember = otherMembersCount >= 2;
+
+  // Get recent shared activity from any other member of the space.
+  const partnerActivity = useMemo(() => {
+    if (!userId || (!currentCouple && !currentSpace)) return [];
+
+    // A note is "shared" if it has either couple_id (legacy) or space_id
+    // (canonical). Filter to shared notes authored by someone other
+    // than the current user.
+    const sharedFromOthers = notes
       .filter(note => {
-        // Must be a shared note (has coupleId)
-        if (!note.coupleId) return false;
-        // Must be added by someone other than current user (partner)
-        // Use authorId for accurate comparison
-        if (note.authorId === userId) return false;
+        const isShared = !!note.coupleId || (note as any).space_id != null || (note as any).isShared === true;
+        if (!isShared) return false;
+        if (!note.authorId || note.authorId === userId) return false;
         return true;
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 3); // Get last 3 activities
+      // Fetch a generous slice; the render layer enforces MAX_VISIBLE_ACTIVITIES.
+      .slice(0, MAX_VISIBLE_ACTIVITIES * 2);
 
-    return partnerNotes.map(note => {
+    return sharedFromOthers.map(note => {
       const currentMember = members.find(m => m.user_id === userId);
       const youName = currentMember?.display_name || currentCouple?.you_name;
       const isAssignedToYou = note.task_owner === 'you' ||
                               note.task_owner === youName ||
                               note.task_owner === userId;
 
-      // Resolve the author's display name from members
+      // Resolve the author's display name from space members.
       const authorName = note.authorId ? getMemberName(note.authorId) : partnerName;
 
       return {
@@ -62,12 +81,22 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
         type: isAssignedToYou ? 'assigned' : 'added' as const
       };
     });
-  }, [notes, userId, currentCouple, members, getMemberName, partnerName]);
+  }, [notes, userId, currentCouple, currentSpace, members, getMemberName, partnerName]);
 
-  // Don't show widget if no couple
-  if (!currentCouple || !partner) {
-    return null;
-  }
+  // Hide the widget when there is no space at all, or when the user is
+  // alone in their current space (nothing to attribute).
+  if (!currentSpace && !currentCouple) return null;
+  if (otherMembersCount === 0) return null;
+
+  // Section title: in a 2-person couple keep the warmer "{Partner}'s
+  // recent activity" framing; in 3+ member spaces, use a neutral
+  // "Recent activity" since multiple authors are surfaced.
+  const sectionTitle = isMultiMember
+    ? t('home:partnerActivity.titleMulti', { defaultValue: 'Recent activity' })
+    : t('home:partnerActivity.title', { name: partnerName });
+  const emptyText = isMultiMember
+    ? t('home:partnerActivity.emptyMulti', { defaultValue: 'No recent activity from other members yet.' })
+    : t('home:partnerActivity.empty', { name: partnerName });
 
   const handleActivityClick = (noteId: string) => {
     navigate(getLocalizedPath(`/notes/${noteId}`));
@@ -80,12 +109,12 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
         <div className="flex items-center gap-2 mb-2 px-1">
           <Users className="w-3.5 h-3.5 text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground">
-            {t('home:partnerActivity.title', { name: partnerName })}
+            {sectionTitle}
           </span>
         </div>
         <div className="px-3 py-4 rounded-lg bg-muted/20 border border-border/30 text-center">
           <p className="text-xs text-muted-foreground italic">
-            {t('home:partnerActivity.empty', { name: partnerName })}
+            {emptyText}
           </p>
         </div>
       </div>
@@ -98,13 +127,14 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
       <div className="flex items-center gap-2 mb-3 px-1">
         <Users className="w-4 h-4 text-muted-foreground" />
         <span className="text-sm font-semibold text-muted-foreground tracking-wide">
-          {t('home:partnerActivity.title', { name: partnerName })}
+          {sectionTitle}
         </span>
       </div>
 
-      {/* Activity Cards - more generous padding */}
+      {/* Activity Cards. Phase 3-1: render up to MAX_VISIBLE_ACTIVITIES
+          (was capped at 2 — invisible to space members 3 through 10). */}
       <div className="space-y-2">
-        {partnerActivity.slice(0, 2).map((activity) => (
+        {partnerActivity.slice(0, MAX_VISIBLE_ACTIVITIES).map((activity) => (
           <button
             key={activity.id}
             onClick={() => handleActivityClick(activity.id)}
