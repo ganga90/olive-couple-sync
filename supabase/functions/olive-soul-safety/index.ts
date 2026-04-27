@@ -17,6 +17,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { upsertSoulLayer } from "../_shared/soul.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -79,6 +80,13 @@ serve(async (req: Request) => {
         return json(await setLayerLock(supabase, userId, params.layer_type, true));
       case "unlock_layer":
         return json(await setLayerLock(supabase, userId, params.layer_type, false));
+      // Phase C-3.b: major-change proposal flow
+      case "list_pending_proposals":
+        return json(await listPendingProposals(supabase, userId, params));
+      case "approve_change":
+        return json(await approveChange(supabase, userId, params));
+      case "reject_change":
+        return json(await rejectChange(supabase, userId, params));
       default:
         return json({ error: `Unknown action: ${action}` }, 400);
     }
@@ -408,4 +416,240 @@ function computeFieldsChanged(before: Record<string, any>, after: Record<string,
 
 function estimateTokens(text: string): number {
   return Math.ceil((text || "").length / 4);
+}
+
+// ─── Phase C-3.b: Major-Change Proposals ─────────────────────────────────
+//
+// The propose path lives in `_shared/soul-proposals.ts` (called by
+// olive-soul-evolve via service-role). The endpoints below are the
+// USER-facing side of the same flow: list pending, approve, reject.
+//
+// All three authenticate via Clerk JWT (the `userId` parsed at the top
+// of the dispatcher) so a user can only act on their own proposals.
+
+interface ProposalRow {
+  id: string;
+  user_id: string;
+  layer_type: string;
+  proposed_content: Record<string, unknown>;
+  summary: string;
+  trigger: string;
+  base_version: number;
+  status: string;
+  decided_at: string | null;
+  decision_reason: string | null;
+  applied_version: number | null;
+  created_at: string;
+  expires_at: string;
+}
+
+async function listPendingProposals(
+  supabase: any,
+  userId: string,
+  params: { limit?: number },
+): Promise<{ proposals: ProposalRow[] } | { error: string }> {
+  // Clean up any expired proposals before reading. One-pass, idempotent.
+  // Doing this on read keeps the index hot and avoids a separate cron job
+  // for a low-volume table.
+  await supabase
+    .from("olive_soul_change_proposals")
+    .update({ status: "expired" })
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .lt("expires_at", new Date().toISOString())
+    .catch(() => { /* best-effort */ });
+
+  const { data, error } = await supabase
+    .from("olive_soul_change_proposals")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(params.limit ?? 10);
+
+  if (error) return { error: error.message };
+  return { proposals: (data as ProposalRow[]) || [] };
+}
+
+async function approveChange(
+  supabase: any,
+  userId: string,
+  params: { proposal_id?: string; decision_reason?: string },
+): Promise<Record<string, unknown>> {
+  const { proposal_id, decision_reason } = params;
+  if (!proposal_id) return { error: "proposal_id is required" };
+
+  // 1. Fetch the proposal and verify ownership + state.
+  const { data: proposal, error: fetchErr } = await supabase
+    .from("olive_soul_change_proposals")
+    .select("*")
+    .eq("id", proposal_id)
+    .eq("user_id", userId) // RLS belt-and-suspenders
+    .maybeSingle();
+
+  if (fetchErr || !proposal) return { error: "Proposal not found" };
+  if (proposal.status !== "pending") {
+    return { error: `Proposal is ${proposal.status}, not pending` };
+  }
+  if (new Date(proposal.expires_at).getTime() < Date.now()) {
+    // Mark expired so this state is recorded even though the user just acted.
+    await supabase
+      .from("olive_soul_change_proposals")
+      .update({ status: "expired" })
+      .eq("id", proposal_id);
+    return { error: "Proposal has expired", expired: true };
+  }
+
+  // 2. Concurrent-evolution guard. If another change landed since this
+  // proposal was created and bumped the layer version, refuse to apply
+  // — overwriting would lose the intervening update.
+  const ownerType = proposal.layer_type === "space" ? "space" : "user";
+  const { data: layer } = await supabase
+    .from("olive_soul_layers")
+    .select("version")
+    .eq("layer_type", proposal.layer_type)
+    .eq("owner_type", ownerType)
+    .eq("owner_id", userId)
+    .maybeSingle();
+  const currentVersion = (layer?.version as number | undefined) ?? 0;
+
+  if (currentVersion > proposal.base_version) {
+    await supabase
+      .from("olive_soul_change_proposals")
+      .update({
+        status: "stale",
+        decided_at: new Date().toISOString(),
+        decision_reason: `Layer advanced from v${proposal.base_version} to v${currentVersion} since proposal`,
+      })
+      .eq("id", proposal_id);
+    return {
+      error: "Proposal is stale (another change landed first)",
+      stale: true,
+      base_version: proposal.base_version,
+      current_version: currentVersion,
+    };
+  }
+
+  // 3. Apply via the shared helper (handles versioning + history snapshot).
+  const ownerTypeForApply = proposal.layer_type === "space" ? "space" : "user";
+  const updated = await upsertSoulLayer(
+    supabase,
+    proposal.layer_type as any,
+    ownerTypeForApply as any,
+    userId,
+    proposal.proposed_content as Record<string, unknown>,
+    proposal.trigger,
+  );
+
+  if (!updated) {
+    // Apply failed; leave the proposal pending so the user can retry.
+    return { error: "Failed to apply change" };
+  }
+
+  // 4. Mark approved with the resulting version.
+  await supabase
+    .from("olive_soul_change_proposals")
+    .update({
+      status: "approved",
+      decided_at: new Date().toISOString(),
+      decision_reason: decision_reason ?? null,
+      applied_version: (updated as any).version,
+    })
+    .eq("id", proposal_id);
+
+  // 5. Reflection: a deliberate accept of an evolution proposal is a
+  // strong positive signal. Confidence 0.95 because the user explicitly
+  // tapped "approve" — much higher than the inferred reflections from
+  // C-1.
+  await supabase
+    .from("olive_reflections")
+    .insert({
+      user_id: userId,
+      action_type: `soul_evolution_${proposal.trigger}`,
+      action_detail: {
+        proposal_id,
+        layer_type: proposal.layer_type,
+        applied_version: (updated as any).version,
+        summary: proposal.summary,
+      },
+      outcome: "accepted",
+      lesson: `User approved evolution: ${proposal.summary}`,
+      confidence: 0.95,
+    })
+    .catch(() => { /* non-blocking */ });
+
+  // 6. Mark the related notification as acted-on (best effort).
+  await supabase
+    .from("olive_trust_notifications")
+    .update({ acted_on_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("type", "soul_change_proposal")
+    .filter("metadata->>proposal_id", "eq", proposal_id)
+    .catch(() => { /* non-blocking */ });
+
+  return {
+    success: true,
+    proposal_id,
+    applied_version: (updated as any).version,
+    layer_type: proposal.layer_type,
+  };
+}
+
+async function rejectChange(
+  supabase: any,
+  userId: string,
+  params: { proposal_id?: string; decision_reason?: string },
+): Promise<Record<string, unknown>> {
+  const { proposal_id, decision_reason } = params;
+  if (!proposal_id) return { error: "proposal_id is required" };
+
+  const { data: proposal, error: fetchErr } = await supabase
+    .from("olive_soul_change_proposals")
+    .select("status, summary, trigger, layer_type")
+    .eq("id", proposal_id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (fetchErr || !proposal) return { error: "Proposal not found" };
+  if (proposal.status !== "pending") {
+    return { error: `Proposal is ${proposal.status}, not pending` };
+  }
+
+  await supabase
+    .from("olive_soul_change_proposals")
+    .update({
+      status: "rejected",
+      decided_at: new Date().toISOString(),
+      decision_reason: decision_reason ?? null,
+    })
+    .eq("id", proposal_id);
+
+  // Reflection: a deliberate reject is the strongest negative signal we
+  // can capture. Confidence 0.95 like the approve path.
+  await supabase
+    .from("olive_reflections")
+    .insert({
+      user_id: userId,
+      action_type: `soul_evolution_${proposal.trigger}`,
+      action_detail: {
+        proposal_id,
+        layer_type: proposal.layer_type,
+        summary: proposal.summary,
+      },
+      outcome: "rejected",
+      lesson: `User rejected evolution: ${proposal.summary}`
+        + (decision_reason ? ` — reason: ${decision_reason}` : ""),
+      confidence: 0.95,
+    })
+    .catch(() => { /* non-blocking */ });
+
+  await supabase
+    .from("olive_trust_notifications")
+    .update({ acted_on_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("type", "soul_change_proposal")
+    .filter("metadata->>proposal_id", "eq", proposal_id)
+    .catch(() => { /* non-blocking */ });
+
+  return { success: true, proposal_id };
 }
