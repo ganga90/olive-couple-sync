@@ -65,3 +65,13 @@ Edge-function unit tests are co-located with each function as `*.test.ts`
 ```sh
 deno test supabase/functions/_shared/ --allow-net --allow-read --allow-env
 ```
+
+## MCP server
+
+`mcp-server/` is a standalone Node package that exposes Olive's note,
+list, reminder, and couple-sync capabilities via the [Model Context
+Protocol](https://modelcontextprotocol.io/), so external AI assistants
+(Claude Desktop, etc.) can read and write Olive data.
+
+Build and configuration are documented in
+[`mcp-server/README.md`](mcp-server/README.md).
