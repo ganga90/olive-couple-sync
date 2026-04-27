@@ -23,6 +23,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@1.0.0";
 import { GEMINI_KEY, getModel } from "../_shared/gemini.ts";
 import { getUserSoulContent, upsertSoulLayer } from "../_shared/soul.ts";
+import { proposeMajorChange } from "../_shared/soul-proposals.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -222,134 +223,189 @@ Return a JSON array of proposals. If no changes needed, return [].`;
 
 // ─── Stage 3: EVOLVE (apply proposals) ──────────────────────────
 
+/**
+ * Pure helper: apply a single Gemini-suggested change to a soul object.
+ * Mutates `soul` in place and returns true if the change actually
+ * landed (false means no-op — e.g. relationship already existed).
+ *
+ * Extracted so both paths use it:
+ *   - Minor changes mutate `updatedSoul` directly (existing behavior)
+ *   - Major changes mutate a deep-cloned snapshot (becomes
+ *     `proposed_content` for proposeMajorChange in C-3.c)
+ */
+function applyChangeToSoul(
+  soul: Record<string, any>,
+  proposal: EvolutionProposal,
+): boolean {
+  let newValue: any;
+  try {
+    newValue = typeof proposal.new_value === "string"
+      ? JSON.parse(proposal.new_value)
+      : proposal.new_value;
+  } catch {
+    newValue = proposal.new_value;
+  }
+
+  switch (proposal.change_type) {
+    case "add_domain": {
+      if (!soul.domain_knowledge) soul.domain_knowledge = [];
+      const existingIdx = soul.domain_knowledge.findIndex(
+        (d: any) => d.area === newValue.area,
+      );
+      if (existingIdx >= 0) {
+        const existing = soul.domain_knowledge[existingIdx];
+        const mergedConcepts = [...new Set([...(existing.concepts || []), ...(newValue.concepts || [])])];
+        soul.domain_knowledge[existingIdx] = {
+          ...existing,
+          concepts: mergedConcepts,
+          confidence: Math.min((existing.confidence || 0.5) + 0.1, 1.0),
+        };
+      } else {
+        soul.domain_knowledge.push({
+          ...newValue,
+          learned_from: "pattern_detection",
+          confidence: 0.5,
+        });
+      }
+      return true;
+    }
+    case "adjust_proactivity": {
+      if (soul.communication) {
+        if (typeof newValue === "number") {
+          soul.communication.max_proactive_per_day = Math.max(1, Math.min(10, newValue));
+        } else if (newValue.max_proactive_per_day) {
+          soul.communication.max_proactive_per_day = Math.max(1, Math.min(10, newValue.max_proactive_per_day));
+        }
+        return true;
+      }
+      return false;
+    }
+    case "add_relationship": {
+      if (!soul.relationships) soul.relationships = [];
+      const exists = soul.relationships.some(
+        (r: any) => r.name.toLowerCase() === (newValue.name || "").toLowerCase(),
+      );
+      if (!exists && newValue.name) {
+        soul.relationships.push({
+          name: newValue.name,
+          role: newValue.role || "contact",
+          patterns: newValue.patterns || [],
+        });
+        return true;
+      }
+      return false;
+    }
+    case "enable_skill": {
+      if (!soul.skills_active) soul.skills_active = [];
+      const skillName = typeof newValue === "string" ? newValue : newValue.skill;
+      if (skillName && !soul.skills_active.includes(skillName)) {
+        soul.skills_active.push(skillName);
+        return true;
+      }
+      return false;
+    }
+    case "adjust_tone": {
+      // Tone changes are always major — should have been caught
+      // by the major-path branch. But handle defensively.
+      if (soul.identity && newValue.tone) {
+        soul.identity.tone = newValue.tone;
+        return true;
+      }
+      return false;
+    }
+    default:
+      console.warn(`[soul-evolve] Unknown change_type: ${proposal.change_type}`);
+      return false;
+  }
+}
+
 async function applyEvolution(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   currentSoul: Record<string, any>,
   proposals: EvolutionProposal[]
-): Promise<{ applied: number; deferred: number; changes: string[] }> {
+): Promise<{ applied: number; deferred: number; proposed: number; changes: string[] }> {
   if (proposals.length === 0) {
-    return { applied: 0, deferred: 0, changes: [] };
+    return { applied: 0, deferred: 0, proposed: 0, changes: [] };
   }
 
   const updatedSoul = { ...currentSoul };
   let applied = 0;
   let deferred = 0;
+  let proposed = 0;
   const changes: string[] = [];
 
   for (const proposal of proposals) {
-    // Major changes are flagged but not auto-applied
+    // ─── Major change → propose for user approval (Phase C-3.c) ──
+    // Until C-3.c, this branch silently dropped major changes via a
+    // console.log. Now: build a deep-cloned soul with just THIS one
+    // change applied, hand the snapshot to proposeMajorChange, and
+    // let the user accept/reject via the web UI. The minor-change
+    // path below is unchanged.
     if (proposal.is_major) {
-      // TODO: Create a notification asking user to confirm
-      // For now, log and skip
-      console.log(`[soul-evolve] Major change deferred for ${userId}: ${proposal.description}`);
-      deferred++;
-      changes.push(`[DEFERRED] ${proposal.description}`);
+      // Deep-clone the current soul so the proposed_content reflects
+      // ONLY this proposal applied to "now-state", independent of
+      // the in-progress updatedSoul (which has minor changes applied
+      // earlier in the loop).
+      const proposedContent = JSON.parse(JSON.stringify(currentSoul));
+      const didApply = applyChangeToSoul(proposedContent, proposal);
+
+      if (!didApply) {
+        // No-op (e.g., relationship already exists) — nothing to propose.
+        changes.push(`[major no-op] ${proposal.description}`);
+        continue;
+      }
+
+      try {
+        const result = await proposeMajorChange(supabase, {
+          userId,
+          layerType: "user",
+          proposedContent,
+          summary: proposal.description,
+          // Map change_type to trigger. Tone/domain shifts get the
+          // dedicated 'industry_shift' bucket so analytics can
+          // separate them from generic pattern detection later.
+          trigger:
+            proposal.change_type === "adjust_tone" || proposal.change_type === "add_domain"
+              ? "industry_shift"
+              : "pattern_detection",
+        });
+
+        if (result.ok) {
+          proposed++;
+          changes.push(`[PROPOSED ${result.proposal_id}] ${proposal.description}`);
+        } else {
+          // Propose failed — fall back to deferred-log behavior so the
+          // change isn't completely lost from the audit trail.
+          console.warn(
+            `[soul-evolve] proposeMajorChange failed for ${userId}: ${result.reason || result.error}`,
+          );
+          deferred++;
+          changes.push(`[DEFERRED — propose failed: ${result.reason}] ${proposal.description}`);
+        }
+      } catch (err) {
+        console.warn(`[soul-evolve] propose exception: ${proposal.description}`, err);
+        deferred++;
+        changes.push(`[DEFERRED — propose exception] ${proposal.description}`);
+      }
       continue;
     }
 
+    // ─── Minor change → apply directly (existing behavior) ──
     try {
-      // Parse the new_value (it's JSON-encoded as a string from Gemini)
-      let newValue: any;
-      try {
-        newValue = typeof proposal.new_value === "string"
-          ? JSON.parse(proposal.new_value)
-          : proposal.new_value;
-      } catch {
-        newValue = proposal.new_value;
-      }
-
-      // Apply based on change_type
-      switch (proposal.change_type) {
-        case "add_domain": {
-          if (!updatedSoul.domain_knowledge) updatedSoul.domain_knowledge = [];
-          // Check if domain already exists
-          const existingIdx = updatedSoul.domain_knowledge.findIndex(
-            (d: any) => d.area === newValue.area
-          );
-          if (existingIdx >= 0) {
-            // Merge concepts and boost confidence
-            const existing = updatedSoul.domain_knowledge[existingIdx];
-            const mergedConcepts = [...new Set([...(existing.concepts || []), ...(newValue.concepts || [])])];
-            updatedSoul.domain_knowledge[existingIdx] = {
-              ...existing,
-              concepts: mergedConcepts,
-              confidence: Math.min((existing.confidence || 0.5) + 0.1, 1.0),
-            };
-          } else {
-            updatedSoul.domain_knowledge.push({
-              ...newValue,
-              learned_from: "pattern_detection",
-              confidence: 0.5,
-            });
-          }
-          applied++;
-          changes.push(proposal.description);
-          break;
-        }
-
-        case "adjust_proactivity": {
-          if (updatedSoul.communication) {
-            if (typeof newValue === "number") {
-              updatedSoul.communication.max_proactive_per_day = Math.max(1, Math.min(10, newValue));
-            } else if (newValue.max_proactive_per_day) {
-              updatedSoul.communication.max_proactive_per_day = Math.max(1, Math.min(10, newValue.max_proactive_per_day));
-            }
-          }
-          applied++;
-          changes.push(proposal.description);
-          break;
-        }
-
-        case "add_relationship": {
-          if (!updatedSoul.relationships) updatedSoul.relationships = [];
-          const exists = updatedSoul.relationships.some(
-            (r: any) => r.name.toLowerCase() === (newValue.name || "").toLowerCase()
-          );
-          if (!exists && newValue.name) {
-            updatedSoul.relationships.push({
-              name: newValue.name,
-              role: newValue.role || "contact",
-              patterns: newValue.patterns || [],
-            });
-            applied++;
-            changes.push(proposal.description);
-          }
-          break;
-        }
-
-        case "enable_skill": {
-          if (!updatedSoul.skills_active) updatedSoul.skills_active = [];
-          const skillName = typeof newValue === "string" ? newValue : newValue.skill;
-          if (skillName && !updatedSoul.skills_active.includes(skillName)) {
-            updatedSoul.skills_active.push(skillName);
-            applied++;
-            changes.push(proposal.description);
-          }
-          break;
-        }
-
-        case "adjust_tone": {
-          // Tone changes are always major — should have been caught above
-          // But handle gracefully if Gemini marks it as minor
-          if (updatedSoul.identity && newValue.tone) {
-            updatedSoul.identity.tone = newValue.tone;
-            applied++;
-            changes.push(proposal.description);
-          }
-          break;
-        }
-
-        default:
-          console.warn(`[soul-evolve] Unknown change_type: ${proposal.change_type}`);
-          break;
+      const didApply = applyChangeToSoul(updatedSoul, proposal);
+      if (didApply) {
+        applied++;
+        changes.push(proposal.description);
       }
     } catch (err) {
       console.warn(`[soul-evolve] Error applying proposal: ${proposal.description}`, err);
     }
   }
 
-  // Write updated soul if any changes were applied
+  // Write updated soul if any minor changes were applied. Major changes
+  // do NOT touch the live layer here — they wait for user approval via
+  // olive-soul-safety/approve_change.
   if (applied > 0) {
     await upsertSoulLayer(supabase, "user", "user", userId, updatedSoul, "pattern_detection");
   }
@@ -357,7 +413,7 @@ async function applyEvolution(
   // Handle trust evolution separately (from reflections)
   await evolveTrust(supabase, userId);
 
-  return { applied, deferred, changes };
+  return { applied, deferred, proposed, changes };
 }
 
 // ─── Trust Evolution (separate from main soul) ──────────────────
