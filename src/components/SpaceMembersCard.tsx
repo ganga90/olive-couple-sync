@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { useSpace } from "@/providers/SpaceProvider";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/providers/AuthProvider";
-import { User2, Share2, Plus, Check, Copy, Trash2, AlertTriangle, Crown, Users, UserMinus, Clock } from "lucide-react";
+import { User2, Share2, Plus, Check, Copy, Trash2, AlertTriangle, Crown, Users, UserMinus, Clock, Pencil, X as XIcon } from "lucide-react";
 import { useLocalizedNavigate } from "@/hooks/useLocalizedNavigate";
 import { useLanguage } from "@/providers/LanguageProvider";
 import { useTranslation } from "react-i18next";
@@ -21,14 +23,87 @@ export const SpaceMembersCard = () => {
   const [inviteMessage, setInviteMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [unlinkLoading, setUnlinkLoading] = useState(false);
+  // Phase 3-4: rename + delete space
+  const [renameMode, setRenameMode] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const { currentCouple, you, partner, members, refetch } = useSupabaseCouple();
+  const { currentSpace, updateSpace, deleteSpace } = useSpace();
   const { user } = useAuth();
   const navigate = useLocalizedNavigate();
   const { getLocalizedPath } = useLanguage();
 
   const isOwner = members.find(m => m.user_id === user?.id)?.role === 'owner';
-  const maxMembers = currentCouple?.max_members || 10;
+  const maxMembers = currentCouple?.max_members || currentSpace?.max_members || 10;
   const memberCount = members.length;
+  const displayedTitle = currentSpace?.name || currentCouple?.title || t('partnerInfo.sharedSpace', 'Shared Space');
+
+  // Keep the rename input synced with the current title whenever the user opens the editor.
+  useEffect(() => {
+    if (renameMode) setRenameValue(displayedTitle);
+  }, [renameMode, displayedTitle]);
+
+  // ── Phase 3-4: rename / delete handlers ────────────────────────────
+  const handleRenameSave = async () => {
+    const trimmed = renameValue.trim();
+    if (!trimmed || trimmed === displayedTitle) {
+      setRenameMode(false);
+      return;
+    }
+    if (!currentSpace?.id && !currentCouple?.id) return;
+    setRenameSaving(true);
+    try {
+      // Prefer the SpaceProvider path (works for ALL space types). If
+      // there's no olive_spaces row yet (rare legacy edge case), fall
+      // back to updating clerk_couples.title for couple-type spaces.
+      if (currentSpace?.id) {
+        const updated = await updateSpace(currentSpace.id, { name: trimmed });
+        if (!updated) throw new Error('updateSpace returned null');
+      } else if (currentCouple?.id) {
+        const supabase = getSupabase();
+        const { error } = await supabase
+          .from('clerk_couples')
+          .update({ title: trimmed, updated_at: new Date().toISOString() })
+          .eq('id', currentCouple.id);
+        if (error) throw error;
+      }
+      toast.success(t('partnerInfo.renamed', { defaultValue: 'Space renamed' }));
+      await refetch();
+      setRenameMode(false);
+    } catch (err) {
+      console.error('[SpaceMembersCard] Rename failed:', err);
+      toast.error(t('partnerInfo.renameError', { defaultValue: 'Could not rename. Try again.' }));
+    } finally {
+      setRenameSaving(false);
+    }
+  };
+
+  const handleDeleteSpace = async () => {
+    if (!currentSpace?.id) return;
+    if (!isOwner) {
+      toast.error(t('partnerInfo.deleteOnlyOwner', { defaultValue: 'Only the owner can delete a space.' }));
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      const ok = await deleteSpace(currentSpace.id);
+      if (ok) {
+        localStorage.removeItem('olive_current_couple');
+        localStorage.removeItem('olive_current_space');
+        toast.success(t('partnerInfo.deleted', { defaultValue: 'Space deleted.' }));
+        await refetch();
+        setTimeout(() => navigate('/onboarding'), 800);
+      } else {
+        throw new Error('deleteSpace returned false');
+      }
+    } catch (err) {
+      console.error('[SpaceMembersCard] Delete failed:', err);
+      toast.error(t('partnerInfo.deleteError', { defaultValue: 'Could not delete the space. Try again.' }));
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   const handleCreateInvite = async () => {
     if (!currentCouple || loading) return;
@@ -157,14 +232,54 @@ export const SpaceMembersCard = () => {
   return (
     <Card className="p-6 bg-card/50 border-border/30 shadow-soft space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-foreground">{currentCouple.title || t('partnerInfo.sharedSpace', 'Shared Space')}</h3>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          {renameMode ? (
+            // Phase 3-4: inline rename. Owner-gated below; this branch
+            // only mounts when the user clicked the pencil.
+            <div className="flex items-center gap-2">
+              <Input
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                disabled={renameSaving}
+                className="h-9 text-base font-semibold"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleRenameSave();
+                  if (e.key === 'Escape') { setRenameMode(false); setRenameValue(displayedTitle); }
+                }}
+                aria-label={t('partnerInfo.renameInputLabel', { defaultValue: 'Space name' })}
+              />
+              <Button size="icon" className="h-8 w-8" onClick={handleRenameSave} disabled={renameSaving}>
+                <Check className="h-4 w-4" />
+              </Button>
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setRenameMode(false); setRenameValue(displayedTitle); }} disabled={renameSaving}>
+                <XIcon className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold text-foreground truncate">
+                {displayedTitle}
+              </h3>
+              {isOwner && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={() => setRenameMode(true)}
+                  aria-label={t('partnerInfo.rename', { defaultValue: 'Rename space' })}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             {t('partnerInfo.memberCount', '{{count}}/{{max}} members', { count: memberCount, max: maxMembers })}
           </p>
         </div>
-        <Badge variant="secondary" className="text-xs">
+        <Badge variant="secondary" className="text-xs flex-shrink-0">
           <Users className="w-3 h-3 mr-1" />
           {memberCount}
         </Badge>
@@ -284,35 +399,79 @@ export const SpaceMembersCard = () => {
         </p>
       )}
 
-      {/* Leave Space */}
+      {/* Leave / Delete Space (Phase 3-4: explicit Delete added) */}
       <div className="border-t border-border/30 pt-4 space-y-3">
         <Label className="text-sm font-medium text-destructive">{t('partnerInfo.dangerZone')}</Label>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10" disabled={unlinkLoading}>
-              <Trash2 className="h-4 w-4 mr-1" />
-              {unlinkLoading ? t('partnerInfo.unlinking') : t('partnerInfo.unlinkButton')}
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-                <AlertTriangle className="h-5 w-5" />
-                {t('partnerInfo.unlinkConfirmTitle')}
-              </AlertDialogTitle>
-              <AlertDialogDescription className="space-y-2">
-                <p>{t('partnerInfo.unlinkConfirmDesc1', { spaceName: currentCouple.title })}</p>
-                <p className="font-medium">{t('partnerInfo.unlinkConfirmDesc2')}</p>
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>{t('partnerInfo.cancel')}</AlertDialogCancel>
-              <AlertDialogAction onClick={handleUnlinkSpace} className="bg-destructive hover:bg-destructive/90" disabled={unlinkLoading}>
-                {t('partnerInfo.yesUnlink')}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <div className="flex flex-wrap gap-2">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10" disabled={unlinkLoading}>
+                <Trash2 className="h-4 w-4 mr-1" />
+                {unlinkLoading ? t('partnerInfo.unlinking') : t('partnerInfo.unlinkButton')}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                  <AlertTriangle className="h-5 w-5" />
+                  {t('partnerInfo.unlinkConfirmTitle')}
+                </AlertDialogTitle>
+                <AlertDialogDescription className="space-y-2">
+                  <p>{t('partnerInfo.unlinkConfirmDesc1', { spaceName: displayedTitle })}</p>
+                  <p className="font-medium">{t('partnerInfo.unlinkConfirmDesc2')}</p>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('partnerInfo.cancel')}</AlertDialogCancel>
+                <AlertDialogAction onClick={handleUnlinkSpace} className="bg-destructive hover:bg-destructive/90" disabled={unlinkLoading}>
+                  {t('partnerInfo.yesUnlink')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Phase 3-4: Delete Space — owner only, destructive for ALL members.
+              Distinct from Leave: Leave only removes self; Delete tears down
+              the entire space + cascades. Backed by SpaceProvider.deleteSpace
+              which uses the olive-space-manage edge function. */}
+          {isOwner && currentSpace?.id && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" className="text-destructive border-destructive/40 hover:bg-destructive/10" disabled={deleteLoading}>
+                  <AlertTriangle className="h-4 w-4 mr-1" />
+                  {deleteLoading
+                    ? t('partnerInfo.deleting', { defaultValue: 'Deleting…' })
+                    : t('partnerInfo.deleteSpace', { defaultValue: 'Delete space' })}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                    <AlertTriangle className="h-5 w-5" />
+                    {t('partnerInfo.deleteSpaceConfirmTitle', { defaultValue: 'Delete this space?' })}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="space-y-2">
+                    <p>
+                      {t('partnerInfo.deleteSpaceConfirmDesc1', {
+                        defaultValue: '"{{spaceName}}" and every shared note, list, expense, and member of it will be removed for everyone — not just you.',
+                        spaceName: displayedTitle,
+                      })}
+                    </p>
+                    <p className="font-medium">
+                      {t('partnerInfo.deleteSpaceConfirmDesc2', { defaultValue: 'This cannot be undone.' })}
+                    </p>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t('partnerInfo.cancel')}</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDeleteSpace} className="bg-destructive hover:bg-destructive/90" disabled={deleteLoading}>
+                    {t('partnerInfo.yesDeleteSpace', { defaultValue: 'Yes, delete space' })}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
       </div>
     </Card>
   );
