@@ -99,17 +99,21 @@ export const ContextRail: React.FC = () => {
     return format(date, 'EEE, MMM d');
   };
 
-  // Get recent partner activity (same logic as PartnerActivityWidget)
+  // Get recent partner activity (same logic as PartnerActivityWidget).
+  // Phase 3-1: also accept space-only shared notes (non-couple Spaces),
+  // and lift the 2-row cap so members 3-10 are visible. We keep the
+  // ContextRail summary tighter than the Home widget — 4 rows max.
   const partnerActivity = useMemo(() => {
-    if (!userId || !currentCouple) return [];
+    if (!userId || (!currentCouple && !currentSpace)) return [];
     return notes
       .filter(note => {
-        if (!note.coupleId) return false;
-        if (note.authorId === userId) return false;
+        const isShared = !!note.coupleId || (note as any).space_id != null || (note as any).isShared === true;
+        if (!isShared) return false;
+        if (!note.authorId || note.authorId === userId) return false;
         return true;
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 2)
+      .slice(0, 4)
       .map(note => {
         const youName = currentCouple?.you_name;
         const isAssignedToYou = note.task_owner === 'you' ||
@@ -122,16 +126,24 @@ export const ContextRail: React.FC = () => {
           isAssignedToYou,
         };
       });
-  }, [notes, userId, currentCouple]);
+  }, [notes, userId, currentCouple, currentSpace]);
 
-  // Render Partner Status with dynamic activity
+  // Render Partner / Space-member status with dynamic activity.
+  // Phase 3-1: also visible for non-couple Spaces.
   const renderPartnerStatus = () => {
-    if (!currentCouple) return null;
-    
+    if (!currentCouple && !currentSpace) return null;
+    // Hide if user is alone in their space (nothing to show).
+    if (currentSpace && (currentSpace.member_count ?? 0) <= 1 && !currentCouple) return null;
+
+    const isMultiMember = (currentSpace?.member_count ?? 0) > 2;
+    const railHeading = isMultiMember
+      ? t('home:partnerActivity.railTitleMulti', { defaultValue: 'Space' })
+      : t('home:partnerActivity.railTitle', 'Partner');
+
     return (
       <div className="space-y-3">
         <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-          {t('home:partnerActivity.railTitle', 'Partner')}
+          {railHeading}
         </p>
         <div className="flex items-center gap-3 py-3">
           <div className="w-10 h-10 rounded-full bg-muted/40 flex items-center justify-center">
