@@ -44,6 +44,13 @@ import { parseExpenseText } from "../_shared/expense-detector.ts";
 import { captureReplyReflection } from "../_shared/reflection-capture.ts";
 import { checkTrustForAction } from "../_shared/trust-gate-check.ts";
 import { assembleContextSoul } from "../_shared/context-soul/index.ts";
+import {
+  classifyConfirmationReply,
+  isBadTitle,
+  isPendingOfferFresh,
+  looksLikeConfirmation,
+  type PendingOffer,
+} from "../_shared/pending-offer.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -287,6 +294,11 @@ $ Spesa: $45 pranzo da Chipotle
     en: "Sorry, I couldn't save that. Please try again 🫒",
     'es': 'Lo siento, no pude guardarlo. Inténtalo de nuevo 🫒',
     'it': 'Scusa, non sono riuscita a salvarlo. Riprova 🫒',
+  },
+  artifact_offer_declined: {
+    en: '🌿 No worries — skipped.',
+    'es': '🌿 Sin problema — lo dejo pasar.',
+    'it': '🌿 Nessun problema — lascio stare.',
   },
 };
 
@@ -606,6 +618,10 @@ interface ConversationContext {
   last_assistant_output?: string;
   last_assistant_output_at?: string;
   last_assistant_request?: string; // The user's original request that triggered the output
+  // Structured Capture → Offer → Confirm → Execute state.
+  // Set when Olive proposes an action ("Want me to save this?") and waits for confirmation.
+  // Survives intermediate CHAT turns so a delayed "yes" still resolves to the right artifact.
+  pending_offer?: PendingOffer | null;
 }
 
 // ============================================================================
@@ -3006,6 +3022,46 @@ Description: "${parsedExpense.description}"`;
     }
 
     // ========================================================================
+    // POST-CLASSIFICATION SAFETY NET #1.4: Honor pending offers (Capture → Offer → Confirm → Execute)
+    // When Olive's previous turn ended with a save offer ("Want me to save this?"),
+    // a short affirm reply ("yes please", "sì", "do it") MUST resolve to that offer
+    // rather than fall through to CHAT and trigger a confused clarification turn.
+    // This is the structural fix for the brand contract: Olive proposes, user confirms,
+    // Olive executes — never a clarification round-trip on a clear yes/no.
+    // ========================================================================
+    if (messageBody) {
+      const sessionCtxOffer = (session.context_data || {}) as ConversationContext;
+      const offer = sessionCtxOffer.pending_offer;
+      if (isPendingOfferFresh(offer)) {
+        const confirmation = classifyConfirmationReply(messageBody);
+        if (confirmation === 'affirm' && offer.type === 'save_artifact') {
+          console.log(`[SafetyNet#1.4] Pending save_artifact offer + affirm reply ("${messageBody.substring(0, 40)}") → SAVE_ARTIFACT`);
+          intentResult = {
+            intent: 'SAVE_ARTIFACT' as any,
+            cleanMessage: messageBody,
+          } as any;
+        } else if (confirmation === 'deny' && offer.type === 'save_artifact') {
+          console.log(`[SafetyNet#1.4] Pending save_artifact offer + deny reply → declining offer`);
+          // Clear the offer so it can't be revived by accident, then send a brief ack.
+          try {
+            await supabase
+              .from('user_sessions')
+              .update({
+                context_data: { ...sessionCtxOffer, pending_offer: null },
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', session.id);
+          } catch (clearErr) {
+            console.warn('[SafetyNet#1.4] Failed to clear pending_offer on deny (non-critical):', clearErr);
+          }
+          return reply(t('artifact_offer_declined', userLang));
+        }
+        // No match → fall through. The offer stays alive until TTL or next save offer
+        // overwrites it; meanwhile the message is classified normally.
+      }
+    }
+
+    // ========================================================================
     // POST-CLASSIFICATION SAFETY NET #1.5: "Save this" / "Save it as a note"
     // If the user asks to save something and Olive recently produced an assistant
     // output (email draft, plan, etc.), override to SAVE_ARTIFACT intent.
@@ -3014,7 +3070,7 @@ Description: "${parsedExpense.description}"`;
       const msgLower = messageBody.toLowerCase();
       // Comprehensive multilingual "save this" detection
       const saveArtifactPatterns = /\b(save\s+(?:this|it|that)(?:\s+(?:as|in|to|for)\s+\w+)?|keep\s+(?:this|it|that)(?:\s+for\s+(?:me|later))?|salva(?:lo|la|melo|re\s+(?:questo|questa|tutto))?|guarda(?:lo|la|melo)?|metti(?:lo|la|melo)?\s+(?:nelle?\s+note|nei?\s+task|nelle?\s+attività|nella\s+lista)|aggiungi(?:lo|la|melo)?\s+(?:alle?\s+note|ai?\s+task|alla\s+lista)|save\s+(?:as|in|to)\s+(?:a\s+)?(?:note|task|list|my\s+list|notes)|add\s+(?:this|it|that)\s+(?:to|as|in)\s+(?:a\s+)?(?:note|task|list|my\s+list|notes)|guárdalo|guárdamelo|añade(?:lo)?\s+(?:a|como|en)\s+(?:mis?\s+)?(?:notas?|tareas?|lista)|guardar(?:lo)?\s+(?:como|en)\s+(?:una?\s+)?(?:nota|tarea|lista))\b/i.test(msgLower);
-      
+
       if (saveArtifactPatterns) {
         const sessionCtxSave = (session.context_data || {}) as ConversationContext;
         const hasRecentOutput = sessionCtxSave.last_assistant_output &&
@@ -5088,22 +5144,39 @@ Respond with helpful, specific information extracted from their saved data. Answ
           });
 
           await saveReferencedEntity(matchingTask || null, response);
-          
-          // Store output so user can "save this" later
+
+          // Store output so user can "save this" later, plus structured pending_offer
+          // when the response actually carries the save tail (so confirmation replies
+          // can be unambiguously resolved even after intervening CHAT turns).
           const currentCtxCA = (session.context_data || {}) as ConversationContext;
+          const nowIsoCA = new Date().toISOString();
+          const requestForSaveCA = (effectiveMessage || '').substring(0, 500);
+          const offeredArtifactCA = response.substring(0, 4000);
+          const responseSuggestsSaveCA = /\b(save\s+this|save\s+it|salvar(?:lo|la)|guardar(?:lo|la)|salvarlo|guardarlo)\b/i.test(response);
+          const pendingOfferCA: PendingOffer | null = responseSuggestsSaveCA
+            ? {
+                type: 'save_artifact',
+                artifact_content: offeredArtifactCA,
+                artifact_request: requestForSaveCA,
+                artifact_kind: 'contextual_ask',
+                offered_at: nowIsoCA,
+              }
+            : null;
+
           await supabase
             .from('user_sessions')
             .update({
               context_data: {
                 ...currentCtxCA,
-                last_assistant_output: response.substring(0, 4000),
-                last_assistant_output_at: new Date().toISOString(),
-                last_assistant_request: (effectiveMessage || '').substring(0, 500),
+                last_assistant_output: offeredArtifactCA,
+                last_assistant_output_at: nowIsoCA,
+                last_assistant_request: requestForSaveCA,
+                pending_offer: pendingOfferCA,
               },
-              updated_at: new Date().toISOString(),
+              updated_at: nowIsoCA,
             })
             .eq('id', session.id);
-          console.log('[CONTEXTUAL_ASK] Stored output for save-artifact follow-up');
+          console.log(`[CONTEXTUAL_ASK] Stored output for save-artifact follow-up — pending_offer=${pendingOfferCA ? 'yes' : 'no'}`);
         } catch (ctxErr) {
           console.warn('[Context] Error saving context after CONTEXTUAL_ASK:', ctxErr);
         }
@@ -5330,22 +5403,39 @@ Answer the question thoroughly, then briefly mention any relevant personal conne
         // Save conversation context + artifact for "save this" follow-ups
         try {
           await saveReferencedEntity(null, formattedResponse);
-          
-          // Store output so user can "save this" later
+
+          // Store output so user can "save this" later, AND register a structured
+          // pending_offer so a delayed/short confirmation ("yes", "sì", "do it")
+          // routes to the right artifact even if a CHAT turn happens in between.
           const currentCtxWS = (session.context_data || {}) as ConversationContext;
+          const nowIsoWS = new Date().toISOString();
+          const requestForSave = (effectiveMessage || '').substring(0, 500);
+          const offeredArtifact = formattedResponse.substring(0, 4000);
+          const responseSuggestsSave = /\b(save\s+this|save\s+it|salvar(?:lo|la)|guardar(?:lo|la)|salvarlo|guardarlo)\b/i.test(formattedResponse);
+          const pendingOfferWS: PendingOffer | null = responseSuggestsSave
+            ? {
+                type: 'save_artifact',
+                artifact_content: offeredArtifact,
+                artifact_request: requestForSave,
+                artifact_kind: 'web_search',
+                offered_at: nowIsoWS,
+              }
+            : null;
+
           await supabase
             .from('user_sessions')
             .update({
               context_data: {
                 ...currentCtxWS,
-                last_assistant_output: formattedResponse.substring(0, 4000),
-                last_assistant_output_at: new Date().toISOString(),
-                last_assistant_request: (effectiveMessage || '').substring(0, 500),
+                last_assistant_output: offeredArtifact,
+                last_assistant_output_at: nowIsoWS,
+                last_assistant_request: requestForSave,
+                pending_offer: pendingOfferWS,
               },
-              updated_at: new Date().toISOString(),
+              updated_at: nowIsoWS,
             })
             .eq('id', session.id);
-          console.log('[WEB_SEARCH] Stored output for save-artifact follow-up');
+          console.log(`[WEB_SEARCH] Stored output for save-artifact follow-up — pending_offer=${pendingOfferWS ? 'yes' : 'no'}`);
         } catch (ctxErr) {
           console.warn('[Context] Error saving context after WEB_SEARCH:', ctxErr);
         }
@@ -6262,23 +6352,38 @@ If the user's message is long and conversational — asking for help with someth
         // Save conversation history (no specific entity for CHAT)
         // For assistant-type responses, also store the full output for "save this" follow-ups
         await saveReferencedEntity(null, chatResponse);
-        
-        // Store output for ALL chat types so user can "save this" later
+
+        // Store output for ALL chat types so user can "save this" later.
+        // Critical: if a fresh pending_offer is alive (e.g. a prior WEB_SEARCH offered
+        // to save and the user is mid-conversation about it), DO NOT overwrite the
+        // saved request/output — that's what previously caused titles like
+        // "Clarification Request for 'Yes Please'". The offer takes priority and
+        // its frozen artifact_request stays the source of truth for SAVE_ARTIFACT.
         try {
           const currentCtx = (session.context_data || {}) as ConversationContext;
+          const offerStillAlive = isPendingOfferFresh(currentCtx.pending_offer);
+          const nowIsoChat = new Date().toISOString();
+          const nextCtx: ConversationContext = offerStillAlive
+            ? {
+                // Preserve the offer's frozen artifact + original request.
+                // Do NOT overwrite last_assistant_output / last_assistant_request.
+                ...currentCtx,
+              }
+            : {
+                ...currentCtx,
+                last_assistant_output: chatResponse.substring(0, 4000),
+                last_assistant_output_at: nowIsoChat,
+                last_assistant_request: (effectiveMessage || '').substring(0, 500),
+              };
+
           await supabase
             .from('user_sessions')
             .update({
-              context_data: {
-                ...currentCtx,
-                last_assistant_output: chatResponse.substring(0, 4000),
-                last_assistant_output_at: new Date().toISOString(),
-                last_assistant_request: (effectiveMessage || '').substring(0, 500),
-              },
-              updated_at: new Date().toISOString(),
+              context_data: nextCtx,
+              updated_at: nowIsoChat,
             })
             .eq('id', session.id);
-          console.log(`[CHAT/${chatType}] Stored output for save-artifact follow-up`);
+          console.log(`[CHAT/${chatType}] Stored output for save-artifact follow-up — pending_offer_alive=${offerStillAlive}`);
         } catch (storeErr) {
           console.warn(`[CHAT/${chatType}] Failed to store output (non-blocking):`, storeErr);
         }
@@ -6798,25 +6903,34 @@ If the user's message is long and conversational — asking for help with someth
     // ========================================================================
     if (intent === 'SAVE_ARTIFACT') {
       console.log('[SAVE_ARTIFACT] User wants to save assistant output as note');
-      
+
       const sessionCtxArtifact = (session.context_data || {}) as ConversationContext;
-      const artifactContent = sessionCtxArtifact.last_assistant_output;
-      const artifactRequest = sessionCtxArtifact.last_assistant_request || '';
-      
+      // Prefer the structured pending_offer (frozen at offer time, immune to CHAT clobber).
+      // Fall back to last_assistant_* for legacy / "save this" flows where no offer was set.
+      const freshOffer = isPendingOfferFresh(sessionCtxArtifact.pending_offer)
+        ? sessionCtxArtifact.pending_offer
+        : null;
+      const artifactContent = freshOffer?.artifact_content || sessionCtxArtifact.last_assistant_output;
+      const artifactRequest = freshOffer?.artifact_request || sessionCtxArtifact.last_assistant_request || '';
+
       if (!artifactContent) {
         return reply(t('artifact_none', userLang));
       }
-      
+
       try {
-        // Use AI to generate a proper title and category for the artifact
+        // Use AI to generate a proper title and category for the artifact.
+        // Critical: the title must describe the CONTENT, not paraphrase the user's
+        // confirmation message ("yes please", "save it"). The original_request is
+        // supplementary context only — useful when the content is open-ended, but it
+        // must NEVER become the title when it's a short confirmation.
         const classifyResult = await callAI(
-          `You classify saved content into a structured note. Given the user's original request and the AI-produced content, return JSON with:
-- "title": A concise, descriptive title (max 8 words) that captures the TOPIC of the content. NEVER use generic titles like "Save Note", "Saved Draft", "Note". Instead describe what the content is ABOUT. Examples: "Best Cities to Visit in Italy", "Email Draft to Boss About Vacation", "Gift Ideas for Sara's Birthday", "Weekly Meal Plan", "Trip Itinerary for Rome"
+          `You classify saved content into a structured note. Return JSON with:
+- "title": A concise, descriptive title (max 8 words) that captures the TOPIC of the FULL ARTIFACT CONTENT. NEVER base the title on the original request when that request is a short confirmation (e.g. "yes", "yes please", "save it", "ok", "do it", "sì", "sì grazie", "sí", "vale", "claro"). NEVER use generic titles ("Save Note", "Saved Draft", "Clarification Request"). Instead describe what the CONTENT is about. Good examples: "Best Cities to Visit in Italy", "Megaformer Studios — What They Are", "Email Draft to Boss About Vacation", "Gift Ideas for Sara's Birthday".
 - "category": One of: task, work, personal, travel, finance, health, shopping, entertainment, recipes, general
-- "tags": Array of 1-3 relevant tags
+- "tags": Array of 1-3 relevant tags drawn from the CONTENT topic.
 
 Return ONLY valid JSON, no markdown.`,
-          `USER REQUEST: "${artifactRequest.substring(0, 500)}"\n\nFULL ARTIFACT CONTENT:\n${artifactContent.substring(0, 2000)}`,
+          `ORIGINAL USER REQUEST (context only — do NOT title from this if it looks like a confirmation): "${artifactRequest.substring(0, 500)}"\n\nFULL ARTIFACT CONTENT (title MUST describe this):\n${artifactContent.substring(0, 2000)}`,
           0.1,
           'lite',
           tracker,
@@ -6826,24 +6940,35 @@ Return ONLY valid JSON, no markdown.`,
         let title = 'Saved draft';
         let category = 'task';
         let tags: string[] = ['olive-draft'];
-        
+
         try {
           const parsed = JSON.parse(classifyResult.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
-          // Reject generic/useless titles
-          const genericTitles = /^(save\s*note|saved?\s*draft|note|task|untitled|n\/a)$/i;
-          title = (parsed.title && !genericTitles.test(parsed.title.trim())) ? parsed.title : title;
+          if (parsed.title && !isBadTitle(parsed.title)) title = parsed.title;
           category = parsed.category || category;
           tags = [...(parsed.tags || []), 'olive-draft'];
         } catch {
-          // Fallback: extract first line as title
+          // Fallback: extract first line of the CONTENT as title (never the user request,
+          // which might be a confirmation phrase).
           const firstLine = artifactContent.split('\n')[0]?.replace(/[*#]/g, '').trim();
           if (firstLine && firstLine.length < 80) title = firstLine;
         }
-        
-        // Final fallback: derive title from user request if still generic
-        if (/^saved?\s*draft$/i.test(title) && artifactRequest) {
-          const requestTitle = artifactRequest.replace(/^(can you |please |help me |tell me |what are )/i, '').substring(0, 60).trim();
-          if (requestTitle.length > 5) title = requestTitle.charAt(0).toUpperCase() + requestTitle.slice(1);
+
+        // Final fallback: derive title from user request — but ONLY if the request
+        // doesn't itself look like a confirmation. Otherwise extract a topic line
+        // from the content body.
+        if (isBadTitle(title)) {
+          const requestIsConfirmation = looksLikeConfirmation(artifactRequest);
+          if (artifactRequest && !requestIsConfirmation) {
+            const requestTitle = artifactRequest.replace(/^(can you |please |help me |tell me |what are |what is |search (?:for|what is|what's) )/i, '').substring(0, 60).trim();
+            if (requestTitle.length > 5) title = requestTitle.charAt(0).toUpperCase() + requestTitle.slice(1);
+          } else {
+            // Pull the first substantive line from the content itself.
+            const contentLine = artifactContent
+              .split('\n')
+              .map((l: string) => l.replace(/[*#>_`]/g, '').trim())
+              .find((l: string) => l.length >= 6 && l.length <= 80);
+            if (contentLine) title = contentLine;
+          }
         }
         
         // Build note data — artifact goes into items (details section) for easy copy/paste
@@ -6908,7 +7033,8 @@ Return ONLY valid JSON, no markdown.`,
           }
         } catch {}
         
-        // Clear the stored artifact from session
+        // Clear the stored artifact AND the pending_offer from session — this
+        // closes the Capture → Offer → Confirm → Execute loop atomically.
         try {
           await supabase
             .from('user_sessions')
@@ -6918,6 +7044,7 @@ Return ONLY valid JSON, no markdown.`,
                 last_assistant_output: null,
                 last_assistant_output_at: null,
                 last_assistant_request: null,
+                pending_offer: null,
               },
               updated_at: new Date().toISOString(),
             })
