@@ -41,9 +41,8 @@ import { DEFAULT_CONTEXT_SOUL_BUDGET } from "./budget.ts";
 // ─── Side-effect imports register planners into the module-scoped map.
 // Add new planners as new files in ./planners/ and import them here.
 import "./planners/default.ts";
-// Real planners are registered as they ship in C-4.b / C-4.c:
-// import "./planners/expense.ts";
-// import "./planners/contextual-ask.ts";
+import "./planners/expense.ts";
+import "./planners/contextual-ask.ts";
 
 export async function assembleContextSoul(
   // deno-lint-ignore no-explicit-any
@@ -54,8 +53,10 @@ export async function assembleContextSoul(
   const resolved = {
     userId: params.userId,
     spaceId: params.spaceId ?? null,
+    coupleId: params.coupleId ?? null,
     query: params.query ?? "",
     budgetTokens: params.budgetTokens ?? DEFAULT_CONTEXT_SOUL_BUDGET,
+    generateEmbedding: params.generateEmbedding,
   };
 
   // Defensive: missing userId is a programming error, but we don't
