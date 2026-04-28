@@ -43,6 +43,7 @@ import {
 import { parseExpenseText } from "../_shared/expense-detector.ts";
 import { captureReplyReflection } from "../_shared/reflection-capture.ts";
 import { checkTrustForAction } from "../_shared/trust-gate-check.ts";
+import { assembleContextSoul } from "../_shared/context-soul/index.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -4914,6 +4915,43 @@ Description: "${parsedExpense.description}"`;
         }
       }
 
+      // ─── Layer 4 Context Soul (Phase C-4.c) ────────────────────────
+      // Per-intent retrieval planner. Currently gated behind the
+      // CONTEXT_SOUL_ROLLOUT env flag so we can ship the wiring without
+      // changing production behavior until we explicitly enable it.
+      // The dispatcher itself is fail-soft: any planner error returns
+      // an empty string, and the existing retrieval path (savedItemsContext)
+      // is unmodified — Layer 4 is purely additive when active.
+      let contextSoulBlock = "";
+      if (Deno.env.get("CONTEXT_SOUL_ROLLOUT") === "true") {
+        try {
+          // In whatsapp-webhook the only space identifier available
+          // is `coupleId` (couple-typed spaces share their UUID with
+          // the space row via the sync trigger). We pass it as both
+          // spaceId (for note-scope filtering) and coupleId (for the
+          // find_similar_notes RPC's p_couple_id arg).
+          const csResult = await assembleContextSoul(supabase, "CONTEXTUAL_ASK", {
+            userId,
+            spaceId: coupleId ?? null,
+            coupleId: coupleId ?? null,
+            query: effectiveMessage || messageBody || "",
+            generateEmbedding,
+          });
+          if (csResult.prompt && csResult.prompt.trim().length > 0) {
+            contextSoulBlock = `\n\n${csResult.prompt}`;
+            console.log(
+              `[ContextSoul] CONTEXTUAL_ASK loaded sections=${csResult.sectionsLoaded.join(",")}`
+                + ` tokens=${csResult.tokensUsed}`,
+            );
+          }
+        } catch (csErr) {
+          // Defense in depth — the dispatcher already wraps planners in
+          // try/catch. This catches anything that escapes (e.g. import
+          // errors at module load time in pathological deploys).
+          console.warn("[ContextSoul] CONTEXTUAL_ASK assembly failed (non-blocking):", csErr);
+        }
+      }
+
       // Build system prompt — HYBRID when web search context is available
       const isHybridResponse = webSearchContext.length > 0;
 
@@ -4954,7 +4992,7 @@ CRITICAL INSTRUCTIONS:
 7. If you mention sources, keep it brief.
 
 ${webSearchContext}
-${savedItemsContext}
+${savedItemsContext}${contextSoulBlock}
 ${calendarContext}
 ${memoryContext}
 ${ctxAskMemoryFileContext}
@@ -4979,7 +5017,7 @@ CRITICAL INSTRUCTIONS:
 9. When the user uses pronouns like "it", "that", "this task", refer to the RECENT CONVERSATION section.
 10. Check CALENDAR EVENTS when questions involve timing, scheduling, or "when" questions.
 
-${savedItemsContext}
+${savedItemsContext}${contextSoulBlock}
 ${calendarContext}
 ${memoryContext}
 ${ctxAskMemoryFileContext}
