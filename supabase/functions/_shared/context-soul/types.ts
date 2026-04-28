@@ -39,6 +39,8 @@ export interface ContextSoulParams {
   userId: string;
   /** Space scope, when applicable. Null for personal-context queries. */
   spaceId?: string | null;
+  /** Couple ID, when in a couple-type space (legacy bridge). */
+  coupleId?: string | null;
   /** The user's raw message text. Used by planners that do retrieval. */
   query?: string;
   /**
@@ -47,14 +49,28 @@ export interface ContextSoulParams {
    * orchestrator's overall budget handles total cap).
    */
   budgetTokens?: number;
+  /**
+   * Optional injected embedding callback. When the caller can compute
+   * embeddings (e.g. whatsapp-webhook has GEMINI_API set up), it
+   * passes this and planners use vector search via `find_similar_notes`.
+   * When absent, planners fall back to keyword/recency-based retrieval.
+   *
+   * Mirrors the dependency-injection pattern in `_shared/task-search.ts`
+   * — keeps the framework free of Gemini SDK + API key plumbing.
+   */
+  generateEmbedding?: (text: string) => Promise<number[] | null>;
 }
 
 /** Required-everywhere shape passed to planners (defaults filled in). */
 export interface ResolvedContextSoulParams {
   userId: string;
   spaceId: string | null;
+  coupleId: string | null;
   query: string;
   budgetTokens: number;
+  /** Same callback as `ContextSoulParams.generateEmbedding`, never required.
+   * Planners check `typeof === 'function'` before invoking. */
+  generateEmbedding?: (text: string) => Promise<number[] | null>;
 }
 
 export interface ContextSoulResult {
