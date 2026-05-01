@@ -21,6 +21,7 @@
  */
 
 import { type SupportedLocale, normalizeLocale } from "./i18n-locale.ts";
+import { getTimeZoneParts, toUtcFromLocalParts } from "./timezone-calendar.ts";
 
 export interface ParsedDate {
   date: string | null;
@@ -188,13 +189,37 @@ export function parseNaturalDate(
   const phrases = READABLE_PHRASES_BY_LOCALE[locale];
   const now = new Date();
 
-  // CRITICAL: Create a "local now" whose UTC fields represent the user's local time.
-  // Prevents off-by-one day errors when UTC date differs from local date.
+  // PR5 — Construct `localNow` as a Date whose UTC fields ARE the user's
+  // local clock parts, regardless of the JS engine's local timezone.
+  //
+  // Pre-PR5 this used `now.toLocaleString(..., timezone)` + `new Date(localStr)`,
+  // which only produced the right UTC fields when the engine ran in UTC.
+  // On Supabase Edge (UTC) it worked; on developer machines (e.g., EDT)
+  // the UTC fields were off by the engine's offset. The end-of-function
+  // offset block compensated through self-cancelling math, but mutations
+  // along the way (`setDate`, `setHours`, `setMonth`) operated on engine-
+  // local fields rather than UTC, causing subtle drift especially around
+  // DST boundaries.
+  //
+  // Using `getTimeZoneParts` + `Date.UTC` makes the contract explicit:
+  // localNow.getUTCxx() returns the user-local clock parts on every
+  // engine. From here on the function uses `setUTCxx` / `getUTCxx`
+  // consistently, and the final `toUtcFromLocalParts` call delivers a
+  // DST-correct UTC instant.
   let localNow: Date;
   try {
-    const localStr = now.toLocaleString("en-US", { timeZone: timezone });
-    localNow = new Date(localStr);
+    const parts = getTimeZoneParts(now, timezone);
+    localNow = new Date(Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      parts.second,
+    ));
   } catch {
+    // Bad timezone — fall back to UTC-now. Resulting parser output may
+    // be off but won't crash.
     localNow = new Date(now);
   }
 
@@ -252,12 +277,18 @@ export function parseNaturalDate(
     const targetDay = dayMap[dayName.toLowerCase()] ?? -1;
     if (targetDay === -1) return localNow;
 
+    // PR5 — operate on UTC fields so the parser is server-timezone
+    // independent. Pre-PR5 this used `setDate`/`setHours` which are
+    // local-time on the JS engine; correct only on UTC servers
+    // (Supabase Edge runs UTC, so production was fine, but tests run
+    // on developers' local machines and produced subtly wrong results
+    // that the offset block compensated for in fragile ways).
     const result = new Date(localNow);
-    const currentDay = result.getDay();
+    const currentDay = result.getUTCDay();
     let daysToAdd = targetDay - currentDay;
     if (daysToAdd <= 0) daysToAdd += 7;
-    result.setDate(result.getDate() + daysToAdd);
-    result.setHours(9, 0, 0, 0);
+    result.setUTCDate(result.getUTCDate() + daysToAdd);
+    result.setUTCHours(9, 0, 0, 0);
     return result;
   };
 
@@ -378,8 +409,14 @@ export function parseNaturalDate(
     if (dayMatch) {
       const num = resolveNumber(dayMatch[1].trim());
       if (num !== null) {
-        targetDate = new Date(now);
-        targetDate.setDate(targetDate.getDate() + Math.round(num));
+        // PR5 — operate on UTC fields so the parser is server-tz independent.
+        // For "in N days" we anchor on the user's local TODAY (localNow,
+        // whose UTC fields encode user-local Y/M/D), then advance N
+        // calendar days in those same UTC fields. The eventual
+        // toUtcFromLocalParts call resolves the proper instant for the
+        // user's timezone — DST-safe.
+        targetDate = new Date(localNow);
+        targetDate.setUTCDate(targetDate.getUTCDate() + Math.round(num));
         readable = phrases.inDays(Math.round(num));
         // The count digit ("3" in "in 3 days") was greedily captured as
         // hours by timeMatch above. Reset unless the user actually said
@@ -409,12 +446,12 @@ export function parseNaturalDate(
       if (num !== null) {
         const isHalf = /\b(?:and\s+a\s+half|e\s+mezzo|y\s+medio)\b/i.test(lowerExpr);
         targetDate = new Date(localNow);
-        targetDate.setMonth(targetDate.getMonth() + Math.round(num));
+        targetDate.setUTCMonth(targetDate.getUTCMonth() + Math.round(num));
         if (isHalf) {
           // Add 15 days as a calendar approximation of "half a month".
           // Using setDate (not setMonth + 0.5) preserves day-of-month
           // anchoring across short months (Feb/Apr/etc.).
-          targetDate.setDate(targetDate.getDate() + 15);
+          targetDate.setUTCDate(targetDate.getUTCDate() + 15);
         }
         readable = phrases.inMonths(Math.round(num), isHalf);
         // Same trap as days/years — count digit isn't a time-of-day.
@@ -435,7 +472,7 @@ export function parseNaturalDate(
       const num = resolveNumber(yearsMatch[1].trim());
       if (num !== null) {
         targetDate = new Date(localNow);
-        targetDate.setFullYear(targetDate.getFullYear() + Math.round(num));
+        targetDate.setUTCFullYear(targetDate.getUTCFullYear() + Math.round(num));
         readable = phrases.inYears(Math.round(num));
         if (!hasExplicitTimeOfDay) { hours = null; minutes = 0; }
       }
@@ -453,29 +490,29 @@ export function parseNaturalDate(
       // substring, so without this ordering the broader phrase shadows
       // the more specific one and the user gets a date 1 day off.
       targetDate = new Date(localNow);
-      targetDate.setDate(targetDate.getDate() + 2);
+      targetDate.setUTCDate(targetDate.getUTCDate() + 2);
       readable = phrases.dayAfterTomorrow;
     } else if (lowerExpr.includes("tomorrow") || /\bmañana\b/.test(lowerExpr) || lowerExpr.includes("domani")) {
       targetDate = new Date(localNow);
-      targetDate.setDate(targetDate.getDate() + 1);
+      targetDate.setUTCDate(targetDate.getUTCDate() + 1);
       readable = phrases.tomorrow;
     } else if (lowerExpr.includes("next week") || lowerExpr.includes("próxima semana") || lowerExpr.includes("prossima settimana") || lowerExpr.includes("la semana que viene") || lowerExpr.includes("settimana prossima")) {
       targetDate = new Date(localNow);
-      targetDate.setDate(targetDate.getDate() + 7);
+      targetDate.setUTCDate(targetDate.getUTCDate() + 7);
       readable = phrases.nextWeek;
     } else if (lowerExpr.includes("in a week") || lowerExpr.includes("in 1 week") || lowerExpr.includes("en una semana") || lowerExpr.includes("tra una settimana") || lowerExpr.includes("fra una settimana")) {
       targetDate = new Date(localNow);
-      targetDate.setDate(targetDate.getDate() + 7);
+      targetDate.setUTCDate(targetDate.getUTCDate() + 7);
       readable = phrases.inAWeek;
     } else if (lowerExpr.includes("this weekend") || lowerExpr.includes("este fin de semana") || lowerExpr.includes("questo weekend") || lowerExpr.includes("questo fine settimana")) {
       targetDate = new Date(localNow);
-      const currentDay = targetDate.getDay();
+      const currentDay = targetDate.getUTCDay();
       const daysUntilSaturday = currentDay === 6 ? 0 : 6 - currentDay;
-      targetDate.setDate(targetDate.getDate() + daysUntilSaturday);
+      targetDate.setUTCDate(targetDate.getUTCDate() + daysUntilSaturday);
       readable = phrases.thisWeekend;
     } else if (lowerExpr.includes("next month") || lowerExpr.includes("próximo mes") || lowerExpr.includes("prossimo mese") || lowerExpr.includes("il mese prossimo")) {
       targetDate = new Date(localNow);
-      targetDate.setMonth(targetDate.getMonth() + 1);
+      targetDate.setUTCMonth(targetDate.getUTCMonth() + 1);
       readable = phrases.nextMonth;
     }
   }
@@ -512,14 +549,15 @@ export function parseNaturalDate(
         // captured by timeMatch as hours. Reset unless the user said
         // an explicit time elsewhere in the phrase.
         if (!hasExplicitTimeOfDay) { hours = null; minutes = 0; }
-        targetDate = new Date(localNow.getFullYear(), monthNum, dayNum);
-        if (hours !== null) {
-          targetDate.setHours(hours, minutes, 0, 0);
-        } else {
-          targetDate.setHours(9, 0, 0, 0);
-        }
-        if (targetDate < localNow) {
-          targetDate.setFullYear(targetDate.getFullYear() + 1);
+        // PR5 — build via Date.UTC so the constructed Date's UTC fields
+        // are exactly {year, monthNum, dayNum}. Pre-PR5 used the
+        // `new Date(year, month, day)` constructor which interprets
+        // the args as engine-local time — fine on UTC servers, off by
+        // the engine offset on other servers.
+        targetDate = new Date(Date.UTC(localNow.getUTCFullYear(), monthNum, dayNum));
+        targetDate.setUTCHours(hours ?? 9, hours !== null ? minutes : 0, 0, 0);
+        if (targetDate.getTime() < localNow.getTime()) {
+          targetDate.setUTCFullYear(targetDate.getUTCFullYear() + 1);
         }
         readable = phrases.monthDay(MONTH_NAMES_BY_LOCALE.en[monthNum], monthNum, dayNum);
       }
@@ -541,14 +579,11 @@ export function parseNaturalDate(
           if (dayNum >= 1 && dayNum <= 31) {
             // Same dayNum-as-hours trap as the DD-Mon branch above.
             if (!hasExplicitTimeOfDay) { hours = null; minutes = 0; }
-            targetDate = new Date(localNow.getFullYear(), monthNum, dayNum);
-            if (hours !== null) {
-              targetDate.setHours(hours, minutes, 0, 0);
-            } else {
-              targetDate.setHours(9, 0, 0, 0);
-            }
-            if (targetDate < localNow) {
-              targetDate.setFullYear(targetDate.getFullYear() + 1);
+            // PR5 — UTC-fields construction (see DD-Mon branch above).
+            targetDate = new Date(Date.UTC(localNow.getUTCFullYear(), monthNum, dayNum));
+            targetDate.setUTCHours(hours ?? 9, hours !== null ? minutes : 0, 0, 0);
+            if (targetDate.getTime() < localNow.getTime()) {
+              targetDate.setUTCFullYear(targetDate.getUTCFullYear() + 1);
             }
             readable = phrases.monthDay(MONTH_NAMES_BY_LOCALE.en[monthNum], monthNum, dayNum);
           }
@@ -586,14 +621,18 @@ export function parseNaturalDate(
 
   // === STANDALONE TIME (no date) → default to TODAY ===
   if (!targetDate && hours !== null) {
+    // PR5 — read user-local hour/minute via UTC fields (which encode
+    // user-local clock parts post-PR5 localNow construction). Pre-PR5
+    // used getHours/getMinutes which read engine-local time and could
+    // diverge from user-local on non-UTC servers.
     targetDate = new Date(localNow);
-    const localHour = localNow.getHours();
-    const localMinute = localNow.getMinutes();
+    const localHour = localNow.getUTCHours();
+    const localMinute = localNow.getUTCMinutes();
     const proposedMinutes = hours * 60 + minutes;
     const currentMinutes = localHour * 60 + localMinute;
 
     if (proposedMinutes <= currentMinutes) {
-      targetDate.setDate(targetDate.getDate() + 1);
+      targetDate.setUTCDate(targetDate.getUTCDate() + 1);
       readable = phrases.tomorrow;
     } else {
       readable = phrases.today;
@@ -601,32 +640,65 @@ export function parseNaturalDate(
   }
 
   // === APPLY TIME (timezone-aware) ===
+  // PR5 / Block A follow-up — the DST-fragile inline offset math at this
+  // step has been replaced with `toUtcFromLocalParts` from
+  // `timezone-calendar.ts`. The fragile-Date `targetDate` carries the
+  // user-local clock parts in its UTC fields (constructed that way at
+  // the top via `now.toLocaleString(..., timezone)` + `new Date(localStr)`,
+  // then mutated in place by the various branches above). We extract
+  // those parts and hand them to the helper, which performs the
+  // local→UTC conversion using the same DST-resolution logic as
+  // `getRelativeDayWindowUtc` and friends — correct across spring-forward
+  // and fall-back boundaries instead of off by an hour.
+  //
+  // The helper internally calls `Intl.DateTimeFormat`. If the user has
+  // a malformed `timezone` value the formatter throws — we keep the
+  // try/catch and fall through with `targetDate` unchanged so a bad
+  // profile setting can never crash the parser.
   if (targetDate && hours !== null) {
-    targetDate.setHours(hours, minutes, 0, 0);
-    try {
-      const utcStr = targetDate.toLocaleString("en-US", { timeZone: "UTC" });
-      const tzStr = targetDate.toLocaleString("en-US", { timeZone: timezone });
-      const utcDate = new Date(utcStr);
-      const tzDate = new Date(tzStr);
-      const offsetMs = utcDate.getTime() - tzDate.getTime();
-      targetDate = new Date(targetDate.getTime() + offsetMs);
-    } catch {
-      // If timezone conversion fails, keep as-is
-    }
-
-    if (!isRelativeTimeExpr) {
+    // PR5 — relative-time expressions ("in 30 minutes", "in 2 hours")
+    // produce a targetDate that's already a real UTC instant; we only
+    // capture `hours`/`minutes` as a side-effect for back-compat. We
+    // skip the local→UTC conversion for those branches and just suppress
+    // the time-suffix in `readable`.
+    if (isRelativeTimeExpr) {
+      // No-op: targetDate is already correct UTC; readable suffix skipped.
+    } else {
+      // Set the user-local time-of-day on the UTC-fields representation,
+      // then resolve to a true UTC instant via the DST-aware helper.
+      targetDate.setUTCHours(hours, minutes, 0, 0);
+      try {
+        targetDate = toUtcFromLocalParts(
+          {
+            year: targetDate.getUTCFullYear(),
+            month: targetDate.getUTCMonth() + 1,
+            day: targetDate.getUTCDate(),
+            hour: hours,
+            minute: minutes,
+            second: 0,
+          },
+          timezone,
+        );
+      } catch {
+        // Bad timezone — keep targetDate as-is.
+      }
       readable += ` ${phrases.atTime(hours, minutes)}`;
     }
   } else if (targetDate && hours === null) {
     if (!isRelativeTimeExpr) {
-      targetDate.setHours(9, 0, 0, 0);
+      targetDate.setUTCHours(9, 0, 0, 0);
       try {
-        const utcStr = targetDate.toLocaleString("en-US", { timeZone: "UTC" });
-        const tzStr = targetDate.toLocaleString("en-US", { timeZone: timezone });
-        const utcDate = new Date(utcStr);
-        const tzDate = new Date(tzStr);
-        const offsetMs = utcDate.getTime() - tzDate.getTime();
-        targetDate = new Date(targetDate.getTime() + offsetMs);
+        targetDate = toUtcFromLocalParts(
+          {
+            year: targetDate.getUTCFullYear(),
+            month: targetDate.getUTCMonth() + 1,
+            day: targetDate.getUTCDate(),
+            hour: 9,
+            minute: 0,
+            second: 0,
+          },
+          timezone,
+        );
       } catch {
         /* keep as-is */
       }
