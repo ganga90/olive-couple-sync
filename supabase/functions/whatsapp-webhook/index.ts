@@ -36,9 +36,11 @@ import {
   formatTimeForZone,
   getNextWeekBoundaryUtc,
   getRelativeDayWindowUtc,
+  getTimeZoneParts,
   isBeforeUtc,
   isInUtcRange,
   parseStoredTimestamp,
+  toUtcFromLocalParts,
 } from "../_shared/timezone-calendar.ts";
 import { parseExpenseText } from "../_shared/expense-detector.ts";
 import { captureReplyReflection } from "../_shared/reflection-capture.ts";
@@ -51,6 +53,8 @@ import {
   looksLikeConfirmation,
   type PendingOffer,
 } from "../_shared/pending-offer.ts";
+import { resolveQuotedTask } from "../_shared/quoted-message.ts";
+import { extractTimeOnly } from "../_shared/time-only-parser.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -659,6 +663,10 @@ async function getOutboundContextWithTaskId(
     return null;
   }
 }
+
+// PR4 / Block C — `resolveQuotedTask` lives in
+// `_shared/quoted-message.ts` so its logic is unit-testable in
+// isolation from the 7,800-line webhook module.
 
 // Task action types for management commands
 type TaskActionType = 
@@ -1295,6 +1303,13 @@ interface MetaMessageData {
   longitude: string | null;
   phoneNumberId: string;
   messageId: string;
+  /**
+   * PR4 / Block C — WAMID of the message the user is "replying to" /
+   * quoting in WhatsApp's UI. Present only when `message.context.id` is
+   * delivered by Meta. Used to disambiguate which task the user means
+   * in follow-up corrections (resolves via `resolveQuotedTask`).
+   */
+  quotedMessageId: string | null;
 }
 
 function extractMetaMessage(body: any): MetaMessageData | null {
@@ -1312,7 +1327,23 @@ function extractMetaMessage(body: any): MetaMessageData | null {
     const phoneNumberId = value.metadata?.phone_number_id;
     const fromNumber = message.from; // Raw number like "15551234567"
     const messageId = message.id;
-    
+
+    // PR4 / Block C — quoted-message awareness.
+    //
+    // When the user "replies to" / "quotes" one of Olive's previous
+    // messages, Meta delivers `message.context.id` containing the WAMID
+    // of the quoted message. Olive uses this to disambiguate which
+    // memory/task the user is referring to in their follow-up — without
+    // it, we fall back to "most recently referenced" which races
+    // dangerously when text+image arrive within seconds.
+    //
+    // We also capture `context.from` for completeness/logging, though
+    // the WAMID alone is sufficient for resolution.
+    const quotedMessageId: string | null = message.context?.id ?? null;
+    if (quotedMessageId) {
+      console.log("[Meta] Inbound quotes WAMID:", quotedMessageId);
+    }
+
     let messageBody: string | null = null;
     let latitude: string | null = null;
     let longitude: string | null = null;
@@ -1369,7 +1400,8 @@ function extractMetaMessage(body: any): MetaMessageData | null {
       latitude: latitude || null,
       longitude: longitude || null,
       phoneNumberId: phoneNumberId || '',
-      messageId: messageId || ''
+      messageId: messageId || '',
+      quotedMessageId,
     };
   } catch (error) {
     console.error('[Meta] Error extracting message:', error);
@@ -1463,7 +1495,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { fromNumber: rawFromNumber, messageBody: rawMessageBody, mediaItems, latitude, longitude, phoneNumberId, messageId } = messageData;
+    const { fromNumber: rawFromNumber, messageBody: rawMessageBody, mediaItems, latitude, longitude, phoneNumberId, messageId, quotedMessageId } = messageData;
     const fromNumber = standardizePhoneNumber(rawFromNumber);
 
     // Mutable ref for userId so reply() can access it after auth
@@ -1475,8 +1507,21 @@ serve(async (req) => {
     // Helper to send reply via Meta Cloud API
     // NOTE: In async-ack mode, reply() just sends the WhatsApp message —
     // the HTTP response (200) was already returned to Meta above.
+    //
+    // PR4 / Block C — capture the outbound WAMID so the next inbound turn
+    // can resolve a quoted-reply (`message.context.id`) back to the task
+    // we acted on. We maintain a small sliding window of the last
+    // RECENT_OUTBOUND_WINDOW entries inside `last_outbound_context.recent_outbound`
+    // to survive the text+image race (two reply()s within ~1 second).
+    const RECENT_OUTBOUND_WINDOW = 10;
     const reply = async (text: string, mediaUrl?: string): Promise<void> => {
-      await sendWhatsAppReply(phoneNumberId || WHATSAPP_PHONE_NUMBER_ID, rawFromNumber, text, WHATSAPP_ACCESS_TOKEN, mediaUrl);
+      const wamid = await sendWhatsAppReply(
+        phoneNumberId || WHATSAPP_PHONE_NUMBER_ID,
+        rawFromNumber,
+        text,
+        WHATSAPP_ACCESS_TOKEN,
+        mediaUrl,
+      );
 
       // Save last_outbound_context WITH task_id so follow-up commands resolve correctly
       if (_authenticatedUserId) {
@@ -1484,19 +1529,54 @@ serve(async (req) => {
           // Detect if this is an error/fallback reply — tag it so context retrieval
           // can skip stale errors and not confuse the AI in the next turn
           const isErrorReply = /sorry.*trouble|try again|couldn't process|failed to/i.test(text);
-          
+
+          const sentAt = new Date().toISOString();
           const outboundCtx: any = {
             message_type: isErrorReply ? 'error' : 'reply',
             content: text.substring(0, 500),
-            sent_at: new Date().toISOString(),
+            sent_at: sentAt,
             status: 'sent',
             is_error: isErrorReply,
+            wa_message_id: wamid, // PR4 — for context.id resolution
           };
           // Attach task reference if one was recently created/modified
           if (_lastReferencedTaskId) {
             outboundCtx.task_id = _lastReferencedTaskId;
             outboundCtx.task_summary = _lastReferencedTaskSummary || '';
           }
+
+          // Read the existing window so we can append (not replace).
+          // Failures here are non-blocking — we still write the top-level
+          // fields below for back-compat with code that reads single-slot.
+          let window: any[] = [];
+          try {
+            const { data: existing } = await supabase
+              .from('clerk_profiles')
+              .select('last_outbound_context')
+              .eq('id', _authenticatedUserId)
+              .single();
+            const existingWindow = existing?.last_outbound_context?.recent_outbound;
+            if (Array.isArray(existingWindow)) window = existingWindow;
+          } catch (winErr) {
+            console.warn('[Context] Could not read existing recent_outbound window:', winErr);
+          }
+
+          // Append the new entry, keep newest-last, cap at window size.
+          // Only entries with a WAMID are useful for quote resolution —
+          // we still store entries without one so non-error context stays
+          // chronologically complete (some Meta failures yield null wamid
+          // but the message did go out).
+          const newEntry = {
+            wa_message_id: wamid,
+            task_id: _lastReferencedTaskId,
+            task_summary: _lastReferencedTaskSummary,
+            message_type: outboundCtx.message_type,
+            sent_at: sentAt,
+            is_error: isErrorReply,
+          };
+          const updatedWindow = [...window, newEntry].slice(-RECENT_OUTBOUND_WINDOW);
+          outboundCtx.recent_outbound = updatedWindow;
+
           await supabase
             .from('clerk_profiles')
             .update({ last_outbound_context: outboundCtx })
@@ -2119,6 +2199,23 @@ serve(async (req) => {
       console.log('[Context] No recent outbound messages found for user', userId);
     }
 
+    // PR4 / Block C — pre-resolve the task referenced by a quoted reply.
+    // If the inbound carries `context.id` (the user explicitly quoted one
+    // of Olive's earlier messages), look up that WAMID in the sliding
+    // window. When matched, this becomes a high-priority candidate for
+    // every task-targeting handler (TASK_ACTION, complete, set_due, etc.)
+    // — strictly more reliable than "most recent task" semantic search.
+    let quotedTaskCtx: { task_id: string; task_summary: string; sent_at: string } | null = null;
+    if (quotedMessageId) {
+      quotedTaskCtx = await resolveQuotedTask(supabase, userId, quotedMessageId);
+      if (quotedTaskCtx) {
+        console.log(
+          '[Quote] User quoted', quotedMessageId, '→ task_id', quotedTaskCtx.task_id,
+          `("${quotedTaskCtx.task_summary?.substring(0, 60)}")`,
+        );
+      }
+    }
+
     // Track last user message timestamp for 24h template window
     try {
       await supabase
@@ -2494,6 +2591,28 @@ serve(async (req) => {
       /^(complete[d]?!?|done!?|finished!?|got it!?|did it!?|hecho!?|fatto!?|terminado!?|finito!?|listo!?|ok!?|yes!?|sí!?|si!?)$/i
     );
     if (bareReplyMatch && recentOutbound.length > 0) {
+      // PR4 / Block C — PRIORITY 0: if the user QUOTED a specific reminder
+      // and replied "fatto" / "done" / etc., honor the quote directly
+      // instead of guessing from "most recent reminder". Critical when
+      // multiple reminders fired in close succession.
+      if (quotedTaskCtx?.task_id) {
+        const { data: quotedTask, error: qErr } = await supabase
+          .from('clerk_notes')
+          .select('id, summary, completed')
+          .eq('id', quotedTaskCtx.task_id)
+          .single();
+        if (!qErr && quotedTask && !quotedTask.completed) {
+          const { error } = await supabase
+            .from('clerk_notes')
+            .update({ completed: true, updated_at: new Date().toISOString() })
+            .eq('id', quotedTask.id);
+          if (!error) {
+            console.log('[Context] Bare reply via quoted-message context:', quotedTask.summary);
+            return reply(t('context_completed', userLang, { task: quotedTask.summary }));
+          }
+        }
+      }
+
       // Find the most recent reminder-like message
       const recentReminder = recentOutbound.find(m =>
         m.type === 'reminder' || m.type === 'task_reminder' ||
@@ -3887,10 +4006,38 @@ Description: "${parsedExpense.description}"`;
       const aiTaskId = (intentResult as any)._aiTaskId as string | undefined;
       console.log('[WhatsApp] Processing TASK_ACTION:', actionType, 'target:', actionTarget, 'aiTaskId:', aiTaskId);
 
-      // Task resolution: relative ref → ordinal → AI UUID → semantic search → session context → outbound context
-      let foundTask = null;
+      // Task resolution priority (PR4):
+      //   0a. Quoted-message context (the user EXPLICITLY pointed at a previous Olive reply)
+      //   0b. Relative reference ("last task", "the latest one")
+      //   0c. Ordinal ("the first one", "#3") — see below
+      //   1.  AI-supplied UUID
+      //   2.  Semantic search
+      //   3.  Session context / outbound context
+      let foundTask: any = null;
 
-      // 0a. RELATIVE REFERENCE RESOLUTION: "last task", "the latest one", "previous task", etc.
+      // 0a. QUOTED-MESSAGE RESOLUTION (HIGHEST priority).
+      // If the user's inbound carried `context.id` (WhatsApp "reply to"
+      // / quote a previous message), we already pre-resolved which task
+      // that message was about in `quotedTaskCtx`. Use it directly —
+      // this is strictly more reliable than any heuristic below.
+      if (quotedTaskCtx?.task_id) {
+        const { data: quotedTask } = await supabase
+          .from('clerk_notes')
+          .select('id, summary, priority, completed, task_owner, author_id, couple_id, due_date, reminder_time')
+          .eq('id', quotedTaskCtx.task_id)
+          .maybeSingle();
+        if (quotedTask) {
+          foundTask = quotedTask;
+          console.log('[TASK_ACTION] Resolved via quoted-message context:', quotedTask.summary);
+        } else {
+          console.warn(
+            '[TASK_ACTION] Quoted task_id', quotedTaskCtx.task_id,
+            'no longer in DB — falling back to other resolution paths',
+          );
+        }
+      }
+
+      // 0b. RELATIVE REFERENCE RESOLUTION: "last task", "the latest one", "previous task", etc.
       if (actionTarget && isRelativeReference(actionTarget)) {
         console.log('[TASK_ACTION] Detected relative reference:', actionTarget);
         foundTask = await resolveRelativeReference(supabase, userId, coupleId);
@@ -4287,35 +4434,53 @@ Description: "${parsedExpense.description}"`;
           const userTz = profile.timezone || 'America/New_York';
           const parsed = parseNaturalDate(dateExpr, userTz, userLang);
 
-          // Handle time-only updates: "change it to 7 AM" → keep existing date, update time
+          // PR4 / Block C — `extractTimeOnly` is now in
+          // `_shared/time-only-parser.ts` so it's unit-testable.
+          // Handle time-only updates: "fai alle 8" / "change it to 7 AM"
+          // → keep existing date, update time-of-day in user's timezone.
+          //
+          // PR4 fix: previously used `existingDate.setUTCHours(...)` which
+          // sets the UTC hour, so for a Rome user typing "alle 8" the
+          // reminder landed at 08:00 UTC = 10:00 Rome (or worse, 09:00
+          // depending on DST). New flow: get the date's parts in the
+          // user's timezone, replace just hour/minute, then convert
+          // back to UTC via toUtcFromLocalParts which is DST-safe.
           if (!parsed.date && foundTask.due_date) {
-            const timeOnlyMatch = dateExpr.match(/(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)/i);
-            if (timeOnlyMatch) {
+            const t = extractTimeOnly(dateExpr);
+            if (t) {
               const existingDate = new Date(foundTask.due_date);
-              let hours = parseInt(timeOnlyMatch[1]);
-              const mins = timeOnlyMatch[2] ? parseInt(timeOnlyMatch[2]) : 0;
-              if (timeOnlyMatch[3].toLowerCase() === 'pm' && hours < 12) hours += 12;
-              if (timeOnlyMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
-              existingDate.setUTCHours(hours, mins, 0, 0);
-              parsed.date = existingDate.toISOString();
+              const localParts = getTimeZoneParts(existingDate, userTz);
+              const newDate = toUtcFromLocalParts(
+                { ...localParts, hour: t.hours, minute: t.minutes, second: 0 },
+                userTz,
+              );
+              parsed.date = newDate.toISOString();
               parsed.readable = formatFriendlyDate(parsed.date, true, userTz, userLang);
-              console.log('[Context] Time-only update: keeping date from task, setting time to', hours + ':' + mins);
+              console.log(
+                '[Context] Time-only update: keeping date, setting time to',
+                `${t.hours.toString().padStart(2, '0')}:${t.minutes.toString().padStart(2, '0')}`,
+                `(${userTz})`,
+              );
             }
           }
 
           // If still no date and no existing due_date, try using today + parsed time
+          // (also TZ-aware — same fix as the existing-date branch).
           if (!parsed.date) {
-            const timeOnlyMatch = dateExpr.match(/(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)/i);
-            if (timeOnlyMatch) {
-              const today = new Date();
-              let hours = parseInt(timeOnlyMatch[1]);
-              const mins = timeOnlyMatch[2] ? parseInt(timeOnlyMatch[2]) : 0;
-              if (timeOnlyMatch[3].toLowerCase() === 'pm' && hours < 12) hours += 12;
-              if (timeOnlyMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
-              today.setHours(hours, mins, 0, 0);
-              parsed.date = today.toISOString();
+            const t = extractTimeOnly(dateExpr);
+            if (t) {
+              const todayLocal = getTimeZoneParts(new Date(), userTz);
+              const newDate = toUtcFromLocalParts(
+                { ...todayLocal, hour: t.hours, minute: t.minutes, second: 0 },
+                userTz,
+              );
+              parsed.date = newDate.toISOString();
               parsed.readable = formatFriendlyDate(parsed.date, true, userTz, userLang);
-              console.log('[Context] Time-only update: using today with time', hours + ':' + mins);
+              console.log(
+                '[Context] Time-only update: using today with time',
+                `${t.hours.toString().padStart(2, '0')}:${t.minutes.toString().padStart(2, '0')}`,
+                `(${userTz})`,
+              );
             }
           }
 

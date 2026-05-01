@@ -161,13 +161,29 @@ export function formatFriendlyDate(
 
 // ─── Meta WhatsApp Cloud API — Send Messages ──────────────────
 
+/**
+ * Send a WhatsApp message via the Meta Cloud API.
+ *
+ * Returns the Meta WAMID (`wamid.HBgL…`) on success, or `null` on failure.
+ *
+ * The WAMID is the stable identifier Meta uses to thread messages: when a
+ * user later replies-to / quotes one of Olive's messages, the inbound
+ * webhook payload carries `context.id = <that WAMID>`. Storing the WAMID
+ * alongside the task we just acted on lets the next turn resolve the
+ * quoted reply back to the correct task — fixing the screenshot bug where
+ * a follow-up correction landed on the wrong note (PR4 / Block C).
+ *
+ * Callers that only care about success/failure can still use the result
+ * as truthy/falsy — `string | null` preserves that ergonomics, but they
+ * should migrate to capturing the WAMID where it's useful.
+ */
 export async function sendWhatsAppReply(
   phoneNumberId: string,
   to: string,
   text: string,
   accessToken: string,
   mediaUrl?: string
-): Promise<boolean> {
+): Promise<string | null> {
   try {
     const apiUrl = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`;
 
@@ -203,15 +219,16 @@ export async function sendWhatsAppReply(
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[Meta API] Send failed:", response.status, errorText);
-      return false;
+      return null;
     }
 
     const result = await response.json();
-    console.log("[Meta API] Message sent successfully, id:", result.messages?.[0]?.id);
-    return true;
+    const wamid: string | null = result?.messages?.[0]?.id ?? null;
+    console.log("[Meta API] Message sent successfully, id:", wamid);
+    return wamid;
   } catch (error) {
     console.error("[Meta API] Error sending message:", error);
-    return false;
+    return null;
   }
 }
 
