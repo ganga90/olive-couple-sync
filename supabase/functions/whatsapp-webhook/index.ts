@@ -425,6 +425,16 @@ $ Spesa: $45 pranzo da Chipotle
     'es': 'No encontré una tarea similar para fusionar con "{task}". La tarea queda igual.',
     'it': 'Non ho trovato un\'attività simile da unire a "{task}". L\'attività resta com\'è.',
   },
+  // ── PR6: Due-date / Reminder-time inline labels in numbered task lists ──
+  // Used by search results, urgent-tasks list, this-week recap, and any
+  // user-facing list that shows ` (Due: …) ` next to a task summary.
+  // The English form keeps the leading space so concatenation stays
+  // syntactically clean at call sites.
+  label_task_due_paren: {
+    en: ' (Due: {date})',
+    'es': ' (Vence: {date})',
+    'it': ' (Scadenza: {date})',
+  },
 };
 
 function t(key: string, lang: string, vars?: Record<string, string>): string {
@@ -3645,11 +3655,16 @@ Description: "${parsedExpense.description}"`;
           return reply(emptyMsg);
         }
 
-        const itemsList = relevantTasks.map((t, i) => {
-          const items = t.items && t.items.length > 0 ? `\n  ${t.items.join('\n  ')}` : '';
-          const priority = t.priority === 'high' ? ' 🔥' : '';
-          const dueInfo = t.due_date ? ` (Due: ${formatFriendlyDate(t.due_date)})` : '';
-          return `${i + 1}. ${t.summary}${priority}${dueInfo}${items}`;
+        // PR6 — rename loop var (was `t`, shadowing the t() translation
+        // function so we couldn't call t() inside the callback) and
+        // wire the localized "Due:" label.
+        const itemsList = relevantTasks.map((task, i) => {
+          const items = task.items && task.items.length > 0 ? `\n  ${task.items.join('\n  ')}` : '';
+          const priority = task.priority === 'high' ? ' 🔥' : '';
+          const dueInfo = task.due_date
+            ? t('label_task_due_paren', userLang, { date: formatFriendlyDate(task.due_date, true, profile.timezone, userLang) })
+            : '';
+          return `${i + 1}. ${task.summary}${priority}${dueInfo}${items}`;
         }).join('\n\n');
 
         const searchListResponse = `📋 ${matchedListName} (${relevantTasks.length}):\n\n${itemsList}\n\n💡 Say "done with [task]" to complete items`;
@@ -3690,9 +3705,12 @@ Description: "${parsedExpense.description}"`;
           return reply('🎉 Great news! You have no urgent tasks right now.\n\n💡 Use "!" prefix to mark tasks as urgent (e.g., "!call mom")');
         }
         
-        const urgentList = urgentTasks.slice(0, 8).map((t, i) => {
-          const dueInfo = t.due_date ? ` (Due: ${formatFriendlyDate(t.due_date)})` : '';
-          return `${i + 1}. ${t.summary}${dueInfo}`;
+        // PR6 — rename `t` → `task` so we can call t() inside the callback.
+        const urgentList = urgentTasks.slice(0, 8).map((task, i) => {
+          const dueInfo = task.due_date
+            ? t('label_task_due_paren', userLang, { date: formatFriendlyDate(task.due_date, true, profile.timezone, userLang) })
+            : '';
+          return `${i + 1}. ${task.summary}${dueInfo}`;
         }).join('\n');
         
         const moreText = urgentTasks.length > 8 ? `\n\n...and ${urgentTasks.length - 8} more urgent tasks` : '';
@@ -3880,10 +3898,14 @@ Description: "${parsedExpense.description}"`;
         }
         
         if (dueThisWeekTasks.length > 0) {
-          const weekList = dueThisWeekTasks.slice(0, 10).map((t, i) => {
-            const priority = t.priority === 'high' ? ' 🔥' : '';
-            const dueDate = t.due_date ? formatFriendlyDate(t.due_date, false) : '';
-            return `${i + 1}. ${t.summary}${priority}${dueDate ? ` (${dueDate})` : ''}`;
+          // PR6 — rename `t` → `task` (shadowing fix) + pass userLang to
+          // formatter so the date string itself ("Friday, May 4th" vs
+          // "venerdì 4 maggio" vs "viernes 4 de mayo") matches the user's
+          // locale. No "Due:" label here — date already inside parens.
+          const weekList = dueThisWeekTasks.slice(0, 10).map((task, i) => {
+            const priority = task.priority === 'high' ? ' 🔥' : '';
+            const dueDate = task.due_date ? formatFriendlyDate(task.due_date, false, profile.timezone, userLang) : '';
+            return `${i + 1}. ${task.summary}${priority}${dueDate ? ` (${dueDate})` : ''}`;
           }).join('\n');
           const moreText = dueThisWeekTasks.length > 10 ? `\n...and ${dueThisWeekTasks.length - 10} more` : '';
           response += `\n📋 Tasks Due (${dueThisWeekTasks.length}):\n${weekList}${moreText}\n`;
@@ -5102,7 +5124,10 @@ Description: "${parsedExpense.description}"`;
           savedItemsContext += `(this list exists but has no items yet)\n`;
         } else {
           activeListTasks.forEach((task, idx) => {
-            const dueInfo = task.due_date ? ` | Due: ${formatFriendlyDate(task.due_date)}` : '';
+            // PR6: pass userLang so the date string itself is in the
+            // user's locale. Labels (Due:) stay English here because
+            // the surrounding text is an AI prompt, not user-facing.
+            const dueInfo = task.due_date ? ` | Due: ${formatFriendlyDate(task.due_date, true, profile.timezone, userLang)}` : '';
             savedItemsContext += `\n${idx + 1}. ○ ${task.summary}${dueInfo}\n`;
             if (task.original_text && task.original_text !== task.summary) {
               savedItemsContext += `   Full details: ${task.original_text.substring(0, 800)}\n`;
@@ -5124,8 +5149,9 @@ Description: "${parsedExpense.description}"`;
         relevantTasks.slice(0, 10).forEach(task => {
           const listName = task.list_id && listIdToName.has(task.list_id) ? listIdToName.get(task.list_id) : task.category;
           const status = task.completed ? '✓' : '○';
-          const dueInfo = task.due_date ? ` | Due: ${formatFriendlyDate(task.due_date)}` : '';
-          const reminderInfo = task.reminder_time ? ` | Reminder: ${formatFriendlyDate(task.reminder_time)}` : '';
+          // PR6: pass userLang to formatter (AI prompt context).
+          const dueInfo = task.due_date ? ` | Due: ${formatFriendlyDate(task.due_date, true, profile.timezone, userLang)}` : '';
+          const reminderInfo = task.reminder_time ? ` | Reminder: ${formatFriendlyDate(task.reminder_time, true, profile.timezone, userLang)}` : '';
           savedItemsContext += `\n📌 ${status} "${task.summary}" [${listName}]${dueInfo}${reminderInfo}\n`;
           // Include original_text for full details (addresses, times, flight info, etc.)
           if (task.original_text && task.original_text !== task.summary) {
@@ -5159,7 +5185,7 @@ Description: "${parsedExpense.description}"`;
         tasks.slice(0, 15).forEach(task => {
           const status = task.completed ? '✓' : '○';
           const priority = task.priority === 'high' ? ' 🔥' : '';
-          const dueInfo = task.due_date ? ` (Due: ${formatFriendlyDate(task.due_date)})` : '';
+          const dueInfo = task.due_date ? ` (Due: ${formatFriendlyDate(task.due_date, true, profile.timezone, userLang)})` : '';
           savedItemsContext += `- ${status} ${task.summary}${priority}${dueInfo}\n`;
         });
         if (tasks.length > 15) savedItemsContext += `  ...and ${tasks.length - 15} more items\n`;
@@ -7545,8 +7571,9 @@ Return ONLY valid JSON, no markdown.`,
       listItems.forEach((item, i) => {
         const status = item.completed ? '✅' : '⬜';
         const priority = item.priority === 'high' ? ' 🔥' : '';
-        const dueInfo = item.due_date ? ` | Due: ${formatFriendlyDate(item.due_date)}` : '';
-        const reminderInfo = item.reminder_time ? ` | ⏰ ${formatFriendlyDate(item.reminder_time)}` : '';
+        // PR6: AI prompt context — date strings localized, labels stay English.
+        const dueInfo = item.due_date ? ` | Due: ${formatFriendlyDate(item.due_date, true, profile.timezone, userLang)}` : '';
+        const reminderInfo = item.reminder_time ? ` | ⏰ ${formatFriendlyDate(item.reminder_time, true, profile.timezone, userLang)}` : '';
         const owner = item.task_owner ? ` | Assigned: ${item.task_owner}` : '';
         itemsContext += `${i + 1}. ${status} ${item.summary}${priority}${dueInfo}${reminderInfo}${owner}\n`;
         if (item.original_text && item.original_text !== item.summary) {
@@ -7638,7 +7665,9 @@ FORMAT for WhatsApp (max 1500 chars):
         if (regularItems.length > 0) {
           fallback += `📝 *Active:*\n`;
           regularItems.slice(0, 8).forEach((item, i) => {
-            const due = item.due_date ? ` (${formatFriendlyDate(item.due_date, false)})` : '';
+            // PR6: user-facing fallback — pass userLang so the date is
+            // in the user's locale (no label here, just date in parens).
+            const due = item.due_date ? ` (${formatFriendlyDate(item.due_date, false, profile.timezone, userLang)})` : '';
             fallback += `${i + 1}. ${item.summary}${due}\n`;
           });
           if (regularItems.length > 8) fallback += `...and ${regularItems.length - 8} more\n`;

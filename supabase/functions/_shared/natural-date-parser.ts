@@ -256,9 +256,13 @@ export function parseNaturalDate(
     // Spanish
     enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
     julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11,
-    // Italian
+    // Italian. PR6: Italian "dicembre" (different spelling from Spanish
+    // "diciembre" — no 'i' between 'd' and 'c') was previously missing
+    // from this map AND from `abbrMonthMap` below. Result: Italian users
+    // typing "dicembre 15" or "15 dicembre" got `unknown` even though
+    // every other Italian month worked.
     gennaio: 0, febbraio: 1, aprile: 3, maggio: 4, giugno: 5,
-    luglio: 6, settembre: 8, ottobre: 9, novembre: 10,
+    luglio: 6, settembre: 8, ottobre: 9, novembre: 10, dicembre: 11,
   };
 
   const getNextDayOfWeek = (dayName: string): Date => {
@@ -540,8 +544,10 @@ export function parseNaturalDate(
         oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11,
         enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
         julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11,
+        // PR6 — Italian "dicembre" added (was missing; see comment on
+        // `monthNames` at module top).
         gennaio: 0, febbraio: 1, aprile: 3, maggio: 4, giugno: 5,
-        luglio: 6, settembre: 8, ottobre: 9, novembre: 10,
+        luglio: 6, settembre: 8, ottobre: 9, novembre: 10, dicembre: 11,
       };
       const monthNum = abbrMonthMap[monthWord] ?? monthNames[monthWord];
       if (monthNum !== undefined && dayNum >= 1 && dayNum <= 31) {
