@@ -312,14 +312,24 @@ function deriveSummaryFromMedia(mediaDescriptions: string[]): string {
   return cleaned.length > 97 ? cleaned.substring(0, 97) + '...' : cleaned;
 }
 
+// Locale-name lookup used for prompt injection. Mirrors the same intent
+// as whatsapp-webhook's LANG_NAMES table — but kept local here so this
+// function stays self-contained and doesn't pull in the webhook's helpers.
+const LANG_PROMPT_NAMES: Record<string, string> = {
+  en: 'English', 'en-US': 'English', 'en-GB': 'English',
+  es: 'Spanish', 'es-ES': 'Spanish', 'es-MX': 'Spanish',
+  it: 'Italian', 'it-IT': 'Italian',
+};
+
 // Dynamic system prompt with media context, style awareness, user memory, and existing lists
 const createSystemPrompt = (
-  userTimezone: string = 'UTC', 
-  hasMedia: boolean = false, 
+  userTimezone: string = 'UTC',
+  hasMedia: boolean = false,
   mediaDescriptions: string[] = [],
   inputStyle: 'succinct' | 'conversational' = 'succinct',
   memoryContext: string = '',
-  existingListNames: string[] = []
+  existingListNames: string[] = [],
+  language: string = 'en'
 ) => {
   const now = new Date();
   const utcTime = now.toISOString();
@@ -479,12 +489,48 @@ Examples:
 **ANTI-PATTERN**: Do NOT classify domain-specific content as "task". A supplement schedule is "health". A movie recommendation is "movies_tv". A restaurant is "date_ideas". A property listing is "real_estate". A babysitter contact is "childcare". "task" means ONLY "a generic action item with no domain."`;
   }
 
+  // ── LANGUAGE DIRECTIVE ──
+  // The webhook tells us the user's language preference. Gemini defaults to
+  // English unless steered, which historically produced English summaries
+  // ("Medical Analysis") for Italian-language inputs ("queste analisi"). The
+  // directive instructs Gemini to keep generated content in the user's
+  // language so the saved note matches what the user wrote.
+  const langName = LANG_PROMPT_NAMES[language] || LANG_PROMPT_NAMES[language?.split('-')[0] || ''] || 'English';
+  const languageDirective = langName !== 'English'
+    ? `\n\nLANGUAGE DIRECTIVE — CRITICAL:
+- The user's selected language is ${langName}.
+- ALL natural-language fields you produce (summary, category labels, items, tags) MUST be in ${langName}.
+- Do not translate proper nouns, brand names, URLs, or quoted user text — keep those verbatim.
+- Match the user's register: if the user wrote informally, the summary stays informal.`
+    : '';
+
+  // ── DATE/TIME GUIDANCE ──
+  // Two specific traps to defend against:
+  //  1. Default-time-of-day: when the user gives a date but no time
+  //     (e.g., "in 2 months"), models often default to midnight UTC. In a
+  //     timezone like Europe/Rome that renders as "2:00 AM" — exactly the
+  //     screenshot bug the beta user reported.
+  //  2. Multi-language relative phrases: "tra due mesi e mezzo" (it),
+  //     "en dos meses y medio" (es), "in 2 months and a half" (en) all
+  //     mean the same thing — today + ~75 days. Make this explicit.
+  const dateGuidance = `\n\nDATE/TIME EXTRACTION — CRITICAL RULES:
+- All dates must be returned in ISO 8601 format (YYYY-MM-DDTHH:mm:ss.sssZ).
+- The reference "now" is "${utcTime}" UTC. Compute relative dates from that.
+- If the user specifies a relative date phrase ("in 2 months", "tra due mesi e mezzo", "en dos meses y medio", "in three weeks"), compute the exact target date from the reference now above.
+- DEFAULT TIME-OF-DAY: when the user supplies a date but NO time-of-day, set the time to 09:00 in the user's timezone (${userTimezone}), then convert to UTC for storage. NEVER default to 00:00 UTC — that renders as "midnight" or, in non-UTC timezones, as the wee hours of the morning, which is never what the user means.
+- Examples (assume timezone=${userTimezone}):
+  * "tomorrow" → tomorrow at 09:00 ${userTimezone}, converted to UTC
+  * "in 2 months" → today + 2 calendar months at 09:00 ${userTimezone}
+  * "tra due mesi e mezzo" → today + 75 days at 09:00 ${userTimezone}
+  * "next Monday" → next Monday at 09:00 ${userTimezone}
+- If the user explicitly states a time ("at 3pm", "alle 14", "a las 8"), use that; convert from ${userTimezone} to UTC for storage.`;
+
   return `You're Olive, an AI assistant organizing tasks for couples. Process raw text into structured notes.
 
 USER TIMEZONE: ${userTimezone}
 Current UTC time: ${utcTime}
 ${styleGuidance}
-${memorySection}
+${memorySection}${languageDirective}${dateGuidance}
 
 IMPORTANT: When calculating times, use the user's timezone (${userTimezone}), not UTC.
 - "tomorrow at 10am" means 10am in ${userTimezone}, convert to UTC ISO format for storage
@@ -1550,7 +1596,7 @@ serve(async (req) => {
       throw new Error('Supabase configuration is missing');
     }
 
-    const { text, user_id, couple_id, space_id, timezone, media, mediaTypes, style, partner_names, is_sensitive, source, list_id: explicit_list_id } = await req.json();
+    const { text, user_id, couple_id, space_id, timezone, language, media, mediaTypes, style, partner_names, is_sensitive, source, list_id: explicit_list_id } = await req.json();
     // Spaces Phase 2-1: resolve canonical scope (prefer space_id; fall back to
     // couple_id for legacy callers). For couple-type spaces these are the same
     // UUID via the 1:1 bridge; for non-couple spaces (family / business / custom)
@@ -1923,7 +1969,7 @@ When the note text mentions any of these names, use the EXACT name for task_owne
       }
     }
 
-    const baseSystemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions, detectedStyle, memoryContext + coupleNamesContext, existingListNames);
+    const baseSystemPrompt = createSystemPrompt(userTimezone, hasMedia, mediaDescriptions, detectedStyle, memoryContext + coupleNamesContext, existingListNames, language);
 
     // ─── Soul integration ─────────────────────────────────────────────
     // Prepend the user's soul stack (identity, user_context, domain
