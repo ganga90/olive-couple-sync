@@ -367,6 +367,60 @@ $ Spesa: $45 pranzo da Chipotle
     'es': 'No entendí la fecha "{expr}". Prueba "mañana", "lunes" o "próxima semana".',
     'it': 'Non ho capito la data "{expr}". Prova "domani", "lunedì" o "la prossima settimana".',
   },
+  // ── Smart-reminder default phrasings (used when user gives no explicit time) ──
+  smart_reminder_30min: {
+    en: 'in 30 minutes',
+    'es': 'en 30 minutos',
+    'it': 'tra 30 minuti',
+  },
+  smart_reminder_2h_before: {
+    en: '2 hours before it\'s due',
+    'es': '2 horas antes de la fecha límite',
+    'it': '2 ore prima della scadenza',
+  },
+  smart_reminder_evening_morning: {
+    en: 'the evening before (8:00 PM) + morning of (9:00 AM)',
+    'es': 'la noche anterior (20:00) + la mañana del día (9:00)',
+    'it': 'la sera prima (20:00) + la mattina (09:00)',
+  },
+  smart_reminder_morning_of: {
+    en: 'the morning of (9:00 AM)',
+    'es': 'la mañana del día (9:00)',
+    'it': 'la mattina (09:00)',
+  },
+  smart_reminder_tomorrow_9am: {
+    en: 'tomorrow at 9:00 AM',
+    'es': 'mañana a las 9:00',
+    'it': 'domani alle 09:00',
+  },
+  // ── Move-task error messages (hardcoded English replaced) ──
+  move_need_list_name: {
+    en: 'Which list should I move this task to? Please provide a list name.',
+    'es': '¿A qué lista quieres que mueva esta tarea? Indícame el nombre.',
+    'it': 'In quale lista vuoi che sposti l\'attività? Indicami il nome.',
+  },
+  move_failed: {
+    en: 'Sorry, I couldn\'t move that task. Please try again.',
+    'es': 'Lo siento, no pude mover esa tarea. Inténtalo de nuevo.',
+    'it': 'Mi dispiace, non sono riuscita a spostare quell\'attività. Riprova.',
+  },
+  // ── TASK_ACTION default fallback (unrecognized action) ──
+  task_action_unknown: {
+    en: 'I didn\'t understand that action. Try "done with [task]", "make [task] urgent", or "assign [task] to partner".',
+    'es': 'No entendí esa acción. Prueba "hecho con [tarea]", "hacer urgente [tarea]" o "asignar [tarea] a pareja".',
+    'it': 'Non ho capito quell\'azione. Prova "fatto con [attività]", "rendi urgente [attività]" o "assegna [attività] al partner".',
+  },
+  // ── MERGE intent flow ──
+  merge_no_recent: {
+    en: 'I don\'t see any recent tasks to merge. The Merge command works within 5 minutes of creating a task.',
+    'es': 'No veo tareas recientes para fusionar. El comando Merge funciona dentro de los 5 minutos posteriores a la creación.',
+    'it': 'Non vedo attività recenti da unire. Il comando Merge funziona entro 5 minuti dalla creazione di un\'attività.',
+  },
+  merge_no_similar: {
+    en: 'I couldn\'t find a similar task to merge "{task}" with. The task remains as-is.',
+    'es': 'No encontré una tarea similar para fusionar con "{task}". La tarea queda igual.',
+    'it': 'Non ho trovato un\'attività simile da unire a "{task}". L\'attività resta com\'è.',
+  },
 };
 
 function t(key: string, lang: string, vars?: Record<string, string>): string {
@@ -1805,6 +1859,9 @@ serve(async (req) => {
         user_id: mediaUserId,
         couple_id: mediaEffectiveCoupleId,
         timezone: mediaProfile.timezone || 'America/New_York',
+        // Language flows through to process-note so AI-extracted summary,
+        // category, items, tags come back in the user's language.
+        language: mediaProfile.language_preference || 'en',
         media: mediaUrls,
         mediaTypes: mediaTypes,
       };
@@ -2272,7 +2329,7 @@ serve(async (req) => {
                 updated_at: new Date().toISOString()
               })
               .eq('id', session.id);
-            return reply(`🗑️ Delete "${fullTask.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`);
+            return reply(t('confirm_delete', userLang, { task: fullTask.summary }));
           } else if (originalActionType === 'set_priority') {
             const msgLower = (pendingAction.original_query || '').toLowerCase();
             const newPriority = msgLower.includes('low') ? 'low' : 'high';
@@ -2364,10 +2421,10 @@ serve(async (req) => {
 
           if (updateError) {
             console.error('Error assigning task:', updateError);
-            return reply('Sorry, I couldn\'t assign that task. Please try again.');
+            return reply(t('error_generic', userLang));
           }
 
-          return reply(`✅ Done! I assigned "${pendingAction.task_summary}" to ${pendingAction.target_name}. 🎯`);
+          return reply(t('done_assign', userLang, { task: pendingAction.task_summary, partner: pendingAction.target_name }));
         } else if (pendingAction?.type === 'set_due_date') {
           await supabase
             .from('clerk_notes')
@@ -2377,13 +2434,10 @@ serve(async (req) => {
             })
             .eq('id', pendingAction.task_id);
 
-          const dueSetLocalized: Record<string, string> = {
-            en: `✅ Done! "${pendingAction.task_summary}" is now due ${pendingAction.readable}. 📅`,
-            es: `✅ ¡Hecho! "${pendingAction.task_summary}" ahora vence ${pendingAction.readable}. 📅`,
-            it: `✅ Fatto! "${pendingAction.task_summary}" ora è previsto ${pendingAction.readable}. 📅`,
-          };
-          const sl = (userLang || 'en').split('-')[0];
-          return reply(dueSetLocalized[sl] || dueSetLocalized.en);
+          // Note: pendingAction.readable was localized at offer time (set_due
+          // case localizes via parseNaturalDate / formatFriendlyDate using
+          // userLang). It's already in the right language here.
+          return reply(t('done_set_due', userLang, { task: pendingAction.task_summary, when: pendingAction.readable }));
         } else if (pendingAction?.type === 'set_reminder') {
           const updateData: any = {
             reminder_time: pendingAction.time,
@@ -2399,19 +2453,14 @@ serve(async (req) => {
             .update(updateData)
             .eq('id', pendingAction.task_id);
 
-          const reminderSetLocalized: Record<string, string> = {
-            en: `✅ Done! I'll remind you about "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`,
-            es: `✅ ¡Hecho! Te recordaré "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`,
-            it: `✅ Fatto! Ti ricorderò "${pendingAction.task_summary}" ${pendingAction.readable}. ⏰`,
-          };
-          return reply(reminderSetLocalized[userLang.split('-')[0]] || reminderSetLocalized[userLang] || reminderSetLocalized.en);
+          return reply(t('done_set_reminder', userLang, { task: pendingAction.task_summary, when: pendingAction.readable }));
         } else if (pendingAction?.type === 'delete') {
           await supabase
             .from('clerk_notes')
             .delete()
             .eq('id', pendingAction.task_id);
 
-          return reply(`🗑️ Done! "${pendingAction.task_summary}" has been deleted.`);
+          return reply(t('done_delete', userLang, { task: pendingAction.task_summary }));
         } else if (pendingAction?.type === 'merge') {
           const { data: mergeResult, error: mergeError } = await supabase.rpc('merge_notes', {
             p_source_id: pendingAction.source_id,
@@ -2420,13 +2469,13 @@ serve(async (req) => {
 
           if (mergeError) {
             console.error('Error merging notes:', mergeError);
-            return reply('Sorry, I couldn\'t merge those notes. Please try again.');
+            return reply(t('error_generic', userLang));
           }
 
-          return reply(`✅ Merged! Combined your note into: "${pendingAction.target_summary}"\n\n🔗 Manage: https://witholive.app`);
+          return reply(t('done_merge', userLang, { target: pendingAction.target_summary }));
         }
 
-        return reply('Something went wrong with the confirmation. Please try again.');
+        return reply(t('error_generic', userLang));
       } else {
         // Non-confirmation message (not yes/no): auto-cancel pending action
         // and fall through to process the message normally
@@ -2591,6 +2640,7 @@ serve(async (req) => {
               user_id: userId,
               couple_id: effectiveCoupleId || undefined,
               timezone: profile?.timezone || 'America/New_York',
+              language: userLang,
               source: 'whatsapp',
               isUrgent: isUrgent || false,
             },
@@ -3276,7 +3326,7 @@ Description: "${parsedExpense.description}"`;
         .limit(1);
 
       if (recentError || !recentNotes || recentNotes.length === 0) {
-        return reply('I don\'t see any recent tasks to merge. The Merge command works within 5 minutes of creating a task.');
+        return reply(t('merge_no_recent', userLang));
       }
 
       const sourceNote = recentNotes[0];
@@ -3300,7 +3350,7 @@ Description: "${parsedExpense.description}"`;
       }
 
       if (!targetNote) {
-        return reply(`I couldn't find a similar task to merge "${sourceNote.summary}" with. The task remains as-is.`);
+        return reply(t('merge_no_similar', userLang, { task: sourceNote.summary }));
       }
 
       await supabase
@@ -3320,7 +3370,7 @@ Description: "${parsedExpense.description}"`;
         })
         .eq('id', session.id);
 
-      return reply(`🔀 Merge "${sourceNote.summary}" into "${targetNote.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`);
+      return reply(t('confirm_merge', userLang, { source: sourceNote.summary, target: targetNote.summary }));
     }
 
     // ========================================================================
@@ -4080,17 +4130,18 @@ Description: "${parsedExpense.description}"`;
               user_id: userId,
               couple_id: effectiveCoupleId,
               timezone: profile.timezone || 'America/New_York',
+              language: userLang,
             }
           });
-          
+
           if (processError) {
             console.error('[TASK_ACTION] process-note error:', processError);
             return reply(t('error_generic', userLang));
           }
-          
+
           // Parse the reminder date from the original message
           const reminderExpr = effectiveMessage || messageBody || '';
-          const parsed = parseNaturalDate(reminderExpr, profile.timezone || 'America/New_York');
+          const parsed = parseNaturalDate(reminderExpr, profile.timezone || 'America/New_York', userLang);
           
           // Insert the new note with reminder already set
           const eventDueDate = parsed.date || processData.due_date || null;
@@ -4162,14 +4213,18 @@ Description: "${parsedExpense.description}"`;
           }
           
           const userTz = profile.timezone || 'America/New_York';
-          const friendlyDate = reminderTime ? formatFriendlyDate(reminderTime, true, userTz) : (eventDueDate ? formatFriendlyDate(eventDueDate, true, userTz) : 'tomorrow at 9:00 AM');
-          
+          const friendlyDate = reminderTime
+            ? formatFriendlyDate(reminderTime, true, userTz, userLang)
+            : eventDueDate
+              ? formatFriendlyDate(eventDueDate, true, userTz, userLang)
+              : parseNaturalDate('tomorrow', userTz, userLang).readable;
+
           const confirmationMessage = [
-            `✅ Saved: ${insertedNote.summary}`,
-            `📂 Added to: ${listName}`,
-            `⏰ Reminder set for ${friendlyDate}`,
+            t('note_saved', userLang, { summary: insertedNote.summary }),
+            t('note_added_to', userLang, { list: listName }),
+            t('note_reminder_set', userLang, { date: friendlyDate }),
             ``,
-            `🔗 Manage: https://witholive.app`,
+            t('note_manage', userLang),
           ].join('\n');
           
           // Store as referenced entity for follow-up
@@ -4229,7 +4284,8 @@ Description: "${parsedExpense.description}"`;
         
         case 'set_due': {
           const dateExpr = effectiveMessage || 'tomorrow';
-          const parsed = parseNaturalDate(dateExpr, profile.timezone || 'America/New_York');
+          const userTz = profile.timezone || 'America/New_York';
+          const parsed = parseNaturalDate(dateExpr, userTz, userLang);
 
           // Handle time-only updates: "change it to 7 AM" → keep existing date, update time
           if (!parsed.date && foundTask.due_date) {
@@ -4242,7 +4298,7 @@ Description: "${parsedExpense.description}"`;
               if (timeOnlyMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
               existingDate.setUTCHours(hours, mins, 0, 0);
               parsed.date = existingDate.toISOString();
-              parsed.readable = formatFriendlyDate(parsed.date, true, profile.timezone || 'America/New_York');
+              parsed.readable = formatFriendlyDate(parsed.date, true, userTz, userLang);
               console.log('[Context] Time-only update: keeping date from task, setting time to', hours + ':' + mins);
             }
           }
@@ -4258,13 +4314,13 @@ Description: "${parsedExpense.description}"`;
               if (timeOnlyMatch[3].toLowerCase() === 'am' && hours === 12) hours = 0;
               today.setHours(hours, mins, 0, 0);
               parsed.date = today.toISOString();
-              parsed.readable = formatFriendlyDate(parsed.date, true, profile.timezone || 'America/New_York');
+              parsed.readable = formatFriendlyDate(parsed.date, true, userTz, userLang);
               console.log('[Context] Time-only update: using today with time', hours + ':' + mins);
             }
           }
 
           if (!parsed.date) {
-            return reply(`I couldn't understand the date "${dateExpr}". Try "tomorrow", "monday", or "next week".`);
+            return reply(t('date_unparseable', userLang, { expr: dateExpr }));
           }
 
           // Preserve conversation context alongside pending_action
@@ -4287,15 +4343,14 @@ Description: "${parsedExpense.description}"`;
             })
             .eq('id', session.id);
 
-          const setDueResponse = `📅 Set "${foundTask.summary}" due ${parsed.readable}?\n\nReply "yes" to confirm.`;
-          return reply(setDueResponse);
+          return reply(t('confirm_set_due', userLang, { task: foundTask.summary, when: parsed.readable }));
         }
         
         case 'assign': {
           if (!coupleId) {
-            return reply('You need to be in a shared space to assign tasks. Invite a partner from the app!');
+            return reply(t('partner_no_space', userLang));
           }
-          
+
           const { data: partnerMember } = await supabase
             .from('clerk_couple_members')
             .select('user_id')
@@ -4303,20 +4358,20 @@ Description: "${parsedExpense.description}"`;
             .neq('user_id', userId)
             .limit(1)
             .single();
-          
+
           if (!partnerMember) {
-            return reply('I couldn\'t find your partner. Make sure they\'ve accepted your invite!');
+            return reply(t('partner_no_space', userLang));
           }
-          
+
           const { data: coupleData } = await supabase
             .from('clerk_couples')
             .select('you_name, partner_name, created_by')
             .eq('id', coupleId)
             .single();
-          
+
           const isCreator = coupleData?.created_by === userId;
           const partnerName = isCreator ? (coupleData?.partner_name || 'Partner') : (coupleData?.you_name || 'Partner');
-          
+
           const assignCtx = (session.context_data || {}) as ConversationContext;
           await supabase
             .from('user_sessions')
@@ -4336,7 +4391,7 @@ Description: "${parsedExpense.description}"`;
             })
             .eq('id', session.id);
 
-          return reply(`🤝 Assign "${foundTask.summary}" to ${partnerName}?\n\nReply "yes" to confirm.`);
+          return reply(t('confirm_assign', userLang, { task: foundTask.summary, partner: partnerName }));
         }
 
         case 'delete': {
@@ -4357,14 +4412,14 @@ Description: "${parsedExpense.description}"`;
             })
             .eq('id', session.id);
 
-          return reply(`🗑️ Delete "${foundTask.summary}"?\n\nReply "yes" to confirm or "no" to cancel.`);
+          return reply(t('confirm_delete', userLang, { task: foundTask.summary }));
         }
         
         case 'move': {
           const targetListName = (effectiveMessage || '').trim();
-          
+
           if (!targetListName) {
-            return reply('Which list should I move this task to? Please provide a list name.');
+            return reply(t('move_need_list_name', userLang));
           }
           
           // ROBUST LIST MATCHING: exact name match (case-insensitive), scoped to user's lists
@@ -4442,14 +4497,14 @@ Description: "${parsedExpense.description}"`;
             return reply(moveResponse);
           }
           
-          return reply('Sorry, I couldn\'t move that task. Please try again.');
+          return reply(t('move_failed', userLang));
         }
-        
+
         case 'remind': {
           // Use the due_date_expression (cleanMessage/effectiveMessage) for time, NOT the task name (actionTarget)
           const reminderExpr = effectiveMessage || actionTarget || messageBody || '';
           console.log('[remind] reminderExpr:', reminderExpr, '| actionTarget:', actionTarget, '| effectiveMessage:', effectiveMessage);
-          const parsed = parseNaturalDate(reminderExpr, profile.timezone || 'America/New_York');
+          const parsed = parseNaturalDate(reminderExpr, profile.timezone || 'America/New_York', userLang);
           const remindCtx = (session.context_data || {}) as ConversationContext;
 
           if (parsed.date) {
@@ -4472,7 +4527,7 @@ Description: "${parsedExpense.description}"`;
               })
               .eq('id', session.id);
 
-            return reply(`⏰ Set reminder for "${foundTask.summary}" ${parsed.readable}?\n\nReply "yes" to confirm.`);
+            return reply(t('confirm_set_reminder', userLang, { task: foundTask.summary, when: parsed.readable }));
           }
 
           // SMART REMINDER DEFAULTS: Based on task's due_date or event time
@@ -4487,11 +4542,11 @@ Description: "${parsedExpense.description}"`;
             if (hoursUntilDue <= 4) {
               // Due very soon: remind in 30 minutes
               smartReminderDate = new Date(Date.now() + 30 * 60 * 1000);
-              smartReadable = 'in 30 minutes';
+              smartReadable = t('smart_reminder_30min', userLang);
             } else if (hoursUntilDue <= 24) {
               // Due today: remind 2 hours before
               smartReminderDate = new Date(taskDueDate.getTime() - 2 * 60 * 60 * 1000);
-              smartReadable = '2 hours before it\'s due';
+              smartReadable = t('smart_reminder_2h_before', userLang);
             } else {
               // Due in future: remind morning of the event day (9 AM user timezone)
               smartReminderDate = new Date(taskDueDate);
@@ -4520,9 +4575,9 @@ Description: "${parsedExpense.description}"`;
                   const offsetMs = utcDate.getTime() - tzDate.getTime();
                   smartReminderDate = new Date(eveningBefore.getTime() + offsetMs);
                 } catch { /* keep as-is */ }
-                smartReadable = 'the evening before (8:00 PM) + morning of (9:00 AM)';
+                smartReadable = t('smart_reminder_evening_morning', userLang);
               } else {
-                smartReadable = 'the morning of (9:00 AM)';
+                smartReadable = t('smart_reminder_morning_of', userLang);
               }
             }
           } else {
@@ -4530,7 +4585,7 @@ Description: "${parsedExpense.description}"`;
             smartReminderDate = new Date();
             smartReminderDate.setDate(smartReminderDate.getDate() + 1);
             smartReminderDate.setHours(9, 0, 0, 0);
-            smartReadable = 'tomorrow at 9:00 AM';
+            smartReadable = t('smart_reminder_tomorrow_9am', userLang);
           }
 
           await supabase
@@ -4552,11 +4607,11 @@ Description: "${parsedExpense.description}"`;
             })
             .eq('id', session.id);
 
-          return reply(`⏰ Set reminder for "${foundTask.summary}" ${smartReadable}?\n\nReply "yes" to confirm.`);
+          return reply(t('confirm_set_reminder', userLang, { task: foundTask.summary, when: smartReadable }));
         }
-        
+
         default:
-          return reply('I didn\'t understand that action. Try "done with [task]", "make [task] urgent", or "assign [task] to partner".');
+          return reply(t('task_action_unknown', userLang));
       }
     }
 
@@ -6698,6 +6753,7 @@ If the user's message is long and conversational — asking for help with someth
                 user_id: userId,
                 couple_id: coupleId, // Partner tasks are always shared
                 timezone: profile.timezone || 'America/New_York',
+                language: userLang,
                 source: 'whatsapp',
               }
             });
@@ -7455,11 +7511,12 @@ FORMAT for WhatsApp (max 1500 chars):
       }
     }
 
-    const notePayload: any = { 
-      text: createMessage, 
+    const notePayload: any = {
+      text: createMessage,
       user_id: userId,
       couple_id: effectiveCoupleId,
       timezone: profile.timezone || 'America/New_York',
+      language: userLang,
       source: 'whatsapp',
       force_priority: isUrgent ? 'high' : undefined
     };
