@@ -612,3 +612,33 @@ Deno.test("parseNaturalDate dst: 'in 2 months' in Rome at 09:00 Rome local", () 
   const r = parseNaturalDate("in 2 months", "Europe/Rome");
   assertEquals(localTimeIn("Europe/Rome", r.date!), "09:00");
 });
+
+// ============================================================================
+// PR6 — Italian "dicembre" Mon-DD / DD-Mon parity
+// ============================================================================
+// Pre-PR6 Italian "dicembre" (different spelling from Spanish "diciembre")
+// was missing from monthNames + abbrMonthMap, so Italian users hit
+// `unknown` for any December input. This was the last per-locale gap
+// in the parser's month-name coverage.
+
+Deno.test("parseNaturalDate it: '15 dicembre' (DD-Mon, Italian December) parses", () => {
+  const r = parseNaturalDate("15 dicembre", "Europe/Rome", "it");
+  assertEquals(r.date !== null, true);
+  // Readable should reference the Italian month name.
+  assertEquals(r.readable, "15 dicembre alle 09:00");
+});
+
+Deno.test("parseNaturalDate it: 'dicembre 15' (Mon-DD, Italian December) parses", () => {
+  const r = parseNaturalDate("dicembre 15", "Europe/Rome", "it");
+  assertEquals(r.date !== null, true);
+  assertEquals(r.readable, "15 dicembre alle 09:00");
+});
+
+Deno.test("parseNaturalDate es: '15 de diciembre' (Spanish 'de' connector) still works after dicembre addition", () => {
+  // Regression guard — Spanish "diciembre" must still resolve correctly
+  // after adding the Italian variant. Both spellings exist in the maps
+  // and both should match.
+  const r = parseNaturalDate("15 de diciembre", "Europe/Madrid", "es");
+  assertEquals(r.date !== null, true);
+  assertEquals(r.readable, "15 de diciembre a las 9:00");
+});
