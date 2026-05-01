@@ -513,3 +513,102 @@ Deno.test("parseNaturalDate: 'tra due mesi e mezzo' (it) and 'en dos meses y med
   // Allow up to 24h difference for the Rome ↔ Madrid timezone gap.
   assertEquals(Math.abs(itMs - esMs) < 24 * HOURS, true);
 });
+
+// ============================================================================
+// PR5 — DST-safe local→UTC conversion
+// ============================================================================
+// Pre-PR5 the parser closed with an inline offset-calculation block that
+// round-tripped through `toLocaleString` to convert local-to-UTC.
+// The math worked on normal days but produced wrong results across DST
+// boundaries (Rome's spring-forward in late March, fall-back in late
+// October; NY in early March / early November).
+//
+// PR5 replaces that block with `toUtcFromLocalParts` from
+// `timezone-calendar.ts`, which uses Intl-aware offset resolution and
+// is correct across DST transitions.
+//
+// Strategy for these tests: verify that the returned UTC ISO, when
+// rendered back in the user's timezone, gives the LOCAL clock time the
+// user actually typed (or the 09:00 default). This is the only test
+// shape that's robust to wall-clock test runs, year-rolling for
+// past-month dates, and DST shifts — if the conversion is wrong by an
+// hour, the local-time render will be off by an hour, and the assertion
+// fails clearly.
+
+function localTimeIn(timezone: string, dateIso: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(dateIso));
+}
+
+// ---------- Default 09:00 local across DST ----------
+
+Deno.test("parseNaturalDate dst: 'march 29' in Rome lands at 09:00 Rome local (post-spring-forward)", () => {
+  // Rome spring-forward in any modern year is the last Sunday of March.
+  // March 29 is always AFTER spring-forward → CEST (UTC+2). 09:00 Rome
+  // CEST = 07:00 UTC. Pre-PR5 the inline math could land an hour off
+  // around the boundary; PR5 nails it.
+  const r = parseNaturalDate("29 march", "Europe/Rome");
+  assertEquals(localTimeIn("Europe/Rome", r.date!), "09:00");
+});
+
+Deno.test("parseNaturalDate dst: 'november 1' in Rome lands at 09:00 Rome local (post-fall-back)", () => {
+  // Rome fall-back is the last Sunday of October. November 1 is always
+  // AFTER fall-back → CET (UTC+1). 09:00 Rome CET = 08:00 UTC.
+  const r = parseNaturalDate("1 november", "Europe/Rome");
+  assertEquals(localTimeIn("Europe/Rome", r.date!), "09:00");
+});
+
+Deno.test("parseNaturalDate dst: 'march 10' in New York lands at 09:00 NY local (post-spring-forward)", () => {
+  // NY spring-forward is the second Sunday of March (March 8 in 2026,
+  // March 14 in 2027). March 10 is post-spring-forward → EDT (UTC-4).
+  // 09:00 NY EDT = 13:00 UTC.
+  const r = parseNaturalDate("10 march", "America/New_York");
+  assertEquals(localTimeIn("America/New_York", r.date!), "09:00");
+});
+
+Deno.test("parseNaturalDate dst: 'november 5' in New York lands at 09:00 NY local (post-fall-back)", () => {
+  // NY fall-back is the first Sunday of November. November 5 is always
+  // post-fall-back → EST (UTC-5). 09:00 NY EST = 14:00 UTC.
+  const r = parseNaturalDate("5 november", "America/New_York");
+  assertEquals(localTimeIn("America/New_York", r.date!), "09:00");
+});
+
+// ---------- User-typed explicit time ----------
+// Note: testing "<date> at <time>" combos with future month-day forms
+// (e.g., "29 march at 3pm") would exercise a separate parser limitation
+// where timeMatch greedily captures the date-of-month digit. We test
+// the user-typed time path via named-date inputs instead, which take
+// the same APPLY TIME conversion route through toUtcFromLocalParts.
+
+Deno.test("parseNaturalDate dst: 'tomorrow at 3pm' in Rome lands at 15:00 Rome local", () => {
+  const r = parseNaturalDate("tomorrow at 3pm", "Europe/Rome");
+  assertEquals(localTimeIn("Europe/Rome", r.date!), "15:00");
+});
+
+Deno.test("parseNaturalDate dst: 'tomorrow at 8am' in New York lands at 08:00 NY local", () => {
+  const r = parseNaturalDate("tomorrow at 8am", "America/New_York");
+  assertEquals(localTimeIn("America/New_York", r.date!), "08:00");
+});
+
+// ---------- Cross-locale invariant ----------
+
+Deno.test("parseNaturalDate dst: 'tomorrow' in Rome resolves at 09:00 Rome (regardless of DST)", () => {
+  const r = parseNaturalDate("tomorrow", "Europe/Rome");
+  assertEquals(localTimeIn("Europe/Rome", r.date!), "09:00");
+});
+
+Deno.test("parseNaturalDate dst: 'next month' in Madrid resolves at 09:00 Madrid (regardless of DST)", () => {
+  const r = parseNaturalDate("próximo mes", "Europe/Madrid", "es");
+  assertEquals(localTimeIn("Europe/Madrid", r.date!), "09:00");
+});
+
+Deno.test("parseNaturalDate dst: 'in 2 months' in Rome at 09:00 Rome local", () => {
+  // Wall-clock-relative — exact UTC depends on the test run, but the
+  // local render must always be 09:00 if the conversion is correct.
+  const r = parseNaturalDate("in 2 months", "Europe/Rome");
+  assertEquals(localTimeIn("Europe/Rome", r.date!), "09:00");
+});
