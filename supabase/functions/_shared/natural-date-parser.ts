@@ -12,8 +12,15 @@
  *
  * Usage:
  *   import { parseNaturalDate } from "../_shared/natural-date-parser.ts";
+ *   // English (default): readable = "tomorrow at 3:00 PM"
  *   const { date, time, readable } = parseNaturalDate("tomorrow at 3pm", "America/New_York");
+ *   // Italian: readable = "domani alle 15:00"
+ *   parseNaturalDate("domani alle 15", "Europe/Rome", "it");
+ *   // Spanish: readable = "mañana a las 15:00"
+ *   parseNaturalDate("mañana a las 15", "Europe/Madrid", "es");
  */
+
+import { type SupportedLocale, normalizeLocale } from "./i18n-locale.ts";
 
 export interface ParsedDate {
   date: string | null;
@@ -21,10 +28,133 @@ export interface ParsedDate {
   readable: string;
 }
 
+// ─── Locale-Aware "readable" Phrase Tables ─────────────────────────
+// Every assignment to `readable` below routes through one of these
+// helpers. The English entries are constructed to produce strings that
+// are BYTE-IDENTICAL to the pre-i18n output (every existing caller that
+// doesn't pass a `lang` argument keeps producing the same string).
+//
+// For es/it the phrases use the locale's natural conventions (lowercase
+// day/month, 24h time). The day/month names are looked up by index
+// (Sunday=0..Saturday=6, January=0..December=11) so the parser doesn't
+// have to round-trip through user-supplied spellings.
+
+const DAY_NAMES_BY_LOCALE: Record<SupportedLocale, string[]> = {
+  en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+  es: ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"],
+  it: ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"],
+};
+
+const MONTH_NAMES_BY_LOCALE: Record<SupportedLocale, string[]> = {
+  en: ["January", "February", "March", "April", "May", "June",
+       "July", "August", "September", "October", "November", "December"],
+  es: ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+       "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
+  it: ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+       "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"],
+};
+
+interface ReadablePhrases {
+  today: string;
+  tomorrow: string;
+  dayAfterTomorrow: string;
+  nextWeek: string;
+  inAWeek: string;
+  thisWeekend: string;
+  nextMonth: string;
+  in30Min: string;
+  inMinutes: (n: number) => string;
+  inHours: (n: number) => string;
+  inDays: (n: number) => string;
+  /**
+   * en: returns "Month DD" using the English month name supplied.
+   * es/it: ignores englishMonth and uses the localized month at index.
+   * Both representations are passed so the en path stays byte-identical
+   * regardless of the user's input language.
+   */
+  monthDay: (englishMonth: string, monthIdx: number, day: number) => string;
+  /**
+   * en: returns "next ${matchedCapitalized}" using the user's spelling
+   *     capitalized — preserves the historical behavior exactly.
+   * es/it: ignores the matched form and uses canonical localized name
+   *     so output is uniform (e.g., "lunedì prossimo" not "next Lunedì").
+   */
+  nextDayOfWeek: (matchedCapitalized: string, dayIdx: number) => string;
+  atTime: (hours: number, minutes: number) => string;
+  at9default: string;
+  unknown: string;
+}
+
+const READABLE_PHRASES_BY_LOCALE: Record<SupportedLocale, ReadablePhrases> = {
+  en: {
+    today: "today",
+    tomorrow: "tomorrow",
+    dayAfterTomorrow: "day after tomorrow",
+    nextWeek: "next week",
+    inAWeek: "in a week",
+    thisWeekend: "this weekend",
+    nextMonth: "next month",
+    in30Min: "in 30 minutes",
+    inMinutes: (n) => `in ${n} minutes`,
+    inHours: (n) => `in ${n} hour${n > 1 ? "s" : ""}`,
+    inDays: (n) => `in ${n} day${n > 1 ? "s" : ""}`,
+    monthDay: (m, _idx, d) => `${m} ${d}`,
+    nextDayOfWeek: (matched, _idx) => `next ${matched}`,
+    atTime: (h, m) => {
+      // Exact pre-i18n template: 12-hour clock, AM/PM suffix, midnight = 12 AM.
+      const h12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
+      const ampm = h >= 12 ? "PM" : "AM";
+      return `at ${h12}:${m.toString().padStart(2, "0")} ${ampm}`;
+    },
+    at9default: "at 9:00 AM",
+    unknown: "unknown",
+  },
+  it: {
+    today: "oggi",
+    tomorrow: "domani",
+    dayAfterTomorrow: "dopodomani",
+    nextWeek: "la prossima settimana",
+    inAWeek: "tra una settimana",
+    thisWeekend: "questo weekend",
+    nextMonth: "il prossimo mese",
+    in30Min: "tra 30 minuti",
+    inMinutes: (n) => `tra ${n} minuti`,
+    inHours: (n) => `tra ${n} ${n === 1 ? "ora" : "ore"}`,
+    inDays: (n) => `tra ${n} ${n === 1 ? "giorno" : "giorni"}`,
+    monthDay: (_m, idx, d) => `${d} ${MONTH_NAMES_BY_LOCALE.it[idx]}`,
+    nextDayOfWeek: (_match, idx) => `${DAY_NAMES_BY_LOCALE.it[idx]} prossimo`,
+    atTime: (h, m) =>
+      `alle ${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`,
+    at9default: "alle 09:00",
+    unknown: "data non riconosciuta",
+  },
+  es: {
+    today: "hoy",
+    tomorrow: "mañana",
+    dayAfterTomorrow: "pasado mañana",
+    nextWeek: "la próxima semana",
+    inAWeek: "en una semana",
+    thisWeekend: "este fin de semana",
+    nextMonth: "el próximo mes",
+    in30Min: "en 30 minutos",
+    inMinutes: (n) => `en ${n} minutos`,
+    inHours: (n) => `en ${n} ${n === 1 ? "hora" : "horas"}`,
+    inDays: (n) => `en ${n} ${n === 1 ? "día" : "días"}`,
+    monthDay: (_m, idx, d) => `${d} de ${MONTH_NAMES_BY_LOCALE.es[idx]}`,
+    nextDayOfWeek: (_match, idx) => `el próximo ${DAY_NAMES_BY_LOCALE.es[idx]}`,
+    atTime: (h, m) => `a las ${h}:${m.toString().padStart(2, "0")}`,
+    at9default: "a las 9:00",
+    unknown: "fecha no reconocida",
+  },
+};
+
 export function parseNaturalDate(
   expression: string,
-  timezone: string = "America/New_York"
+  timezone: string = "America/New_York",
+  lang?: string | SupportedLocale
 ): ParsedDate {
+  const locale: SupportedLocale = lang ? normalizeLocale(lang) : "en";
+  const phrases = READABLE_PHRASES_BY_LOCALE[locale];
   const now = new Date();
 
   // CRITICAL: Create a "local now" whose UTC fields represent the user's local time.
@@ -134,6 +264,11 @@ export function parseNaturalDate(
 
   let targetDate: Date | null = null;
   let readable = "";
+  // Set true when readable already encodes "in N minutes/hours" — this
+  // suppresses the trailing "at HH:MM" append (which would be confusing
+  // for relative-minute/hour expressions). Replaces the previous regex
+  // probe `readable.includes("minute"|"hour")` which only worked in en.
+  let isRelativeTimeExpr = false;
 
   // === RELATIVE TIME EXPRESSIONS (highest priority) ===
   const relativePatterns = [
@@ -147,7 +282,8 @@ export function parseNaturalDate(
   if (halfHourMatch) {
     targetDate = new Date(now);
     targetDate.setMinutes(targetDate.getMinutes() + 30);
-    readable = "in 30 minutes";
+    readable = phrases.in30Min;
+    isRelativeTimeExpr = true;
     hours = targetDate.getHours();
     minutes = targetDate.getMinutes();
   }
@@ -159,7 +295,8 @@ export function parseNaturalDate(
       if (num !== null) {
         targetDate = new Date(now);
         targetDate.setMinutes(targetDate.getMinutes() + Math.round(num));
-        readable = `in ${Math.round(num)} minutes`;
+        readable = phrases.inMinutes(Math.round(num));
+        isRelativeTimeExpr = true;
         hours = targetDate.getHours();
         minutes = targetDate.getMinutes();
       }
@@ -174,11 +311,12 @@ export function parseNaturalDate(
         targetDate = new Date(now);
         if (num === 0.5) {
           targetDate.setMinutes(targetDate.getMinutes() + 30);
-          readable = "in 30 minutes";
+          readable = phrases.in30Min;
         } else {
           targetDate.setHours(targetDate.getHours() + Math.round(num));
-          readable = `in ${Math.round(num)} hour${num > 1 ? "s" : ""}`;
+          readable = phrases.inHours(Math.round(num));
         }
+        isRelativeTimeExpr = true;
         hours = targetDate.getHours();
         minutes = targetDate.getMinutes();
       }
@@ -192,7 +330,7 @@ export function parseNaturalDate(
       if (num !== null) {
         targetDate = new Date(now);
         targetDate.setDate(targetDate.getDate() + Math.round(num));
-        readable = `in ${Math.round(num)} day${num > 1 ? "s" : ""}`;
+        readable = phrases.inDays(Math.round(num));
       }
     }
   }
@@ -201,33 +339,37 @@ export function parseNaturalDate(
   if (!targetDate) {
     if (lowerExpr.includes("today") || lowerExpr.includes("hoy") || lowerExpr.includes("oggi")) {
       targetDate = new Date(localNow);
-      readable = "today";
+      readable = phrases.today;
+    } else if (lowerExpr.includes("day after tomorrow") || lowerExpr.includes("pasado mañana") || lowerExpr.includes("dopodomani")) {
+      // Must be checked BEFORE the "tomorrow" branch — every "day after
+      // tomorrow" phrase contains "tomorrow"/"domani"/"mañana" as a
+      // substring, so without this ordering the broader phrase shadows
+      // the more specific one and the user gets a date 1 day off.
+      targetDate = new Date(localNow);
+      targetDate.setDate(targetDate.getDate() + 2);
+      readable = phrases.dayAfterTomorrow;
     } else if (lowerExpr.includes("tomorrow") || /\bmañana\b/.test(lowerExpr) || lowerExpr.includes("domani")) {
       targetDate = new Date(localNow);
       targetDate.setDate(targetDate.getDate() + 1);
-      readable = "tomorrow";
-    } else if (lowerExpr.includes("day after tomorrow") || lowerExpr.includes("pasado mañana") || lowerExpr.includes("dopodomani")) {
-      targetDate = new Date(localNow);
-      targetDate.setDate(targetDate.getDate() + 2);
-      readable = "day after tomorrow";
+      readable = phrases.tomorrow;
     } else if (lowerExpr.includes("next week") || lowerExpr.includes("próxima semana") || lowerExpr.includes("prossima settimana") || lowerExpr.includes("la semana que viene") || lowerExpr.includes("settimana prossima")) {
       targetDate = new Date(localNow);
       targetDate.setDate(targetDate.getDate() + 7);
-      readable = "next week";
+      readable = phrases.nextWeek;
     } else if (lowerExpr.includes("in a week") || lowerExpr.includes("in 1 week") || lowerExpr.includes("en una semana") || lowerExpr.includes("tra una settimana") || lowerExpr.includes("fra una settimana")) {
       targetDate = new Date(localNow);
       targetDate.setDate(targetDate.getDate() + 7);
-      readable = "in a week";
+      readable = phrases.inAWeek;
     } else if (lowerExpr.includes("this weekend") || lowerExpr.includes("este fin de semana") || lowerExpr.includes("questo weekend") || lowerExpr.includes("questo fine settimana")) {
       targetDate = new Date(localNow);
       const currentDay = targetDate.getDay();
       const daysUntilSaturday = currentDay === 6 ? 0 : 6 - currentDay;
       targetDate.setDate(targetDate.getDate() + daysUntilSaturday);
-      readable = "this weekend";
+      readable = phrases.thisWeekend;
     } else if (lowerExpr.includes("next month") || lowerExpr.includes("próximo mes") || lowerExpr.includes("prossimo mese") || lowerExpr.includes("il mese prossimo")) {
       targetDate = new Date(localNow);
       targetDate.setMonth(targetDate.getMonth() + 1);
-      readable = "next month";
+      readable = phrases.nextMonth;
     }
   }
 
@@ -260,11 +402,7 @@ export function parseNaturalDate(
         if (targetDate < localNow) {
           targetDate.setFullYear(targetDate.getFullYear() + 1);
         }
-        const monthDisplayNames = [
-          "January", "February", "March", "April", "May", "June",
-          "July", "August", "September", "October", "November", "December",
-        ];
-        readable = `${monthDisplayNames[monthNum]} ${dayNum}`;
+        readable = phrases.monthDay(MONTH_NAMES_BY_LOCALE.en[monthNum], monthNum, dayNum);
       }
     }
 
@@ -286,11 +424,7 @@ export function parseNaturalDate(
             if (targetDate < localNow) {
               targetDate.setFullYear(targetDate.getFullYear() + 1);
             }
-            const monthDisplayNames = [
-              "January", "February", "March", "April", "May", "June",
-              "July", "August", "September", "October", "November", "December",
-            ];
-            readable = `${monthDisplayNames[monthNum]} ${dayNum}`;
+            readable = phrases.monthDay(MONTH_NAMES_BY_LOCALE.en[monthNum], monthNum, dayNum);
           }
           break;
         }
@@ -300,17 +434,25 @@ export function parseNaturalDate(
 
   // === DAY-OF-WEEK ===
   if (!targetDate) {
-    const allDayNames = [
-      "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
-      "sun", "mon", "tue", "wed", "thu", "fri", "sat",
-      "domingo", "lunes", "martes", "miércoles", "miercoles", "jueves", "viernes", "sábado", "sabado",
-      "domenica", "lunedì", "lunedi", "martedì", "martedi", "mercoledì", "mercoledi", "giovedì", "giovedi", "venerdì", "venerdi",
-    ];
+    // Map every accepted lowercase day word → its Sunday-indexed weekday
+    // number. Used to look up the canonical localized day name when
+    // building the readable string (so an Italian user typing "lunedì"
+    // gets back "lunedì prossimo" — not "next Lunedì").
+    const dayWordToIndex: Record<string, number> = {
+      sunday: 0, sun: 0, domingo: 0, domenica: 0,
+      monday: 1, mon: 1, lunes: 1, "lunedì": 1, lunedi: 1,
+      tuesday: 2, tue: 2, martes: 2, "martedì": 2, martedi: 2,
+      wednesday: 3, wed: 3, "miércoles": 3, miercoles: 3, "mercoledì": 3, mercoledi: 3,
+      thursday: 4, thu: 4, jueves: 4, "giovedì": 4, giovedi: 4,
+      friday: 5, fri: 5, viernes: 5, "venerdì": 5, venerdi: 5,
+      saturday: 6, sat: 6, "sábado": 6, sabado: 6,
+    };
+    const allDayNames = Object.keys(dayWordToIndex);
     for (const day of allDayNames) {
       if (lowerExpr.includes(day)) {
         targetDate = getNextDayOfWeek(day);
         const displayDay = day.charAt(0).toUpperCase() + day.slice(1);
-        readable = `next ${displayDay}`;
+        readable = phrases.nextDayOfWeek(displayDay, dayWordToIndex[day]);
         break;
       }
     }
@@ -326,9 +468,9 @@ export function parseNaturalDate(
 
     if (proposedMinutes <= currentMinutes) {
       targetDate.setDate(targetDate.getDate() + 1);
-      readable = "tomorrow";
+      readable = phrases.tomorrow;
     } else {
-      readable = "today";
+      readable = phrases.today;
     }
   }
 
@@ -346,11 +488,11 @@ export function parseNaturalDate(
       // If timezone conversion fails, keep as-is
     }
 
-    if (!readable.includes("minute") && !readable.includes("hour")) {
-      readable += ` at ${hours > 12 ? hours - 12 : hours === 0 ? 12 : hours}:${minutes.toString().padStart(2, "0")} ${hours >= 12 ? "PM" : "AM"}`;
+    if (!isRelativeTimeExpr) {
+      readable += ` ${phrases.atTime(hours, minutes)}`;
     }
   } else if (targetDate && hours === null) {
-    if (!readable.includes("minute") && !readable.includes("hour")) {
+    if (!isRelativeTimeExpr) {
       targetDate.setHours(9, 0, 0, 0);
       try {
         const utcStr = targetDate.toLocaleString("en-US", { timeZone: "UTC" });
@@ -362,12 +504,12 @@ export function parseNaturalDate(
       } catch {
         /* keep as-is */
       }
-      readable += " at 9:00 AM";
+      readable += ` ${phrases.at9default}`;
     }
   }
 
   if (!targetDate) {
-    return { date: null, time: null, readable: "unknown" };
+    return { date: null, time: null, readable: phrases.unknown };
   }
 
   return { date: formatDate(targetDate), time: formatDate(targetDate), readable };

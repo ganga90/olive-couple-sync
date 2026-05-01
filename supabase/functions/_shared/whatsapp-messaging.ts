@@ -13,6 +13,8 @@
  *   import { sendWhatsAppReply, formatFriendlyDate } from "../_shared/whatsapp-messaging.ts";
  */
 
+import { type SupportedLocale, normalizeLocale } from "./i18n-locale.ts";
+
 // ─── Phone Number Standardization ──────────────────────────────
 
 /**
@@ -29,19 +31,50 @@ export function standardizePhoneNumber(rawNumber: string): string {
 
 /**
  * Format a date/time string into a friendly readable format.
- * e.g. "Friday, February 20th at 12:00 PM"
+ *
+ * Output by locale:
+ *   - en (default): "Friday, February 20th at 12:00 PM"
+ *   - es:           "viernes 20 de febrero a las 12:00"
+ *   - it:           "venerdì 20 febbraio alle 12:00"
+ *
+ * The English path is byte-identical to the pre-i18n behavior — adding
+ * the lang argument is purely additive. Existing callers that don't
+ * pass it keep producing the same string they always did.
  *
  * When timezone is provided, the UTC date is converted to the user's local time
  * for display. This is critical because reminder_time is stored in UTC but the
  * user expects to see their local time.
  */
+
+// Locale-specific weekday names (Sunday-indexed, matching JS getDay()).
+// English remains capitalized; es/it follow the standard convention of
+// lowercase mid-sentence. Callers needing sentence-initial capitalization
+// can capitalize the first character themselves.
+const FRIENDLY_DAY_NAMES: Record<SupportedLocale, string[]> = {
+  en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+  es: ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"],
+  it: ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"],
+};
+
+const FRIENDLY_MONTH_NAMES: Record<SupportedLocale, string[]> = {
+  en: ["January", "February", "March", "April", "May", "June",
+       "July", "August", "September", "October", "November", "December"],
+  es: ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+       "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
+  it: ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+       "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"],
+};
+
 export function formatFriendlyDate(
   dateStr: string,
   includeTime: boolean = true,
-  timezone?: string
+  timezone?: string,
+  lang?: string | SupportedLocale
 ): string {
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return dateStr;
+
+  const locale: SupportedLocale = lang ? normalizeLocale(lang) : 'en';
 
   let dayOfWeek: number, month: number, dayNum: number, year: number, hours: number, mins: number;
 
@@ -74,32 +107,52 @@ export function formatFriendlyDate(
     year = d.getUTCFullYear(); hours = d.getUTCHours(); mins = d.getUTCMinutes();
   }
 
-  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  const months = ["January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"];
-
-  const dayName = days[dayOfWeek];
-  const monthName = months[month];
-
-  const suffix =
-    dayNum === 1 || dayNum === 21 || dayNum === 31 ? "st"
-    : dayNum === 2 || dayNum === 22 ? "nd"
-    : dayNum === 3 || dayNum === 23 ? "rd"
-    : "th";
-
-  let result = `${dayName}, ${monthName} ${dayNum}${suffix}`;
-
+  const dayName = FRIENDLY_DAY_NAMES[locale][dayOfWeek];
+  const monthName = FRIENDLY_MONTH_NAMES[locale][month];
   const now = new Date();
-  if (year !== now.getUTCFullYear()) {
-    result += ` ${year}`;
+  const includeYear = year !== now.getUTCFullYear();
+
+  // ── DATE PHRASE ─────────────────────────────────────────────────
+  let result: string;
+  if (locale === 'en') {
+    // Preserve the exact pre-i18n English formatting.
+    const suffix =
+      dayNum === 1 || dayNum === 21 || dayNum === 31 ? "st"
+      : dayNum === 2 || dayNum === 22 ? "nd"
+      : dayNum === 3 || dayNum === 23 ? "rd"
+      : "th";
+    result = `${dayName}, ${monthName} ${dayNum}${suffix}`;
+    if (includeYear) result += ` ${year}`;
+  } else if (locale === 'it') {
+    // "venerdì 20 febbraio" / "venerdì 20 febbraio 2027"
+    result = `${dayName} ${dayNum} ${monthName}`;
+    if (includeYear) result += ` ${year}`;
+  } else { // 'es'
+    // "viernes 20 de febrero" / "viernes 20 de febrero de 2027"
+    result = `${dayName} ${dayNum} de ${monthName}`;
+    if (includeYear) result += ` de ${year}`;
   }
 
-  if (includeTime) {
-    if (hours !== 0 || mins !== 0) {
+  // ── TIME PHRASE ─────────────────────────────────────────────────
+  // Historical behavior: midnight (00:00) was suppressed because reminders
+  // stored as date-only render as midnight UTC and "at 12:00 AM" looks
+  // like a bug. Preserve that suppression across locales.
+  if (includeTime && (hours !== 0 || mins !== 0)) {
+    const minStr = mins.toString().padStart(2, "0");
+    if (locale === 'en') {
       const h12 = hours % 12 || 12;
       const ampm = hours < 12 ? "AM" : "PM";
-      const minStr = mins.toString().padStart(2, "0");
       result += ` at ${h12}:${minStr} ${ampm}`;
+    } else if (locale === 'it') {
+      // 24h, "alle 14:30" — note "alle" except for 1:00 which uses "all'una"
+      // For pragmatic simplicity (and to keep with WhatsApp template tone),
+      // use "alle HH:MM" universally.
+      const hStr = hours.toString().padStart(2, "0");
+      result += ` alle ${hStr}:${minStr}`;
+    } else { // 'es'
+      // 24h, "a las 14:30". Spanish technically uses "a la 1:00" for 1AM,
+      // but "a las" is widely accepted and avoids edge cases.
+      result += ` a las ${hours}:${minStr}`;
     }
   }
 
