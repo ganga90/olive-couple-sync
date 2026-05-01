@@ -300,6 +300,73 @@ $ Spesa: $45 pranzo da Chipotle
     'es': '🌿 Sin problema — lo dejo pasar.',
     'it': '🌿 Nessun problema — lascio stare.',
   },
+  // ── Reminder/due-date confirmation OFFERS (system asks; user replies yes/no) ──
+  // Placeholders: {task}, {when}, {partner}, {source}, {target}
+  // Inserted as a unit by t() — keep the punctuation/structure consistent
+  // across locales so the AWAITING_CONFIRMATION classifier (which still
+  // accepts yes/sí/sì/ok) works without per-locale tweaks.
+  note_reminder_set: {
+    en: '⏰ Reminder set for {date}',
+    'es': '⏰ Recordatorio para {date}',
+    'it': '⏰ Promemoria per {date}',
+  },
+  confirm_set_due: {
+    en: '📅 Set "{task}" due {when}?\n\nReply "yes" to confirm.',
+    'es': '📅 ¿Establecer "{task}" para {when}?\n\nResponde "sí" para confirmar.',
+    'it': '📅 Imposto "{task}" per {when}?\n\nRispondi "sì" per confermare.',
+  },
+  confirm_set_reminder: {
+    en: '⏰ Set reminder for "{task}" {when}?\n\nReply "yes" to confirm.',
+    'es': '⏰ ¿Recordatorio para "{task}" {when}?\n\nResponde "sí" para confirmar.',
+    'it': '⏰ Promemoria per "{task}" {when}?\n\nRispondi "sì" per confermare.',
+  },
+  confirm_assign: {
+    en: '🤝 Assign "{task}" to {partner}?\n\nReply "yes" to confirm.',
+    'es': '🤝 ¿Asignar "{task}" a {partner}?\n\nResponde "sí" para confirmar.',
+    'it': '🤝 Assegnare "{task}" a {partner}?\n\nRispondi "sì" per confermare.',
+  },
+  confirm_delete: {
+    en: '🗑️ Delete "{task}"?\n\nReply "yes" to confirm or "no" to cancel.',
+    'es': '🗑️ ¿Eliminar "{task}"?\n\nResponde "sí" para confirmar o "no" para cancelar.',
+    'it': '🗑️ Eliminare "{task}"?\n\nRispondi "sì" per confermare o "no" per annullare.',
+  },
+  confirm_merge: {
+    en: '🔀 Merge "{source}" into "{target}"?\n\nReply "yes" to confirm or "no" to cancel.',
+    'es': '🔀 ¿Fusionar "{source}" en "{target}"?\n\nResponde "sí" para confirmar o "no" para cancelar.',
+    'it': '🔀 Unire "{source}" in "{target}"?\n\nRispondi "sì" per confermare o "no" per annullare.',
+  },
+  // ── Post-confirmation DONE messages (system confirms after user said yes) ──
+  done_set_due: {
+    en: '✅ Done! "{task}" is now due {when}. 📅',
+    'es': '✅ ¡Hecho! "{task}" ahora vence {when}. 📅',
+    'it': '✅ Fatto! "{task}" ora è previsto per {when}. 📅',
+  },
+  done_set_reminder: {
+    en: "✅ Done! I'll remind you about \"{task}\" {when}. ⏰",
+    'es': '✅ ¡Hecho! Te recordaré "{task}" {when}. ⏰',
+    'it': '✅ Fatto! Ti ricorderò "{task}" {when}. ⏰',
+  },
+  done_assign: {
+    en: '✅ Done! I assigned "{task}" to {partner}. 🎯',
+    'es': '✅ ¡Hecho! Asigné "{task}" a {partner}. 🎯',
+    'it': '✅ Fatto! Ho assegnato "{task}" a {partner}. 🎯',
+  },
+  done_delete: {
+    en: '🗑️ Done! "{task}" has been deleted.',
+    'es': '🗑️ ¡Hecho! "{task}" ha sido eliminada.',
+    'it': '🗑️ Fatto! "{task}" è stata eliminata.',
+  },
+  done_merge: {
+    en: '✅ Merged! Combined your note into: "{target}"\n\n🔗 Manage: https://witholive.app',
+    'es': '✅ ¡Fusionado! Combiné tu nota en: "{target}"\n\n🔗 Gestionar: https://witholive.app',
+    'it': '✅ Unito! Ho combinato la tua nota in: "{target}"\n\n🔗 Gestisci: https://witholive.app',
+  },
+  // ── Date/time validation errors ──
+  date_unparseable: {
+    en: 'I couldn\'t understand the date "{expr}". Try "tomorrow", "monday", or "next week".',
+    'es': 'No entendí la fecha "{expr}". Prueba "mañana", "lunes" o "próxima semana".',
+    'it': 'Non ho capito la data "{expr}". Prova "domani", "lunedì" o "la prossima settimana".',
+  },
 };
 
 function t(key: string, lang: string, vars?: Record<string, string>): string {
