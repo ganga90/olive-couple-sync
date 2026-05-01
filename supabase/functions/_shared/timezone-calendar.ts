@@ -18,7 +18,7 @@ const WEEKDAY_INDEX: Record<string, number> = {
   Sat: 6,
 };
 
-function getTimeZoneParts(date: Date, timeZone: string): TimeZoneParts {
+export function getTimeZoneParts(date: Date, timeZone: string): TimeZoneParts {
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone,
     year: "numeric",
@@ -51,7 +51,7 @@ function getOffsetMs(date: Date, timeZone: string): number {
   return asUtc - date.getTime();
 }
 
-function toUtcFromLocalParts(
+export function toUtcFromLocalParts(
   parts: { year: number; month: number; day: number; hour?: number; minute?: number; second?: number },
   timeZone: string,
 ): Date {
