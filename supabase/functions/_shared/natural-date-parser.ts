@@ -67,6 +67,16 @@ interface ReadablePhrases {
   inHours: (n: number) => string;
   inDays: (n: number) => string;
   /**
+   * "in N months" plus optional "and a half" / "e mezzo" / "y medio" suffix.
+   * Note word order differs by locale:
+   *   en: "in 2 and a half months"  (half BEFORE units)
+   *   it: "tra 2 mesi e mezzo"      (half AFTER units)
+   *   es: "en 2 meses y medio"      (half AFTER units)
+   */
+  inMonths: (n: number, isHalf: boolean) => string;
+  /** "in N years" / "tra N anni" / "en N años". */
+  inYears: (n: number) => string;
+  /**
    * en: returns "Month DD" using the English month name supplied.
    * es/it: ignores englishMonth and uses the localized month at index.
    * Both representations are passed so the en path stays byte-identical
@@ -98,6 +108,13 @@ const READABLE_PHRASES_BY_LOCALE: Record<SupportedLocale, ReadablePhrases> = {
     inMinutes: (n) => `in ${n} minutes`,
     inHours: (n) => `in ${n} hour${n > 1 ? "s" : ""}`,
     inDays: (n) => `in ${n} day${n > 1 ? "s" : ""}`,
+    inMonths: (n, isHalf) => {
+      // "in 2 and a half months" / "in 1 month" / "in 2 months"
+      const half = isHalf ? " and a half" : "";
+      const plural = n > 1 || isHalf ? "s" : "";
+      return `in ${n}${half} month${plural}`;
+    },
+    inYears: (n) => `in ${n} year${n > 1 ? "s" : ""}`,
     monthDay: (m, _idx, d) => `${m} ${d}`,
     nextDayOfWeek: (matched, _idx) => `next ${matched}`,
     atTime: (h, m) => {
@@ -121,6 +138,13 @@ const READABLE_PHRASES_BY_LOCALE: Record<SupportedLocale, ReadablePhrases> = {
     inMinutes: (n) => `tra ${n} minuti`,
     inHours: (n) => `tra ${n} ${n === 1 ? "ora" : "ore"}`,
     inDays: (n) => `tra ${n} ${n === 1 ? "giorno" : "giorni"}`,
+    inMonths: (n, isHalf) => {
+      // Italian word order: "tra 2 mesi e mezzo" (half AFTER units).
+      const unit = n === 1 ? "mese" : "mesi";
+      const half = isHalf ? " e mezzo" : "";
+      return `tra ${n} ${unit}${half}`;
+    },
+    inYears: (n) => `tra ${n} ${n === 1 ? "anno" : "anni"}`,
     monthDay: (_m, idx, d) => `${d} ${MONTH_NAMES_BY_LOCALE.it[idx]}`,
     nextDayOfWeek: (_match, idx) => `${DAY_NAMES_BY_LOCALE.it[idx]} prossimo`,
     atTime: (h, m) =>
@@ -140,6 +164,13 @@ const READABLE_PHRASES_BY_LOCALE: Record<SupportedLocale, ReadablePhrases> = {
     inMinutes: (n) => `en ${n} minutos`,
     inHours: (n) => `en ${n} ${n === 1 ? "hora" : "horas"}`,
     inDays: (n) => `en ${n} ${n === 1 ? "día" : "días"}`,
+    inMonths: (n, isHalf) => {
+      // Spanish word order: "en 2 meses y medio" (half AFTER units).
+      const unit = n === 1 ? "mes" : "meses";
+      const half = isHalf ? " y medio" : "";
+      return `en ${n} ${unit}${half}`;
+    },
+    inYears: (n) => `en ${n} ${n === 1 ? "año" : "años"}`,
     monthDay: (_m, idx, d) => `${d} de ${MONTH_NAMES_BY_LOCALE.es[idx]}`,
     nextDayOfWeek: (_match, idx) => `el próximo ${DAY_NAMES_BY_LOCALE.es[idx]}`,
     atTime: (h, m) => `a las ${h}:${m.toString().padStart(2, "0")}`,
@@ -270,11 +301,30 @@ export function parseNaturalDate(
   // probe `readable.includes("minute"|"hour")` which only worked in en.
   let isRelativeTimeExpr = false;
 
+  // Detects whether the user actually specified a time-of-day. Used by
+  // date-relative branches (days/months/years/Mon-DD) to decide whether
+  // to keep `hours` (extracted by the greedy timeMatch above) or reset
+  // it to null so APPLY TIME falls through to the 09:00 default.
+  //
+  // Without this check, "in 2 months" wrongly renders as "in 2 months at
+  // 2:00 AM" because timeMatch grabbed the "2" from "2 months" and
+  // treated it as the hour-of-day. The user intended a count, not a time.
+  const hasExplicitTimeOfDay =
+    /\d\s*(?:am|pm)\b/i.test(lowerExpr) ||
+    /\b(?:at|alle|all['']|a\s+las|a\s+la)\s+\d/i.test(lowerExpr) ||
+    /\b(?:morning|mattina|noon|midday|mezzogiorno|mediodía|mediodia|afternoon|pomeriggio|tarde|evening|sera|noche|night|notte|midnight|mezzanotte|medianoche)\b/i.test(lowerExpr);
+
   // === RELATIVE TIME EXPRESSIONS (highest priority) ===
+  // Prefix `\b(?:in|tra|fra|en)\b` accepts:
+  //   en: "in 30 minutes" / "in 2 hours" / "in 3 days"
+  //   it: "tra 30 minuti" / "fra 2 ore" / "tra 3 giorni"
+  //   es: "en 30 minutos" / "en 2 horas" / "en 3 días"
+  // Word boundaries (`\b`) prevent false positives like "begin 30 minutes",
+  // "ten 30 minutes" (suffix-of-word), or "lengthen 30 minutes".
   const relativePatterns = [
-    /in\s+([\w'-]+(?:\s+[\w'-]+)?)\s*(?:min(?:ute)?s?|minuto?s?|minut[io])/i,
-    /in\s+([\w'-]+(?:\s+[\w'-]+)?)\s*(?:hours?|hrs?|or[ae]s?|or[ae])/i,
-    /in\s+([\w'-]+(?:\s+[\w'-]+)?)\s*(?:days?|días?|dias?|giorn[io])/i,
+    /\b(?:in|tra|fra|en)\s+([\w'-]+(?:\s+[\w'-]+)?)\s*(?:min(?:ute)?s?|minuto?s?|minut[io])/i,
+    /\b(?:in|tra|fra|en)\s+([\w'-]+(?:\s+[\w'-]+)?)\s*(?:hours?|hrs?|or[ae]s?|or[ae])/i,
+    /\b(?:in|tra|fra|en)\s+([\w'-]+(?:\s+[\w'-]+)?)\s*(?:days?|días?|dias?|giorn[io])/i,
     /(?:half\s+(?:an?\s+)?hour|mezz'?ora|media\s+hora)/i,
   ];
 
@@ -331,6 +381,63 @@ export function parseNaturalDate(
         targetDate = new Date(now);
         targetDate.setDate(targetDate.getDate() + Math.round(num));
         readable = phrases.inDays(Math.round(num));
+        // The count digit ("3" in "in 3 days") was greedily captured as
+        // hours by timeMatch above. Reset unless the user actually said
+        // a time so APPLY TIME defaults to 09:00.
+        if (!hasExplicitTimeOfDay) { hours = null; minutes = 0; }
+      }
+    }
+  }
+
+  // === RELATIVE MONTHS ===
+  // Patterns the regex matches across all three locales:
+  //   en: "in 2 months", "in 2 and a half months", "in 1 month"
+  //   it: "tra 2 mesi", "tra 2 mesi e mezzo", "fra un mese"
+  //   es: "en 2 meses", "en 2 meses y medio", "en un mes"
+  //
+  // Word order for the half marker varies by locale — English puts it
+  // BEFORE the unit ("in 2 and a half months"), it/es put it AFTER
+  // ("tra 2 mesi e mezzo" / "en 2 meses y medio"). The regex accepts
+  // both orders via two optional groups around the unit word; the
+  // halfFlag is then determined by a separate scan of lowerExpr.
+  if (!targetDate) {
+    const monthsMatch = lowerExpr.match(
+      /\b(?:in|tra|fra|en)\s+([\w'-]+)(?:\s+(?:and\s+a\s+half|e\s+mezzo|y\s+medio))?\s+(?:months?|mes(?:e|es|i)?)(?:\s+(?:and\s+a\s+half|e\s+mezzo|y\s+medio))?\b/i,
+    );
+    if (monthsMatch) {
+      const num = resolveNumber(monthsMatch[1].trim());
+      if (num !== null) {
+        const isHalf = /\b(?:and\s+a\s+half|e\s+mezzo|y\s+medio)\b/i.test(lowerExpr);
+        targetDate = new Date(localNow);
+        targetDate.setMonth(targetDate.getMonth() + Math.round(num));
+        if (isHalf) {
+          // Add 15 days as a calendar approximation of "half a month".
+          // Using setDate (not setMonth + 0.5) preserves day-of-month
+          // anchoring across short months (Feb/Apr/etc.).
+          targetDate.setDate(targetDate.getDate() + 15);
+        }
+        readable = phrases.inMonths(Math.round(num), isHalf);
+        // Same trap as days/years — count digit isn't a time-of-day.
+        if (!hasExplicitTimeOfDay) { hours = null; minutes = 0; }
+      }
+    }
+  }
+
+  // === RELATIVE YEARS ===
+  //   en: "in 1 year", "in 2 years"
+  //   it: "tra un anno", "tra 2 anni", "fra 5 anni"
+  //   es: "en un año", "en 2 años"
+  if (!targetDate) {
+    const yearsMatch = lowerExpr.match(
+      /\b(?:in|tra|fra|en)\s+([\w'-]+)\s+(?:years?|ann(?:o|i)|años?|anos?)\b/i,
+    );
+    if (yearsMatch) {
+      const num = resolveNumber(yearsMatch[1].trim());
+      if (num !== null) {
+        targetDate = new Date(localNow);
+        targetDate.setFullYear(targetDate.getFullYear() + Math.round(num));
+        readable = phrases.inYears(Math.round(num));
+        if (!hasExplicitTimeOfDay) { hours = null; minutes = 0; }
       }
     }
   }
@@ -374,9 +481,17 @@ export function parseNaturalDate(
   }
 
   // === MONTH + DAY EXPRESSIONS ===
+  // Three accepted forms:
+  //   en/it: "15 March", "15 marzo"   (number + space/dash + month)
+  //   es:    "15 de marzo"            (number + " de " + month) — PR3 addition
+  //   en:    "March 15"               (month + space + number)  — see Mon-DD loop below
+  //
+  // The DD-Mon regex uses an alternation `(?:\s+de\s+|[\s-]+)` so the
+  // Spanish "de" connector is preferred when present, otherwise the
+  // existing space/dash separator wins.
   if (!targetDate) {
     const ddMonMatch = lowerExpr.match(
-      /(\d{1,2})[\s-]+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|gennaio|febbraio|aprile|maggio|giugno|luglio|settembre|ottobre|novembre|dicembre)/i
+      /(\d{1,2})(?:\s+de\s+|[\s-]+)(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|gennaio|febbraio|aprile|maggio|giugno|luglio|settembre|ottobre|novembre|dicembre)/i
     );
     if (ddMonMatch) {
       const dayNum = parseInt(ddMonMatch[1]);
@@ -393,6 +508,10 @@ export function parseNaturalDate(
       };
       const monthNum = abbrMonthMap[monthWord] ?? monthNames[monthWord];
       if (monthNum !== undefined && dayNum >= 1 && dayNum <= 31) {
+        // The dayNum digits (e.g., "15" in "15 marzo") were greedily
+        // captured by timeMatch as hours. Reset unless the user said
+        // an explicit time elsewhere in the phrase.
+        if (!hasExplicitTimeOfDay) { hours = null; minutes = 0; }
         targetDate = new Date(localNow.getFullYear(), monthNum, dayNum);
         if (hours !== null) {
           targetDate.setHours(hours, minutes, 0, 0);
@@ -406,15 +525,22 @@ export function parseNaturalDate(
       }
     }
 
-    // Handle "Month DD" format
+    // Handle "Month DD" format (e.g., "March 15", "marzo 15", "marzo del 15"…).
+    // Pre-i18n bug: the template literal used `\s+` and `\d{1,2}` literally
+    // in a JS string — JS interprets `\s` and `\d` as non-escapes and drops
+    // the backslash, so the constructed regex was `marchs+(d{1,2})` which
+    // never matched real input. PR3 double-escapes so `\\s+` and `\\d{1,2}`
+    // reach the RegExp constructor as the regex metacharacters they should be.
     if (!targetDate) {
       for (const [monthWord, monthNum] of Object.entries(monthNames)) {
         const monthDayMatch = lowerExpr.match(
-          new RegExp(`${monthWord}\s+(\d{1,2})(?:st|nd|rd|th)?`, "i")
+          new RegExp(`\\b${monthWord}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, "i")
         );
         if (monthDayMatch) {
           const dayNum = parseInt(monthDayMatch[1]);
           if (dayNum >= 1 && dayNum <= 31) {
+            // Same dayNum-as-hours trap as the DD-Mon branch above.
+            if (!hasExplicitTimeOfDay) { hours = null; minutes = 0; }
             targetDate = new Date(localNow.getFullYear(), monthNum, dayNum);
             if (hours !== null) {
               targetDate.setHours(hours, minutes, 0, 0);
