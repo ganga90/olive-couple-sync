@@ -55,6 +55,20 @@ import {
 } from "../_shared/pending-offer.ts";
 import { resolveQuotedTask } from "../_shared/quoted-message.ts";
 import { extractTimeOnly } from "../_shared/time-only-parser.ts";
+import {
+  type BufferedEvent,
+  CLUSTER_WINDOW_MS,
+  bufferEvent,
+  claimCluster,
+  hasActiveCluster,
+  isClusterTrigger,
+  isStillLeader,
+  sleep,
+} from "../_shared/inbound-cluster.ts";
+import {
+  combineCluster,
+  decideClusterIntent,
+} from "../_shared/inbound-cluster-processor.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -435,6 +449,24 @@ $ Spesa: $45 pranzo da Chipotle
     'es': ' (Vence: {date})',
     'it': ' (Scadenza: {date})',
   },
+  // ── PR8: Brief ack sent on the FIRST cluster-triggering event so the
+  // user sees Olive received their drop while the 7s debounce window
+  // runs. The full reply (Saved/Added/Reminder) follows once the
+  // cluster flushes. Subsequent events in the same cluster are silent.
+  cluster_brief_ack: {
+    en: '🌿 Got it, processing…',
+    'es': '🌿 Recibido, procesando…',
+    'it': '🌿 Ricevuto, sto elaborando…',
+  },
+  // ── PR8: confirmation when a cluster's leader quotes an existing
+  // task (TASK_ACTION/augment path). The user dropped media/text
+  // while quoting a previous Olive bubble — we attach to the existing
+  // note rather than creating a new one.
+  cluster_augmented_task: {
+    en: '📎 Added to "{task}"',
+    'es': '📎 Añadido a "{task}"',
+    'it': '📎 Aggiunto a "{task}"',
+  },
 };
 
 function t(key: string, lang: string, vars?: Record<string, string>): string {
@@ -677,6 +709,243 @@ async function getOutboundContextWithTaskId(
 // PR4 / Block C — `resolveQuotedTask` lives in
 // `_shared/quoted-message.ts` so its logic is unit-testable in
 // isolation from the 7,800-line webhook module.
+
+// ============================================================================
+// PR8 / Phase 2 — Cluster processors
+// ============================================================================
+// These two functions handle the side effects (DB inserts, reply
+// formatting) when an inbound cluster flushes. The combine + intent-
+// decision logic is in `_shared/inbound-cluster-processor.ts` (pure
+// data); these handlers are top-level so the per-request dispatch
+// block can call them without closure capture, and they accept the
+// per-request `reply` and `saveReferencedEntity` callbacks as
+// parameters since those depend on the request scope.
+
+import type { CombinedCluster } from "../_shared/inbound-cluster-processor.ts";
+
+/**
+ * CREATE path: combine the cluster into one process-note invocation,
+ * insert the resulting note(s), send a single localized reply.
+ *
+ * Mirrors the existing media-only branch's shape (auth → mediaPayload
+ * → process-note → insert loop → confirmation message) but reads
+ * media + text from the combined cluster instead of the single
+ * inbound event.
+ */
+async function createNoteFromCluster(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  userId: string,
+  effectiveCoupleId: string | null,
+  // deno-lint-ignore no-explicit-any
+  profile: any,
+  userLang: string,
+  combined: CombinedCluster,
+  reply: (text: string, mediaUrl?: string) => Promise<void>,
+  // deno-lint-ignore no-explicit-any
+  saveReferencedEntity: (task: any, oliveResponse: string, displayedList?: any) => Promise<void>,
+): Promise<void> {
+  // Build the process-note payload. The combined text and media flow
+  // through the same fields process-note already understands.
+  const payload: Record<string, unknown> = {
+    text: combined.text,
+    user_id: userId,
+    couple_id: effectiveCoupleId,
+    timezone: profile.timezone || "America/New_York",
+    language: profile.language_preference || "en",
+    source: "whatsapp",
+  };
+  if (combined.media_urls.length > 0) {
+    payload.media = combined.media_urls;
+    payload.mediaTypes = combined.media_types;
+  }
+  if (combined.latitude && combined.longitude) {
+    payload.location = { latitude: combined.latitude, longitude: combined.longitude };
+  }
+
+  console.log(
+    "[Cluster CREATE] invoking process-note: text-len=" + combined.text.length,
+    "media=" + combined.media_urls.length,
+    "events=" + combined.source_event_count,
+  );
+
+  const { data: processData, error: processError } = await supabase.functions.invoke("process-note", {
+    body: payload,
+  });
+  if (processError) {
+    console.error("[Cluster CREATE] process-note error:", processError);
+    await reply(t("error_generic", userLang));
+    return;
+  }
+
+  // Handle both single-note and multiple-notes shapes from process-note.
+  const isMultiple = processData?.multiple === true && Array.isArray(processData?.notes) && processData.notes.length > 0;
+  // deno-lint-ignore no-explicit-any
+  const notesToInsert: any[] = isMultiple ? processData.notes : [processData];
+
+  const insertedNotes: Array<{ id: string; summary: string; list_id: string | null }> = [];
+  for (const note of notesToInsert) {
+    const noteSummary = note?.summary || processData?.summary || "Saved capture";
+    const noteData = {
+      author_id: userId,
+      couple_id: effectiveCoupleId,
+      original_text: note?.original_text || combined.text || noteSummary,
+      summary: noteSummary,
+      category: note?.category || processData?.category || "task",
+      due_date: note?.due_date || null,
+      reminder_time: note?.reminder_time || null,
+      recurrence_frequency: note?.recurrence_frequency || null,
+      recurrence_interval: note?.recurrence_interval || null,
+      priority: note?.priority || "medium",
+      tags: note?.tags || [],
+      items: note?.items || [],
+      task_owner: note?.task_owner || null,
+      list_id: note?.list_id || processData?.list_id || null,
+      media_urls: combined.media_urls.length > 0 ? combined.media_urls : null,
+      completed: false,
+    };
+    const { data: insertedNote, error: insertError } = await supabase
+      .from("clerk_notes")
+      .insert(noteData)
+      .select("id, summary, list_id")
+      .single();
+    if (insertError) {
+      console.error("[Cluster CREATE] insert error:", insertError);
+      continue;
+    }
+    insertedNotes.push(insertedNote);
+  }
+
+  if (insertedNotes.length === 0) {
+    await reply(t("error_generic", userLang));
+    return;
+  }
+
+  // Resolve list name for the localized confirmation.
+  let listName = "Tasks";
+  const firstListId = insertedNotes[0].list_id;
+  if (firstListId) {
+    const { data: listData } = await supabase
+      .from("clerk_lists")
+      .select("name")
+      .eq("id", firstListId)
+      .single();
+    listName = listData?.name || "Tasks";
+  }
+
+  // Build the localized full reply. Mirrors the existing pattern:
+  // note_saved + note_added_to + note_manage. For multi-note clusters
+  // (rare — process-note rarely splits a clustered batch into many),
+  // we use note_multi_saved.
+  let confirmMsg: string;
+  if (insertedNotes.length === 1) {
+    const lines = [
+      t("note_saved", userLang, { summary: insertedNotes[0].summary }),
+      t("note_added_to", userLang, { list: listName }),
+      "",
+      t("note_manage", userLang),
+    ];
+    confirmMsg = lines.join("\n");
+  } else {
+    const itemList = insertedNotes.map((n, i) => `  ${i + 1}. ${n.summary}`).join("\n");
+    const lines = [
+      t("note_multi_saved", userLang, { count: String(insertedNotes.length) }),
+      itemList,
+      t("note_added_to", userLang, { list: listName }),
+      "",
+      t("note_manage", userLang),
+    ];
+    confirmMsg = lines.join("\n");
+  }
+
+  // Stash referenced entity for follow-up resolution.
+  try {
+    const lastNote = insertedNotes[insertedNotes.length - 1];
+    await saveReferencedEntity(
+      { id: lastNote.id, summary: lastNote.summary, list_id: lastNote.list_id || undefined },
+      confirmMsg,
+    );
+  } catch (refErr) {
+    console.warn("[Cluster CREATE] saveReferencedEntity failed (non-blocking):", refErr);
+  }
+
+  await reply(confirmMsg);
+}
+
+/**
+ * TASK_ACTION (augment) path: the cluster's leader event quoted a
+ * previous Olive bubble that resolves to an existing task. Instead
+ * of creating a new note, attach the cluster's media to the existing
+ * one and append the cluster's text to its `original_text` field.
+ *
+ * Per the Phase 2 plan, we do NOT re-run the AI here — the user's
+ * intent was clearly "add to that thing", not "re-categorize". The
+ * existing summary, due_date, reminder, list, etc. all stay put.
+ */
+async function augmentTaskFromCluster(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  userId: string,
+  taskId: string,
+  taskSummary: string,
+  combined: CombinedCluster,
+  reply: (text: string, mediaUrl?: string) => Promise<void>,
+  userLang: string,
+  // deno-lint-ignore no-explicit-any
+  saveReferencedEntity: (task: any, oliveResponse: string, displayedList?: any) => Promise<void>,
+): Promise<void> {
+  // Fetch existing media_urls + original_text so we can append.
+  const { data: existing, error: fetchErr } = await supabase
+    .from("clerk_notes")
+    .select("id, summary, list_id, media_urls, original_text")
+    .eq("id", taskId)
+    .eq("author_id", userId)  // defense: only augment notes the user owns
+    .maybeSingle();
+
+  if (fetchErr || !existing) {
+    console.warn("[Cluster AUGMENT] target note not found, falling back to error reply:", fetchErr);
+    await reply(t("error_generic", userLang));
+    return;
+  }
+
+  const mergedMediaUrls = Array.from(
+    new Set<string>([...(existing.media_urls || []), ...combined.media_urls]),
+  );
+
+  // Append cluster text to original_text, separated by a newline so
+  // it's readable when the user views the note in the app.
+  const mergedOriginalText = combined.text
+    ? [existing.original_text || "", combined.text].filter((s) => s && s.trim().length > 0).join("\n")
+    : (existing.original_text || "");
+
+  const { error: updateErr } = await supabase
+    .from("clerk_notes")
+    .update({
+      media_urls: mergedMediaUrls.length > 0 ? mergedMediaUrls : null,
+      original_text: mergedOriginalText,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", taskId);
+
+  if (updateErr) {
+    console.error("[Cluster AUGMENT] update error:", updateErr);
+    await reply(t("error_generic", userLang));
+    return;
+  }
+
+  const confirmMsg = t("cluster_augmented_task", userLang, { task: taskSummary });
+
+  try {
+    await saveReferencedEntity(
+      { id: existing.id, summary: existing.summary, list_id: existing.list_id || undefined },
+      confirmMsg,
+    );
+  } catch (refErr) {
+    console.warn("[Cluster AUGMENT] saveReferencedEntity failed (non-blocking):", refErr);
+  }
+
+  await reply(confirmMsg);
+}
 
 // Task action types for management commands
 type TaskActionType = 
@@ -1320,6 +1589,12 @@ interface MetaMessageData {
    * in follow-up corrections (resolves via `resolveQuotedTask`).
    */
   quotedMessageId: string | null;
+  /**
+   * PR8 / Phase 2 — Meta's own timestamp for the message, normalized
+   * to ISO string. Used by the inbound cluster buffer for ordering.
+   * Falls back to "now" if Meta didn't deliver one.
+   */
+  receivedAtIso: string;
 }
 
 function extractMetaMessage(body: any): MetaMessageData | null {
@@ -1353,6 +1628,16 @@ function extractMetaMessage(body: any): MetaMessageData | null {
     if (quotedMessageId) {
       console.log("[Meta] Inbound quotes WAMID:", quotedMessageId);
     }
+
+    // PR8 / Phase 2 — Capture Meta's own timestamp for the message.
+    // Meta delivers `message.timestamp` as a Unix-seconds string.
+    // The clustering buffer uses this for ordering — trusting Meta's
+    // clock prevents per-server drift from mis-ordering events that
+    // arrive in concurrent webhooks. Falls back to "now" if missing.
+    const metaTimestampSec = message.timestamp ? parseInt(String(message.timestamp), 10) : NaN;
+    const receivedAtIso: string = Number.isFinite(metaTimestampSec)
+      ? new Date(metaTimestampSec * 1000).toISOString()
+      : new Date().toISOString();
 
     let messageBody: string | null = null;
     let latitude: string | null = null;
@@ -1412,6 +1697,7 @@ function extractMetaMessage(body: any): MetaMessageData | null {
       phoneNumberId: phoneNumberId || '',
       messageId: messageId || '',
       quotedMessageId,
+      receivedAtIso,
     };
   } catch (error) {
     console.error('[Meta] Error extracting message:', error);
@@ -1505,7 +1791,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { fromNumber: rawFromNumber, messageBody: rawMessageBody, mediaItems, latitude, longitude, phoneNumberId, messageId, quotedMessageId } = messageData;
+    const { fromNumber: rawFromNumber, messageBody: rawMessageBody, mediaItems, latitude, longitude, phoneNumberId, messageId, quotedMessageId, receivedAtIso } = messageData;
     const fromNumber = standardizePhoneNumber(rawFromNumber);
 
     // Mutable ref for userId so reply() can access it after auth
@@ -1838,6 +2124,182 @@ serve(async (req) => {
     // calls process-note with text:'' and lets the full multimodal pipeline
     // do high-quality extraction (handwriting OCR, event detection, etc.).
     // ========================================================================
+    // ========================================================================
+    // PR8 / Phase 2 — Inbound clustering (feature-flag gated)
+    // ========================================================================
+    // When FEATURE_INBOUND_CLUSTERING=true, cluster-triggering events
+    // (media drops, link drops) are buffered for ~7 seconds. A trailing
+    // text/voice/image within that window joins the cluster and the
+    // whole batch is processed as ONE capture with ONE reply. The user
+    // sees a brief ack on the first event so they know Olive received
+    // their drop while the debounce runs.
+    //
+    // When the flag is OFF (default), this entire block is skipped and
+    // the existing fast-path runs unchanged. Rolling back is one env
+    // var change — no redeploy needed.
+    //
+    // See `_shared/inbound-cluster.ts` and the PR8 plan for the
+    // tail-leader debounce protocol.
+    const FEATURE_INBOUND_CLUSTERING = Deno.env.get("FEATURE_INBOUND_CLUSTERING") === "true";
+    if (FEATURE_INBOUND_CLUSTERING) {
+      // Auth lookup is duplicated here from the existing media-only
+      // path — keeping a self-contained block means the cluster can
+      // be lifted out (or rolled back) without touching the rest.
+      const { data: clusterProfiles } = await supabase
+        .from("clerk_profiles")
+        .select("id, display_name, timezone, language_preference, default_privacy")
+        .eq("phone_number", fromNumber)
+        .limit(1);
+      const clusterProfile = clusterProfiles?.[0];
+
+      if (clusterProfile) {
+        const clusterUserId = clusterProfile.id;
+        const clusterUserLang = (clusterProfile.language_preference || "en").replace(/-.*/, "");
+
+        // Decide whether this event participates in clustering:
+        //   - Media or link → ALWAYS triggers a cluster.
+        //   - Plain text  → only joins if there's already an active cluster.
+        const triggerEvent = isClusterTrigger({
+          message_body: messageBody,
+          media_urls: mediaUrls,
+        });
+        const activeClusterExists = triggerEvent
+          ? false  // optimization: trigger events always cluster, no need to check
+          : await hasActiveCluster(supabase, clusterUserId, null);
+
+        if (triggerEvent || activeClusterExists) {
+          // Mark the user authenticated so reply()'s outbound context
+          // capture (PR4 sliding window) gets attached correctly.
+          _authenticatedUserId = clusterUserId;
+
+          const buffered = await bufferEvent(supabase, {
+            user_id: clusterUserId,
+            wa_message_id: messageId,
+            message_body: messageBody,
+            media_urls: mediaUrls,
+            media_types: mediaTypes,
+            latitude,
+            longitude,
+            quoted_message_id: quotedMessageId,
+            received_at: receivedAtIso,
+          });
+
+          if (!buffered) {
+            // DB insert failed (e.g., transient connection error). Fall
+            // through to the existing fast path — better to deliver a
+            // possibly-imperfect reply than to drop the message.
+            console.warn("[Cluster] bufferEvent returned null; falling through to fast path");
+          } else if (buffered.isDuplicate) {
+            // Meta retried the webhook for a message we've already
+            // buffered. The original webhook is in flight; this one
+            // bails so we don't double-process or send a second ack.
+            console.log("[Cluster] Meta retry (duplicate WAMID); exiting silently");
+            return;
+          } else {
+            // Brief ack only on the first event of a new cluster. We
+            // exclude our own row from the active-cluster check —
+            // otherwise the just-buffered row would always count as
+            // "active" and we'd never ack.
+            const otherActive = await hasActiveCluster(supabase, clusterUserId, buffered.id);
+            if (!otherActive) {
+              try {
+                await reply(t("cluster_brief_ack", clusterUserLang));
+              } catch (ackErr) {
+                // Brief ack failure is non-blocking — the full reply
+                // at flush is the contract; the ack is a courtesy.
+                console.warn("[Cluster] brief ack failed (non-blocking):", ackErr);
+              }
+            }
+
+            // Debounce window. EdgeRuntime.waitUntil keeps the
+            // function alive past the response (already used in this
+            // file for the async-ack pattern) so the await actually
+            // resolves before the runtime kills us.
+            await sleep(CLUSTER_WINDOW_MS);
+
+            // After the wait, am I still the latest unflushed event?
+            const stillLeader = await isStillLeader(supabase, clusterUserId, receivedAtIso);
+            if (!stillLeader) {
+              console.log("[Cluster] Yielding leadership to a newer event for user", clusterUserId);
+              return;
+            }
+
+            // Atomic claim. FOR UPDATE SKIP LOCKED in the RPC ensures
+            // a concurrent racer that ALSO passed isStillLeader gets
+            // an empty result and exits below.
+            const clusterId = crypto.randomUUID();
+            const claimed = await claimCluster(supabase, clusterUserId, clusterId);
+            if (claimed.length === 0) {
+              console.log("[Cluster] Race lost — nothing to claim. Exiting.");
+              return;
+            }
+
+            // Combine and decide intent.
+            const combined = combineCluster(claimed);
+            const resolvedQuotedTask = combined.leader_quoted_message_id
+              ? await resolveQuotedTask(supabase, clusterUserId, combined.leader_quoted_message_id)
+              : null;
+            const intent = decideClusterIntent(combined, resolvedQuotedTask);
+
+            console.log(
+              "[Cluster] flushing cluster",
+              clusterId,
+              "events:", claimed.length,
+              "intent:", intent.kind,
+              "media:", combined.media_urls.length,
+              "text-len:", combined.text.length,
+            );
+
+            // Resolve user's couple_id for note ownership.
+            const { data: clusterCoupleM } = await supabase
+              .from("clerk_couple_members")
+              .select("couple_id")
+              .eq("user_id", clusterUserId)
+              .limit(1)
+              .single();
+            const clusterCoupleId = clusterCoupleM?.couple_id || null;
+            const clusterDefaultPrivacy = clusterProfile.default_privacy || "shared";
+            const clusterEffectiveCoupleId = clusterDefaultPrivacy === "private" ? null : clusterCoupleId;
+
+            try {
+              if (intent.kind === "task_action") {
+                await augmentTaskFromCluster(
+                  supabase,
+                  clusterUserId,
+                  intent.task_id,
+                  intent.task_summary,
+                  combined,
+                  reply,
+                  clusterUserLang,
+                  saveReferencedEntity,
+                );
+              } else {
+                await createNoteFromCluster(
+                  supabase,
+                  clusterUserId,
+                  clusterEffectiveCoupleId,
+                  clusterProfile,
+                  clusterUserLang,
+                  combined,
+                  reply,
+                  saveReferencedEntity,
+                );
+              }
+            } catch (clusterErr) {
+              console.error("[Cluster] flush error:", clusterErr);
+              try {
+                await reply(t("error_generic", clusterUserLang));
+              } catch (_) { /* swallow */ }
+            }
+            return; // skip the rest of the webhook
+          }
+        }
+      }
+      // If we get here: feature flag on but the event didn't qualify
+      // for clustering (plain text, no active cluster). Fall through
+      // to the existing fast path. Zero added latency.
+    }
+
     let mediaRoutingHint: 'receipt' | 'task' | 'text' | 'other' | null = null;
     if (mediaUrls.length > 0 && !messageBody) {
       try {
