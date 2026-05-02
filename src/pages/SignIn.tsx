@@ -110,8 +110,12 @@ const SignInPage = () => {
 
     setIsLoading(true);
     try {
+      // Canonical Clerk pattern: providing `password` alongside `identifier`
+      // implies the password strategy. Passing `strategy: "password"` explicitly
+      // can cause Clerk to short-circuit into a first-factor flow on instances
+      // that require email verification, which surfaces as a non-"complete"
+      // status and leaves the user stuck.
       const result = await signIn.create({
-        strategy: "password",
         identifier: email,
         password,
       });
@@ -119,9 +123,56 @@ const SignInPage = () => {
       if (result.status === "complete") {
         const effectiveRedirectUrl = isNativeRequest ? '/auth-redirect-native' : redirectUrl;
         await handleSuccessfulSignIn(result.createdSessionId!, effectiveRedirectUrl);
-      } else {
-        toast.error(t('signIn.verificationIncomplete', 'Verification incomplete. Please try again.'));
+        return;
       }
+
+      // Non-complete status — Clerk needs another factor. Map each known
+      // status to a sensible recovery path instead of dead-ending the user
+      // with a generic "verification incomplete" toast.
+      if (result.status === "needs_first_factor") {
+        // Account requires email verification on top of (or instead of) the
+        // password. Auto-prepare the email_code factor and transition the
+        // user into the verify-code form — they already typed their email.
+        const emailFactor = (result.supportedFirstFactors ?? []).find(
+          (factor): factor is Extract<typeof factor, { strategy: "email_code" }> =>
+            factor.strategy === "email_code"
+        );
+        if (emailFactor) {
+          await signIn.prepareFirstFactor({
+            strategy: "email_code",
+            emailAddressId: emailFactor.emailAddressId,
+          });
+          setMethod("email_code");
+          setPassword("");
+          setPendingVerification(true);
+          toast.success(
+            t(
+              'signIn.codeRequiredAfterPassword',
+              "We sent a code to your email to finish signing in."
+            )
+          );
+          return;
+        }
+      }
+
+      if (result.status === "needs_second_factor") {
+        toast.error(
+          t(
+            'signIn.needsSecondFactor',
+            'Two-factor authentication is required. Continue from your previous device or use the email code option.'
+          )
+        );
+        return;
+      }
+
+      // Unknown status — log everything so we can diagnose, surface a clear
+      // password-level error to the user.
+      console.error('[SignIn] Password sign-in returned unexpected status', {
+        status: result.status,
+        supportedFirstFactors: (result as any).supportedFirstFactors,
+        supportedSecondFactors: (result as any).supportedSecondFactors,
+      });
+      toast.error(t('signIn.errorPassword', 'Invalid email or password'));
     } catch (err: any) {
       console.error('[SignIn] Error signing in with password:', err);
       const errorMessage = err?.errors?.[0]?.longMessage || err?.message || t('signIn.errorPassword', 'Invalid email or password');
@@ -145,9 +196,24 @@ const SignInPage = () => {
       if (result.status === "complete") {
         const effectiveRedirectUrl = isNativeRequest ? '/auth-redirect-native' : redirectUrl;
         await handleSuccessfulSignIn(result.createdSessionId!, effectiveRedirectUrl);
-      } else {
-        toast.error(t('signIn.verificationIncomplete', 'Verification incomplete. Please try again.'));
+        return;
       }
+
+      if (result.status === "needs_second_factor") {
+        toast.error(
+          t(
+            'signIn.needsSecondFactor',
+            'Two-factor authentication is required. Continue from your previous device or use the email code option.'
+          )
+        );
+        return;
+      }
+
+      console.error('[SignIn] Code verification returned unexpected status', {
+        status: result.status,
+        supportedSecondFactors: (result as any).supportedSecondFactors,
+      });
+      toast.error(t('signIn.invalidCode', 'Invalid verification code'));
     } catch (err: any) {
       console.error('[SignIn] Error verifying code:', err);
       const errorMessage = err?.errors?.[0]?.longMessage || err?.message || t('signIn.invalidCode', 'Invalid verification code');
