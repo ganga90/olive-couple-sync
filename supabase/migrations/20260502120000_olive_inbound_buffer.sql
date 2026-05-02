@@ -19,9 +19,14 @@
 -- contains potentially sensitive media URLs and free-form text, so
 -- the same posture as `clerk_notes` (encryption-at-rest + RLS).
 
+-- Note on user_id type: clerk_profiles.id is `text` (Clerk uses string
+-- user IDs like `user_xxx`), and every other Olive table that
+-- references it (clerk_notes, user_sessions, clerk_couple_members,
+-- olive_memory_files, …) uses `user_id text`. Matching that pattern
+-- so the FK + downstream joins line up.
 CREATE TABLE IF NOT EXISTS public.olive_inbound_buffer (
   id                 uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id            uuid        NOT NULL REFERENCES public.clerk_profiles(id) ON DELETE CASCADE,
+  user_id            text        NOT NULL REFERENCES public.clerk_profiles(id) ON DELETE CASCADE,
   -- Identifies the source Meta WAMID. Indexed UNIQUE per user so that
   -- if Meta retries the webhook for the same message, we don't double-buffer.
   wa_message_id      text        NOT NULL,
@@ -91,7 +96,7 @@ CREATE POLICY "olive_inbound_buffer_deny_anon"
 -- processor sees them chronologically (relevant for "first message
 -- triggers the brief ack, last message decides quoted_message_id").
 CREATE OR REPLACE FUNCTION public.claim_inbound_cluster(
-  p_user_id          uuid,
+  p_user_id          text,
   p_cluster_id       uuid,
   p_max_received_at  timestamptz
 )
@@ -121,8 +126,8 @@ $$;
 
 -- The RPC is callable by the service role (which the edge functions use).
 -- Anon/authenticated callers should never invoke it; revoke explicitly.
-REVOKE ALL ON FUNCTION public.claim_inbound_cluster(uuid, uuid, timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.claim_inbound_cluster(uuid, uuid, timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION public.claim_inbound_cluster(text, uuid, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.claim_inbound_cluster(text, uuid, timestamptz) TO service_role;
 
 -- ── cleanup_inbound_buffer maintenance function ──────────────────────
 -- Drops rows that are no longer useful:
@@ -178,7 +183,7 @@ $$;
 COMMENT ON TABLE public.olive_inbound_buffer IS
   'PR8: short-lived (≤6h orphan / ≤24h flushed) buffer of inbound WhatsApp events for debounced clustering. See _shared/inbound-cluster.ts for the leader-election protocol.';
 
-COMMENT ON FUNCTION public.claim_inbound_cluster(uuid, uuid, timestamptz) IS
+COMMENT ON FUNCTION public.claim_inbound_cluster(text, uuid, timestamptz) IS
   'PR8: atomically claim all unflushed events for a user up to a given timestamp. Uses FOR UPDATE SKIP LOCKED so concurrent leaders don''t double-process.';
 
 COMMENT ON FUNCTION public.cleanup_inbound_buffer() IS
