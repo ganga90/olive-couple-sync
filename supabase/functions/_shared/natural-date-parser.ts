@@ -22,6 +22,7 @@
 
 import { type SupportedLocale, normalizeLocale } from "./i18n-locale.ts";
 import { getTimeZoneParts, toUtcFromLocalParts } from "./timezone-calendar.ts";
+import { extractTimeOnly } from "./time-only-parser.ts";
 
 export interface ParsedDate {
   date: string | null;
@@ -299,17 +300,47 @@ export function parseNaturalDate(
   let hours: number | null = null;
   let minutes: number = 0;
 
-  // Parse explicit time (e.g., "3pm", "10:30 AM", "15:00")
-  const timeMatch = lowerExpr.match(/(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?/i);
-  if (timeMatch) {
-    const potentialHour = parseInt(timeMatch[1]);
-    const meridiem = timeMatch[3]?.toLowerCase();
+  // PR7 — Parse explicit time-of-day with priority ordering.
+  //
+  // PRIORITY 1: Keyword-anchored / AM-PM-anchored extraction via the
+  // shared `extractTimeOnly` helper. This handles inputs where the
+  // first digit in the string is a DATE-of-month, not a time:
+  //
+  //   "20 de noviembre a las 8"  →  8:00  (was: 09:00 default — bug)
+  //   "march 15 at 3pm"          →  15:00 (was: 09:00 default — bug)
+  //   "15 dicembre alle 14"      →  14:00 (was: 09:00 default — bug)
+  //   "5 de mayo a las 9"        →  9:00  (was: 5:00 — picked first digit!)
+  //   "at 14"                    →  14:00 (was: unknown — 24h+keyword path)
+  //
+  // The pre-PR7 timeMatch regex was greedy on the first digit-pattern
+  // in the string. When that first match was rejected (e.g., "20" with
+  // no AM/PM, > 12), the user's actual time-of-day later in the string
+  // (e.g., "a las 8") was never re-examined — sometimes producing the
+  // 09:00 default, and sometimes (case 4 above) silently substituting
+  // the date-of-month as the hour, which is WRONG without warning.
+  //
+  // PRIORITY 2 (fallback): Greedy first-digit match. Preserves the
+  // pre-PR7 behavior for bare "10" / "8" inputs that have no keyword
+  // anchor and no AM/PM — these still get interpreted as standalone
+  // time. Without the fallback, "10" alone would default to 09:00,
+  // which is a needless regression for the small set of users who
+  // type bare hours.
+  const explicitTime = extractTimeOnly(lowerExpr);
+  if (explicitTime) {
+    hours = explicitTime.hours;
+    minutes = explicitTime.minutes;
+  } else {
+    const timeMatch = lowerExpr.match(/(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?/i);
+    if (timeMatch) {
+      const potentialHour = parseInt(timeMatch[1]);
+      const meridiem = timeMatch[3]?.toLowerCase();
 
-    if (meridiem || potentialHour <= 12) {
-      hours = potentialHour;
-      minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-      if (meridiem === "pm" && hours < 12) hours += 12;
-      if (meridiem === "am" && hours === 12) hours = 0;
+      if (meridiem || potentialHour <= 12) {
+        hours = potentialHour;
+        minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+        if (meridiem === "pm" && hours < 12) hours += 12;
+        if (meridiem === "am" && hours === 12) hours = 0;
+      }
     }
   }
 

@@ -642,3 +642,88 @@ Deno.test("parseNaturalDate es: '15 de diciembre' (Spanish 'de' connector) still
   assertEquals(r.date !== null, true);
   assertEquals(r.readable, "15 de diciembre a las 9:00");
 });
+
+// ============================================================================
+// PR7 — keyword-anchored time-of-day extraction (date + time combos)
+// ============================================================================
+// Pre-PR7 the parser's `timeMatch` regex was greedy on the first digit
+// pattern in the string. When the first match was a date-of-month (not a
+// time), the rest of the string was never re-examined — including any
+// `at <time>` / `alle <time>` / `a las <time>` keyword-anchored time-of-
+// day. PR7 runs `extractTimeOnly` (which prefers keyword-anchored and
+// AM/PM patterns) BEFORE the greedy first-digit fallback, so the user's
+// actual time-of-day is captured for date+time combos.
+
+Deno.test("parseNaturalDate pr7: '20 de noviembre a las 8' (es, date+time) → Nov 20 at 08:00 Madrid", () => {
+  // The flagship case. Pre-PR7 returned "20 de noviembre a las 9:00"
+  // (default 09:00, missing the user's actual "a las 8"). Now correct.
+  const r = parseNaturalDate("20 de noviembre a las 8", "Europe/Madrid", "es");
+  assertEquals(r.readable, "20 de noviembre a las 8:00");
+  assertEquals(localTimeIn("Europe/Madrid", r.date!), "08:00");
+});
+
+Deno.test("parseNaturalDate pr7: 'march 15 at 3pm' (en, date+time AM/PM) → March 15 at 15:00 NY", () => {
+  const r = parseNaturalDate("march 15 at 3pm", "America/New_York");
+  assertEquals(r.readable, "March 15 at 3:00 PM");
+  assertEquals(localTimeIn("America/New_York", r.date!), "15:00");
+});
+
+Deno.test("parseNaturalDate pr7: '15 dicembre alle 14' (it, date+time 24h) → Dec 15 at 14:00 Rome", () => {
+  // Italian 24h native — pre-PR7 the kw path didn't run, "15" rejected
+  // as hours, "alle 14" never seen → defaulted to 09:00.
+  const r = parseNaturalDate("15 dicembre alle 14", "Europe/Rome", "it");
+  assertEquals(r.readable, "15 dicembre alle 14:00");
+  assertEquals(localTimeIn("Europe/Rome", r.date!), "14:00");
+});
+
+Deno.test("parseNaturalDate pr7: '5 de mayo a las 9' (es, single-digit date) — does NOT mistake date for hour", () => {
+  // Worst pre-PR7 failure mode: "5" was ≤12 with no AM/PM, so the greedy
+  // regex picked it as hour=5. The user's "a las 9" was silently lost
+  // and they got a 5:00 reminder instead of 9:00. PR7 sees "a las 9"
+  // first via the keyword path and ignores the date-position digit.
+  const r = parseNaturalDate("5 de mayo a las 9", "Europe/Madrid", "es");
+  assertEquals(r.readable, "5 de mayo a las 9:00");
+  assertEquals(localTimeIn("Europe/Madrid", r.date!), "09:00");
+});
+
+Deno.test("parseNaturalDate pr7: 'at 14' (24h with keyword, no AM/PM) → 14:00 today", () => {
+  // Pre-PR7 returned "unknown": "14" greedy-matched but failed the
+  // ≤12-without-meridiem gate; no fallback found "at 14".
+  const r = parseNaturalDate("at 14", "America/New_York");
+  assertEquals(localTimeIn("America/New_York", r.date!), "14:00");
+});
+
+Deno.test("parseNaturalDate pr7: 'march 15 at 3' (en, no AM/PM) → 03:00 (24h interpretation)", () => {
+  // Without AM/PM the keyword path treats "3" as 24h-style 03:00. Same
+  // as bare "3" → 3 AM in pre-PR7 greedy. No regression; the only
+  // difference is now the path through the keyword.
+  const r = parseNaturalDate("march 15 at 3", "America/New_York");
+  assertEquals(localTimeIn("America/New_York", r.date!), "03:00");
+});
+
+// ---------- PR7 regression guards (back-compat with pre-PR7 working cases) ----------
+
+Deno.test("parseNaturalDate pr7 regression: 'tomorrow at 3pm' still works (AM/PM path takes priority)", () => {
+  const r = parseNaturalDate("tomorrow at 3pm", "America/New_York");
+  assertEquals(r.readable, "tomorrow at 3:00 PM");
+});
+
+Deno.test("parseNaturalDate pr7 regression: bare '10' (en) → today/tomorrow at 10:00 (greedy fallback)", () => {
+  // No keyword anchor, no AM/PM, no HH:MM — extractTimeOnly returns
+  // null and the greedy first-digit fallback sets hours=10. Preserves
+  // pre-PR7 behavior for the small set of users typing bare hours.
+  const r = parseNaturalDate("10", "America/New_York");
+  // The standalone-time path picks today vs tomorrow based on whether
+  // the proposed time has already passed. Either way it's 10:00 local.
+  assertEquals(localTimeIn("America/New_York", r.date!), "10:00");
+});
+
+Deno.test("parseNaturalDate pr7 regression: 'in 30 minutes' still relative (no time-of-day captured)", () => {
+  const r = parseNaturalDate("in 30 minutes", "America/New_York");
+  assertEquals(r.readable, "in 30 minutes");
+});
+
+Deno.test("parseNaturalDate pr7 regression: 'tra due mesi e mezzo' (it) defaults to 09:00 alle", () => {
+  const r = parseNaturalDate("tra due mesi e mezzo", "Europe/Rome", "it");
+  assertEquals(r.readable, "tra 2 mesi e mezzo alle 09:00");
+});
