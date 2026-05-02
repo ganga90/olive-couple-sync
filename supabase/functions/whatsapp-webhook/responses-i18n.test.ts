@@ -49,6 +49,11 @@ const NEW_PR1_PR2_KEYS = [
   "task_action_unknown",
   "merge_no_recent",
   "merge_no_similar",
+  // PR6 (display-label localization)
+  "label_task_due_paren",
+  // PR8 (inbound clustering)
+  "cluster_brief_ack",
+  "cluster_augmented_task",
 ];
 
 const FILE_TEXT = await Deno.readTextFile(WEBHOOK_PATH);
