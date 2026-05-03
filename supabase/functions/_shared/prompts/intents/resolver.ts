@@ -36,6 +36,10 @@
  */
 
 import { loadPromptModule, type PromptModule } from "./registry.ts";
+// Phase D-1 live integration — only imported (and only invoked) when the
+// caller passes a supabase client AND the PROMPT_EVOLUTION_ROUTER_ENABLED
+// env flag is set. The synchronous resolvePrompt path never touches it.
+import { resolvePromptModuleForUser } from "../../prompt-evolution/ab-router.ts";
 
 /**
  * Shape returned to callers. Contains EVERYTHING needed to invoke
@@ -174,5 +178,93 @@ export function resolvePrompt(input: ResolverInput): ResolvedPrompt {
     version: mod.version,
     source: "modular",
     resolvedIntent: mod.intent,
+  };
+}
+
+// ─── Phase D-1 live integration ────────────────────────────────────
+//
+// `resolvePromptAsync` is the async-capable variant. When all four
+// conditions are met:
+//
+//   1. The chosen source is "modular" (not legacy)
+//   2. A supabase client is provided
+//   3. A non-empty userId is provided
+//   4. PROMPT_EVOLUTION_ROUTER_ENABLED env flag is "true"
+//
+// it asks the prompt-evolution router for any approved/testing addendum
+// for the resolved intent and folds it into the returned system prompt.
+// The version string carries an `+addendum-<id>` suffix so analytics in
+// olive_llm_calls can split treatment vs baseline.
+//
+// Otherwise it returns BYTE-IDENTICAL output to the synchronous
+// `resolvePrompt` — verified by the "no-router-flag" unit test.
+//
+// Why a NEW function instead of making `resolvePrompt` async?
+//   - Existing sync callers (eval-harness static-runner, future contexts
+//     without supabase) keep working unchanged
+//   - Async/sync split is explicit at the call site — caller chooses
+//   - Easy to write a regression test that pins sync == async-no-router
+
+export interface AsyncResolverInput extends ResolverInput {
+  /** Supabase client. Required for router lookups; optional otherwise. */
+  // deno-lint-ignore no-explicit-any
+  supabase?: any;
+  /** Override the env flag. For tests; production reads from Deno.env. */
+  routerFlagOverride?: boolean;
+}
+
+export async function resolvePromptAsync(
+  input: AsyncResolverInput,
+): Promise<ResolvedPrompt> {
+  // Compute the baseline resolution synchronously first. If the source
+  // is legacy, or any precondition for router lookup fails, we just
+  // return the baseline — no DB hit, no behavior change.
+  const baseline = resolvePrompt(input);
+
+  if (baseline.source !== "modular") return baseline;
+  if (!input.supabase) return baseline;
+  if (!input.userId) return baseline;
+
+  const envGet =
+    input.envGetter ?? ((key: string) => {
+      try {
+        return (globalThis as any).Deno?.env?.get?.(key);
+      } catch {
+        return undefined;
+      }
+    });
+  const routerEnabled = input.routerFlagOverride !== undefined
+    ? input.routerFlagOverride
+    : (envGet("PROMPT_EVOLUTION_ROUTER_ENABLED") === "true");
+
+  if (!routerEnabled) return baseline;
+
+  // Router is on. Fold in an addendum if there is one.
+  // resolvePromptModuleForUser handles every fail-soft case internally
+  // (DB error, no addendum, control bucket, default intent) and returns
+  // the baseline module unchanged in those cases. So this composition
+  // can never make the prompt WORSE than the modular baseline.
+  let modWithAddendum;
+  try {
+    modWithAddendum = await resolvePromptModuleForUser(
+      input.supabase,
+      input.userId,
+      input.intent,
+    );
+  } catch (err) {
+    console.warn("[resolver] resolvePromptAsync addendum lookup failed:", err);
+    return baseline;
+  }
+
+  // If the version is unchanged, no addendum was applied — return baseline
+  // (preserves analytics: same prompt_version logged either way).
+  if (modWithAddendum.version === baseline.version) return baseline;
+
+  return {
+    systemInstruction: modWithAddendum.system_core,
+    intentRules: modWithAddendum.intent_rules,
+    version: modWithAddendum.version,
+    source: "modular",
+    resolvedIntent: modWithAddendum.intent,
   };
 }

@@ -39,7 +39,7 @@ import {
 // `INTENT_MODULES_ROLLOUT_PCT`) is set, the CHAT path switches from the
 // monolithic `OLIVE_CHAT_PROMPT` to the per-intent modular system.
 // Legacy path remains the default — zero regression risk.
-import { resolvePrompt } from "../_shared/prompts/intents/resolver.ts";
+import { resolvePrompt, resolvePromptAsync } from "../_shared/prompts/intents/resolver.ts";
 import {
   assembleFullContext,
   formatContextForPrompt,
@@ -889,11 +889,18 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
         ? 'help'
         : (classifiedIntent?.intent || effectiveType || 'chat');
 
-    const resolved = resolvePrompt({
+    // Phase D-1 live integration: when PROMPT_EVOLUTION_ROUTER_ENABLED
+    // is set, the async resolver consults `olive_prompt_addendums` for an
+    // approved/testing addendum on the resolved intent and folds it in.
+    // When the flag is unset (default), `resolvePromptAsync` is byte-
+    // identical to the synchronous `resolvePrompt` — verified by the
+    // resolver.test.ts pinned tests. So this swap is risk-free.
+    const resolved = await resolvePromptAsync({
       intent: intentForResolver,
       userId: user_id,
       legacyPrompt: OLIVE_CHAT_PROMPT,
       legacyVersion: CHAT_PROMPT_VERSION,
+      supabase: getServiceSupabase(),
     });
 
     const serverCtx = await serverCtxPromise;
