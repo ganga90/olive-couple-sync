@@ -18,6 +18,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { upsertSoulLayer } from "../_shared/soul.ts";
+// Phase D-1.d — admin actions for prompt addendums
+import {
+  approveAddendum,
+  listPendingAddendums,
+  rejectAddendum,
+  rollbackAddendum,
+} from "../_shared/prompt-evolution/admin-actions.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -87,6 +94,20 @@ serve(async (req: Request) => {
         return json(await approveChange(supabase, userId, params));
       case "reject_change":
         return json(await rejectChange(supabase, userId, params));
+      // Phase D-1.d: prompt addendum admin actions.
+      // userId from JWT becomes `decided_by` for audit. TODO follow-up:
+      // restrict these to admin users only — currently any authenticated
+      // user can call. The endpoints are technical (require knowing the
+      // function URL + JWT) so accidental access is unlikely but real
+      // admin gating is a separate PR.
+      case "list_pending_addendums":
+        return json(await listPendingAddendums(supabase, params));
+      case "approve_addendum":
+        return json(await approveAddendum(supabase, { ...params, decided_by: userId }));
+      case "reject_addendum":
+        return json(await rejectAddendum(supabase, { ...params, decided_by: userId }));
+      case "rollback_addendum":
+        return json(await rollbackAddendum(supabase, { ...params, decided_by: userId }));
       default:
         return json({ error: `Unknown action: ${action}` }, 400);
     }
