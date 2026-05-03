@@ -226,3 +226,202 @@ Deno.test("resolvePrompt: never throws on null/undefined intent", () => {
   assertEquals(r2.source, "modular");
   assertEquals(r2.resolvedIntent, "chat");
 });
+
+// ─── Phase D-1 — resolvePromptAsync ────────────────────────────────
+//
+// New async variant that may apply a prompt-evolution addendum on top
+// of the modular baseline. Pinned guarantees:
+//
+//   - When source=legacy, async return == sync return (unchanged)
+//   - When supabase is missing, async return == sync return
+//   - When userId is missing, async return == sync return
+//   - When PROMPT_EVOLUTION_ROUTER_ENABLED is unset/false, async return
+//     == sync return — even with supabase + userId provided
+//   - When the router is enabled but no addendum exists, async return
+//     == sync return (NEVER make the baseline worse)
+//   - When an approved addendum exists, async return adds it: version
+//     tagged + intent_rules extended
+//   - DB errors are swallowed → fall back to baseline
+//
+// The first five guarantees collectively pin "live integration is
+// safe to ship turned off" — production behavior is byte-identical
+// until a flag flip + an approved addendum coincide.
+
+import { resolvePromptAsync } from "./resolver.ts";
+
+interface FakeSb {
+  row: { id: string; addendum_text: string; status: string; rollout_pct: number } | null;
+}
+function makeSb(b: FakeSb) {
+  return {
+    from(_t: string) {
+      const ret: any = {
+        select: (_c: string) => ret,
+        eq: (_c: string, _v: unknown) => ret,
+        in: (_c: string, _v: unknown) => ret,
+        order: (_c: string, _o: unknown) => ret,
+        limit: (_n: number) => ret,
+        maybeSingle: async () => ({ data: b.row, error: null }),
+      };
+      return ret;
+    },
+  };
+}
+
+Deno.test("resolvePromptAsync: legacy source → identical to sync", async () => {
+  const input = {
+    intent: "chat",
+    userId: "u_test",
+    legacyPrompt: "LEGACY",
+    legacyVersion: "v0",
+    envGetter: envWith({}),
+  };
+  const sync = resolvePrompt(input);
+  const async_ = await resolvePromptAsync(input);
+  assertEquals(async_.source, sync.source);
+  assertEquals(async_.systemInstruction, sync.systemInstruction);
+  assertEquals(async_.version, sync.version);
+});
+
+Deno.test("resolvePromptAsync: modular but no supabase → identical to sync", async () => {
+  const input = {
+    intent: "chat",
+    userId: "u",
+    legacyPrompt: "L",
+    legacyVersion: "v",
+    envGetter: envWith({ USE_INTENT_MODULES: "1" }),
+  };
+  const sync = resolvePrompt(input);
+  const async_ = await resolvePromptAsync(input);
+  assertEquals(async_.version, sync.version);
+});
+
+Deno.test("resolvePromptAsync: modular + supabase but no userId → baseline", async () => {
+  const sync = resolvePrompt({
+    intent: "chat",
+    userId: "u_baseline",
+    legacyPrompt: "L",
+    legacyVersion: "v",
+    envGetter: envWith({ USE_INTENT_MODULES: "1" }),
+  });
+  const async_ = await resolvePromptAsync({
+    intent: "chat",
+    userId: "",
+    legacyPrompt: "L",
+    legacyVersion: "v",
+    envGetter: envWith({ USE_INTENT_MODULES: "1" }),
+    supabase: makeSb({ row: null }),
+    routerFlagOverride: true,
+  });
+  assertEquals(async_.version, sync.version);
+});
+
+Deno.test("resolvePromptAsync: router flag off → baseline (no router lookup)", async () => {
+  const sync = resolvePrompt({
+    intent: "chat",
+    userId: "u",
+    legacyPrompt: "L",
+    legacyVersion: "v",
+    envGetter: envWith({ USE_INTENT_MODULES: "1" }),
+  });
+  // Even with an addendum-bearing supabase + userId, flag off means
+  // the router is never consulted.
+  const async_ = await resolvePromptAsync({
+    intent: "chat",
+    userId: "u",
+    legacyPrompt: "L",
+    legacyVersion: "v",
+    envGetter: envWith({ USE_INTENT_MODULES: "1" }),
+    supabase: makeSb({
+      row: {
+        id: "addendum-X",
+        addendum_text: "TREATMENT TEXT",
+        status: "approved",
+        rollout_pct: 100,
+      },
+    }),
+    routerFlagOverride: false,
+  });
+  assertEquals(async_.version, sync.version);
+  assertEquals(async_.systemInstruction.includes("TREATMENT TEXT"), false);
+});
+
+Deno.test("resolvePromptAsync: router flag on but no addendum → baseline", async () => {
+  const sync = resolvePrompt({
+    intent: "chat",
+    userId: "u",
+    legacyPrompt: "L",
+    legacyVersion: "v",
+    envGetter: envWith({ USE_INTENT_MODULES: "1" }),
+  });
+  const async_ = await resolvePromptAsync({
+    intent: "chat",
+    userId: "u",
+    legacyPrompt: "L",
+    legacyVersion: "v",
+    envGetter: envWith({ USE_INTENT_MODULES: "1" }),
+    supabase: makeSb({ row: null }),
+    routerFlagOverride: true,
+  });
+  assertEquals(async_.version, sync.version);
+});
+
+Deno.test("resolvePromptAsync: router on + approved addendum → version tagged + rules extended", async () => {
+  const baseline = resolvePrompt({
+    intent: "chat",
+    userId: "u",
+    legacyPrompt: "L",
+    legacyVersion: "v",
+    envGetter: envWith({ USE_INTENT_MODULES: "1" }),
+  });
+  const async_ = await resolvePromptAsync({
+    intent: "chat",
+    userId: "u",
+    legacyPrompt: "L",
+    legacyVersion: "v",
+    envGetter: envWith({ USE_INTENT_MODULES: "1" }),
+    supabase: makeSb({
+      row: {
+        id: "addendum-LIVE",
+        addendum_text: "Use 'groceries' for food shopping captures.",
+        status: "approved",
+        rollout_pct: 100,
+      },
+    }),
+    routerFlagOverride: true,
+  });
+  // Version differs (carries +addendum-... suffix)
+  assertEquals(async_.version === baseline.version, false);
+  assertEquals(async_.version.includes("+addendum-addendum-LIVE"), true);
+  // intent_rules carries the addendum text
+  assertEquals(async_.intentRules.includes("Use 'groceries' for food shopping"), true);
+  // Source is still 'modular' (router doesn't change source)
+  assertEquals(async_.source, "modular");
+});
+
+Deno.test("resolvePromptAsync: router lookup throws → baseline (fail-soft)", async () => {
+  const baseline = resolvePrompt({
+    intent: "chat",
+    userId: "u",
+    legacyPrompt: "L",
+    legacyVersion: "v",
+    envGetter: envWith({ USE_INTENT_MODULES: "1" }),
+  });
+  const exploder: any = {
+    from(_t: string) {
+      throw new Error("simulated DB blow-up");
+    },
+  };
+  const async_ = await resolvePromptAsync({
+    intent: "chat",
+    userId: "u",
+    legacyPrompt: "L",
+    legacyVersion: "v",
+    envGetter: envWith({ USE_INTENT_MODULES: "1" }),
+    supabase: exploder,
+    routerFlagOverride: true,
+  });
+  // Fall back to baseline — never throw, never corrupt the request
+  assertEquals(async_.version, baseline.version);
+  assertEquals(async_.source, "modular");
+});
