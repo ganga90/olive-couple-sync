@@ -24,6 +24,7 @@ import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@1.0.0";
 import { GEMINI_KEY, getModel } from "../_shared/gemini.ts";
 import { getUserSoulContent, upsertSoulLayer } from "../_shared/soul.ts";
 import { proposeMajorChange } from "../_shared/soul-proposals.ts";
+import { computeDrift } from "../_shared/soul-drift.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -324,15 +325,16 @@ async function applyEvolution(
   userId: string,
   currentSoul: Record<string, any>,
   proposals: EvolutionProposal[]
-): Promise<{ applied: number; deferred: number; proposed: number; changes: string[] }> {
+): Promise<{ applied: number; deferred: number; proposed: number; blocked: number; changes: string[] }> {
   if (proposals.length === 0) {
-    return { applied: 0, deferred: 0, proposed: 0, changes: [] };
+    return { applied: 0, deferred: 0, proposed: 0, blocked: 0, changes: [] };
   }
 
   const updatedSoul = { ...currentSoul };
   let applied = 0;
   let deferred = 0;
   let proposed = 0;
+  let blocked = 0;
   const changes: string[] = [];
 
   for (const proposal of proposals) {
@@ -406,14 +408,50 @@ async function applyEvolution(
   // Write updated soul if any minor changes were applied. Major changes
   // do NOT touch the live layer here — they wait for user approval via
   // olive-soul-safety/approve_change.
+  //
+  // Phase D-5: drift safety floor. Before persisting the cumulative result
+  // of all minor changes, compare it against the live layer. If the diff
+  // exceeds the safety thresholds (drift_score, fields-changed count, or
+  // token delta) the write is blocked and the user retains the previous
+  // soul. Default OFF — set SOUL_DRIFT_GATE_ENABLED=true to activate.
+  // Gated so an unforeseen issue with the drift formula cannot silently
+  // disable all soul evolution. Fail-soft: if computeDrift throws, fall
+  // through to the existing apply (the gate must not be a new failure
+  // mode).
   if (applied > 0) {
-    await upsertSoulLayer(supabase, "user", "user", userId, updatedSoul, "pattern_detection");
+    const gateEnabled = Deno.env.get("SOUL_DRIFT_GATE_ENABLED") === "true";
+    let driftBlocked = false;
+    if (gateEnabled) {
+      try {
+        const drift = computeDrift(currentSoul, updatedSoul);
+        if (!drift.is_safe) {
+          driftBlocked = true;
+          blocked = applied;
+          applied = 0;
+          changes.push(
+            `[BLOCKED — drift floor] ${blocked} minor change(s) not persisted: ${drift.blocked_reasons.join("; ")}`,
+          );
+          console.warn(
+            `[soul-evolve] Drift gate blocked write for ${userId}: score=${drift.drift_score}, fields=${drift.fields_changed.length}, token_delta_pct=${drift.token_delta_percent}`,
+          );
+        }
+      } catch (err) {
+        // Fail-soft: a bug in the drift formula must not become a new
+        // way for evolution to silently stop. Log and proceed with the
+        // pre-D-5 behavior.
+        console.warn("[soul-evolve] Drift check threw, falling through:", err);
+      }
+    }
+
+    if (!driftBlocked) {
+      await upsertSoulLayer(supabase, "user", "user", userId, updatedSoul, "pattern_detection");
+    }
   }
 
   // Handle trust evolution separately (from reflections)
   await evolveTrust(supabase, userId);
 
-  return { applied, deferred, proposed, changes };
+  return { applied, deferred, proposed, blocked, changes };
 }
 
 // ─── Trust Evolution (separate from main soul) ──────────────────
@@ -531,7 +569,7 @@ serve(async (req: Request) => {
       );
     }
 
-    const results: Array<{ user_id: string; applied: number; deferred: number; changes: string[] }> = [];
+    const results: Array<{ user_id: string; applied: number; deferred: number; blocked?: number; changes: string[] }> = [];
 
     for (const userId of targetUsers) {
       try {
