@@ -136,6 +136,15 @@ const unsafeDraft = async () => ({
 
 const failingDraft = async () => null;
 
+const voiceViolatingDraft = async () => ({
+  // Pro could conceivably emit a draft like this — buzzwords, an
+  // exclamation-heavy tone, and a non-🌿 emoji that would propagate
+  // into every Gemini response if approved.
+  addendum_text: "Supercharge Olive's responses with 10x energy! 🎉 AI-powered insights!",
+  reasoning: "User feedback shows they want more enthusiastic responses.",
+  is_safe: true, // Pro thinks it's safe; the brand-voice lint catches it.
+});
+
 // ─── Tests ─────────────────────────────────────────────────────────
 
 Deno.test("runPromptEvolution: no reflections → graceful no-op", async () => {
@@ -186,6 +195,33 @@ Deno.test("runPromptEvolution: Pro marks unsafe → no insert, breadcrumb logged
   assertEquals(out.proposed, 0);
   assertEquals(log.inserts.length, 0);
   assertEquals(out.skipped.some((s) => s.reason.startsWith("pro_marked_unsafe")), true);
+});
+
+Deno.test("runPromptEvolution: Pro draft violates brand voice → skipped before insert", async () => {
+  // Brand-voice lint runs after Pro's is_safe check and before the DB
+  // insert. A draft that's semantically "safe" (Pro thinks the rule
+  // is justified) but lexically violates Olive's voice (buzzwords,
+  // emojis, exclamation spam) must NEVER reach olive_prompt_addendums
+  // because admin approval is the only thing standing between an
+  // addendum and every Gemini call in the rollout bucket.
+  const log: DBLog = { reads: [], inserts: [] };
+  const sb = makeFakeSupabase({ reflections: actionableCluster() }, log);
+  const out = await runPromptEvolution(sb, { windowDays: 7, force: false }, voiceViolatingDraft);
+  assertEquals(out.actionable_clusters, 1);
+  assertEquals(out.proposed, 0);
+  assertEquals(log.inserts.length, 0);
+  // The breadcrumb tells admins WHY the draft was dropped — for
+  // diagnostics and to spot patterns of voice drift in Pro's output.
+  const breadcrumb = out.skipped.find((s) => s.reason.startsWith("voice_violations"));
+  assertEquals(typeof breadcrumb, "object");
+  // Multiple distinct violations should appear in the message
+  if (breadcrumb) {
+    const msg = breadcrumb.reason;
+    // At least one of the buzzwords should be referenced
+    const mentionsBuzzword =
+      msg.includes("supercharge") || msg.includes("10x") || msg.includes("AI-powered");
+    assertEquals(mentionsBuzzword, true);
+  }
 });
 
 Deno.test("runPromptEvolution: Pro returns null (failure) → skipped, no insert", async () => {
