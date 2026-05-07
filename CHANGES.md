@@ -12,6 +12,80 @@ there are no behavioral rollbacks.
 
 ---
 
+## 2026-05-07 — Multi-Note Header Detection in process-note
+
+### Bug · header line saved as a phantom task in multi-item brain dumps
+
+**Symptom.** Sending a list with a leading header line in WhatsApp produced
+N+1 saved tasks instead of N. Repro:
+
+```
+Check-list for the pets tomorrow before leaving:
+Milka food
+Change cat litter
+Videos of the house
+Ring camera
+Check water fountains
+```
+
+Olive replied "Saved 6 items" — but only 5 are real tasks. The header
+"Check-list for the pets tomorrow before leaving:" was saved as task #1.
+List routing to "Pets" worked correctly; only the count was wrong.
+
+**Root cause.** `detectMultiItemInput` (the deterministic pre-split that
+runs BEFORE the AI on every brain dump) had no concept of a header line.
+Its Pattern 3 (newline-separated tasks) split every non-empty line into
+a separate task, so the heading became task #1 — and because pre-split
+processes each item in parallel against `gemini-2.5-flash-lite` with no
+sibling context, the AI's header-aware system-prompt rules never got a
+chance to run.
+
+**Fix.** Four-layer defense:
+
+1. **Header detection in pre-split.** New `detectMultiItem` returns
+   `{ items, header }` instead of bare `string[]`. Header signals are
+   conservative: first line ends with `:` AND ≥2 list-shaped lines
+   follow AND first line does not itself start with an action verb,
+   OR first line matches header keywords (`checklist`, `lista`,
+   `elenco`, …) without a verb start. Multi-language: en/es/it.
+2. **Header context propagation.** When a header is found, each per-item
+   AI prompt now includes a `SHARED CONTEXT` block carrying the header
+   text. Items inherit time references ("tomorrow"), domain ("pets"),
+   and list routing from the header — so "Milka food" gets
+   `due_date=tomorrow, category=pets, target_list=Pets` instead of
+   landing as a generic groceries item with no due date.
+3. **AI prompt teaches the pattern.** Defense in depth: a new
+   `HEADER/TITLE PATTERN` section in `createSystemPrompt` instructs
+   the model to recognize headers when pre-split is conservative and
+   falls through to the AI path.
+4. **Tests.** `detectMultiItem` was extracted to its own module
+   (`process-note/multi-item-detect.ts`) and is locked down by 20 unit
+   tests covering: the screenshot bug; header + numbered/bullet lists;
+   Spanish/Italian headers; verb-led "Buy these for dinner:" rejection;
+   single-item-below rejection; long paragraph fall-through to AI; and
+   full preservation of legacy numbered/bullet/comma/and behavior.
+
+**Defensive subtlety — action-verb regex.** The legacy verb regex used
+`\b` as the terminator, which fires on a hyphen ("Check-list" → matches
+"check"). The new regex uses `(?=\s|$|[,.!?:])` instead, requiring
+whitespace or terminal punctuation, so compound nouns like "check-list"
+and "to-do" no longer get classified as starting with an action verb.
+
+**Files touched.**
+- `supabase/functions/process-note/multi-item-detect.ts` (new)
+- `supabase/functions/process-note/multi-item-detect.test.ts` (new, 20 tests)
+- `supabase/functions/process-note/index.ts` (import; remove inline
+  function; wire `{items, header}` shape with shared-context block;
+  add `HEADER/TITLE PATTERN` section to system prompt)
+
+**Backwards compatibility.** No DB migration. No schema changes. No new
+env vars. List routing flow (`findOrCreateList`) untouched. Plain
+multi-item splits without a header behave exactly as before. The legacy
+function name `detectMultiItemInput` is preserved as a wrapper on
+`detectMultiItem` for any external imports.
+
+---
+
 ## 2026-04-21 — Image + Caption Processing Fix
 
 ### Bug · process-note mis-prioritises caption over image content
