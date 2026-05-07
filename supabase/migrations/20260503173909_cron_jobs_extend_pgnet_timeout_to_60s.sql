@@ -1,39 +1,13 @@
--- Fix four broken cron jobs that were 100% failing
--- ============================================================================
--- AUDIT: queried `cron.job_run_details` on 2026-05-03 and found:
---   olive-compile-memory-daily         : 23/23 failed since Apr 11
---   olive-memory-maintenance-weekly    :  4/4  failed since Apr 12
---   olive-soul-evolve-weekly           :  1/1  failed since Apr 26
---   olive-prompt-evolve-weekly         :  0    not yet fired (would fail)
+-- ─── Extend pg_net timeout to 60s for cron-driven function calls ───
+-- olive-soul-evolve, olive-compile-memory, and olive-memory-maintenance
+-- routinely take 10-30s (Pro calls, batch processing). pg_net's default
+-- 5s worker timeout was marking these as failed even when the function
+-- completed successfully on the other end. This affects cron observability,
+-- not correctness — but better to have honest run history.
 --
--- All four shared the same defect: `current_setting('supabase_functions_endpoint')`
--- is not a real GUC on this Supabase project, so every run failed before
--- the cron's HTTP call left the database. Daily memory compilation, weekly
--- maintenance, and Phase A's soul-evolution keystone had never actually
--- run in production despite being scheduled.
---
--- The working crons (heartbeat, send-reminders, inbound-buffer-cleanup) all
--- use a literal URL + literal anon-key bearer JWT. We mirror that pattern
--- exactly. The anon JWT is project-public (already in the heartbeat cron
--- migration, see 20260131182119_*.sql) and serves only as gateway auth —
--- the functions read SUPABASE_SERVICE_ROLE_KEY from env at runtime to do
--- their privileged work.
---
--- Also adds `timeout_milliseconds := 60000`. Default pg_net worker timeout
--- is 5s, but soul-evolve and compile-memory routinely take 10-30s
--- (Gemini Pro calls, batch processing). The 60s ceiling matches Supabase
--- Edge Functions' execution limit — if the function didn't return by then,
--- something else is wrong.
---
--- Verified post-apply by manually triggering each cron and reading
--- net._http_response:
---   prompt-evolve   → 200 OK, gated by PROMPT_EVOLVE_ENABLED
---   soul-evolve     → 200 OK, processed 35 users (first successful run)
---   compile-memory  → 200 OK (separate pre-existing embedding-dim bug,
---                     out of scope for this migration)
---   memory-maintenance → 200 OK, repaired 45 records across 3 users
+-- 60s ceiling matches Supabase Edge Functions' default 60s execution limit:
+-- if the function itself didn't return by 60s, something else is wrong.
 
--- 1. olive-compile-memory-daily — daily memory compilation at 02:00 UTC
 SELECT cron.unschedule('olive-compile-memory-daily');
 SELECT cron.schedule(
   'olive-compile-memory-daily',
@@ -48,7 +22,6 @@ SELECT cron.schedule(
   $cmd$
 );
 
--- 2. olive-memory-maintenance-weekly — Sundays 03:00 UTC
 SELECT cron.unschedule('olive-memory-maintenance-weekly');
 SELECT cron.schedule(
   'olive-memory-maintenance-weekly',
@@ -63,7 +36,6 @@ SELECT cron.schedule(
   $cmd$
 );
 
--- 3. olive-soul-evolve-weekly — Sundays 04:00 UTC. Phase A's keystone cron.
 SELECT cron.unschedule('olive-soul-evolve-weekly');
 SELECT cron.schedule(
   'olive-soul-evolve-weekly',
@@ -78,7 +50,6 @@ SELECT cron.schedule(
   $cmd$
 );
 
--- 4. olive-prompt-evolve-weekly — Sundays 05:00 UTC (Phase D-1)
 SELECT cron.unschedule('olive-prompt-evolve-weekly');
 SELECT cron.schedule(
   'olive-prompt-evolve-weekly',
