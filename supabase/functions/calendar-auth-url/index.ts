@@ -36,11 +36,11 @@ serve(async (req) => {
     const origin = redirect_origin || 'https://witholive.app';
 
     const scopes = [
-      "https://www.googleapis.com/auth/calendar",
-      "https://www.googleapis.com/auth/calendar.events",
-      "https://www.googleapis.com/auth/tasks",
+      "openid",
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/userinfo.profile",
+      "https://www.googleapis.com/auth/calendar.events",
+      "https://www.googleapis.com/auth/tasks",
     ];
 
     // Encode state with user_id and frontend origin using URL-safe base64
