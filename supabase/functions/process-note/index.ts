@@ -7,6 +7,7 @@ import { detectAndCreateExpense, detectCurrency, extractAmount, mapCategoryToExp
 import { resolveScope } from "../_shared/space-scope.ts";
 import { assembleSoulContext } from "../_shared/soul.ts";
 import { checkTrustForAction } from "../_shared/trust-gate-check.ts";
+import { detectMultiItem } from "./multi-item-detect.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -538,12 +539,23 @@ ${mediaContext}
 
 SPLIT CRITERIA — CRITICAL: You MUST create SEPARATE notes when input contains:
 - **Numbered lists**: "1. Buy milk 2. Call doctor 3. Book restaurant" → 3 notes
-- **Bullet points or dashes**: "- buy milk\n- call doctor" → 2 notes  
+- **Bullet points or dashes**: "- buy milk\n- call doctor" → 2 notes
 - **Comma-separated distinct tasks**: "buy milk, call doctor, book restaurant" → 3 notes
 - **"and" joining distinct tasks**: "buy milk and call doctor" → 2 notes (different actions)
 - **"and" joining distinct recipients/targets**: "reply to RoasterCup and to Meze Labs" → 2 notes (one per recipient, each gets the SAME action verb with their specific target as the summary)
 - **Each grocery item**: "groceries: milk, eggs, bread" → 3 separate notes (one per item)
 - **Multi-line tasks**: Each line with a distinct task → separate note per line
+
+HEADER/TITLE PATTERN — CRITICAL: When the input opens with a heading line that introduces a list, the heading is NOT a task. Detect a header when the first line:
+- ends with ":" AND is followed by 2+ short lines that look like list items, OR
+- contains a header keyword ("checklist", "to-do", "shopping list", "lista", "elenco", "cose da fare") AND is followed by list items, AND
+- does NOT itself start with an action verb (a verb-led "Buy these for dinner:" is itself the task — keep it).
+
+When a header is detected:
+- Do NOT create a note for the header line itself.
+- Use the header as SHARED CONTEXT: inherit time references ("tomorrow", "today", "this week") into each item's due_date when the item itself is timeless; inherit domain ("pets", "groceries") into category and list routing.
+- The header phrasing must NOT appear inside any item's summary.
+Example: input "Check-list for the pets tomorrow before leaving:\nMilka food\nChange cat litter\nRing camera" → 3 notes (Milka food, Change cat litter, Ring camera) — NOT 4. Each gets due_date=tomorrow, category="pets", target_list="Pets".
 
 DO NOT MERGE distinct tasks into one note with items array. Each task gets its OWN note.
 The items array is for SUB-DETAILS of a SINGLE task (e.g., phone, address, time), NOT for separate tasks.
@@ -661,94 +673,8 @@ Return multiple:true with notes array if multiple items detected.
 Return multiple:false with single note fields if just one task.`;
 };
 
-// ============================================================================
-// DETERMINISTIC MULTI-ITEM DETECTION
-// ============================================================================
-
-/**
- * Detects clearly structured multi-item input (numbered lists, bullet points,
- * newline-separated tasks) and returns individual items for separate processing.
- * Returns null if the input doesn't contain a clear multi-item structure.
- */
-function detectMultiItemInput(text: string): string[] | null {
-  if (!text || text.length < 10) return null;
-  
-  const trimmed = text.trim();
-  
-  // Pattern 1: Numbered lists — "1. Buy milk 2. Call doctor 3. Book restaurant"
-  // Also handles "1) Buy milk 2) Call doctor"
-  const numberedPattern = /(?:^|\n)\s*\d+[\.\)]\s+/;
-  if (numberedPattern.test(trimmed)) {
-    const items = trimmed
-      .split(/(?:^|\n)\s*\d+[\.\)]\s+/)
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-    if (items.length >= 2) {
-      console.log('[MultiItemDetect] Numbered list detected:', items.length, 'items');
-      return items;
-    }
-  }
-  
-  // Pattern 2: Bullet points — "- Buy milk\n- Call doctor" or "• Buy milk\n• Call doctor"
-  const bulletPattern = /(?:^|\n)\s*[-•*]\s+/;
-  if (bulletPattern.test(trimmed)) {
-    const items = trimmed
-      .split(/(?:^|\n)\s*[-•*]\s+/)
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-    if (items.length >= 2) {
-      console.log('[MultiItemDetect] Bullet list detected:', items.length, 'items');
-      return items;
-    }
-  }
-  
-  // Pattern 3: Newline-separated distinct tasks (each line is a separate task)
-  // Only trigger if 2+ lines, each reasonably short (to avoid splitting paragraphs)
-  const lines = trimmed.split(/\n+/).map(s => s.trim()).filter(s => s.length > 0);
-  if (lines.length >= 2 && lines.every(l => l.length < 120)) {
-    const avgLen = lines.reduce((sum, l) => sum + l.length, 0) / lines.length;
-    if (avgLen < 80) {
-      console.log('[MultiItemDetect] Multi-line tasks detected:', lines.length, 'items');
-      return lines;
-    }
-  }
-  
-  // Pattern 4: Comma-separated distinct tasks — "buy milk, call doctor, book restaurant"
-  // Only split if 3+ segments and they look like distinct actions (contain verbs or are short phrases)
-  if (trimmed.includes(',') && !trimmed.includes('\n')) {
-    const segments = trimmed.split(/,\s*/).map(s => s.trim()).filter(s => s.length > 2);
-    if (segments.length >= 3 && segments.every(s => s.length < 80)) {
-      // Verify they look like distinct tasks, not a single sentence with commas
-      // Check if most segments start with a verb or are short noun phrases
-      const actionVerbs = /^(buy|get|call|book|pick|fix|send|pay|check|schedule|cancel|return|order|clean|wash|remind|update|find|research|plan|make|cook|prepare|organize|sort|arrange|set up|follow up|renew|register|sign up|drop off|pick up)/i;
-      const verbCount = segments.filter(s => actionVerbs.test(s)).length;
-      // If at least half start with verbs, or all are short (<30 chars each), treat as multi-item
-      if (verbCount >= segments.length * 0.5 || segments.every(s => s.length < 30)) {
-        console.log('[MultiItemDetect] Comma-separated tasks detected:', segments.length, 'items');
-        return segments;
-      }
-    }
-  }
-  
-  // Pattern 5: "and"-conjunction splitting for distinct actions
-  // "buy milk and call doctor and book restaurant"
-  // Only when "and" joins clearly different action phrases
-  if (/\band\b/i.test(trimmed) && !trimmed.includes(',') && !trimmed.includes('\n')) {
-    const andSegments = trimmed.split(/\s+and\s+/i).map(s => s.trim()).filter(s => s.length > 2);
-    if (andSegments.length >= 2 && andSegments.length <= 5) {
-      const actionVerbs = /^(buy|get|call|book|pick|fix|send|pay|check|schedule|cancel|return|order|clean|wash|remind|update|find|research|plan|make|cook|prepare)/i;
-      const verbCount = andSegments.filter(s => actionVerbs.test(s)).length;
-      // Only split if most segments start with action verbs (indicates distinct tasks)
-      if (verbCount >= andSegments.length * 0.7) {
-        console.log('[MultiItemDetect] And-conjunction tasks detected:', andSegments.length, 'items');
-        return andSegments;
-      }
-    }
-  }
-  
-  return null;
-}
-
+// Multi-item / header detection lives in ./multi-item-detect.ts (pure
+// & unit-tested). Imported above as `detectMultiItem`.
 
 async function transcribeAudioWithElevenLabs(audioUrl: string): Promise<string> {
   const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
@@ -2028,16 +1954,43 @@ Process this note:
     let processedResponse: any;
     //
     // DETERMINISTIC PRE-SPLIT: Detect clearly structured multi-item input
-    // before sending to AI, to guarantee splitting for numbered/bulleted lists
+    // before sending to AI, to guarantee splitting for numbered/bulleted
+    // lists. The detector also identifies a leading HEADER line ("Pets
+    // checklist for tomorrow:") and strips it from the items array — a
+    // header is shared context, not a separate task.
+    //
+    // When a header is found, we propagate it into each per-item prompt
+    // as SHARED CONTEXT so the AI can inherit time references, scope,
+    // and list routing from the header into each child note.
     // ======================================================================
-    const preDetectedItems = detectMultiItemInput(enhancedText);
-    if (preDetectedItems && preDetectedItems.length > 1 && !hasMedia) {
-      console.log('[process-note] Pre-split detected', preDetectedItems.length, 'items — processing in PARALLEL');
-      
+    const preDetected = detectMultiItem(enhancedText);
+    if (preDetected && preDetected.items.length > 1 && !hasMedia) {
+      const detectedHeader = preDetected.header;
+      console.log(
+        '[process-note] Pre-split detected',
+        preDetected.items.length,
+        'items',
+        detectedHeader ? `(header: "${detectedHeader.substring(0, 60)}")` : '(no header)',
+        '— processing in PARALLEL',
+      );
+
+      // Build the shared-context block from the detected header. Empty
+      // when there's no header — keeps per-item prompts identical to
+      // legacy behavior in that path.
+      const sharedContextBlock = detectedHeader
+        ? `\n\nSHARED CONTEXT (header for the whole brain dump — DO NOT include in summary):
+"${detectedHeader}"
+
+Use this header as shared context across ALL items:
+- Inherit time references (e.g. "tomorrow", "today", "this week") into the item's due_date when the item itself is timeless.
+- Inherit domain/scope (e.g. "pets", "groceries", "trip") into category and target_list routing when the item is ambiguous.
+- The header itself is NOT a task and must not appear in the summary or items array.`
+        : '';
+
       // Process ALL items in parallel for maximum speed
-      const itemPromises = preDetectedItems.map(async (item) => {
-        const itemPrompt = `${systemPrompt}${listsContext}\n\nProcess this single note (this is ONE item from a multi-item brain dump):\n"${item}"`;
-        
+      const itemPromises = preDetected.items.map(async (item) => {
+        const itemPrompt = `${systemPrompt}${listsContext}${sharedContextBlock}\n\nProcess this single note (this is ONE item from a multi-item brain dump):\n"${item}"`;
+
         try {
           const itemResponse = await genai.models.generateContent({
             model: "gemini-2.5-flash-lite",  // Use lite model for simple single items — 3x faster
@@ -2049,7 +2002,7 @@ Process this note:
               maxOutputTokens: 400
             }
           });
-          
+
           return JSON.parse(itemResponse.text || '{}');
         } catch (itemErr) {
           console.warn('[process-note] Pre-split item failed:', item.substring(0, 50), itemErr);
@@ -2062,9 +2015,9 @@ Process this note:
           };
         }
       });
-      
+
       const allProcessedNotes = await Promise.all(itemPromises);
-      
+
       // Skip the main AI call — we already have results
       processedResponse = { multiple: true, notes: allProcessedNotes };
     } else {
