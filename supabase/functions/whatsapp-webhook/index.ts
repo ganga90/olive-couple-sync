@@ -46,6 +46,7 @@ import { parseExpenseText } from "../_shared/expense-detector.ts";
 import { captureReplyReflection } from "../_shared/reflection-capture.ts";
 import { checkTrustForAction } from "../_shared/trust-gate-check.ts";
 import { assembleContextSoul } from "../_shared/context-soul/index.ts";
+import { resolveAddendum } from "../_shared/prompt-evolution/ab-router.ts";
 import {
   classifyConfirmationReply,
   isBadTitle,
@@ -7103,14 +7104,35 @@ If the user's message is long and conversational — asking for help with someth
         const enhancedMessage = (effectiveMessage || '') + userPromptEnhancement;
         console.log('[WhatsApp Chat] Calling AI for chatType:', chatType, 'lang:', userLang);
 
-        // Inject language instruction into AI prompt
+        // Phase D-1 live integration on CHAT — gated by
+        // PROMPT_EVOLUTION_ROUTER_ENABLED. When unset (default), this
+        // is a pure no-op: no DB query, byte-identical to pre-D-1
+        // behavior. When set, look up an active addendum for
+        // prompt_module='chat' and fold it into systemPrompt before
+        // the language directive (so the language instruction stays
+        // last and wins). resolveAddendum is fail-soft — null on no
+        // addendum row, A/B coin flip lost, query error.
+        let chatPromptVersion = getWAChatPromptVersion(chatType);
+        if (Deno.env.get('PROMPT_EVOLUTION_ROUTER_ENABLED') === 'true') {
+          try {
+            const addendum = await resolveAddendum(supabase, userId, 'chat');
+            if (addendum) {
+              systemPrompt += `\n\n## Additional rules learned from user feedback\n${addendum.addendum_text}`;
+              chatPromptVersion = `${chatPromptVersion}+addendum-${addendum.addendum_id}`;
+            }
+          } catch (e) {
+            console.warn('[CHAT] Addendum lookup failed (non-blocking):', e);
+          }
+        }
+
+        // Inject language instruction into AI prompt (kept last so the
+        // language directive wins regardless of addendum content).
         const langName = LANG_NAMES[userLang] || LANG_NAMES[userLang.split('-')[0]] || 'English';
         if (langName !== 'English') {
           systemPrompt += `\n\nIMPORTANT: Respond entirely in ${langName}.`;
         }
 
         // Dynamic model selection — Pro for weekly_summary/planning or media, standard for rest
-        const chatPromptVersion = getWAChatPromptVersion(chatType);
         const chatMediaUrls = mediaUrls.length > 0 ? mediaUrls : undefined;
         let chatResponse: string;
         try {

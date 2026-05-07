@@ -18,6 +18,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveCallerUserId } from "../_shared/edge-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,18 +56,19 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // Body must be parsed BEFORE auth resolution because service-role
+    // callers carry the target `user_id` in the body (their JWT has no
+    // Clerk `sub`). Clerk-authed users still resolve via JWT sub, and
+    // for them any body `user_id` is ignored — see resolveCallerUserId.
     const token = authHeader.replace("Bearer ", "");
-    let userId: string;
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      userId = payload.sub;
-      if (!userId) throw new Error("No sub");
-    } catch {
-      return json({ error: "Invalid token" }, 401);
-    }
-
     const body = await req.json();
     const { action, ...params } = body;
+
+    const auth = resolveCallerUserId(token, (params as { user_id?: unknown }).user_id);
+    if (!auth.ok) {
+      return json({ error: auth.error }, auth.status);
+    }
+    const userId = auth.userId;
 
     switch (action) {
       case "check":
