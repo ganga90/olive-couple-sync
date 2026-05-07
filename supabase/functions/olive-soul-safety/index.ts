@@ -18,6 +18,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { upsertSoulLayer } from "../_shared/soul.ts";
+import { resolveCallerUserId } from "../_shared/edge-auth.ts";
+import { requireAdmin } from "../_shared/admin-check.ts";
 // Phase D-1.d — admin actions for prompt addendums
 import {
   approveAddendum,
@@ -25,6 +27,18 @@ import {
   rejectAddendum,
   rollbackAddendum,
 } from "../_shared/prompt-evolution/admin-actions.ts";
+
+// Phase D-1.d endpoints that mutate the global pool of prompt addendums
+// — only admins may invoke. Service-role callers bypass via requireAdmin
+// (they hold the master key already). All other actions are user-scoped
+// (the caller acts on their OWN soul layers / proposals) and remain
+// open to any authenticated user.
+const ADMIN_ONLY_ACTIONS = new Set<string>([
+  "list_pending_addendums",
+  "approve_addendum",
+  "reject_addendum",
+  "rollback_addendum",
+]);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,22 +69,37 @@ serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Auth
+    // Auth — body must be parsed BEFORE auth resolution because
+    // service-role callers carry the target user_id in the body
+    // (their JWT has no Clerk sub). See _shared/edge-auth.ts. Clerk-
+    // authed users still resolve via JWT sub and any body user_id
+    // is ignored — no impersonation path.
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json({ error: "Missing authorization" }, 401);
-
     const token = authHeader.replace("Bearer ", "");
-    let userId: string;
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      userId = payload.sub;
-      if (!userId) throw new Error("No sub");
-    } catch {
-      return json({ error: "Invalid token" }, 401);
-    }
 
     const body = await req.json();
     const { action, ...params } = body;
+
+    const auth = resolveCallerUserId(token, (params as { user_id?: unknown }).user_id);
+    if (!auth.ok) {
+      return json({ error: auth.error }, auth.status);
+    }
+    const userId = auth.userId;
+
+    // Phase D-1.d admin gate. Pre-checked here so each admin-only
+    // dispatch case stays a single line. Fails closed on RPC errors —
+    // approving a prompt addendum is destructive at scale, so we never
+    // grant on uncertainty.
+    if (ADMIN_ONLY_ACTIONS.has(action)) {
+      const adminCheck = await requireAdmin(supabase, userId, auth.isServiceRole);
+      if (!adminCheck.ok) {
+        console.warn(
+          `[soul-safety] admin gate denied: action=${action} user=${userId} reason=${adminCheck.reason}`,
+        );
+        return json({ error: "Admin role required" }, 403);
+      }
+    }
 
     switch (action) {
       case "check_drift":
@@ -94,12 +123,10 @@ serve(async (req: Request) => {
         return json(await approveChange(supabase, userId, params));
       case "reject_change":
         return json(await rejectChange(supabase, userId, params));
-      // Phase D-1.d: prompt addendum admin actions.
-      // userId from JWT becomes `decided_by` for audit. TODO follow-up:
-      // restrict these to admin users only — currently any authenticated
-      // user can call. The endpoints are technical (require knowing the
-      // function URL + JWT) so accidental access is unlikely but real
-      // admin gating is a separate PR.
+      // Phase D-1.d: prompt addendum admin actions. Gated above by
+      // ADMIN_ONLY_ACTIONS check. userId becomes `decided_by` for
+      // audit — for service-role callers that's the body's user_id
+      // (the admin the caller is acting on behalf of), not "system".
       case "list_pending_addendums":
         return json(await listPendingAddendums(supabase, params));
       case "approve_addendum":
