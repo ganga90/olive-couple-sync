@@ -1,0 +1,103 @@
+name: Migration lint
+
+# Enforces the doctrine in MIGRATIONS.md on every PR that touches schema.
+# Catches the catastrophic violations; humans handle nuance via the PR template.
+#
+# Scope discipline:
+#   - Lints NEW migration files only (diff against PR base). Existing baseline
+#     and any pre-existing files are grandfathered.
+#   - No DB credentials needed. Pure file analysis.
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'supabase/migrations/**'
+      - '.github/workflows/migration-lint.yml'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Identify changed migration files
+        id: changed
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          CHANGED=$(git diff --name-only --diff-filter=A "$BASE_SHA" HEAD -- 'supabase/migrations/*.sql' || true)
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          if [ -z "$CHANGED" ]; then
+            echo "No new migration files. Skipping content checks."
+          else
+            echo "Will lint:"
+            echo "$CHANGED"
+          fi
+
+      - name: Filename format
+        if: steps.changed.outputs.files != ''
+        run: |
+          set -e
+          fail=0
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            base=$(basename "$f" .sql)
+            if ! echo "$base" | grep -qE '^[0-9]{14}_[a-z][a-z0-9_]+$'; then
+              echo "::error file=$f::Filename must match <14-digit-timestamp>_<snake_case>.sql (got: $base)"
+              fail=1
+            fi
+          done <<< "${{ steps.changed.outputs.files }}"
+          exit $fail
+
+      - name: SECURITY DEFINER must SET search_path
+        if: steps.changed.outputs.files != ''
+        run: |
+          set -e
+          fail=0
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            if grep -qi 'SECURITY DEFINER' "$f"; then
+              if ! grep -qi 'search_path' "$f"; then
+                echo "::error file=$f::SECURITY DEFINER detected without SET search_path. Add: SET search_path = public, pg_temp"
+                fail=1
+              fi
+            fi
+          done <<< "${{ steps.changed.outputs.files }}"
+          exit $fail
+
+      - name: DROP statements must use IF EXISTS
+        if: steps.changed.outputs.files != ''
+        run: |
+          set -e
+          fail=0
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            # Match DROP <kind> at start of statement (allowing leading whitespace),
+            # excluding the IF EXISTS form. Multi-line aware via grep -nE.
+            if grep -nE '^\s*DROP\s+(TABLE|FUNCTION|TRIGGER|INDEX|VIEW|TYPE|SEQUENCE|POLICY|CONSTRAINT|SCHEMA|EXTENSION)\b' "$f" | grep -ivE 'IF\s+EXISTS' > /tmp/drop_violations.txt; then
+              if [ -s /tmp/drop_violations.txt ]; then
+                while IFS= read -r line; do
+                  lineno=$(echo "$line" | cut -d: -f1)
+                  echo "::error file=$f,line=$lineno::DROP without IF EXISTS — required for idempotent replay"
+                done < /tmp/drop_violations.txt
+                fail=1
+              fi
+            fi
+          done <<< "${{ steps.changed.outputs.files }}"
+          exit $fail
+
+      - name: New tables should ENABLE ROW LEVEL SECURITY (warning)
+        if: steps.changed.outputs.files != ''
+        run: |
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            if grep -qiE 'CREATE TABLE\b' "$f"; then
+              if ! grep -qiE 'ENABLE ROW LEVEL SECURITY' "$f"; then
+                echo "::warning file=$f::CREATE TABLE without ENABLE ROW LEVEL SECURITY. Confirm RLS is set up via existing trigger or document why this is a system table."
+              fi
+            fi
+          done <<< "${{ steps.changed.outputs.files }}"
