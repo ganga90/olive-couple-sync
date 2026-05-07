@@ -56,6 +56,7 @@ import {
   getRejectionReason,
   isClusterActionable,
 } from "../_shared/prompt-evolution/cluster-thresholds.ts";
+import { lintBrandVoice } from "../_shared/prompt-evolution/brand-voice-lint.ts";
 import {
   ACTION_TYPE_TO_MODULE,
   type AddendumProposal,
@@ -401,6 +402,21 @@ export async function runPromptEvolution(
     if (!draft.is_safe) {
       summary.skipped.push({
         reason: `pro_marked_unsafe: ${draft.reasoning.slice(0, 200)}`,
+        action_type: cluster.action_type,
+      });
+      continue;
+    }
+
+    // Brand-voice lint — Pro is generally good with prompted voice,
+    // but a draft that slips a forbidden buzzword or non-🌿 emoji past
+    // the system instructions becomes a production prompt once an admin
+    // approves it. The lint runs here (after is_safe, before insert) so
+    // an unfixable voice violation never reaches the admin queue.
+    // Pure, deterministic, fail-soft (returns { ok: true } on empty input).
+    const voiceLint = lintBrandVoice(draft.addendum_text);
+    if (!voiceLint.ok) {
+      summary.skipped.push({
+        reason: `voice_violations: ${voiceLint.violations.join("; ").slice(0, 200)}`,
         action_type: cluster.action_type,
       });
       continue;
