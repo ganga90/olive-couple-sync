@@ -1,0 +1,234 @@
+// calendar-delete-event
+// ─────────────────────────────────────────────────────────────────────
+// Removes a Google Calendar event for the caller and drops the local
+// `calendar_events` mirror. Created so that deleting a task in Ask Olive
+// also removes the calendar reminder — previously the FK was nulled on
+// note delete and the user was left with a ghost event on Google.
+//
+// Idempotent: 404 from Google is treated as a successful terminal state
+// (the event is already gone). Local mirror is removed regardless.
+
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  deleteGoogleEvent,
+  ensureFreshAccessToken,
+  findLinkedEventByNoteId,
+  getActiveCalendarConnection,
+  getGoogleEvent,
+  type LinkedCalendarEvent,
+  type SendUpdatesPolicy,
+} from "../_shared/google-calendar.ts";
+import {
+  logCalendarSync,
+  startSyncTimer,
+  type CalendarSyncStatus,
+} from "../_shared/calendar-sync-logger.ts";
+import { enqueueRetry, shouldRetry } from "../_shared/calendar-retry-queue.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+interface DeleteRequest {
+  user_id: string;
+  note_id?: string;
+  google_event_id?: string;
+  invoked_from?: string;
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const stop = startSyncTimer();
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  let userId = "";
+  let noteId: string | null = null;
+  let googleEventId: string | null = null;
+  let connectionId: string | null = null;
+  let invokedFrom: string | null = null;
+  let originalBody: Record<string, unknown> | null = null;
+
+  async function exit(
+    status: CalendarSyncStatus,
+    httpStatus: number,
+    payload: Record<string, unknown>,
+    extra: { google_status?: number; error?: string } = {},
+  ): Promise<Response> {
+    await logCalendarSync(supabase, {
+      user_id: userId,
+      action: "delete",
+      sync_status: status,
+      note_id: noteId,
+      connection_id: connectionId,
+      google_event_id: googleEventId,
+      http_status: extra.google_status ?? null,
+      latency_ms: stop(),
+      invoked_from: invokedFrom,
+      error_message: extra.error ?? null,
+    });
+
+    // Phase 2.1: enqueue retry on transient failures (see same logic
+    // in calendar-update-event for the rationale).
+    if (
+      shouldRetry(status) &&
+      invokedFrom !== "calendar-sync-retry" &&
+      userId &&
+      originalBody
+    ) {
+      const enq = await enqueueRetry(supabase, {
+        user_id: userId,
+        note_id: noteId,
+        action: "delete",
+        payload: { ...originalBody, invoked_from: undefined },
+        initial_failure_status: status,
+        initial_http_status: extra.google_status ?? null,
+        initial_error: extra.error ?? null,
+      });
+      if (enq.enqueued) {
+        (payload as Record<string, unknown>).retry_enqueued = true;
+        (payload as Record<string, unknown>).retry_id = enq.id;
+      }
+    }
+
+    return new Response(JSON.stringify(payload), {
+      status: httpStatus,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  try {
+    const body = (await req.json()) as DeleteRequest;
+    originalBody = body as unknown as Record<string, unknown>;
+    const { user_id, note_id, google_event_id, invoked_from } = body;
+    userId = user_id;
+    noteId = note_id ?? null;
+    googleEventId = google_event_id ?? null;
+    invokedFrom = invoked_from ?? null;
+
+    if (!user_id || (!note_id && !google_event_id)) {
+      return exit("missing_input", 200, {
+        success: false,
+        synced_to_google: false,
+        sync_status: "missing_input",
+        error: "user_id and one of {note_id, google_event_id} are required",
+      });
+    }
+
+    const connection = await getActiveCalendarConnection(supabase, user_id);
+    if (!connection) {
+      return exit("not_connected", 200, {
+        success: true,
+        synced_to_google: false,
+        sync_status: "not_connected",
+      });
+    }
+    connectionId = connection.id;
+
+    let linked: LinkedCalendarEvent | null = null;
+    if (note_id) {
+      linked = await findLinkedEventByNoteId(supabase, note_id, connection.id);
+    } else if (google_event_id) {
+      const { data } = await supabase
+        .from("calendar_events")
+        .select(
+          "id, connection_id, google_event_id, etag, title, start_time, end_time, all_day, timezone, note_id",
+        )
+        .eq("connection_id", connection.id)
+        .eq("google_event_id", google_event_id)
+        .maybeSingle();
+      linked = (data as LinkedCalendarEvent) ?? null;
+    }
+
+    if (!linked) {
+      return exit("no_linked_event", 200, {
+        success: true,
+        synced_to_google: false,
+        sync_status: "no_linked_event",
+      });
+    }
+    googleEventId = linked.google_event_id;
+
+    const tokenResult = await ensureFreshAccessToken(supabase, connection);
+    if (!tokenResult.ok) {
+      console.error("[calendar-delete-event] token refresh failed:", tokenResult.message);
+      return exit("token_refresh_failed", 200, {
+        success: false,
+        synced_to_google: false,
+        sync_status: "token_refresh_failed",
+        error: tokenResult.message,
+      }, { error: tokenResult.message });
+    }
+
+    // Phase 2.3 — pre-check attendees so cancellations notify the people
+    // on the meeting. Cancelling a meeting silently is the worst case
+    // of "moved without telling" — always surface to attendees if
+    // there are any.
+    let sendUpdates: SendUpdatesPolicy | undefined;
+    let attendeeCount = 0;
+    const peek = await getGoogleEvent(
+      tokenResult.value,
+      connection.primary_calendar_id,
+      linked.google_event_id,
+    );
+    if (peek.ok && peek.value.attendees && peek.value.attendees.length > 0) {
+      attendeeCount = peek.value.attendees.length;
+      sendUpdates = "all";
+    }
+
+    const deleteResult = await deleteGoogleEvent(
+      tokenResult.value,
+      connection.primary_calendar_id,
+      linked.google_event_id,
+      { sendUpdates },
+    );
+
+    if (!deleteResult.ok) {
+      console.error(
+        "[calendar-delete-event] Google DELETE failed:",
+        deleteResult.status,
+        deleteResult.message,
+      );
+      return exit("google_api_error", 200, {
+        success: false,
+        synced_to_google: false,
+        sync_status: "google_api_error",
+        error: deleteResult.message,
+      }, { google_status: deleteResult.status, error: deleteResult.message });
+    }
+
+    const { error: mirrorErr } = await supabase
+      .from("calendar_events")
+      .delete()
+      .eq("id", linked.id);
+
+    if (mirrorErr) {
+      console.warn("[calendar-delete-event] local mirror delete failed:", mirrorErr);
+    }
+
+    const status: CalendarSyncStatus = deleteResult.value.alreadyGone ? "already_gone" : "deleted";
+    return exit(status, 200, {
+      success: true,
+      synced_to_google: true,
+      sync_status: status,
+      attendees_notified: sendUpdates === "all" && !deleteResult.value.alreadyGone,
+      attendee_count: attendeeCount,
+    });
+  } catch (error: unknown) {
+    console.error("[calendar-delete-event] Unhandled error:", error);
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    return exit("google_api_error", 500, {
+      success: false,
+      synced_to_google: false,
+      sync_status: "google_api_error",
+      error: msg,
+    }, { error: msg });
+  }
+});

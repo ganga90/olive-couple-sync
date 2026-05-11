@@ -54,6 +54,46 @@ import {
   type ClassifiedIntent,
 } from "../_shared/intent-classifier.ts";
 import { parseNaturalDate } from "../_shared/natural-date-parser.ts";
+import {
+  classifyConfirmationReply,
+  isPendingOfferFresh,
+  type DisambiguationOffer,
+  type PendingOffer,
+} from "../_shared/pending-offer.ts";
+import {
+  clearLastAction,
+  clearPendingAction,
+  getOrCreateSession,
+  isLastActionUndoable,
+  looksLikeUndoCommand,
+  stampLastAction,
+  storePendingAction,
+  type LastAction,
+  type WebSession,
+} from "../_shared/web-session.ts";
+import {
+  PLANNABLE_INTENTS,
+  planAction,
+  planOfferForResolvedTask,
+} from "../_shared/action-planner.ts";
+import {
+  executeBulkReschedule,
+  executeDelete,
+  executeEdit,
+  executeReschedule,
+  executeUndo,
+  type ExecutedAction,
+} from "../_shared/action-executor-offers.ts";
+import {
+  buildBulkRescheduleOffer,
+  buildDeleteOffer,
+  buildDisambiguationOffer,
+  buildEditOffer,
+  buildRescheduleOffer,
+  buildResultHint,
+  buildUndoConfirmation,
+} from "../_shared/offer-copy.ts";
+import { pickDisambiguation } from "../_shared/task-disambiguation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -279,6 +319,374 @@ async function streamGeminiResponse(
 }
 
 // ============================================================================
+// CALENDAR SYNC HELPERS
+// ============================================================================
+//
+// These wrap the calendar-update-event / calendar-delete-event edge
+// functions so the action handlers can stay focused on the DB write.
+// Both helpers are intentionally swallow-and-report: a Google API error
+// must NOT block the local DB mutation — but it MUST surface in the
+// returned `calendar_sync` so the chat confirmation can say the truth
+// ("Updated in Olive, but I couldn't reach your Google Calendar").
+
+type CalendarSyncStatus =
+  | 'updated'
+  | 'deleted'
+  | 'already_gone'
+  | 'not_connected'
+  | 'no_linked_event'
+  | 'etag_conflict'
+  | 'google_api_error'
+  | 'token_refresh_failed'
+  | 'invoke_failed';
+
+interface CalendarSyncReport {
+  status: CalendarSyncStatus;
+  message?: string;
+}
+
+async function syncCalendarUpdate(
+  supabase: any,
+  userId: string,
+  noteId: string,
+  patch: { start_time?: string; all_day?: boolean; timezone?: string; title?: string },
+): Promise<CalendarSyncReport> {
+  try {
+    const { data, error } = await supabase.functions.invoke('calendar-update-event', {
+      body: { user_id: userId, note_id: noteId, patch },
+    });
+    if (error) {
+      console.warn('[ask-olive-stream] calendar-update-event invoke failed:', error);
+      return { status: 'invoke_failed', message: error.message };
+    }
+    return {
+      status: (data?.sync_status as CalendarSyncStatus) || 'invoke_failed',
+      message: data?.error,
+    };
+  } catch (e) {
+    console.warn('[ask-olive-stream] calendar-update-event threw:', e);
+    return {
+      status: 'invoke_failed',
+      message: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+// Translate a CalendarSyncReport into a one-line hint the LLM can use to
+// stay honest in the confirmation. Phrasing is deliberate: when nothing
+// went wrong on Google's side ('updated' / 'deleted' / 'not_connected' /
+// 'no_linked_event') we either confirm the sync or stay silent so the
+// chat doesn't volunteer "your calendar was updated" to a user who
+// doesn't have a calendar connected. For real failures, we explicitly
+// tell the LLM to say the calendar didn't sync.
+function buildCalendarSyncHint(report: CalendarSyncReport): string {
+  switch (report.status) {
+    case 'updated':
+      return 'CALENDAR SYNC: ✓ The linked Google Calendar event was updated to match. You can mention this naturally.\n\n';
+    case 'deleted':
+      return 'CALENDAR SYNC: ✓ The linked Google Calendar event was deleted. You can mention this naturally.\n\n';
+    case 'already_gone':
+      return 'CALENDAR SYNC: The Google Calendar event was already removed before this. The user no longer has it on their calendar.\n\n';
+    case 'not_connected':
+    case 'no_linked_event':
+      // Nothing to say — there was no calendar event to update.
+      return '';
+    case 'etag_conflict':
+    case 'google_api_error':
+    case 'token_refresh_failed':
+    case 'invoke_failed':
+      return 'CALENDAR SYNC: ✗ The change was saved in Olive but did NOT sync to Google Calendar. Tell the user honestly that you updated it in Olive but couldn\'t reach Google Calendar this time, and they can refresh or reconnect from Settings.\n\n';
+  }
+}
+
+async function syncCalendarDelete(
+  supabase: any,
+  userId: string,
+  noteId: string,
+): Promise<CalendarSyncReport> {
+  try {
+    const { data, error } = await supabase.functions.invoke('calendar-delete-event', {
+      body: { user_id: userId, note_id: noteId },
+    });
+    if (error) {
+      console.warn('[ask-olive-stream] calendar-delete-event invoke failed:', error);
+      return { status: 'invoke_failed', message: error.message };
+    }
+    return {
+      status: (data?.sync_status as CalendarSyncStatus) || 'invoke_failed',
+      message: data?.error,
+    };
+  } catch (e) {
+    console.warn('[ask-olive-stream] calendar-delete-event threw:', e);
+    return {
+      status: 'invoke_failed',
+      message: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+// ============================================================================
+// PRE-FLOW GATE — Phase 1.1 / 1.4 (web Ask Olive)
+// ============================================================================
+//
+// Runs BEFORE classification. Handles three short-circuit cases:
+//   1. Undo command ("undo" / "wait no") — reverses the last action if
+//      it's inside the 5-minute window and clears the stamp.
+//   2. Pending confirmation — when the previous turn surfaced an offer
+//      and this turn is a yes/no, execute or cancel.
+//   3. Disambiguation pick — when the previous turn was a "did you mean
+//      A or B?" and this turn names one, resolve and execute.
+//
+// Each case streams its own response and returns it; null means
+// "continue to normal classification."
+
+async function fetchUserTimezone(supabase: any, userId: string): Promise<string | null> {
+  try {
+    const { data } = await supabase
+      .from('clerk_profiles')
+      .select('timezone')
+      .eq('id', userId)
+      .maybeSingle();
+    return data?.timezone || null;
+  } catch {
+    return null;
+  }
+}
+
+async function handlePreFlowGate(args: {
+  supabase: any;
+  userId: string;
+  message: string;
+  userTimezone: string;
+  lang: 'en' | 'es' | 'it';
+}): Promise<Response | null> {
+  const { supabase, userId, message, userTimezone, lang } = args;
+
+  // 1. Undo — highest priority. A user saying "undo" after we did
+  // something should not be re-classified into something else.
+  if (looksLikeUndoCommand(message)) {
+    const undoResp = await runUndo(supabase, userId, message);
+    if (undoResp) return undoResp;
+    // No undoable action → fall through. The user might have meant
+    // something else; let normal classification take over.
+  }
+
+  // 2. Pending confirmation
+  const session = await getOrCreateSession(supabase, userId);
+  const pending = session.context_data.pending_action;
+  if (session.conversation_state === 'AWAITING_CONFIRMATION' && isPendingOfferFresh(pending)) {
+    // Disambiguation reply has its own resolution path — try it first
+    // because a user reply might match a candidate name verbatim.
+    if (pending.type === 'disambiguate') {
+      return await handleDisambiguationReply(supabase, session, pending, message, userTimezone, lang);
+    }
+
+    const confirmation = classifyConfirmationReply(message);
+    if (confirmation === 'affirm') {
+      return await executeConfirmedOffer(supabase, session, pending as Exclude<PendingOffer, DisambiguationOffer | { type: 'save_artifact' }>, userTimezone, lang);
+    }
+    if (confirmation === 'deny') {
+      await clearPendingAction(supabase, session);
+      return streamGeminiResponse(
+        `You are Olive. The user just declined a proposal you made. Acknowledge briefly and warmly (1 sentence) — no apology spiral, no follow-up question. ${OLIVE_CHAT_PROMPT}`,
+        `User declined the pending action: "${message}". Acknowledge in 1 sentence.`,
+        'lite',
+      );
+    }
+    // Neither yes nor no — clear pending and let normal classification
+    // run. The next turn's intent overrides any stale offer. WhatsApp
+    // does the same; consistency keeps surprises low.
+    await clearPendingAction(supabase, session);
+    return null;
+  }
+
+  return null;
+}
+
+// Executor for an affirmed offer. Dispatches by offer type.
+async function executeConfirmedOffer(
+  supabase: any,
+  session: WebSession,
+  offer: Exclude<PendingOffer, DisambiguationOffer | { type: 'save_artifact' }>,
+  userTimezone: string,
+  lang: 'en' | 'es' | 'it',
+): Promise<Response> {
+  let result: ExecutedAction | null = null;
+  const ctx = { supabase, userId: session.user_id, invokedFrom: 'ask-olive-stream' };
+  if (offer.type === 'reschedule_task') {
+    result = await executeReschedule(ctx, offer);
+  } else if (offer.type === 'delete_task') {
+    result = await executeDelete(ctx, offer);
+  } else if (offer.type === 'edit_task') {
+    result = await executeEdit(ctx, offer);
+  } else if (offer.type === 'bulk_reschedule_weekday') {
+    result = await executeBulkReschedule(ctx, offer);
+  }
+
+  if (!result) {
+    await clearPendingAction(supabase, session);
+    return streamGeminiResponse(
+      `You are Olive. An action you tried to perform failed. Tell the user honestly and briefly (1 sentence) and offer to try again. ${OLIVE_CHAT_PROMPT}`,
+      `The action ${offer.type} failed for ${('task_summary' in offer) ? offer.task_summary : 'this item'}. Tell the user in 1 sentence.`,
+      'lite',
+    );
+  }
+
+  // Stamp last_action for undo and clear pending in one write.
+  await stampLastAction(supabase, session, result.last_action);
+
+  const hint = buildResultHint(result, { timezone: userTimezone, lang });
+  const prompt = `You are Olive. You just executed a confirmed action. Confirm in 1-2 sentences using the EXACT phrasing in RESULT, do not invent details about the calendar. ${OLIVE_CHAT_PROMPT}`;
+  const content = `RESULT (surface this verbatim, then optionally add a brief warm closing sentence):\n${hint}`;
+  return streamGeminiResponse(prompt, content, 'lite');
+}
+
+// Handle a user reply to a disambiguation offer.
+async function handleDisambiguationReply(
+  supabase: any,
+  session: WebSession,
+  offer: DisambiguationOffer,
+  message: string,
+  userTimezone: string,
+  lang: 'en' | 'es' | 'it',
+): Promise<Response> {
+  const pick = pickDisambiguation(message, offer.candidates.map((c) => ({
+    id: c.task_id,
+    summary: c.summary,
+    due_date: c.due_date,
+    reminder_time: c.reminder_time,
+    updated_at: null,
+  })));
+
+  if (pick.kind === 'NONE_OF_THESE' || pick.kind === 'UNCLEAR') {
+    if (pick.kind === 'NONE_OF_THESE') {
+      await clearPendingAction(supabase, session);
+      return streamGeminiResponse(
+        `You are Olive. The user said none of the candidates you offered are the right one. Acknowledge in 1 sentence and invite them to rephrase. ${OLIVE_CHAT_PROMPT}`,
+        `User said none of the disambiguation candidates fit. Ask once for clearer wording.`,
+        'lite',
+      );
+    }
+    // UNCLEAR — keep the offer alive and re-ask the question.
+    return streamGeminiResponse(
+      `You are Olive. The user's reply to your disambiguation question didn't match any candidate. Re-ask which one they mean in 1 sentence and re-list the candidates as a numbered list. ${OLIVE_CHAT_PROMPT}`,
+      `Candidates still on offer:\n${offer.candidates.map((c, i) => `${i + 1}. ${c.summary}`).join('\n')}`,
+      'lite',
+    );
+  }
+
+  // We have a pick. Re-build the original intent against this task and
+  // execute as a normal confirmed offer.
+  const pi = offer.pending_intent;
+  const synth: any = {
+    intent:
+      pi.kind === 'reschedule_task' ? 'set_due'
+      : pi.kind === 'delete_task' ? 'delete'
+      : 'edit_title', // edit_* — we collapse to a single re-plan
+    target_task_id: pick.task.id,
+    target_task_name: pick.task.summary,
+    matched_skill_id: null,
+    parameters: {
+      due_date_expression: pi.kind === 'reschedule_task' ? pi.readable : null,
+      new_title: pi.kind === 'edit_task' ? pi.changes.new_title ?? null : null,
+      new_location: pi.kind === 'edit_task' ? pi.changes.new_location ?? null : null,
+      new_description: pi.kind === 'edit_task' ? pi.changes.new_description ?? null : null,
+      new_duration_minutes: pi.kind === 'edit_task' ? pi.changes.new_duration_minutes ?? null : null,
+    },
+    confidence: 0.95,
+    reasoning: 'Resolved via disambiguation pick',
+  };
+  // Bypass the planner's date re-parse: build the offer directly from the
+  // pending_intent (which already contains the resolved ISO).
+  let directOffer: PendingOffer | null = null;
+  if (pi.kind === 'reschedule_task') {
+    directOffer = {
+      type: 'reschedule_task',
+      task_id: pick.task.id,
+      task_summary: pick.task.summary,
+      field: pi.has_time ? 'reminder_time' : 'due_date',
+      new_iso: pi.new_iso,
+      has_time: pi.has_time,
+      prior_due_date: pick.task.due_date,
+      prior_reminder_time: pick.task.reminder_time,
+      readable: pi.readable,
+      timezone: pi.timezone,
+      offered_at: new Date().toISOString(),
+    };
+  } else if (pi.kind === 'delete_task') {
+    directOffer = {
+      type: 'delete_task',
+      task_id: pick.task.id,
+      task_summary: pick.task.summary,
+      prior_due_date: pick.task.due_date,
+      prior_reminder_time: pick.task.reminder_time,
+      offered_at: new Date().toISOString(),
+    };
+  } else if (pi.kind === 'edit_task') {
+    directOffer = {
+      type: 'edit_task',
+      task_id: pick.task.id,
+      task_summary: pick.task.summary,
+      changes: pi.changes,
+      prior: { summary: pick.task.summary, description: null },
+      offered_at: new Date().toISOString(),
+    };
+  }
+
+  if (!directOffer) {
+    await clearPendingAction(supabase, session);
+    return streamGeminiResponse(
+      `You are Olive. Something went wrong resolving the disambiguation. Apologize once and ask the user to rephrase. ${OLIVE_CHAT_PROMPT}`,
+      `Disambig resolution failed.`,
+      'lite',
+    );
+  }
+
+  // Execute the resolved offer directly — the user already implied
+  // affirmation by picking from the shortlist.
+  return await executeConfirmedOffer(supabase, session, directOffer as Exclude<PendingOffer, DisambiguationOffer | { type: 'save_artifact' }>, userTimezone, lang);
+}
+
+// Render the offer-line that goes to the LLM as "use this verbatim".
+function renderOfferLine(offer: PendingOffer, timezone: string, lang: 'en' | 'es' | 'it'): string {
+  switch (offer.type) {
+    case 'reschedule_task':
+      return buildRescheduleOffer(offer, { timezone, lang });
+    case 'delete_task':
+      return buildDeleteOffer(offer);
+    case 'edit_task':
+      return buildEditOffer(offer);
+    case 'disambiguate':
+      return buildDisambiguationOffer(offer);
+    case 'bulk_reschedule_weekday':
+      return buildBulkRescheduleOffer(offer, { timezone, lang });
+    case 'save_artifact':
+      // Not generated by our planner; surface a generic offer.
+      return `🌿 Save this — confirm?`;
+  }
+}
+
+// Undo handler. Pulls last_action from the session, dispatches reverse,
+// streams a one-sentence acknowledgement.
+async function runUndo(supabase: any, userId: string, _message: string): Promise<Response | null> {
+  const session = await getOrCreateSession(supabase, userId);
+  const last = session.context_data.last_action ?? null;
+  if (!isLastActionUndoable(last)) return null;
+
+  const result = await executeUndo(
+    { supabase, userId, invokedFrom: 'ask-olive-stream' },
+    last,
+  );
+  await clearLastAction(supabase, session);
+
+  const taskSummary = 'task_summary' in last ? last.task_summary : 'that one';
+  const line = buildUndoConfirmation({ kind: result.kind, reverted: result.reverted, detail: result.detail }, taskSummary);
+  const prompt = `You are Olive. Confirm the undo in 1 sentence, using the line below verbatim. ${OLIVE_CHAT_PROMPT}`;
+  const content = `UNDO RESULT (verbatim): ${line}`;
+  return streamGeminiResponse(prompt, content, 'lite');
+}
+
+// ============================================================================
 // ACTION HANDLER (P3: upgraded to use process-note + shared classifier)
 // ============================================================================
 
@@ -379,13 +787,25 @@ async function handleAction(
     const { data: tasks } = await query;
     if (!tasks || tasks.length === 0) return null;
 
+    // Tear down any linked Google Calendar event FIRST. Doing this before
+    // the clerk_notes delete keeps us from orphaning the calendar row
+    // (calendar_events.note_id has ON DELETE SET NULL — the link would
+    // be lost the moment the note is gone). Errors are non-fatal: we
+    // surface the sync state to the user via the action result.
+    const calendarSync = await syncCalendarDelete(supabase, userId, tasks[0].id);
+
     const { error } = await supabase
       .from('clerk_notes')
       .delete()
       .eq('id', tasks[0].id);
 
     if (error) return null;
-    return { action: 'task_deleted', id: tasks[0].id, summary: tasks[0].summary };
+    return {
+      action: 'task_deleted',
+      id: tasks[0].id,
+      summary: tasks[0].summary,
+      calendar_sync: calendarSync,
+    };
   }
 
   // ── SET PRIORITY ──
@@ -437,8 +857,22 @@ async function handleAction(
       if (profile?.timezone) userTimezone = profile.timezone;
     } catch {}
 
-    const parsed = parseNaturalDate(dateExpr, { timezone: userTimezone });
-    if (!parsed) return null;
+    // parseNaturalDate's signature is (expression, timezone, lang?) and it
+    // returns { date, time, readable } where `date` is a full ISO timestamp
+    // (the parser always assigns a default time when none was specified).
+    // The previous call passed `{ timezone }` as the 2nd positional arg,
+    // which coerced to "[object Object]" and broke downstream — and the
+    // handler then crashed accessing the non-existent `parsed.iso` /
+    // `parsed.hasTime`. handleAction caught the throw and returned null,
+    // which is why Ask Olive's confirmations never matched reality:
+    // the chat fell through to general-chat and hallucinated success.
+    const parsed = parseNaturalDate(dateExpr, userTimezone);
+    if (!parsed.date) return null;
+
+    // The parser doesn't expose "did the user specify a time?" directly,
+    // but `readable` includes "at H:MM" / "H:MM" only when a time-of-day
+    // was present in the user's expression. Use that as the all-day signal.
+    const hasTime = /\bat\s+\d/i.test(parsed.readable) || /\b\d{1,2}:\d{2}\b/.test(parsed.readable) || /\bin\s+\d+\s*(minute|hour|min|hr)/i.test(parsed.readable);
 
     let query = supabase
       .from('clerk_notes')
@@ -457,11 +891,11 @@ async function handleAction(
     if (!tasks || tasks.length === 0) return null;
 
     const updateFields: Record<string, any> = { updated_at: new Date().toISOString() };
-    if (parsed.hasTime) {
-      updateFields.reminder_time = parsed.iso;
-      updateFields.due_date = parsed.iso.split('T')[0];
+    if (hasTime) {
+      updateFields.reminder_time = parsed.date;
+      updateFields.due_date = parsed.date.split('T')[0];
     } else {
-      updateFields.due_date = parsed.iso.split('T')[0];
+      updateFields.due_date = parsed.date.split('T')[0];
     }
 
     const { error } = await supabase
@@ -470,7 +904,26 @@ async function handleAction(
       .eq('id', tasks[0].id);
 
     if (error) return null;
-    return { action: 'due_date_set', id: tasks[0].id, summary: tasks[0].summary, due_date: updateFields.due_date, reminder_time: updateFields.reminder_time };
+
+    // Propagate the new schedule to Google Calendar if the task is linked
+    // to an event. We DON'T fall through to chat on calendar errors — the
+    // DB write succeeded so the user's note view is correct; sync status
+    // flows back via `calendar_sync` so the confirmation message can tell
+    // the truth about what happened on Google's side.
+    const calendarSync = await syncCalendarUpdate(supabase, userId, tasks[0].id, {
+      start_time: hasTime ? parsed.date : updateFields.due_date,
+      all_day: !hasTime,
+      timezone: userTimezone,
+    });
+
+    return {
+      action: 'due_date_set',
+      id: tasks[0].id,
+      summary: tasks[0].summary,
+      due_date: updateFields.due_date,
+      reminder_time: updateFields.reminder_time,
+      calendar_sync: calendarSync,
+    };
   }
 
   // ── EXPENSE ──
@@ -635,6 +1088,26 @@ serve(async (req) => {
     const conversationHistory: Array<{ role: string; content: string }> =
       context?.conversation_history || [];
 
+    // ── Step 0: Pre-flow gate (undo / pending confirm / disambig pick) ──
+    // This MUST run before classification. The brand contract says Olive
+    // surfaces the proposal and waits for "yes" — so when an offer is
+    // pending and the user says "yes", we execute the stored plan
+    // verbatim instead of re-classifying (the LLM might disagree with its
+    // own past offer, which is how the silent-execute bug shipped).
+    const supabaseEarly = getServiceSupabase();
+    const userTimezone =
+      (await fetchUserTimezone(supabaseEarly, user_id)) ||
+      (context?.timezone as string) ||
+      'America/New_York';
+    const gateResult = await handlePreFlowGate({
+      supabase: supabaseEarly,
+      userId: user_id,
+      message,
+      userTimezone,
+      lang: (context?.language as 'en' | 'es' | 'it') || 'en',
+    });
+    if (gateResult) return gateResult;
+
     // ── Step 1: Fast regex pre-filter ────────────────────────────
     const preFilter = preFilterIntent(message, conversationHistory);
 
@@ -683,8 +1156,19 @@ serve(async (req) => {
           classifiedIntent = result.intent;
           console.log(`[ask-olive-stream] AI classified: ${classifiedIntent.intent} (conf: ${classifiedIntent.confidence})`);
 
-          // Map classified intent to effective type
-          const actionIntents = ['create', 'complete', 'delete', 'set_priority', 'set_due', 'remind', 'move', 'assign', 'expense', 'create_list'];
+          // Map classified intent to effective type. The edit_* and undo
+          // intents introduced in Phase 1.2 / 1.4 also route to 'action'
+          // — they're mutating operations subject to the same offer-
+          // before-execute contract as the rest.
+          const actionIntents = [
+            'create', 'complete', 'delete', 'set_priority', 'set_due', 'remind',
+            'move', 'assign', 'expense', 'create_list',
+            'edit_title', 'edit_location', 'edit_description', 'edit_duration',
+            'undo',
+            // Phase 3.2 — bulk operations route to action so the
+            // offer-before-execute flow runs.
+            'bulk_reschedule_weekday',
+          ];
           if (actionIntents.includes(classifiedIntent.intent)) {
             effectiveType = 'action';
           } else if (classifiedIntent.intent === 'web_search') {
@@ -862,11 +1346,56 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
       const serverCtx = await serverCtxPromise;
       const supabase = getServiceSupabase();
 
+      // Phase 1.1 — Offer-before-execute. For PLANNABLE mutating intents
+      // (set_due, remind, delete, edit_*), plan the action and surface
+      // an offer instead of executing immediately. The user's next-turn
+      // "yes" / "no" runs through handlePreFlowGate above.
+      if (PLANNABLE_INTENTS.has(classifiedIntent.intent)) {
+        const planResult = await planAction(supabase, classifiedIntent, {
+          userId: user_id,
+          spaceId: scopeSpaceId,
+          userTimezone,
+          originalMessage: message,
+        });
+
+        if (planResult.kind === 'offer') {
+          const offer = planResult.offer;
+          const session = await getOrCreateSession(supabase, user_id);
+          await storePendingAction(supabase, session, offer);
+          const offerLine = renderOfferLine(offer, userTimezone, (context?.language as 'en' | 'es' | 'it') || 'en');
+          const offerPrompt = `You are Olive. Surface this single-line offer verbatim and wait — do not execute yet. Then add ONE short sentence in your voice (warm, direct, no fluff) reminding the user they can say "yes" / "no" / "undo later". ${OLIVE_CHAT_PROMPT}`;
+          const offerContent = `OFFER TO SURFACE (use this exact phrasing for the proposal, then add your sentence):\n${offerLine}\n\nUser's original request: ${message}`;
+          scheduleMemoryEvolution(user_id, message, `Offered: ${offer.type}`);
+          return streamGeminiResponse(offerPrompt, offerContent, 'lite');
+        }
+
+        // Planning failed — fall through to the user-facing failure prompt.
+        const fail = planResult.failure;
+        const failPrompt = `You are Olive. The user asked to edit a task but planning failed. Tell them honestly and briefly what went wrong and suggest a clearer phrasing. ${OLIVE_CHAT_PROMPT}`;
+        const failContent = `Original message: "${message}"\nPlanner failure: ${JSON.stringify(fail)}\nRespond in 1-2 sentences.`;
+        scheduleMemoryEvolution(user_id, message, `Plan failed: ${fail.kind}`);
+        return streamGeminiResponse(failPrompt, failContent, 'lite');
+      }
+
+      // Undo command via classifier (regex match is preferred and runs in
+      // handlePreFlowGate; this is a safety net for less-obvious phrasings).
+      if (classifiedIntent.intent === 'undo') {
+        const undoResp = await runUndo(supabase, user_id, message);
+        if (undoResp) return undoResp;
+        // No last_action available → fall through to chat.
+      }
+
       const actionResult = await handleAction(supabase, user_id, scopeSpaceId, message, classifiedIntent);
 
       if (actionResult) {
-        const confirmPrompt = `You are Olive. You just performed an action for the user. Confirm what you did warmly and briefly. Include the specific details. ${OLIVE_CHAT_PROMPT}`;
-        const confirmContent = `ACTION PERFORMED:\n${JSON.stringify(actionResult)}\n\nUser's original request: ${message}\n\n${context?.user_name ? `User's name: ${context.user_name}` : ''}\n\nConfirm what you did in 1-2 sentences. Be specific about what was created/completed.`;
+        // Build a calendar-sync hint for the confirmation prompt so Olive
+        // doesn't lie when Google Calendar wasn't actually updated. The
+        // hint is appended only when the action touched calendar state.
+        const calSync = (actionResult as any).calendar_sync as CalendarSyncReport | undefined;
+        const calendarHint = calSync ? buildCalendarSyncHint(calSync) : '';
+
+        const confirmPrompt = `You are Olive. You just performed an action for the user. Confirm what you did warmly and briefly. Include the specific details. ${calendarHint ? 'When mentioning the calendar, be truthful — use the calendar sync state below verbatim instead of assuming Google Calendar was updated. ' : ''}${OLIVE_CHAT_PROMPT}`;
+        const confirmContent = `ACTION PERFORMED:\n${JSON.stringify(actionResult)}\n\n${calendarHint}User's original request: ${message}\n\n${context?.user_name ? `User's name: ${context.user_name}` : ''}\n\nConfirm what you did in 1-2 sentences. Be specific about what was created/completed.`;
         scheduleMemoryEvolution(user_id, message, `Action: ${actionResult.action} - ${actionResult.summary || ''}`);
         return streamGeminiResponse(confirmPrompt, confirmContent, 'lite');
       }

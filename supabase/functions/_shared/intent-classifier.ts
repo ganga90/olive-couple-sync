@@ -47,6 +47,16 @@ export interface ClassifiedIntent {
     is_urgent: boolean | null;
     partner_message_content: string | null;
     partner_action: string | null;
+    // Phase 1.2 — generic edit payload. Exactly one is populated per
+    // intent. Optional so existing handlers stay backwards-compatible
+    // when reading parameters via destructuring without these.
+    new_title?: string | null;
+    new_location?: string | null;
+    new_description?: string | null;
+    new_duration_minutes?: number | null;
+    // Phase 3.2 — bulk_reschedule_weekday payload.
+    from_dow?: number | null;
+    to_dow?: number | null;
   };
   confidence: number;
   reasoning: string;
@@ -85,6 +95,24 @@ const INTENT_SCHEMA = {
         "save_memory",
         "web_research",
         "schedule_calendar",
+        // Phase 1.2 — generic edit intents. Map cleanly onto the
+        // calendar-update-event PATCH surface, so a rename in chat
+        // also renames the linked Google Calendar event.
+        "edit_title",
+        "edit_location",
+        "edit_description",
+        "edit_duration",
+        // Phase 1.4 — undo command. Reverses the user's last mutation
+        // within UNDO_TTL_MS (5 minutes). Detected up-front so it
+        // sidesteps the rest of the classifier and routes straight to
+        // the undo handler.
+        "undo",
+        // Phase 3.2 — bulk operations. v1 is the weekday-shift case:
+        // "move all my Tuesday tasks to Thursday". The classifier
+        // emits from_dow + to_dow as parameters; the planner resolves
+        // the candidate set and surfaces a confirmation listing the
+        // affected tasks.
+        "bulk_reschedule_weekday",
       ],
     },
     target_task_id: { type: Type.STRING, nullable: true },
@@ -134,6 +162,19 @@ const INTENT_SCHEMA = {
           nullable: true,
           enum: ["remind", "tell", "ask", "notify"],
         },
+        // Phase 1.2 — payload fields for edit_* intents. Each intent
+        // populates ONE of these (the others stay null). Callers route
+        // by intent name and read the matching field.
+        new_title: { type: Type.STRING, nullable: true },
+        new_location: { type: Type.STRING, nullable: true },
+        new_description: { type: Type.STRING, nullable: true },
+        new_duration_minutes: { type: Type.NUMBER, nullable: true },
+        // Phase 3.2 — bulk_reschedule_weekday payload. Both are
+        // day-of-week integers (Sun=0..Sat=6, matching JS Date.getDay
+        // and pattern-detector). Set only for the bulk intent; null
+        // otherwise.
+        from_dow: { type: Type.NUMBER, nullable: true },
+        to_dow: { type: Type.NUMBER, nullable: true },
       },
       required: [],
     },
@@ -208,7 +249,13 @@ If a shortcut prefix is present, strip it from the content for processing. Set c
 - "complete": User wants to mark a task as done (e.g., "done with groceries", "finished!", "the dentist one is done", "cancel the last task" when they mean it's done)
 - "set_priority": User wants to change importance (e.g., "make it urgent", "this is important", "low priority")
 - "set_due": User wants to change when something is due (e.g., "change it to 7:30 AM", "postpone to Friday", "move it to tomorrow", "reschedule", "can you set it for next week?")
+- "edit_title": User wants to RENAME an existing task — change its title/summary, NOT its time or list. Examples: "rename it to 'Visit SoHo apartment'", "change the title to 'dentist follow-up'", "call it 'Mom's birthday gift' instead", "rinomina in 'cena con Sara'", "cámbiale el nombre a 'reunión con cliente'". Set target_task_name to the existing task being renamed and new_title to the new title. Confidence 0.9+ when the user uses explicit rename verbs ("rename", "change the title", "call it", "rinomina", "cámbiale el nombre").
+- "edit_location": User wants to UPDATE the location/address on a task or event. Examples: "change the location to 123 Main St", "move it to the Brooklyn office", "set the address to Carbone, 181 Thompson", "cambia il posto in Roma", "cambia la ubicación a Barcelona". Set target_task_name and new_location.
+- "edit_description": User wants to UPDATE the notes/description body of a task. Examples: "add a note: bring the contract", "update the description to mention parking", "change the notes to 'wear black tie'", "aggiungi una nota: portare il contratto". Set target_task_name and new_description.
+- "edit_duration": User wants to CHANGE how long an event/task takes. Examples: "make it a 30-minute meeting", "change duration to 2 hours", "shorten it to 15 minutes", "rendila di 30 minuti", "hazla de 1 hora". Set target_task_name and new_duration_minutes (number).
 - "delete": User wants to remove/cancel a task (e.g., "delete the dentist task", "never mind about that", "remove it", "cancel that")
+- "undo": User wants to REVERT the action Olive just performed. Examples: "undo", "undo that", "wait no", "revert", "go back", "deshazlo", "annulla", "torna indietro". This is detected pre-classifier in most flows, but include it here for safety so the classifier doesn't fight the regex. Confidence 0.95+.
+- "bulk_reschedule_weekday": User wants to MOVE ALL tasks falling on one day of the week to another day of the week. The signal is "all" / "every" / "all of my" / "all the" combined with a weekday name (source) and another weekday name (target). Examples: "move all my Tuesday tasks to Thursday", "shift everything on Friday to Saturday", "push all Wednesday meetings to Friday", "mueve todas las tareas del martes al jueves", "sposta tutto da martedì a giovedì". Set from_dow to the source day-of-week (Sun=0, Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6) and to_dow to the target day-of-week using the same numbering. This is ONLY for bulk operations across a set of tasks; if the user specifies a single task ("move my dentist task from Tuesday to Thursday"), classify as "set_due" instead — single-task rescheduling has its own intent. Confidence 0.9+ when the message uses "all" / "every" / explicit plurals; otherwise drop to single-task interpretation.
 - "move": User wants to move a task to a different list (e.g., "move it to groceries", "put it in the work list")
 - "assign": User wants to assign a task to their partner (e.g., "give this to Marcus", "assign it to my partner", "let her handle it")
 - "remind": User wants a reminder — EITHER on an existing task OR creating a new one with a reminder. Examples: "remind me at 5 PM" (existing context), "remind me about this tomorrow" (existing task), "Moonswatch - remind me to check it out on March 6th" (NEW item + reminder), "remind me to call the dentist next Monday" (NEW task + reminder). Use target_task_name for the subject/task name and due_date_expression for the time. The system will auto-create a new task if no existing one matches.

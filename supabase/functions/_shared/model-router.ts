@@ -176,6 +176,14 @@ export const INTENT_CONFIDENCE_FLOORS: Record<string, number> = {
   move: 0.90,
   assign: 0.90,
   set_priority: 0.85,
+  // Phase 3.2 — bulk operations affect N tasks at once. We set a
+  // HIGHER floor than single-task set_due (0.90) because the blast
+  // radius is bigger; a low-confidence misclassification on
+  // "move all my Tuesday tasks" can stamp a dozen wrong shifts. The
+  // offer-before-execute loop still catches errors, but raising the
+  // floor adds a second line of defense — under-confident bulks
+  // route through the clarification flow.
+  bulk_reschedule_weekday: 0.92,
 };
 
 export interface ConfidenceCheck {

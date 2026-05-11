@@ -12,6 +12,1104 @@ there are no behavioral rollbacks.
 
 ---
 
+## 2026-05-10 — Phase 2.2: bidirectional sync via Google push channels
+
+Closes the last piece of the reliability story. Before this, Olive →
+Google sync was real-time (Phase 1) but Google → Olive only happened
+when the user manually triggered `fetch_events`. A user who edited
+an event in Google's web/mobile UI would see stale state in Olive
+until the next manual sync. This phase wires Google's
+push-notification system so changes flow both directions in
+near-real-time.
+
+**How push channels work (and where Phase 2.2 sits in that picture)**
+
+- Olive registers a "watch channel" against the user's primary
+  calendar via `POST /events/watch`. Google returns a channel id +
+  expiration; we store both on the connection.
+- When anything on the calendar changes, Google POSTs to our
+  callback URL (`calendar-watch-callback`) with an empty body — just
+  headers identifying the channel and the event type (`sync` /
+  `exists` / `not_exists`).
+- We verify the channel token (echoed in `X-Goog-Channel-Token`),
+  fetch the changes incrementally using a stored sync token, and
+  reconcile each event into our `calendar_events` mirror. If the
+  changed event is linked to an Olive task (`note_id` set), we mirror
+  the time change back to `clerk_notes` so the task view stays in
+  sync.
+- Channels expire (Google caps at 30 days, default ~7 days for
+  `web_hook` channels). An hourly renewal cron walks any connection
+  whose expiry is within 24 hours and re-registers.
+
+**Files**
+
+Migration:
+- `supabase/migrations/20260510234644_calendar_watch_channels.sql` —
+  adds `watch_channel_id`, `watch_resource_id`, `watch_token`,
+  `watch_expiry_at`, `watch_state` to `calendar_connections`. Two
+  indexes (unique on `watch_channel_id` for callback lookup; partial
+  on `watch_expiry_at` for renewal scan). pg_cron schedule
+  `olive-calendar-watch-renew` at `17 * * * *` (hourly + 17min offset
+  to dodge cron fan-out at :00).
+
+Shared helpers (`_shared/google-calendar.ts`):
+- `watchCalendarChannel(accessToken, calendarId, args)` — POSTs to
+  `/events/watch`. Returns channel id + Google-assigned resource id
+  + expiration (ms).
+- `stopCalendarChannel(accessToken, args)` — POSTs to `/channels/stop`.
+  Idempotent: 404/410 treated as success.
+- `listEventsIncremental(accessToken, calendarId, args)` — incremental
+  events.list with `syncToken`. Returns events + nextSyncToken +
+  nextPageToken + `needsFullResync` flag (true when Google returns
+  410 Gone on an expired sync token).
+
+New shared module `_shared/calendar-reconciler.ts`:
+- `reconcileFromGoogle(supabase, connection, invokedFrom)` — top-level
+  driver. Loads the stored sync token, pages through changes, applies
+  per-event reconciliation, persists new token. Logs aggregate
+  outcome to `olive_calendar_sync_log` with `invoked_from` for
+  segmentation.
+- Per-event semantics:
+  - `status='cancelled'` → DELETE local mirror; clear linked
+    `clerk_notes.due_date/reminder_time` so the task view doesn't
+    keep a stale schedule for an event the user cancelled on Google.
+  - `confirmed/tentative` with existing local row → UPDATE the
+    mirror; mirror time changes back to `clerk_notes` if linked.
+    This is the user-visible payoff: editing on Google updates Olive.
+  - New events (no local row) → INSERT as `event_type='from_calendar'`
+    so they show up in calendar views + conflict detection.
+- Batched lookup: existing rows pulled in one SELECT IN, not per-
+  event. O(page_size) reads regardless of page size.
+
+New edge functions:
+- `calendar-watch-register/index.ts` — registers (or re-registers)
+  a channel for a connection. Idempotent: stops any existing
+  channel first. Mints a UUIDv4 channel id and a crypto-strong
+  base64url token. On registration failure, marks the connection
+  `watch_state='failed'` so the renewal cron retries.
+- `calendar-watch-callback/index.ts` — Google's webhook receiver.
+  - `verify_jwt=false` in `config.toml` (Google sends no auth).
+  - Verifies `X-Goog-Channel-Token` via constant-time equality
+    against the per-connection stored token (no timing side-channel).
+  - Handles `sync` (no-op ack), `not_exists` (mark stopped, let
+    renewal re-register), `exists` (run `reconcileFromGoogle`).
+  - Always responds 200 quickly so Google doesn't pile up retries
+    on malformed payloads.
+- `calendar-watch-renew/index.ts` — hourly cron-driven renewal.
+  Pulls connections whose `watch_expiry_at <= now+24h` OR
+  `watch_state` in (`failed`, `stopped`). Re-registers via
+  `calendar-watch-register`, then runs a post-renew reconcile to
+  close the brief gap between old-stop and new-register.
+
+Wired into existing edge functions:
+- `calendar-callback/index.ts` — after a fresh connection is saved,
+  invokes `calendar-watch-register` automatically. Lenient: a
+  registration failure does NOT block the OAuth redirect (the user
+  is mid-flow). Renewal cron self-heals.
+- `calendar-sync/index.ts` — disconnect path now stops the watch
+  channel BEFORE deleting the connection. Without this, Google
+  keeps delivering callbacks to a channel we'll no longer recognize,
+  logging noise indefinitely.
+
+Config:
+- `supabase/config.toml` — `verify_jwt = false` for
+  `calendar-watch-callback` (Google sends no auth). The other two
+  new endpoints stay JWT-protected (internal callers only:
+  `supabase.functions.invoke` from `calendar-callback`, and
+  `pg_cron` with service-role Bearer for the renewal job).
+
+**Security model**
+
+- **Channel authentication via random token.** On registration we
+  mint a 48-byte crypto-random secret (base64url'd to 64 chars) and
+  send it to Google. Google echoes it back as
+  `X-Goog-Channel-Token` on every callback. Verified via
+  constant-time equality so the token can't be brute-forced via
+  response-time side channels.
+- **Channel id verification.** Lookup-by-channel-id returns the
+  connection if-and-only-if it's a channel we registered. Unknown
+  channel ids 200 silently so Google stops retrying.
+- **Service-role for DB writes.** All inbound reconciliation writes
+  use the service-role key. RLS is irrelevant because the rows
+  carry `connection_id`, which we lookup-then-write; the user is
+  identified by ownership of the connection.
+- **Timing safety on disconnect.** Channel `stop` runs BEFORE the
+  connection deletion so we never leave Google sending callbacks
+  to a channel-id-now-orphaned-from-the-DB.
+
+**Verification**
+
+- New tests: **18** — 9 in `google-calendar.test.ts`
+  (`watchCalendarChannel` body shape, `stopCalendarChannel`
+  idempotency, `listEventsIncremental` syncToken / pagination /
+  410 Gone path), 9 in `calendar-reconciler.test.ts` (cancelled
+  with/without linked note, edited timed/all-day with linked note,
+  new event inserts as from_calendar, malformed event skipped,
+  batched-not-per-event lookup).
+- Full `_shared/` test suite: **1060 passed, 0 failed** (was 1042
+  before 2.2).
+- `deno check` clean on all 4 new + 3 modified files.
+- `whatsapp-webhook/index.ts`: 9 pre-existing errors, 0 new.
+- `ask-olive-stream/index.ts`: 3 pre-existing errors, 0 new.
+- End-to-end exercise requires:
+  - Live Supabase project with the new migration applied
+  - Service-role + URL settings on the database (for pg_cron)
+  - A publicly reachable edge function URL (Supabase provides this
+    automatically once deployed)
+  - A real Google Calendar account with an OAuth connection
+  - A manual trigger of `fetch_events` once to seed the initial
+    sync token in `calendar_sync_state` (the watch callback path
+    is guarded by `if (!startingToken) return needsFullResync`,
+    so cold connections need one manual seed before push starts
+    flowing)
+  None of these can be simulated here.
+
+**Known v1 boundaries**
+
+- **Cold-start sync token seeding.** The reconciler bails with
+  `needsFullResync` when no sync token exists yet. Today the
+  manual `/fetch_events` action is what seeds it; we could
+  auto-trigger a seed during `calendar-watch-register` but that
+  doubles the OAuth-completion path's latency. Phase 2.2.5 work
+  if seeding turns out to be a UX issue.
+- **Primary calendar only.** We watch
+  `connection.primary_calendar_id`. Users with multiple calendars
+  (Work + Personal) don't get push for the secondary ones — Phase
+  3.3 (multi-calendar) will widen this.
+- **No conflict resolution between outbound and inbound.** If the
+  user edits the same event on both Google and Olive within a few
+  seconds, the LAST inbound reconciliation wins (mirror just
+  overwrites). Acceptable for v1 — the etag-conflict path in
+  `calendar-update-event` already handles the outbound side.
+- **`channels/stop` failure on disconnect is non-fatal.** A failed
+  stop means Google may deliver a few more callbacks before the
+  channel times out; those hit the unknown-channel branch in
+  `calendar-watch-callback` and log warnings until the channel
+  expires (≤30 days).
+
+**Migration apply**
+
+`20260510234644_calendar_watch_channels.sql` is committed but NOT
+yet applied. Apply via Supabase MCP `apply_migration` with name
+`calendar_watch_channels`. Edge functions degrade gracefully when
+the table doesn't yet have the new columns (registration writes
+fail, render the connection `watch_state='failed'`, but everything
+else keeps working).
+
+| 2026-05-10 | PHASE2-2 | supabase/migrations/20260510234644_calendar_watch_channels.sql, supabase/functions/_shared/google-calendar.ts (+test), supabase/functions/_shared/calendar-reconciler.ts (+test), supabase/functions/calendar-watch-register/index.ts, supabase/functions/calendar-watch-callback/index.ts, supabase/functions/calendar-watch-renew/index.ts, supabase/functions/calendar-callback/index.ts, supabase/functions/calendar-sync/index.ts, supabase/config.toml | Phase 2.2: bidirectional sync via Google Calendar push channels |
+
+---
+
+## 2026-05-10 — Phase 3.2: bulk reschedule by weekday
+
+The first bulk operation. "Move all my Tuesday tasks to Thursday" now
+works on web Ask Olive and WhatsApp. The classifier emits a new
+`bulk_reschedule_weekday` intent with day-of-week parameters; the
+planner resolves the candidate set; the offer surfaces a preview list
+of every affected task before any mutation happens; one "yes" commits
+the whole batch with per-task DB writes + per-task Google Calendar
+sync; one "undo" rolls everything back together.
+
+**Example output**
+
+```
+🌿 Move 3 tasks from **Tuesday** to **Thursday**:
+• Visit apartment
+• Call dentist
+• Pick up dry cleaning
+Confirm?
+```
+
+After confirmation:
+```
+Moved 3 tasks to Thursday and synced to your Google Calendar.
+Reply "undo" within 5 minutes to revert.
+```
+
+Partial-failure path stays honest — "Moved 5 of 7. 2 couldn't be
+saved." with the calendar aggregate suffix telling the user whether
+the rest reached Google.
+
+**v1 scope (intentional limits, called out for follow-ups)**
+
+| In | Out |
+|---|---|
+| `bulk_reschedule_weekday` only (day-of-week predicate) | `bulk_delete`, `bulk_shift` (relative shifts like "push by a week") |
+| Preview list ≤5 inline, "and N more" tail for larger batches | Cascade conflict detection per task (would balloon the offer copy) |
+| Per-task DB + Google sync via existing edge functions | Time-band predicates ("morning tasks"), list-name predicates |
+| Bulk undo (single "undo" reverses every task) | Auto-suggest alternate target day when conflicts exist |
+| Time-of-day preserved across the shift in user's timezone | Bulk operations on NEW task creation flow |
+| Forward-only date walk: Thursday → Tuesday lands on NEXT Tuesday | Re-shifting within an already-active bulk offer |
+
+**Confidence floor.** Bulk operations get a HIGHER floor than single-
+task set_due (0.92 vs 0.90) because the blast radius is bigger — a
+low-confidence misclassification on "all my Tuesday tasks" can stamp
+a dozen wrong shifts. The offer-before-execute loop still catches
+errors, but raising the floor is a second line of defense.
+
+**Architecture**
+
+- **Classifier (`_shared/intent-classifier.ts`).** New intent +
+  `from_dow` / `to_dow` params (Sun=0..Sat=6). Multilingual prompt
+  example. "all" / "every" / explicit plurals required for the bulk
+  classification; ambiguous phrasing routes to single-task `set_due`.
+- **`_shared/bulk-resolver.ts`** (new):
+  - `resolveWeekdayCandidates`: queries incomplete tasks for the user,
+    filters in-app to day-of-week-in-user-tz matches. Bounded at 50
+    candidates per call. Date-only `due_date` values are interpreted
+    as user-local calendar dates (not UTC midnight) so a Tuesday
+    `due_date` is Tuesday regardless of the user's tz.
+  - `shiftToWeekday`: pure helper that produces a new UTC ISO with
+    the date forward-walked to the target day-of-week and the
+    time-of-day preserved via `toUtcFromLocalParts`. DST-aware.
+- **`BulkRescheduleOffer` + `LastAction.bulk_reschedule_task`.** New
+  variants on the existing discriminated unions. Per-task prior state
+  is captured in the offer (immune to clock drift between offer and
+  confirm) and propagated to the undo stamp so the single "undo"
+  reverses every entry.
+- **Planner (`action-planner.ts`).** `planAction` short-circuits to
+  `planBulkRescheduleWeekday` for the new intent — different shape
+  (predicate→set) than single-task disambiguation. Validates
+  from_dow/to_dow, rejects same-dow no-ops, surfaces
+  `no_bulk_candidates` honestly when the set is empty.
+- **Executor (`action-executor-offers.ts`).** `executeBulkReschedule`
+  loops candidates, applies the same per-task DB + sync as single-task
+  reschedule, aggregates outcomes into `calendar_aggregate` (one of
+  `all_synced` / `partial` / `none_synced` / `not_connected` /
+  `no_linked_events`). Per-task failures don't abort the loop —
+  retries flow through the Phase 2.1 queue.
+- **Undo.** Bulk branch in `executeUndo` reverses every entry; reports
+  partial-undo honestly ("3 of 5 restored — 2 failed").
+- **Copy.** New `buildBulkRescheduleOffer` + `buildBulkResultHint` in
+  `offer-copy.ts` (markdown-leaning for web), and new
+  WhatsApp-style strings + `bulkDayName` / `tasksWord` helpers in the
+  webhook. en / es / it across both surfaces.
+- **WhatsApp port.** `mapAIResultToIntentResult` extended with
+  `_fromDow` / `_toDow` underscored fields. New TaskActionType case.
+  New `confirm_bulk_reschedule` / `done_bulk_all` /
+  `done_bulk_partial` / `bulk_calendar_*` / `done_undo_bulk` /
+  `bulk_no_candidates` t() strings (en/es/it). Short-circuit in
+  TASK_ACTION handler so the bulk path doesn't trip the
+  single-task `foundTask` resolution. New AWAITING_CONFIRMATION
+  execute branch. Bulk undo wired into the existing undo gate.
+- **Pattern learning (Phase 3.5) gets reinforced.** Each candidate
+  in a bulk move triggers `recordReschedulePattern`, so a bulk
+  Tue→Thu produces N reinforcements of the (Tue, Thu) pattern in
+  one user action — exactly the kind of strong signal that should
+  surface a hint on the user's next single-task move.
+
+**Verification**
+
+- New tests: **25** — 13 in `bulk-resolver.test.ts` (pure
+  `dayOfWeekInTz` + `shiftToWeekday` math including DST, plus
+  resolver behavior via mock supabase including the date-only
+  Tuesday-stays-Tuesday case), 12 in `offer-copy.test.ts`
+  (en/es/it offer builders, plural handling, "and N more" tail,
+  bulk result hints with calendar aggregates, bulk undo
+  confirmation).
+- Full `_shared/` test suite: **1041 passed, 0 failed** (was 1016
+  before 3.2). 0 regressions.
+- `deno check` clean on the 1 new + 5 modified shared modules.
+- `ask-olive-stream/index.ts`: 3 errors, all pre-existing.
+- `whatsapp-webhook/index.ts`: 9 errors, all pre-existing. 0 new.
+- End-to-end exercise needs live Supabase + a user with multiple
+  tasks on the same weekday. Detection / planner / copy / undo
+  math are all exercised by tests.
+
+**Bugs caught during implementation**
+
+- **Date-only timezone interpretation (latent, fixed in 2 places).**
+  `new Date("2026-05-12")` parses as UTC midnight, which is the
+  PREVIOUS day in any negative-offset timezone. Without special
+  handling, a Tuesday `due_date` would have been classified as
+  Monday for NY users — off-by-one on every all-day task.
+  - Fixed in `bulk-resolver.ts:dayOfWeekInTz` (caught by a resolver
+    test that fed mixed `reminder_time`/`due_date` rows).
+  - Same bug existed in `pattern-detector.ts:dayOfWeekInTz` (the
+    Phase 3.5 pattern recorder reads `prior_due_date` from the
+    offer, which for all-day tasks is the same YYYY-MM-DD shape).
+    Fixed for consistency with a pinned test, otherwise every
+    all-day Tuesday reschedule by a NY user would have recorded
+    `from_dow=1` (Monday) instead of `from_dow=2` (Tuesday) — slowly
+    poisoning the pattern store with off-by-one shifts.
+
+| 2026-05-10 | PHASE3-2 | supabase/functions/_shared/intent-classifier.ts, supabase/functions/_shared/model-router.ts, supabase/functions/_shared/bulk-resolver.ts (+test), supabase/functions/_shared/pending-offer.ts, supabase/functions/_shared/web-session.ts, supabase/functions/_shared/action-planner.ts, supabase/functions/_shared/action-executor-offers.ts, supabase/functions/_shared/offer-copy.ts (+test), supabase/functions/ask-olive-stream/index.ts, supabase/functions/whatsapp-webhook/index.ts | Phase 3.2: bulk reschedule by weekday — preview, execute, undo, en/es/it, web + WhatsApp |
+
+---
+
+## 2026-05-10 — Phase 3.6 + 3.5: time-only edits + pattern learning
+
+Two complementary shipping units. 3.6 is small and lifts existing
+WhatsApp behavior onto the web side. 3.5 is the moat — the first piece
+of Olive's memory advantage applied directly to calendar offers.
+
+### Phase 3.6 — time-only edits on dated tasks
+
+**The capability.** "change it to 7am" against an existing dated task
+now works on web Ask Olive. The expression carries a time but no date;
+the planner anchors the time to the task's existing
+`reminder_time` / `due_date` (or today, if neither). WhatsApp has had
+this since PR4 via `extractTimeOnly` — web didn't, so the same
+correction would return `unparseable_date` and the user had to restate
+the full date.
+
+**Implementation.**
+- New `resolveTimeOnlyEdit(expression, anchorIso, timezone)` in
+  `_shared/action-planner.ts` — pure, DST-safe (uses
+  `toUtcFromLocalParts` not `setUTCHours`), exported for direct unit
+  testing without a Supabase mock.
+- Wired into the planner's `set_due` / `remind` branch as a fallback
+  after `parseNaturalDate` returns no date.
+- Anchor priority: `fullRow.reminder_time` → `fullRow.due_date` →
+  `task.reminder_time` → `task.due_date` → `new Date()` (today).
+- Supports en ("7am", "7:30 PM"), it ("alle 8", "alle 14:30"), es
+  ("a las 14:30"), and bare 24h ("14:00") — same coverage as
+  `extractTimeOnly`.
+
+**Files**
+- Modified: `supabase/functions/_shared/action-planner.ts` (+ test
+  extension covering 9 cases including DST and ambiguous-digit
+  rejection).
+
+### Phase 3.5 — pattern learning (foundation)
+
+**The capability.** When a user reschedules tasks in a repeatable way
+(e.g. Tue→Thu three weeks running), Olive notices and surfaces the
+pattern in the offer line: *"By the way, you often move Tuesday things
+to Thursday."* Detect → store → surface; no proactive action yet.
+
+**Example output** (after enough observations):
+
+```
+🌿 Move *Visit apartment* — Tue May 12 → Thu May 14, 6:00 PM.
+   By the way, you often move Tuesday things to Thursday. Confirm?
+```
+
+When a conflict ALSO exists, the conflict reads first (more urgent
+signal) and the pattern hint reads second (soft "by the way" voice):
+
+```
+🌿 Move ... Heads up: "Dinner with Sara" at 6:30 PM.
+   By the way, you often move Tuesday things to Thursday. Confirm?
+```
+
+**Confidence thresholds (tuned conservatively).**
+- `MIN_COUNT = 3` — at least 3 observations of THIS specific shift
+- `MIN_CONFIDENCE = 0.5` — at least 50% of observed reschedules
+  match it
+
+Both must hit before surfacing. This prevents false-positive hints on
+single accidental reschedules and on users who reschedule chaotically
+(count high but confidence low). Pinned in tests so future tuning is
+deliberate.
+
+**v1 pattern type.** `weekday_shift` only (e.g. Tuesday→Thursday).
+Easiest to extract from a (prior_iso, new_iso) pair and the highest-
+frequency reschedule habit in practice. Future variants
+(time_band_shift, duration_change, day-of-month-shift) plug in as new
+`pattern_type` discriminators against the same table + RPC — the
+detector's `extractFeatures` returns an array to leave that open.
+
+**Architecture.**
+- **Migration** `20260510224712_olive_user_patterns.sql` — per-user
+  pattern store. Unique index on (user_id, pattern_type, fingerprint)
+  + SECURITY-DEFINER RPC `olive_record_user_pattern` that does an
+  atomic upsert and bumps `total_observations` on every matching row
+  for the user so the confidence denominator stays current. RLS:
+  SELECT scoped to the owning user (so a future "what does Olive know
+  about me?" page works without service-role keys); writes
+  service-role only.
+- **`_shared/pattern-detector.ts`** —
+  - `extractFeatures` (pure): turns a (prior, new) pair into a list of
+    typed patterns. Day-of-week computed in the user's timezone (NOT
+    UTC) because a 23:30 UTC reschedule lands on different days for
+    NY vs Sydney users.
+  - `recordReschedulePattern`: post-execute, fires the RPC.
+    Non-blocking; failures swallow.
+  - `findMatchingPatterns`: pre-offer, returns at most one strong
+    match per call. Confidence-gated. Filters to patterns whose
+    `to_dow` equals the user's proposed day.
+- **Pattern hint copy:**
+  - `offer-copy.ts` → `buildPatternHintClause` + soft "by the way"
+    voice (en/es/it). Threaded into `buildRescheduleOffer` AFTER the
+    conflict clause.
+  - `_shared/whatsapp-pattern-copy.ts` → `buildWhatsAppPatternSuffix`
+    with 💡 emoji prefix (en: "By the way, you often move…" /
+    es: "Sueles mover…" / it: "Di solito sposti…").
+- **Wiring.**
+  - Web: `action-executor-offers.ts` records after every successful
+    reschedule; `action-planner.ts` reads at offer time and attaches
+    `pattern_hints` to the offer.
+  - WhatsApp: post-execute branches for `set_due_date` and
+    `set_reminder` call `recordReschedulePattern`; offer builders for
+    `set_due` and `remind` call `findMatchingPatterns` and append
+    `buildWhatsAppPatternSuffix` to the existing confirm reply.
+
+**Files**
+
+New:
+- `supabase/migrations/20260510224712_olive_user_patterns.sql`
+- `supabase/functions/_shared/pattern-detector.ts` (+ test, 14 cases)
+- `supabase/functions/_shared/whatsapp-pattern-copy.ts` (+ test, 9 cases)
+
+Modified:
+- `supabase/functions/_shared/pending-offer.ts` —
+  `RescheduleTaskOffer.pattern_hints` added.
+- `supabase/functions/_shared/action-planner.ts` — pattern lookup
+  wired into reschedule path via `safeFindPatterns`.
+- `supabase/functions/_shared/action-executor-offers.ts` — recorder
+  call after a confirmed reschedule.
+- `supabase/functions/_shared/offer-copy.ts` (+ test extension,
+  9 new cases) — `buildPatternHintClause` + threading into
+  `buildRescheduleOffer`.
+- `supabase/functions/whatsapp-webhook/index.ts` — recorder calls in
+  the AWAITING_CONFIRMATION executor for `set_due_date` and
+  `set_reminder`; lookup + suffix in their offer builders.
+
+### Verification (3.6 + 3.5 combined)
+
+- New tests: **41** (9 for 3.6 time-only fallback; 14 for the pattern
+  detector covering pure extraction, timezone-aware day classification,
+  confidence gating, RPC call shape, and error swallowing; 9 for
+  offer-copy pattern clause; 9 for the WhatsApp pattern suffix).
+- Full `_shared/` test suite: **1016 passed, 0 failed** (was 975
+  before 3.6 / 3.5).
+- `deno check` clean on all 4 new + modified shared modules.
+- `whatsapp-webhook/index.ts`: 9 errors, all pre-existing. 0 new.
+- End-to-end exercise requires live Supabase + populated
+  `olive_user_patterns` data (which requires user actions to
+  accumulate). The detection and surface logic is exercised by tests;
+  live behavior emerges after deploys land + a user reschedules ≥3
+  times in the same pattern.
+
+### Why these together
+
+3.6 alone is too small to merit a CHANGES.md heading; 3.5 alone is
+large enough to feel like a milestone. Shipping them together also
+lets the new pattern recorder benefit from the cleaner time-only
+fallback path — when a user "moves it to 7am" repeatedly against
+existing dated tasks, those reschedules now show up in the pattern
+store with correct day-of-week extraction.
+
+### Known v1 boundaries
+
+- **Surfacing only** for now — Phase 3.5 v1 doesn't proactively
+  suggest a better default at new-task-creation time. That requires
+  the create flow to go through the offer loop, which it currently
+  doesn't on web. When it does, the pattern reader API is ready to
+  slot in unchanged.
+- **No expiry** on patterns yet. If a user's habit changes (used to
+  move Tue→Thu, now moves Tue→Wed), the old pattern lingers until
+  the new one accumulates enough observations to dominate by
+  confidence. Acceptable for v1; a sliding-window pattern decay is a
+  reasonable Phase 3.5.5 follow-up.
+- **One pattern_type** (`weekday_shift`). Time-of-day band shifts
+  ("you usually move morning tasks to evening") are valuable but
+  noisier to detect well — would need bucket boundaries that don't
+  fight the user's natural language. Deferred.
+
+### Migration apply
+
+The new migration `20260510224712_olive_user_patterns.sql` is
+committed but NOT yet applied. Apply via Supabase MCP
+`apply_migration` with name `olive_user_patterns`. The detector
+degrades gracefully if the table is missing (RPC errors swallow), so
+edge function code can deploy first; pattern surfacing kicks in once
+both land.
+
+| 2026-05-10 | PHASE3-6 | supabase/functions/_shared/action-planner.ts (+test) | Phase 3.6: time-only edit fallback on web |
+| 2026-05-10 | PHASE3-5 | supabase/migrations/20260510224712_olive_user_patterns.sql, supabase/functions/_shared/pattern-detector.ts (+test), supabase/functions/_shared/whatsapp-pattern-copy.ts (+test), supabase/functions/_shared/pending-offer.ts, supabase/functions/_shared/action-planner.ts, supabase/functions/_shared/action-executor-offers.ts, supabase/functions/_shared/offer-copy.ts (+test), supabase/functions/whatsapp-webhook/index.ts | Phase 3.5: pattern learning foundation — record + lookup + surface |
+
+---
+
+## 2026-05-10 — Phase 3.1: conflict detection at offer time
+
+The first piece of the "intelligence" tier. Before Olive confirms a
+reschedule, she scans the user's calendar around the proposed time and
+surfaces overlaps in the offer line. This is the moat — an LLM-driven
+assistant without visibility into the user's actual calendar always
+feels naïve. Olive has the calendar mirror AND the offer loop;
+combining them is the highest-leverage intelligence we can ship today.
+
+**Example output**
+
+Before:
+```
+🌿 Move *Visit apartment* — Tue May 12 → Thu May 14, 6:00 PM. Confirm?
+```
+
+After (when conflict detected):
+```
+🌿 Move *Visit apartment* — Tue May 12 → Thu May 14, 6:00 PM.
+   Heads up: "Dinner with Sara" at 6:30 PM. Confirm?
+```
+
+Multi-conflict and "noisy schedule" cases summarize:
+```
+   Heads up: 2 things on your calendar then — "Dinner" at 6:30 PM and "Gym" at 7:45 PM.
+   Heads up: 4 events on your calendar around then.
+```
+
+**Where it shows up**
+
+- Web Ask Olive `set_due` / `remind` offers (planner integration)
+- Web `edit_duration` offers (only when duration changes the event window)
+- WhatsApp `set_due` / `set_reminder` offer builders
+- Localized in en / es / it ("Heads up" / "Aviso" / "Attenzione")
+- All-day events in the proposed window flagged with "is also on that day"
+- Adjacent-but-not-overlapping events suppressed when a real overlap
+  exists, so the user isn't distracted by less-important neighbors
+- `excludeNoteId` stops the event being moved from flagging itself as
+  a conflict against its own new time
+
+**Files**
+
+New:
+- `supabase/functions/_shared/conflict-detector.ts` (+ test) — DB-only
+  scan over `calendar_events`. Pure overlap helpers
+  (`computeOverlapMinutes`, `windowsOverlap`) exported for reuse.
+- `supabase/functions/_shared/whatsapp-conflict-copy.ts` (+ test) —
+  WhatsApp-style suffix builder (emoji-aware, t()-templated, en/es/it).
+
+Modified:
+- `supabase/functions/_shared/pending-offer.ts` — `RescheduleTaskOffer`
+  and `EditTaskOffer` carry an optional `conflicts: ConflictSummary[]`.
+  Absent → planner didn't run detection (older offers, no calendar
+  connection); empty → ran and found nothing; populated → surface in
+  the offer copy.
+- `supabase/functions/_shared/action-planner.ts` — `planAction` /
+  `planOfferForResolvedTask` now take an optional supabase client and
+  call `findConflicts` on reschedule + edit_duration paths. Wraps in
+  a swallow-and-warn helper so a DB hiccup never blocks the offer.
+  `fetchTaskRow` was a stub returning null — now actually fetches
+  summary / original_text / due_date / reminder_time when a client is
+  available, which unlocks the duration-edit conflict path.
+- `supabase/functions/_shared/offer-copy.ts` — `buildConflictClause`
+  produces the localized "Heads up" line (1 / 2-3 / many variants
+  per language). Threaded into `buildRescheduleOffer` and the
+  duration-edit branch of `buildEditOffer`.
+- `supabase/functions/whatsapp-webhook/index.ts` — `set_due` and
+  `set_reminder` offer builders now run conflict detection and append
+  the localized suffix to the existing `confirm_set_*` t() reply.
+
+**Verification**
+
+- New tests: 37 (8 conflict-detector logic + DB-mock cases, 12
+  whatsapp-conflict-copy en/es/it variants, 17 offer-copy clause and
+  reschedule-offer integration cases).
+- Full `_shared/` test suite: **975 passed, 0 failed** (was 938 before
+  Phase 3.1).
+- `deno check` clean on the 2 new shared modules and 3 modified ones.
+- `whatsapp-webhook/index.ts`: 9 errors, all pre-existing. 0 new.
+- `ask-olive-stream/index.ts`: 3 errors, all pre-existing.
+- End-to-end exercise needs live Supabase + a populated
+  `calendar_events` mirror (which itself requires connected Google
+  Calendar). Code is ready for `supabase functions deploy
+  ask-olive-stream ask-olive-individual whatsapp-webhook`.
+
+**Why this works without new infrastructure**
+
+- No migration needed — uses the existing `calendar_events` mirror
+  populated by `calendar-sync` on a 15-min cadence.
+- No new edge function — runs inline at offer-planning time on the
+  same client that already does all the planning.
+- Graceful degradation — users without a calendar connection silently
+  get empty conflict arrays, identical to pre-3.1 behavior.
+
+**Out of scope (deferred to later phases)**
+
+- Auto-suggest a better time slot. The user sees the conflict, the
+  system trusts them to pick. A "best alternate slot" suggestion needs
+  scheduling-graph reasoning that compounds in complexity (work hours,
+  travel time, recurring blocks) — not a v1 piece.
+- Cascade reschedule ("also move dinner to 7:30?"). That's Phase 3.2
+  bulk-edit territory.
+- Travel-time-aware overlap. Needs Google Maps integration; Phase 3.3.
+- Conflict detection on NEW task creation. Today only edits go through
+  the offer loop; new captures via `process-note` execute directly.
+  When the create flow gets the offer treatment (separate refactor),
+  this same `findConflicts` slot in.
+
+| 2026-05-10 | PHASE3-1 | supabase/functions/_shared/conflict-detector.ts (+test), supabase/functions/_shared/whatsapp-conflict-copy.ts (+test), supabase/functions/_shared/pending-offer.ts, supabase/functions/_shared/action-planner.ts, supabase/functions/_shared/offer-copy.ts (+test), supabase/functions/whatsapp-webhook/index.ts | Phase 3.1: surface calendar conflicts at offer time |
+
+---
+
+## 2026-05-10 — Phase 2.1 + 2.3: durable retry queue + attendee notifications
+
+Phase 2 starts shipping. Two complementary improvements that close
+holes the Phase 1 honesty fix exposed:
+
+**2.1 — Durable retry for failed Google syncs.** Before this, a
+transient Google 5xx left the user's calendar permanently out of sync
+(the chat said "couldn't reach Google Calendar" — accurate but
+abandonable). Now those failures enqueue to `olive_calendar_sync_queue`
+and a cron-driven worker retries with exponential backoff
+(30s → 2m → 10m → 1h → 6h → abandon).
+
+Reply copy softens accordingly:
+- Without retry queue (legacy / non-transient failure):
+  *"…in Olive — but I couldn't reach Google Calendar this time."*
+- With retry queue (transient failure, now caught):
+  *"…in Olive — Google Calendar didn't respond, I'll keep trying in
+  the background."*
+
+**2.3 — `sendUpdates=all` when an event has attendees.** Moving a
+meeting silently on 4 colleagues was bad form. Now the update/delete
+edge functions GET the event first, and when it has attendees, pass
+`sendUpdates=all` so Google emails them. The reply mentions it:
+*"…and synced to your Google Calendar (notified 3 other people on the
+event)."* Same on WhatsApp in en/es/it.
+
+Description-only or notes-only edits skip the notification (Google
+won't email people about silent metadata changes). Cancellations always
+notify attendees if any.
+
+**Files**
+
+New:
+- `supabase/migrations/20260510211937_olive_calendar_sync_queue.sql`
+  — table, indexes, RLS, atomic-claim SECURITY-DEFINER RPC, pg_cron
+  schedule (every 2 minutes; idempotent reschedule via
+  cron.unschedule + cron.schedule).
+- `supabase/functions/_shared/calendar-retry-queue.ts` (+ test) —
+  enqueue / claim / mark helpers + the backoff schedule contract.
+- `supabase/functions/calendar-sync-retry/index.ts` — cron-driven
+  worker. Claims up to 20 due rows per tick, re-invokes the original
+  edge function with `invoked_from='calendar-sync-retry'` so the
+  target doesn't re-enqueue, decides retry-or-abandon based on the
+  result and current attempts count.
+
+Modified:
+- `supabase/functions/_shared/google-calendar.ts` — added
+  `getGoogleEvent` (pre-mutation peek for attendees), `sendUpdates`
+  option on `patchGoogleEvent` and `deleteGoogleEvent`, `attendees`
+  field on `GoogleEventResponse`.
+- `supabase/functions/calendar-update-event/index.ts` — captures
+  original body for retry re-issue, enqueues on transient failures,
+  pre-fetches event for attendee detection, passes `sendUpdates=all`
+  on user-visible changes (start_time, end_time, title, location,
+  duration), surfaces `attendees_notified` + `attendee_count` +
+  `retry_enqueued` in the response.
+- `supabase/functions/calendar-delete-event/index.ts` — same retry +
+  attendee-notification wiring as update.
+- `supabase/functions/_shared/offer-copy.ts` — `buildCalendarSuffix`
+  now takes optional `retryEnqueued` / `attendeesNotified` /
+  `attendeeCount` and threads them into the user-facing copy.
+  `buildResultHint` reads them off the calendar_sync report so all
+  callers benefit without changes.
+- `supabase/functions/_shared/whatsapp-calendar-sync.ts` —
+  `WhatsAppCalendarSyncReport` extended with the same fields;
+  `buildWhatsAppCalendarSuffix` produces softer-failure /
+  attendees-notified copy in en/es/it. Singular vs plural handled
+  naturally per-locale (en: "the other person" / "the 3 other
+  people"; es: "la otra persona" / "las 3 personas"; it:
+  "l'altra persona" / "le 3 persone").
+- `supabase/functions/_shared/action-executor-offers.ts` —
+  `CalendarSyncReport` shape extended; both invokers pass the new
+  fields through from the edge function response.
+
+**Verification**
+
+- New tests: 36 (15 retry queue, 4 sendUpdates query-param shape, 9
+  offer-copy retry/attendee paths, 8 whatsapp-calendar-sync extensions).
+- Full `_shared/` test suite: **938 passed, 0 failed** (was 902 before
+  Phase 2). 0 regressions.
+- `deno check` clean on the 3 new shared modules + 3 edge functions.
+- `deno check whatsapp-webhook/index.ts`: 9 errors, all pre-existing
+  (lines 1519, 4289, 6924-6925, 7045-7047, 7288 + orchestrator.ts
+  internal mismatch). No new errors from Phase 2.
+- End-to-end exercise still requires live Supabase + Google OAuth +
+  pg_cron — not testable here.
+
+**Why these two together (and 2.2 deferred)**
+
+2.1 + 2.3 are complementary: 2.1 closes the failure mode where the user
+sees "didn't sync" once and abandons, 2.3 closes the silent-impact mode
+where Olive moves a meeting without telling the people on it. Both are
+small enough to ship as one PR.
+
+2.2 (bidirectional sync via Google Calendar push notifications channels)
+is genuinely architectural — channel registration per user, webhook
+endpoint with reconciliation logic, channel expiration handling
+(channels expire after ~7 days and need re-watching). It deserves its
+own PR.
+
+**Known v1 boundaries**
+
+- The retry worker invokes the calendar edge function — adds an HTTP
+  hop per retry. Could be optimized to call the underlying helpers
+  directly, but the current shape keeps logging and analytics
+  consistent across user-initiated and worker-initiated mutations,
+  which is more important than ~100ms of latency on the retry path.
+- Backoff schedule is fixed (30s, 2m, 10m, 1h, 6h). When we have
+  enough analytics data we should tune per-error-class (auth errors
+  benefit from longer waits, network blips from shorter ones), but
+  not yet.
+- Description-only edits don't notify attendees. This is intentional
+  and matches Google Calendar's web UI default. If users complain
+  about silent description changes, revisit.
+- The pg_cron migration relies on `app.supabase_url` /
+  `app.supabase_service_role_key` runtime settings being set in the
+  target environment (same as `olive-heartbeat`). The migration prints
+  a NOTICE and skips schedule creation if they're missing — the table
+  + RPC + indexes still apply, so a follow-up `apply_migration` re-run
+  after settings are in place finishes the job.
+
+**Migration apply**
+
+The migration `20260510211937_olive_calendar_sync_queue.sql` is
+committed but NOT yet applied. Per repo doctrine, applies through
+Supabase MCP `apply_migration` with name
+`olive_calendar_sync_queue`. Edge functions degrade gracefully when
+the table is absent (`enqueueRetry` swallows insert errors), so the
+function code can deploy first; observability + retry kicks in once
+both land.
+
+| 2026-05-10 | PHASE2-1+3 | supabase/migrations/20260510211937_olive_calendar_sync_queue.sql, supabase/functions/_shared/calendar-retry-queue.ts (+test), supabase/functions/calendar-sync-retry/index.ts, supabase/functions/_shared/google-calendar.ts (+test), supabase/functions/calendar-update-event/index.ts, supabase/functions/calendar-delete-event/index.ts, supabase/functions/_shared/offer-copy.ts (+test), supabase/functions/_shared/whatsapp-calendar-sync.ts (+test), supabase/functions/_shared/action-executor-offers.ts | Phase 2.1 durable retry queue + 2.3 attendee notifications |
+
+---
+
+## 2026-05-10 — Phase 1 ported to WhatsApp
+
+WhatsApp users get the same Phase 1 improvements as web Ask Olive. Most
+of the heavy lifting was done in the web port (shared classifier, shared
+calendar edge functions, shared `executeUndo` / `looksLikeUndoCommand`
+helpers); this port wires them into the WhatsApp webhook's existing
+AWAITING_CONFIRMATION state machine.
+
+**What changed on WhatsApp**
+
+1. **Calendar sync on confirmed mutations.** When a user replies "yes"
+   to a `set_due` / `set_reminder` / `delete` offer, the webhook now
+   propagates the change to Google Calendar via the same
+   `calendar-update-event` / `calendar-delete-event` edge functions the
+   web side uses. Sync state flows back as a localized suffix on the
+   reply ("📅 Synced to your Google Calendar" / "⚠️ But I couldn't
+   reach Google Calendar this time"). The original bug — chat confirms
+   but the calendar doesn't update — is fixed on WhatsApp.
+
+2. **Generic edit intents.** `edit_title`, `edit_location`,
+   `edit_description`, `edit_duration` now work over WhatsApp via the
+   same Capture → Offer → Confirm → Execute loop the existing actions
+   use. Each has en/es/it confirmation copy. The classifier already
+   emits these from Phase 1.2 work — wiring on the WhatsApp side adds
+   the intent → action mapping, offer builder, and confirmation
+   execution.
+
+3. **Undo.** "undo" / "deshacer" / "annulla" replies inside the 5-min
+   window reverse the user's last mutation. Pre-classification gate
+   runs before shortcuts and before the intent classifier, so the word
+   "undo" can never be mis-classified into "create undo task." Uses the
+   shared `executeUndo` from the web port — same reverse semantics, same
+   safety (e.g. doesn't recreate Google events on delete-undo).
+
+4. **Observability comes free.** Every WhatsApp calendar mutation flows
+   through the same edge functions that log to
+   `olive_calendar_sync_log` (Phase 1.5). The `invoked_from` field
+   carries `"whatsapp-webhook"` so the SLO query can segment success
+   rates per surface.
+
+5. **Disambiguation NOT changed.** WhatsApp already has its own
+   multi-candidate handler (semantic search + score-gap detection at
+   [whatsapp-webhook:4647-4677](practical-lichterman/supabase/functions/whatsapp-webhook/index.ts:4647))
+   and surfaces "did you mean A or B?" today. The shared web
+   disambiguation helper is a different code path (used when the AI
+   classifier didn't pre-resolve target_task_id); both are valid. No
+   port needed.
+
+**Files**
+
+Modified:
+- `supabase/functions/whatsapp-webhook/index.ts` — added imports for
+  shared helpers, extended `TaskActionType` with `edit_*` variants,
+  added 11 i18n keys (en/es/it) for edit_* / undo / undo_hint /
+  edit_need_value / undo_failed / undo_nothing, captured prior state in
+  the three existing offer builders (`set_due`, `set_reminder`,
+  `delete`), wired calendar sync + `last_action` stamping into the
+  AWAITING_CONFIRMATION dispatch for all 7 mutation types (3 existing
+  + 4 new), added pre-classification undo gate before shortcut
+  interception, added 4 new action handlers (`edit_title` /
+  `edit_location` / `edit_description` / `edit_duration`).
+- `supabase/functions/_shared/pending-offer.ts` — narrowing fix in one
+  WhatsApp caller (`type === 'save_artifact'`) that previously read
+  `artifact_content` directly off the wider union.
+
+New:
+- `supabase/functions/_shared/whatsapp-calendar-sync.ts` (+ 13 tests) —
+  thin invoke wrappers + localized sync suffix builder. Wrappers keep
+  WhatsApp integration points one-line; suffix builder owns the en/es/it
+  copy for sync state. Owned separately from the web's `offer-copy.ts`
+  because WhatsApp uses inline `t()`-style translation, not a copy
+  module.
+
+**Verification**
+
+- New tests: 13 (whatsapp-calendar-sync covering localized suffix
+  contract: en/es/it variants, BCP-47 normalization, empty-suffix on
+  not_connected/no_linked_event/already_gone, honest failure copy on
+  google_api_error / token_refresh_failed / invoke_failed).
+- Full `_shared/` test suite: **902 passed, 0 failed** (was 889 before
+  this port).
+- `deno check` on `whatsapp-webhook/index.ts` reports 9 errors, all
+  pre-existing (lines 1519, 4289, 6924-6925, 7045-7047, 7288 + an
+  internal orchestrator.ts mismatch). My changes added 0 new TS
+  errors and resolved 4 (`TaskActionType` extension, `SupabaseClient`
+  import, narrowing fix for `artifact_content`/`artifact_request`).
+- End-to-end exercise requires live Supabase + connected Google
+  Calendar + Meta WhatsApp Cloud API — not testable in this
+  environment. Ready for deploy:
+  `supabase functions deploy whatsapp-webhook`.
+
+**Known v1 boundaries (matching the web Phase 1 boundaries)**
+
+- The `edit_duration` and `edit_location` paths only mutate the linked
+  calendar event — there are no `clerk_notes` columns for duration or
+  location today. Undo of those edits is calendar-only too. If/when
+  those columns land on `clerk_notes`, the executor gets a clean
+  extension point — the offer carries both intents already.
+- Undo of a `delete` does NOT recreate the Google Calendar event. The
+  row comes back in Olive but the calendar slot stays empty. This
+  matches the web Phase 1 behavior and is a deliberate trade-off:
+  recreating would mint a fresh event ID, confusing the user's calendar
+  history. Phase 2 can revisit with explicit "and put it back on my
+  calendar?" UX.
+- One known multi-task-match edge case on WhatsApp inherits the
+  existing ambiguity gate (no change). The web-side
+  `task-disambiguation.ts` helper is unused on this surface.
+
+| 2026-05-10 | PHASE1-WA | supabase/functions/whatsapp-webhook/index.ts, supabase/functions/_shared/whatsapp-calendar-sync.ts, supabase/functions/_shared/pending-offer.ts | Phase 1 WhatsApp port: calendar sync on set_due/remind/delete, edit_* intents, undo, observability |
+
+---
+
+## 2026-05-10 — Phase 1: Ask Olive calendar editing reaches 10/10 bar
+
+Five-part shipping unit on top of the same-day fix below. Closes Phase 1
+of the calendar-editing roadmap: brand-contract compliance (offer-before-
+execute), safety (disambiguation), parity with the calendar API surface
+(generic edits), reversibility (undo), and measurability (sync log).
+
+**1.1 — Offer-before-execute (the brand-contract fix)**
+
+The previous flow silently executed `set_due` / `delete` etc. The Olive
+brand bible names this loop sacred: *"She surfaces what she captured,
+proposes an action, waits for confirmation, then executes."* Now the web
+Ask Olive does this end-to-end:
+- New `_shared/action-planner.ts` turns a `ClassifiedIntent` into a typed
+  `PendingOffer` without touching the DB.
+- New `_shared/web-session.ts` wraps the existing `user_sessions` table
+  (the same one WhatsApp has used for a year) so the web surface gets
+  the same `AWAITING_CONFIRMATION` state machine — no separate session
+  schema, no client-managed pending state.
+- `ask-olive-stream` now plans → stores offer → asks → on next-turn
+  "yes" runs the planned action verbatim. The Capture → Offer → Confirm
+  → Execute loop is enforced at the dispatcher, not the LLM.
+- The fallback path (`ask-olive-individual`) gets the pre-flow gate too
+  (undo + pending-confirmation handling) so a stream-to-fallback session
+  drop doesn't strand the user with an unresolvable pending offer.
+- 10-minute TTL on offers (reused from `pending-offer.ts`).
+
+**1.2 — Generic edit intent**
+
+`edit_title`, `edit_location`, `edit_description`, `edit_duration` added
+to the classifier schema with multilingual examples (en/es/it). Each
+maps onto the existing `calendar-update-event` PATCH surface — a rename
+in chat also renames the linked Google Calendar event. New
+`new_title` / `new_location` / `new_description` / `new_duration_minutes`
+parameter fields on `ClassifiedIntent`.
+
+**1.3 — Disambiguation on multi-match**
+
+The old handlers ran `.ilike('summary', '%X%').limit(1)` — first-match-
+wins, silent. A user with two "Visit apartment" tasks could lose data
+without warning. New `_shared/task-disambiguation.ts`:
+- `resolveTaskReference` fetches a candidate pool, scores via a
+  transparent rubric (Jaccard with stopword filtering, exact-phrase
+  boost, starts-with boost, recency decay), and returns one of:
+  `SINGLE_BEST` / `AMBIGUOUS` / `NONE`.
+- `pickDisambiguation` resolves the user's next-turn reply ("the SoHo
+  one" / "1" / "neither") against the surfaced candidates.
+- Ambiguous matches produce a `DisambiguationOffer` carrying the
+  unresolved intent so the next turn can complete planning without
+  re-running the classifier.
+
+**1.4 — Diff + undo**
+
+Every executed mutation stamps a `last_action` slot on `user_sessions.
+context_data` with prior state. Within 5 minutes ("undo" / "wait no" /
+"deshazlo" / "annulla"), the user can reverse:
+- Reschedule undo: restore prior `due_date` / `reminder_time` and (if
+  the calendar was synced) re-PATCH Google back to the prior time.
+- Delete undo: re-insert the restored row (columns whitelisted to avoid
+  resurrecting search-vector / embedding garbage).
+- Edit undo: restore prior summary/description and re-PATCH Google.
+The user-facing confirmation now includes the diff
+("Moved from Tue May 12 → Thu May 14, 6pm. Reply *undo* within 5
+minutes to revert.").
+
+**1.5 — Calendar sync observability**
+
+- New table `olive_calendar_sync_log` (migration:
+  `20260510194217_olive_calendar_sync_log.sql`). One row per Google
+  Calendar interaction, including the easy paths (`not_connected`,
+  `no_linked_event`) — without those, the success-rate metric is
+  biased upward.
+- Indexed for two queries: per-user-recent (retry / debug) and weekly
+  failure aggregate (SLO dashboard).
+- RLS: SELECT scoped to `auth.uid() = user_id`; writes are service-role
+  only.
+- `_shared/calendar-sync-logger.ts` wraps the insert. All four calendar
+  edge functions (`calendar-create-event`, `calendar-update-event`,
+  `calendar-delete-event`, `auto-calendar-event`) funnel through a
+  single `exit()` helper so logging is impossible to miss on early-
+  return paths.
+
+**Files**
+
+New:
+- `supabase/migrations/20260510194217_olive_calendar_sync_log.sql`
+- `supabase/functions/_shared/calendar-sync-logger.ts` (+ test)
+- `supabase/functions/_shared/web-session.ts` (+ test)
+- `supabase/functions/_shared/task-disambiguation.ts` (+ test)
+- `supabase/functions/_shared/action-planner.ts` (+ test)
+- `supabase/functions/_shared/action-executor-offers.ts`
+- `supabase/functions/_shared/offer-copy.ts` (+ test)
+
+Modified:
+- `supabase/functions/_shared/pending-offer.ts` — extended union with
+  `RescheduleTaskOffer`, `EditTaskOffer`, `DeleteTaskOffer`,
+  `DisambiguationOffer` (preserves narrowing in existing WhatsApp callers
+  via `type ===` checks).
+- `supabase/functions/_shared/intent-classifier.ts` — added 5 new
+  intents + 4 new parameter fields + multilingual prompt examples.
+- `supabase/functions/ask-olive-stream/index.ts` — pre-flow gate,
+  offer-planning, undo handler, calendar-sync logging.
+- `supabase/functions/ask-olive-individual/index.ts` — pre-flow gate
+  parity for fallback path.
+- `supabase/functions/calendar-{create,update,delete}-event/index.ts`
+  + `auto-calendar-event/index.ts` — all funnel through `exit()` and
+  log every outcome.
+
+**Verification**
+
+- New tests: 72 added (calendar-sync-logger 6, web-session 11, task-
+  disambiguation 14, action-planner 9, offer-copy 18, google-calendar
+  17 carryover from previous PR).
+- Full `_shared/` test suite: **889 passed, 0 failed** (was 834 before
+  Phase 1).
+- `deno check` on all six modified edge functions and seven new shared
+  modules is clean. The 3 pre-existing TS errors on `ask-olive-stream`
+  (`SupabaseClient` generic mismatch, `UnifiedContext` missing optional
+  props, `PromiseLike.catch`) are unchanged — Phase 1 didn't add or
+  remove any.
+- End-to-end behavior cannot be verified in this environment (requires a
+  live Supabase project + a Google Calendar account connected to a test
+  user). Migration + edge functions are ready for
+  `supabase functions deploy ask-olive-stream ask-olive-individual
+   calendar-update-event calendar-delete-event calendar-create-event
+   auto-calendar-event` after the migration applies.
+
+**Known v1 boundaries (intentional — deferred to Phase 2+)**
+
+- The fallback path (`ask-olive-individual`) only gets the pre-flow
+  *gate* (undo + confirmation handling). Its `executeTaskAction` still
+  executes directly — restructuring it is Phase 2. Practical impact:
+  when stream succeeds (the 99% case) the offer-before-execute contract
+  holds; on stream failure the user sees the pre-Phase-1 behavior on
+  the fallback. The sync-honesty fix from the earlier same-day PR is
+  still in effect on that path.
+- Confirmation copy is English-only today; es/it strings stub through
+  `Lang` parameter and translation table addition is non-blocking.
+- No durable retry queue yet — failed Google syncs are reported
+  honestly and the user can re-issue. Phase 2.1 will add the queue.
+
+**Migration apply (manual step required)**
+
+The migration file is committed but NOT yet applied to production. Per
+`MIGRATIONS.md` doctrine, this lands via Supabase MCP `apply_migration`
+with name `olive_calendar_sync_log`. Action handlers gracefully degrade
+when the table is missing (logger swallows insert errors), so the edge
+functions can ship before the migration applies — but observability
+won't kick in until both are deployed.
+
+| 2026-05-10 | PHASE1 | supabase/migrations/20260510194217_olive_calendar_sync_log.sql, supabase/functions/_shared/calendar-sync-logger.ts, supabase/functions/_shared/web-session.ts, supabase/functions/_shared/task-disambiguation.ts, supabase/functions/_shared/action-planner.ts, supabase/functions/_shared/action-executor-offers.ts, supabase/functions/_shared/offer-copy.ts, supabase/functions/_shared/pending-offer.ts, supabase/functions/_shared/intent-classifier.ts, supabase/functions/ask-olive-stream/index.ts, supabase/functions/ask-olive-individual/index.ts, supabase/functions/calendar-{create,update,delete}-event/index.ts, supabase/functions/auto-calendar-event/index.ts | Phase 1 of calendar editing 10/10 plan: offer-before-execute, generic edits, disambiguation, undo, sync log |
+
+---
+
+## 2026-05-10 — Ask Olive event editing actually edits the calendar
+
+Reported bug: telling the Ask Olive chat panel to reschedule a task
+("Change my task visit apartment to Thursday at 6pm") returned a
+confirmation but the task didn't move in Olive or in Google Calendar.
+
+Root cause was deeper than the surface symptom:
+
+1. The `set_due` handler in `ask-olive-stream/index.ts` called
+   `parseNaturalDate(dateExpr, { timezone })` — passing an object as the
+   string positional `timezone` arg — and then read `parsed.hasTime` /
+   `parsed.iso`, properties that don't exist on the parser's return type.
+   The handler threw, `handleAction` returned null, and the chat fell
+   through to general chat which hallucinated a confirmation. clerk_notes
+   was never updated.
+2. Neither ask-olive function ever propagated edits to Google Calendar.
+   There was no `calendar-update-event` edge function in the repo and
+   nothing called Google's `events.patch` / `events.update` anywhere. The
+   `delete` handler had the same gap (and `calendar_events.note_id` is
+   `ON DELETE SET NULL`, so orphaning ghost events on Google Calendar).
+3. Even after fixing the above, the chat would have lied on partial
+   failure — handlers reported success regardless of whether Google
+   actually accepted the change.
+
+Fix shape (one PR, no schema changes — `calendar_events` already has the
+columns needed):
+
+- **New `_shared/google-calendar.ts`** — single source of truth for the
+  Google Calendar API. Exports `getActiveCalendarConnection`,
+  `findLinkedEventByNoteId`, `ensureFreshAccessToken`,
+  `buildEventTiming`, `createGoogleEvent`, `patchGoogleEvent`,
+  `deleteGoogleEvent`. Discriminated-result return type so callers can
+  surface sync state honestly. 17 unit tests pinning the contract:
+  token-refresh window, all-day inference, etag conflict, 404
+  idempotency.
+- **New `calendar-update-event` edge function** — PATCHes a Google event
+  and mirrors the change to `calendar_events`. Idempotent. Defaults to
+  last-write-wins (force=true) because the linked clerk_notes is Olive's
+  source of truth; pass `force=false` to opt into etag-conflict surfacing.
+- **New `calendar-delete-event` edge function** — DELETEs the Google event
+  and drops the local mirror. 404/410 from Google treated as success.
+- **`ask-olive-stream` and `ask-olive-individual`** — both `set_due` and
+  `delete` handlers now invoke the new functions after the local DB write
+  and return a `calendar_sync` report. The confirmation prompts received
+  a `buildCalendarSyncHint` helper that translates the sync state into
+  one line the LLM uses verbatim — so when the calendar didn't sync, the
+  chat says so instead of pretending.
+- **`calendar-create-event` and `auto-calendar-event`** — migrated to the
+  shared helper. Side benefit: `auto-calendar-event`'s old "noon means
+  all-day" heuristic that mis-categorized legitimate noon meetings is
+  replaced with date-string length detection.
+
+Verification:
+- 17/17 new unit tests pass (`google-calendar.test.ts`)
+- Full `_shared/` test suite: 834 passed, 0 failed
+- `deno check` on the four modified edge functions: clean (only
+  pre-existing TS errors in surrounding code remain — none introduced by
+  this change)
+- End-to-end calendar sync cannot be verified in this environment
+  (requires a live Supabase project with a connected Google Calendar);
+  the change is ready for `supabase functions deploy` and dev-branch QA.
+
+Out of scope (called out for follow-up, not shipped here):
+- A generic edit intent for title/location/duration. Today `set_due` only
+  carries `due_date_expression`; a future PR can extend the classifier
+  schema and reuse `calendar-update-event` unchanged.
+- Auto-creating an event when a user reschedules a task whose original
+  capture predated their calendar connection.
+- A durable retry queue for failed Google syncs; for now we report
+  failure honestly and the user can re-issue the command.
+
+| 2026-05-10 | CALSYNC-1 | supabase/functions/_shared/google-calendar.ts, supabase/functions/_shared/google-calendar.test.ts, supabase/functions/calendar-update-event/index.ts, supabase/functions/calendar-delete-event/index.ts, supabase/functions/calendar-create-event/index.ts, supabase/functions/auto-calendar-event/index.ts, supabase/functions/ask-olive-stream/index.ts, supabase/functions/ask-olive-individual/index.ts | Ask Olive edit/delete now propagates to Google Calendar; new shared helper, two new edge functions, honest sync reporting in chat confirmations |
+
+---
+
 ## 2026-05-07 — Multi-Note Header Detection in process-note
 
 ### Bug · header line saved as a phantom task in multi-item brain dumps
