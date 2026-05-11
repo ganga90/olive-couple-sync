@@ -4,10 +4,12 @@
 -- Phase 2.1 and 3.5 migrations applied.
 --
 -- The two new SECURITY DEFINER RPCs (olive_claim_calendar_sync_jobs,
--- olive_record_user_pattern) inherit the default EXECUTE grant for
--- PUBLIC, which means anon + authenticated roles can call them via
--- the auto-generated REST API at /rest/v1/rpc/<name>. That's a
--- problem for both:
+-- olive_record_user_pattern — both with `SET search_path = public,
+-- pg_temp` already declared on the function bodies in their original
+-- migrations) inherit the default EXECUTE grant for PUBLIC, which
+-- means anon + authenticated roles can call them via the auto-
+-- generated REST API at /rest/v1/rpc/<name>. That's a problem for
+-- both:
 --
 --   - olive_claim_calendar_sync_jobs: an attacker with the anon key
 --     could claim pending retry jobs, marking them in_flight and
