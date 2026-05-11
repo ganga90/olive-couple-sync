@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.0.0";
 import { encryptNoteFields, isEncryptionAvailable } from "../_shared/encryption.ts";
 import { createLLMTracker, type LLMTracker } from "../_shared/llm-tracker.ts";
@@ -54,6 +54,54 @@ import {
   looksLikeConfirmation,
   type PendingOffer,
 } from "../_shared/pending-offer.ts";
+// Phase 1 WhatsApp port: shared with web Ask Olive.
+import {
+  buildWhatsAppCalendarSuffix,
+  whatsappCalendarDelete,
+  whatsappCalendarUpdate,
+} from "../_shared/whatsapp-calendar-sync.ts";
+import {
+  isLastActionUndoable,
+  looksLikeUndoCommand,
+  type LastAction,
+} from "../_shared/web-session.ts";
+import { executeUndo } from "../_shared/action-executor-offers.ts";
+// Phase 3.1 — conflict detection at offer time.
+import { findConflicts, type ConflictSummary } from "../_shared/conflict-detector.ts";
+import { buildWhatsAppConflictSuffix } from "../_shared/whatsapp-conflict-copy.ts";
+// Phase 3.5 — pattern learning.
+import {
+  findMatchingPatterns,
+  recordReschedulePattern,
+  type MatchedPattern,
+} from "../_shared/pattern-detector.ts";
+import { buildWhatsAppPatternSuffix } from "../_shared/whatsapp-pattern-copy.ts";
+// Phase 3.2 — bulk reschedule helpers (resolver + shifter).
+import { resolveWeekdayCandidates, shiftToWeekday } from "../_shared/bulk-resolver.ts";
+
+// Phase 3.2 — small locale helpers used by bulk offer + confirmation
+// copy. Kept inline in the webhook because they only matter for
+// WhatsApp's t()-templated voice and don't share the offer-copy.ts
+// markdown style.
+const BULK_DAY_NAMES_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const BULK_DAY_NAMES_ES = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const BULK_DAY_NAMES_IT = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
+
+function bulkDayName(dow: number, lang: string): string {
+  const idx = Math.max(0, Math.min(6, dow));
+  const short = (lang || "en").split("-")[0];
+  if (short === "es") return BULK_DAY_NAMES_ES[idx];
+  if (short === "it") return BULK_DAY_NAMES_IT[idx];
+  return BULK_DAY_NAMES_EN[idx];
+}
+
+function tasksWord(n: number, lang: string): string {
+  const short = (lang || "en").split("-")[0];
+  if (short === "es") return n === 1 ? "tarea" : "tareas";
+  // Italian plural of "attività" is invariant.
+  if (short === "it") return "attività";
+  return n === 1 ? "task" : "tasks";
+}
 import { resolveQuotedTask } from "../_shared/quoted-message.ts";
 import { extractTimeOnly } from "../_shared/time-only-parser.ts";
 import {
@@ -467,6 +515,128 @@ $ Spesa: $45 pranzo da Chipotle
     en: '📎 Added to "{task}"',
     'es': '📎 Añadido a "{task}"',
     'it': '📎 Aggiunto a "{task}"',
+  },
+  // ─── Phase 1 WhatsApp port: edit_* + undo strings ─────────────────
+  confirm_edit_title: {
+    en: '✏️ Rename "{task}" → "{new_title}"?\n\nReply "yes" to confirm.',
+    'es': '✏️ ¿Renombrar "{task}" → "{new_title}"?\n\nResponde "sí" para confirmar.',
+    'it': '✏️ Rinominare "{task}" → "{new_title}"?\n\nRispondi "sì" per confermare.',
+  },
+  done_edit_title: {
+    en: '✅ Done. "{task}" is now called "{new_title}".',
+    'es': '✅ Hecho. "{task}" ahora se llama "{new_title}".',
+    'it': '✅ Fatto. "{task}" ora si chiama "{new_title}".',
+  },
+  confirm_edit_location: {
+    en: '📍 Update location of "{task}" to "{new_location}"?\n\nReply "yes" to confirm.',
+    'es': '📍 ¿Actualizar la ubicación de "{task}" a "{new_location}"?\n\nResponde "sí".',
+    'it': '📍 Aggiornare la posizione di "{task}" a "{new_location}"?\n\nRispondi "sì".',
+  },
+  done_edit_location: {
+    en: '✅ Done. Location updated to "{new_location}".',
+    'es': '✅ Hecho. Ubicación actualizada a "{new_location}".',
+    'it': '✅ Fatto. Posizione aggiornata a "{new_location}".',
+  },
+  confirm_edit_description: {
+    en: '📝 Update notes on "{task}" to: "{new_description}"?\n\nReply "yes" to confirm.',
+    'es': '📝 ¿Actualizar notas de "{task}" a: "{new_description}"?\n\nResponde "sí".',
+    'it': '📝 Aggiornare le note di "{task}" a: "{new_description}"?\n\nRispondi "sì".',
+  },
+  done_edit_description: {
+    en: '✅ Done. Notes on "{task}" updated.',
+    'es': '✅ Hecho. Notas de "{task}" actualizadas.',
+    'it': '✅ Fatto. Note di "{task}" aggiornate.',
+  },
+  confirm_edit_duration: {
+    en: '⏱️ Make "{task}" a {minutes}-minute event?\n\nReply "yes" to confirm.',
+    'es': '⏱️ ¿Hacer "{task}" un evento de {minutes} minutos?\n\nResponde "sí".',
+    'it': '⏱️ Rendere "{task}" un evento da {minutes} minuti?\n\nRispondi "sì".',
+  },
+  done_edit_duration: {
+    en: '✅ Done. "{task}" is now {minutes} minutes.',
+    'es': '✅ Hecho. "{task}" ahora dura {minutes} minutos.',
+    'it': '✅ Fatto. "{task}" ora dura {minutes} minuti.',
+  },
+  // The "reply undo within 5 min" suffix appended to mutation success
+  // messages. Keeps WhatsApp parity with the web confirmation flow.
+  undo_hint: {
+    en: ' Reply "undo" within 5 min to revert.',
+    'es': ' Responde "deshacer" en 5 min para revertir.',
+    'it': ' Rispondi "annulla" entro 5 min per ripristinare.',
+  },
+  done_undo_reschedule: {
+    en: '↩️ Reverted "{task}" to its prior time.',
+    'es': '↩️ "{task}" vuelve a su hora anterior.',
+    'it': '↩️ "{task}" tornata all\'orario precedente.',
+  },
+  done_undo_delete: {
+    en: '↩️ Brought "{task}" back.',
+    'es': '↩️ "{task}" recuperada.',
+    'it': '↩️ "{task}" ripristinata.',
+  },
+  done_undo_edit: {
+    en: '↩️ Reverted "{task}".',
+    'es': '↩️ "{task}" revertida.',
+    'it': '↩️ "{task}" ripristinata.',
+  },
+  undo_nothing: {
+    en: "🌿 Nothing to undo — I haven't done anything in the last 5 minutes.",
+    'es': "🌿 Nada que deshacer — no he hecho nada en los últimos 5 minutos.",
+    'it': "🌿 Niente da annullare — non ho fatto nulla negli ultimi 5 minuti.",
+  },
+  undo_failed: {
+    en: "🌿 Couldn't undo this one — {detail}",
+    'es': "🌿 No pude deshacer esto — {detail}",
+    'it': "🌿 Non sono riuscita ad annullare — {detail}",
+  },
+  edit_need_value: {
+    en: '🌿 I need to know what to change. Try "rename X to Y" or "set location of X to Y".',
+    'es': '🌿 Necesito saber qué cambiar. Prueba "renombra X a Y" o "ubicación de X en Y".',
+    'it': '🌿 Devo sapere cosa cambiare. Prova "rinomina X in Y" o "posizione di X a Y".',
+  },
+  // ─── Phase 3.2 — bulk reschedule strings ─────────────────────────
+  // {n} = count, {from} = source day name, {to} = target day name,
+  // {preview} = bullet-list of up to 5 tasks (newline separated),
+  // {more} = "and N more" tail or empty.
+  confirm_bulk_reschedule: {
+    en: '🌿 Move {n} {tasks_word} from {from} to {to}:\n{preview}{more}\n\nReply "yes" to confirm.',
+    'es': '🌿 Mover {n} {tasks_word} de {from} a {to}:\n{preview}{more}\n\nResponde "sí" para confirmar.',
+    'it': '🌿 Sposta {n} {tasks_word} dal {from} al {to}:\n{preview}{more}\n\nRispondi "sì" per confermare.',
+  },
+  bulk_no_candidates: {
+    en: '🌿 No tasks scheduled on {from} — nothing to move.',
+    'es': '🌿 No hay tareas para el {from} — nada que mover.',
+    'it': '🌿 Nessuna attività di {from} — niente da spostare.',
+  },
+  done_bulk_all: {
+    en: '✅ Moved {n} {tasks_word} to {to}.',
+    'es': '✅ Movidas {n} {tasks_word} a {to}.',
+    'it': '✅ Spostate {n} {tasks_word} a {to}.',
+  },
+  done_bulk_partial: {
+    en: '✅ Moved {succeeded} of {attempted}. {failed} couldn\'t be saved.',
+    'es': '✅ Movidas {succeeded} de {attempted}. {failed} no se pudieron guardar.',
+    'it': '✅ Spostate {succeeded} su {attempted}. {failed} non sono state salvate.',
+  },
+  bulk_calendar_all: {
+    en: ' 📅 Synced to your Google Calendar.',
+    'es': ' 📅 Sincronizadas con Google Calendar.',
+    'it': ' 📅 Sincronizzate con Google Calendar.',
+  },
+  bulk_calendar_partial: {
+    en: ' ⚠️ Some didn\'t reach Google Calendar — I\'ll keep trying in the background.',
+    'es': ' ⚠️ Algunas no llegaron a Google Calendar — seguiré intentándolo.',
+    'it': ' ⚠️ Alcune non sono arrivate a Google Calendar — continuerò a riprovare.',
+  },
+  bulk_calendar_none: {
+    en: ' ⚠️ Saved in Olive — but Google Calendar didn\'t respond.',
+    'es': ' ⚠️ Guardadas en Olive — pero Google Calendar no respondió.',
+    'it': ' ⚠️ Salvate in Olive — ma Google Calendar non ha risposto.',
+  },
+  done_undo_bulk: {
+    en: '↩️ Reverted the bulk move ({n} {tasks_word}).',
+    'es': '↩️ Revertido el cambio masivo ({n} {tasks_word}).',
+    'it': '↩️ Annullato lo spostamento massivo ({n} {tasks_word}).',
   },
 };
 
@@ -949,15 +1119,23 @@ async function augmentTaskFromCluster(
 }
 
 // Task action types for management commands
-type TaskActionType = 
-  | 'complete'      // "done with X", "mark X complete"
-  | 'set_priority'  // "make X urgent", "prioritize X"
-  | 'set_due'       // "X is due tomorrow"
-  | 'assign'        // "assign X to partner"
-  | 'edit'          // "change X to Y", "rename X"
-  | 'delete'        // "delete X", "remove X"
-  | 'move'          // "move X to groceries list"
-  | 'remind';       // "remind me about X tomorrow"
+type TaskActionType =
+  | 'complete'           // "done with X", "mark X complete"
+  | 'set_priority'       // "make X urgent", "prioritize X"
+  | 'set_due'            // "X is due tomorrow"
+  | 'assign'             // "assign X to partner"
+  | 'edit'               // legacy generic edit (pre-1.2)
+  // Phase 1.2 WhatsApp port — generic edit intents from the shared
+  // classifier. Each carries its specific new_* value via cleanMessage.
+  | 'edit_title'         // "rename X to Y"
+  | 'edit_location'      // "set location of X to Y"
+  | 'edit_description'   // "update notes on X to Y"
+  | 'edit_duration'      // "make X a 30-minute event"
+  | 'delete'             // "delete X", "remove X"
+  | 'move'               // "move X to groceries list"
+  | 'remind'             // "remind me about X tomorrow"
+  // Phase 3.2 — bulk operations. v1 is weekday shift.
+  | 'bulk_reschedule_weekday';
 
 type QueryType = 'urgent' | 'today' | 'tomorrow' | 'this_week' | 'recent' | 'overdue' | 'general' | undefined;
 
@@ -1046,7 +1224,7 @@ type ClassifiedIntent = import("../_shared/intent-classifier.ts").ClassifiedInte
 // Bridge: Convert AI ClassifiedIntent → existing IntentResult format
 function mapAIResultToIntentResult(
   ai: ClassifiedIntent
-): IntentResult & { queryType?: string; chatType?: string; actionType?: string; actionTarget?: string; cleanMessage?: string; _aiTaskId?: string; _aiSkillId?: string; _listName?: string; _partnerAction?: string; _initialItems?: string } {
+): IntentResult & { queryType?: string; chatType?: string; actionType?: string; actionTarget?: string; cleanMessage?: string; _aiTaskId?: string; _aiSkillId?: string; _listName?: string; _partnerAction?: string; _initialItems?: string; _fromDow?: number; _toDow?: number } {
   const params = ai.parameters || {};
 
   switch (ai.intent) {
@@ -1093,6 +1271,60 @@ function mapAIResultToIntentResult(
         actionType: 'delete',
         actionTarget: ai.target_task_name || undefined,
         _aiTaskId: ai.target_task_id || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    // Phase 1.2 WhatsApp port — generic edit intents. The classifier emits
+    // the new_* parameter alongside `target_task_name`; we forward it via
+    // `cleanMessage` for the action handler to read.
+    case 'edit_title':
+      return {
+        intent: 'TASK_ACTION',
+        actionType: 'edit_title',
+        actionTarget: ai.target_task_name || undefined,
+        cleanMessage: params.new_title || undefined,
+        _aiTaskId: ai.target_task_id || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'edit_location':
+      return {
+        intent: 'TASK_ACTION',
+        actionType: 'edit_location',
+        actionTarget: ai.target_task_name || undefined,
+        cleanMessage: params.new_location || undefined,
+        _aiTaskId: ai.target_task_id || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'edit_description':
+      return {
+        intent: 'TASK_ACTION',
+        actionType: 'edit_description',
+        actionTarget: ai.target_task_name || undefined,
+        cleanMessage: params.new_description || undefined,
+        _aiTaskId: ai.target_task_id || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    case 'edit_duration':
+      return {
+        intent: 'TASK_ACTION',
+        actionType: 'edit_duration',
+        actionTarget: ai.target_task_name || undefined,
+        cleanMessage: params.new_duration_minutes != null ? String(params.new_duration_minutes) : undefined,
+        _aiTaskId: ai.target_task_id || undefined,
+        _aiSkillId: ai.matched_skill_id || undefined,
+      };
+
+    // Phase 3.2 — bulk weekday reschedule. No actionTarget (the
+    // resolver picks the candidate set from the from_dow predicate).
+    case 'bulk_reschedule_weekday':
+      return {
+        intent: 'TASK_ACTION',
+        actionType: 'bulk_reschedule_weekday',
+        _fromDow: typeof params.from_dow === 'number' ? params.from_dow : undefined,
+        _toDow: typeof params.to_dow === 'number' ? params.to_dow : undefined,
         _aiSkillId: ai.matched_skill_id || undefined,
       };
 
@@ -2945,7 +3177,9 @@ serve(async (req) => {
       const isAffirmative = /^(yes|yeah|yep|sure|ok|okay|confirm|si|sí|do it|go ahead|please|y)$/i.test(messageBody!.trim());
       const isNegative = /^(no|nope|nah|cancel|nevermind|never mind|n)$/i.test(messageBody!.trim());
 
-      // Helper to clear pending state while preserving conversation context
+      // Helper to clear pending state while preserving conversation context.
+      // last_action is preserved across this so a user who cancels an
+      // offer still has their previous successful mutation undo-able.
       const clearPendingState = async () => {
         const preservedContext = (contextData || {}) as ConversationContext;
         await supabase
@@ -2956,11 +3190,46 @@ serve(async (req) => {
               last_referenced_entity: preservedContext.last_referenced_entity,
               entity_referenced_at: preservedContext.entity_referenced_at,
               conversation_history: preservedContext.conversation_history,
+              last_action: (preservedContext as any).last_action,
               // pending_action intentionally omitted (cleared)
             },
             updated_at: new Date().toISOString()
           })
           .eq('id', session.id);
+      };
+
+      // Phase 1.4 — stamp last_action after every confirmed mutation.
+      // Atomically:
+      //   - clears pending_action (we're past the confirmation point)
+      //   - flips state to IDLE
+      //   - writes the new last_action for the 5-minute undo window
+      //   - preserves the small set of context fields we care about
+      // Errors are non-fatal: a missing stamp just means undo won't
+      // catch this turn. The mutation itself is already committed.
+      const stampLastAction = async (
+        _sb: SupabaseClient,
+        _sessionId: string,
+        _ctxData: any,
+        action: LastAction,
+      ) => {
+        const preserved = (contextData || {}) as ConversationContext;
+        try {
+          await supabase
+            .from('user_sessions')
+            .update({
+              conversation_state: 'IDLE',
+              context_data: {
+                last_referenced_entity: preserved.last_referenced_entity,
+                entity_referenced_at: preserved.entity_referenced_at,
+                conversation_history: preserved.conversation_history,
+                last_action: action,
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+        } catch (stampErr) {
+          console.warn('[stampLastAction] non-fatal:', stampErr);
+        }
       };
 
       // Staleness check: if confirmation has been pending for >5 minutes, auto-cancel
@@ -3004,10 +3273,51 @@ serve(async (req) => {
             })
             .eq('id', pendingAction.task_id);
 
-          // Note: pendingAction.readable was localized at offer time (set_due
-          // case localizes via parseNaturalDate / formatFriendlyDate using
-          // userLang). It's already in the right language here.
-          return reply(t('done_set_due', userLang, { task: pendingAction.task_summary, when: pendingAction.readable }));
+          // Phase 1 WhatsApp port — propagate to Google Calendar. Errors
+          // never block the reply; sync state flows back via the suffix.
+          // We treat the stored ISO as all-day if it ends in midnight UTC
+          // and is exactly 10 chars or T00:00 — the offer builder hands
+          // us the parser's output verbatim, which preserves whether a
+          // time was specified.
+          const dueIso: string = pendingAction.date;
+          const allDay = typeof dueIso === 'string' && (dueIso.length <= 10 || /T00:00:00(\.000)?Z?$/.test(dueIso));
+          const calSync = await whatsappCalendarUpdate(supabase, {
+            user_id: userId,
+            note_id: pendingAction.task_id,
+            start_time: dueIso,
+            all_day: allDay,
+            timezone: pendingAction.timezone || profile.timezone || 'America/New_York',
+          });
+          const calSuffix = buildWhatsAppCalendarSuffix(calSync, userLang);
+
+          // Stamp last_action for undo. Done in the same write that
+          // clears pending_action so we never end up in a half-state.
+          await stampLastAction(supabase, session.id, session.context_data, {
+            kind: 'reschedule_task',
+            task_id: pendingAction.task_id,
+            task_summary: pendingAction.task_summary,
+            prior_due_date: pendingAction.prior_due_date ?? null,
+            prior_reminder_time: pendingAction.prior_reminder_time ?? null,
+            new_due_date: dueIso,
+            new_reminder_time: null,
+            calendar_synced: calSync.status === 'updated',
+            executed_at: new Date().toISOString(),
+          });
+
+          // Phase 3.5 — record the (prior, new) so the pattern store
+          // accumulates user habits. Non-blocking.
+          await recordReschedulePattern(supabase, {
+            userId,
+            priorIso: pendingAction.prior_reminder_time || pendingAction.prior_due_date || null,
+            newIso: dueIso,
+            timezone: pendingAction.timezone || profile.timezone || 'America/New_York',
+          });
+
+          return reply(
+            t('done_set_due', userLang, { task: pendingAction.task_summary, when: pendingAction.readable })
+            + calSuffix
+            + t('undo_hint', userLang),
+          );
         } else if (pendingAction?.type === 'set_reminder') {
           const updateData: any = {
             reminder_time: pendingAction.time,
@@ -3023,14 +3333,164 @@ serve(async (req) => {
             .update(updateData)
             .eq('id', pendingAction.task_id);
 
-          return reply(t('done_set_reminder', userLang, { task: pendingAction.task_summary, when: pendingAction.readable }));
+          // Calendar sync: reminder is always a timed event.
+          const calSync = await whatsappCalendarUpdate(supabase, {
+            user_id: userId,
+            note_id: pendingAction.task_id,
+            start_time: pendingAction.time,
+            all_day: false,
+            timezone: pendingAction.timezone || profile.timezone || 'America/New_York',
+          });
+          const calSuffix = buildWhatsAppCalendarSuffix(calSync, userLang);
+
+          await stampLastAction(supabase, session.id, session.context_data, {
+            kind: 'reschedule_task',
+            task_id: pendingAction.task_id,
+            task_summary: pendingAction.task_summary,
+            prior_due_date: pendingAction.prior_due_date ?? null,
+            prior_reminder_time: pendingAction.prior_reminder_time ?? null,
+            new_due_date: pendingAction.has_due_date ? null : pendingAction.time,
+            new_reminder_time: pendingAction.time,
+            calendar_synced: calSync.status === 'updated',
+            executed_at: new Date().toISOString(),
+          });
+
+          // Phase 3.5 — record the (prior, new) so the pattern store
+          // accumulates user habits. Non-blocking.
+          await recordReschedulePattern(supabase, {
+            userId,
+            priorIso: pendingAction.prior_reminder_time || pendingAction.prior_due_date || null,
+            newIso: pendingAction.time,
+            timezone: pendingAction.timezone || profile.timezone || 'America/New_York',
+          });
+
+          return reply(
+            t('done_set_reminder', userLang, { task: pendingAction.task_summary, when: pendingAction.readable })
+            + calSuffix
+            + t('undo_hint', userLang),
+          );
         } else if (pendingAction?.type === 'delete') {
+          // Tear down Google Calendar event FIRST. The FK on
+          // calendar_events.note_id is ON DELETE SET NULL, so deleting
+          // the note first would orphan the calendar row with no way
+          // back. Errors are non-fatal.
+          const calSync = await whatsappCalendarDelete(supabase, {
+            user_id: userId,
+            note_id: pendingAction.task_id,
+          });
+          const calSuffix = buildWhatsAppCalendarSuffix(calSync, userLang);
+
           await supabase
             .from('clerk_notes')
             .delete()
             .eq('id', pendingAction.task_id);
 
-          return reply(t('done_delete', userLang, { task: pendingAction.task_summary }));
+          await stampLastAction(supabase, session.id, session.context_data, {
+            kind: 'delete_task',
+            task_summary: pendingAction.task_summary,
+            restored_row: pendingAction.restored_row ?? {},
+            google_event_id: pendingAction.google_event_id ?? null,
+            executed_at: new Date().toISOString(),
+          });
+
+          return reply(
+            t('done_delete', userLang, { task: pendingAction.task_summary })
+            + calSuffix
+            + t('undo_hint', userLang),
+          );
+        } else if (pendingAction?.type === 'edit_title') {
+          await supabase
+            .from('clerk_notes')
+            .update({ summary: pendingAction.new_title, updated_at: new Date().toISOString() })
+            .eq('id', pendingAction.task_id);
+          const calSync = await whatsappCalendarUpdate(supabase, {
+            user_id: userId,
+            note_id: pendingAction.task_id,
+            title: pendingAction.new_title,
+            timezone: pendingAction.timezone || profile.timezone || 'America/New_York',
+          });
+          await stampLastAction(supabase, session.id, session.context_data, {
+            kind: 'edit_task',
+            task_id: pendingAction.task_id,
+            task_summary: pendingAction.task_summary,
+            prior: { summary: pendingAction.prior_summary, description: null },
+            new: { summary: pendingAction.new_title },
+            calendar_synced: calSync.status === 'updated',
+            executed_at: new Date().toISOString(),
+          });
+          return reply(
+            t('done_edit_title', userLang, { task: pendingAction.task_summary, new_title: pendingAction.new_title })
+            + buildWhatsAppCalendarSuffix(calSync, userLang)
+            + t('undo_hint', userLang),
+          );
+        } else if (pendingAction?.type === 'edit_location') {
+          // Location lives only on calendar_events, not clerk_notes.
+          const calSync = await whatsappCalendarUpdate(supabase, {
+            user_id: userId,
+            note_id: pendingAction.task_id,
+            location: pendingAction.new_location,
+            timezone: pendingAction.timezone || profile.timezone || 'America/New_York',
+          });
+          await stampLastAction(supabase, session.id, session.context_data, {
+            kind: 'edit_task',
+            task_id: pendingAction.task_id,
+            task_summary: pendingAction.task_summary,
+            // No clerk_notes prior to restore — location undo is calendar-only.
+            prior: { summary: pendingAction.task_summary, description: null },
+            new: {},
+            calendar_synced: calSync.status === 'updated',
+            executed_at: new Date().toISOString(),
+          });
+          return reply(
+            t('done_edit_location', userLang, { new_location: pendingAction.new_location })
+            + buildWhatsAppCalendarSuffix(calSync, userLang),
+          );
+        } else if (pendingAction?.type === 'edit_description') {
+          await supabase
+            .from('clerk_notes')
+            .update({ original_text: pendingAction.new_description, updated_at: new Date().toISOString() })
+            .eq('id', pendingAction.task_id);
+          const calSync = await whatsappCalendarUpdate(supabase, {
+            user_id: userId,
+            note_id: pendingAction.task_id,
+            description: pendingAction.new_description,
+            timezone: pendingAction.timezone || profile.timezone || 'America/New_York',
+          });
+          await stampLastAction(supabase, session.id, session.context_data, {
+            kind: 'edit_task',
+            task_id: pendingAction.task_id,
+            task_summary: pendingAction.task_summary,
+            prior: { summary: pendingAction.task_summary, description: pendingAction.prior_description ?? null },
+            new: { description: pendingAction.new_description },
+            calendar_synced: calSync.status === 'updated',
+            executed_at: new Date().toISOString(),
+          });
+          return reply(
+            t('done_edit_description', userLang, { task: pendingAction.task_summary })
+            + buildWhatsAppCalendarSuffix(calSync, userLang)
+            + t('undo_hint', userLang),
+          );
+        } else if (pendingAction?.type === 'edit_duration') {
+          const calSync = await whatsappCalendarUpdate(supabase, {
+            user_id: userId,
+            note_id: pendingAction.task_id,
+            duration_minutes: pendingAction.new_duration_minutes,
+            timezone: pendingAction.timezone || profile.timezone || 'America/New_York',
+          });
+          // Duration changes don't touch clerk_notes — calendar-only.
+          await stampLastAction(supabase, session.id, session.context_data, {
+            kind: 'edit_task',
+            task_id: pendingAction.task_id,
+            task_summary: pendingAction.task_summary,
+            prior: { summary: pendingAction.task_summary, description: null },
+            new: {},
+            calendar_synced: calSync.status === 'updated',
+            executed_at: new Date().toISOString(),
+          });
+          return reply(
+            t('done_edit_duration', userLang, { task: pendingAction.task_summary, minutes: String(pendingAction.new_duration_minutes) })
+            + buildWhatsAppCalendarSuffix(calSync, userLang),
+          );
         } else if (pendingAction?.type === 'merge') {
           const { data: mergeResult, error: mergeError } = await supabase.rpc('merge_notes', {
             p_source_id: pendingAction.source_id,
@@ -3043,6 +3503,122 @@ serve(async (req) => {
           }
 
           return reply(t('done_merge', userLang, { target: pendingAction.target_summary }));
+        } else if (pendingAction?.type === 'bulk_reschedule_weekday') {
+          // Phase 3.2 — execute the bulk move. Loop through the
+          // pre-computed candidates, write per-task, sync each to
+          // Google. Per-task failures don't abort the loop; we
+          // aggregate calendar outcome into one suffix for the reply.
+          const bulkTz = pendingAction.timezone || profile.timezone || 'America/New_York';
+          const cands = (pendingAction.candidates || []) as Array<{
+            task_id: string;
+            task_summary: string;
+            prior_due_date: string | null;
+            prior_reminder_time: string | null;
+            new_iso: string;
+            has_time: boolean;
+          }>;
+          let succeeded = 0;
+          let failed = 0;
+          let calendarSyncedCount = 0;
+          let calendarUnlinkedCount = 0;
+          let calendarConnectedSeen = false;
+          const undoEntries: Array<{
+            task_id: string;
+            task_summary: string;
+            prior_due_date: string | null;
+            prior_reminder_time: string | null;
+            new_due_date: string | null;
+            new_reminder_time: string | null;
+            calendar_synced: boolean;
+          }> = [];
+
+          for (const c of cands) {
+            const updateFields: Record<string, any> = { updated_at: new Date().toISOString() };
+            if (c.has_time) {
+              updateFields.reminder_time = c.new_iso;
+              updateFields.due_date = c.new_iso.split('T')[0];
+            } else {
+              updateFields.due_date = c.new_iso.split('T')[0];
+              updateFields.reminder_time = null;
+            }
+            const { error } = await supabase
+              .from('clerk_notes')
+              .update(updateFields)
+              .eq('id', c.task_id);
+            if (error) {
+              failed++;
+              continue;
+            }
+            const calSync = await whatsappCalendarUpdate(supabase, {
+              user_id: userId,
+              note_id: c.task_id,
+              start_time: c.has_time ? c.new_iso : updateFields.due_date,
+              all_day: !c.has_time,
+              timezone: bulkTz,
+            });
+            const synced = calSync.status === 'updated';
+            if (synced) calendarSyncedCount++;
+            if (calSync.status === 'no_linked_event') calendarUnlinkedCount++;
+            if (calSync.status !== 'not_connected') calendarConnectedSeen = true;
+            succeeded++;
+            undoEntries.push({
+              task_id: c.task_id,
+              task_summary: c.task_summary,
+              prior_due_date: c.prior_due_date,
+              prior_reminder_time: c.prior_reminder_time,
+              new_due_date: updateFields.due_date || null,
+              new_reminder_time: updateFields.reminder_time || null,
+              calendar_synced: synced,
+            });
+            // Phase 3.5 — record per-task pattern. Non-blocking.
+            await recordReschedulePattern(supabase, {
+              userId,
+              priorIso: c.prior_reminder_time || c.prior_due_date,
+              newIso: c.new_iso,
+              timezone: bulkTz,
+            });
+          }
+
+          // Stamp last_action for bulk undo.
+          await stampLastAction(supabase, session.id, session.context_data, {
+            kind: 'bulk_reschedule_task',
+            from_dow: pendingAction.from_dow,
+            to_dow: pendingAction.to_dow,
+            entries: undoEntries,
+            executed_at: new Date().toISOString(),
+          });
+
+          // Aggregate calendar outcome → suffix.
+          let calSuffixKey: string;
+          if (!calendarConnectedSeen) {
+            calSuffixKey = '';
+          } else if (succeeded === 0) {
+            calSuffixKey = 'bulk_calendar_none';
+          } else if (calendarUnlinkedCount === succeeded) {
+            calSuffixKey = '';
+          } else if (calendarSyncedCount === succeeded - calendarUnlinkedCount) {
+            calSuffixKey = 'bulk_calendar_all';
+          } else if (calendarSyncedCount === 0) {
+            calSuffixKey = 'bulk_calendar_none';
+          } else {
+            calSuffixKey = 'bulk_calendar_partial';
+          }
+          const calSuffix = calSuffixKey ? t(calSuffixKey, userLang) : '';
+
+          const toName = bulkDayName(pendingAction.to_dow, userLang);
+          const replyText = failed === 0
+            ? t('done_bulk_all', userLang, {
+                n: String(succeeded),
+                tasks_word: tasksWord(succeeded, userLang),
+                to: toName,
+              })
+            : t('done_bulk_partial', userLang, {
+                succeeded: String(succeeded),
+                attempted: String(cands.length),
+                failed: String(failed),
+              });
+
+          return reply(replyText + calSuffix + (succeeded > 0 ? t('undo_hint', userLang) : ''));
         }
 
         return reply(t('error_generic', userLang));
@@ -3159,6 +3735,61 @@ serve(async (req) => {
       }
       // If no recent context found, fall through to normal intent detection
       console.log('[Context] Bare reply but no matching context found, continuing with normal routing');
+    }
+
+    // ========================================================================
+    // PRE-CLASSIFICATION: Undo command (Phase 1.4 WhatsApp port)
+    // ========================================================================
+    // "undo" / "deshacer" / "annulla" — reverses the user's last mutation
+    // when it's inside the 5-minute window. Runs BEFORE the shortcut
+    // interception and BEFORE intent classification so the classifier
+    // can never fight the explicit undo phrasing.
+    if (looksLikeUndoCommand(messageBody)) {
+      const sessCtx = (session.context_data || {}) as ConversationContext;
+      const lastAction = (sessCtx as any).last_action as LastAction | undefined;
+      if (isLastActionUndoable(lastAction)) {
+        try {
+          const undoRes = await executeUndo(
+            { supabase, userId, invokedFrom: 'whatsapp-webhook' },
+            lastAction,
+          );
+          // Clear last_action so the user can't double-undo.
+          await supabase
+            .from('user_sessions')
+            .update({
+              context_data: { ...sessCtx, last_action: null },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+
+          const summary = 'task_summary' in lastAction ? lastAction.task_summary : '';
+          if (!undoRes.reverted) {
+            return reply(t('undo_failed', userLang, { detail: undoRes.detail || '' }));
+          }
+          // Phase 3.2 — bulk undo has a different shape (a count, not
+          // a single task summary). Handle it separately so the
+          // confirmation reads correctly.
+          if (undoRes.kind === 'bulk_reschedule_task' && lastAction.kind === 'bulk_reschedule_task') {
+            const n = lastAction.entries.length;
+            return reply(
+              t('done_undo_bulk', userLang, { n: String(n), tasks_word: tasksWord(n, userLang) })
+              + (undoRes.detail ? ` (${undoRes.detail})` : ''),
+            );
+          }
+          const doneKey =
+            undoRes.kind === 'reschedule_task' ? 'done_undo_reschedule'
+            : undoRes.kind === 'delete_task' ? 'done_undo_delete'
+            : 'done_undo_edit';
+          return reply(t(doneKey, userLang, { task: summary }));
+        } catch (undoErr) {
+          console.warn('[undo] failed:', undoErr);
+          return reply(t('undo_failed', userLang, { detail: 'unexpected error' }));
+        }
+      }
+      // No undoable action available — tell the user honestly. Don't fall
+      // through and risk the classifier inventing an action for the
+      // word "undo".
+      return reply(t('undo_nothing', userLang));
     }
 
     // ========================================================================
@@ -4491,6 +5122,96 @@ Description: "${parsedExpense.description}"`;
       const aiTaskId = (intentResult as any)._aiTaskId as string | undefined;
       console.log('[WhatsApp] Processing TASK_ACTION:', actionType, 'target:', actionTarget, 'aiTaskId:', aiTaskId);
 
+      // Phase 3.2 — bulk weekday reschedule. Short-circuits the
+      // single-task resolution path because it has its own
+      // predicate-based resolver (no foundTask needed).
+      if (actionType === 'bulk_reschedule_weekday') {
+        const fromDow = (intentResult as any)._fromDow as number | undefined;
+        const toDow = (intentResult as any)._toDow as number | undefined;
+        const bulkTz = profile.timezone || 'America/New_York';
+        if (typeof fromDow !== 'number' || typeof toDow !== 'number' || fromDow === toDow) {
+          // Defensive — classifier should have set both; if it didn't,
+          // fall through to chat-style help instead of attempting
+          // a bulk with garbage inputs.
+          return reply(t('edit_need_value', userLang));
+        }
+        const raw = await resolveWeekdayCandidates(supabase, {
+          userId,
+          spaceId: coupleId || null,
+          fromDow,
+          timezone: bulkTz,
+        });
+        if (raw.length === 0) {
+          return reply(t('bulk_no_candidates', userLang, { from: bulkDayName(fromDow, userLang) }));
+        }
+
+        // Pre-compute the per-candidate new ISO at offer time so
+        // confirmation is deterministic. Mirror of the web planner.
+        const candidates = [] as Array<{
+          task_id: string;
+          task_summary: string;
+          prior_due_date: string | null;
+          prior_reminder_time: string | null;
+          new_iso: string;
+          has_time: boolean;
+        }>;
+        for (const r of raw) {
+          const anchor = r.reminder_time || r.due_date;
+          if (!anchor) continue;
+          const newIso = shiftToWeekday(anchor, toDow, bulkTz);
+          if (!newIso) continue;
+          candidates.push({
+            task_id: r.id,
+            task_summary: r.summary,
+            prior_due_date: r.due_date,
+            prior_reminder_time: r.reminder_time,
+            new_iso: newIso,
+            has_time: !!r.reminder_time,
+          });
+        }
+        if (candidates.length === 0) {
+          return reply(t('bulk_no_candidates', userLang, { from: bulkDayName(fromDow, userLang) }));
+        }
+
+        // Build the preview list (≤5 inline, summarize the rest).
+        const previewN = Math.min(5, candidates.length);
+        const previewLines = candidates.slice(0, previewN).map((c) => `• ${c.task_summary}`).join('\n');
+        const moreCount = candidates.length - previewN;
+        const moreTail = moreCount > 0
+          ? '\n…' + (userLang.startsWith('es') ? `y ${moreCount} más` : userLang.startsWith('it') ? `e ${moreCount} in più` : `and ${moreCount} more`)
+          : '';
+
+        const bulkCtx = (session.context_data || {}) as ConversationContext;
+        await supabase
+          .from('user_sessions')
+          .update({
+            conversation_state: 'AWAITING_CONFIRMATION',
+            context_data: {
+              ...bulkCtx,
+              pending_action: {
+                type: 'bulk_reschedule_weekday',
+                from_dow: fromDow,
+                to_dow: toDow,
+                timezone: bulkTz,
+                candidates,
+              },
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', session.id);
+
+        return reply(
+          t('confirm_bulk_reschedule', userLang, {
+            n: String(candidates.length),
+            tasks_word: tasksWord(candidates.length, userLang),
+            from: bulkDayName(fromDow, userLang),
+            to: bulkDayName(toDow, userLang),
+            preview: previewLines,
+            more: moreTail,
+          }),
+        );
+      }
+
       // Task resolution priority (PR4):
       //   0a. Quoted-message context (the user EXPLICITLY pointed at a previous Olive reply)
       //   0b. Relative reference ("last task", "the latest one")
@@ -4975,6 +5696,42 @@ Description: "${parsedExpense.description}"`;
 
           // Preserve conversation context alongside pending_action
           const currentCtx = (session.context_data || {}) as ConversationContext;
+          // Phase 3.1 — detect calendar conflicts on the proposed time
+          // BEFORE storing the offer. Errors are non-fatal; absence of
+          // conflicts data is the same as the pre-3.1 behavior.
+          const setDueTz = profile.timezone || 'America/New_York';
+          let setDueConflicts: ConflictSummary[] = [];
+          try {
+            // 1-hour default window for timed events; 0 (which buildEventTiming
+            // expands to all-day) for date-only.
+            const setDueHasTime = /\d{1,2}:\d{2}|\bat\s+\d/i.test(parsed.readable || '');
+            const setDueEnd = setDueHasTime
+              ? new Date(new Date(parsed.date).getTime() + 60 * 60 * 1000).toISOString()
+              : parsed.date;
+            setDueConflicts = await findConflicts(supabase, {
+              userId,
+              proposedStart: parsed.date,
+              proposedEnd: setDueEnd,
+              proposedAllDay: !setDueHasTime,
+              excludeNoteId: foundTask.id,
+            });
+          } catch (cfErr) {
+            console.warn('[set_due] conflict detection failed (non-fatal):', cfErr);
+          }
+
+          // Phase 3.5 — look up strong patterns matching the proposed
+          // day. Non-blocking; absence = no hint.
+          let setDuePatterns: MatchedPattern[] = [];
+          try {
+            setDuePatterns = await findMatchingPatterns(supabase, {
+              userId,
+              proposedIso: parsed.date,
+              timezone: setDueTz,
+            });
+          } catch (pErr) {
+            console.warn('[set_due] pattern lookup failed (non-fatal):', pErr);
+          }
+
           await supabase
             .from('user_sessions')
             .update({
@@ -4986,14 +5743,29 @@ Description: "${parsedExpense.description}"`;
                   task_id: foundTask.id,
                   task_summary: foundTask.summary,
                   date: parsed.date,
-                  readable: parsed.readable
+                  readable: parsed.readable,
+                  // Phase 1.4 — captured for undo. We snapshot prior
+                  // values BEFORE the user confirms so the post-execute
+                  // last_action stamp is built from a trusted value, not
+                  // a re-read of the row (which would already be the
+                  // updated value by then).
+                  prior_due_date: foundTask.due_date || null,
+                  prior_reminder_time: foundTask.reminder_time || null,
+                  // Phase 1 WhatsApp port: timezone needed for calendar
+                  // sync — read at offer time to avoid an extra profile
+                  // lookup at confirmation time.
+                  timezone: setDueTz
                 }
               },
               updated_at: new Date().toISOString()
             })
             .eq('id', session.id);
 
-          return reply(t('confirm_set_due', userLang, { task: foundTask.summary, when: parsed.readable }));
+          return reply(
+            t('confirm_set_due', userLang, { task: foundTask.summary, when: parsed.readable })
+            + buildWhatsAppConflictSuffix(setDueConflicts, userLang, setDueTz)
+            + buildWhatsAppPatternSuffix(setDuePatterns, userLang),
+          );
         }
         
         case 'assign': {
@@ -5044,8 +5816,155 @@ Description: "${parsedExpense.description}"`;
           return reply(t('confirm_assign', userLang, { task: foundTask.summary, partner: partnerName }));
         }
 
+        // Phase 1.2 WhatsApp port — generic edit offers. Each builds a
+        // pending_action and waits for the user's "yes" before mutating
+        // anything. Capture/Offer/Confirm/Execute is the rule, no
+        // exceptions.
+
+        case 'edit_title': {
+          const newTitle = (effectiveMessage || '').trim();
+          if (!newTitle) {
+            return reply(t('edit_need_value', userLang));
+          }
+          const editCtx = (session.context_data || {}) as ConversationContext;
+          await supabase
+            .from('user_sessions')
+            .update({
+              conversation_state: 'AWAITING_CONFIRMATION',
+              context_data: {
+                ...editCtx,
+                pending_action: {
+                  type: 'edit_title',
+                  task_id: foundTask.id,
+                  task_summary: foundTask.summary,
+                  new_title: newTitle,
+                  prior_summary: foundTask.summary,
+                  timezone: profile.timezone || 'America/New_York',
+                },
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+          return reply(t('confirm_edit_title', userLang, { task: foundTask.summary, new_title: newTitle }));
+        }
+
+        case 'edit_location': {
+          const newLocation = (effectiveMessage || '').trim();
+          if (!newLocation) {
+            return reply(t('edit_need_value', userLang));
+          }
+          const editCtx = (session.context_data || {}) as ConversationContext;
+          await supabase
+            .from('user_sessions')
+            .update({
+              conversation_state: 'AWAITING_CONFIRMATION',
+              context_data: {
+                ...editCtx,
+                pending_action: {
+                  type: 'edit_location',
+                  task_id: foundTask.id,
+                  task_summary: foundTask.summary,
+                  new_location: newLocation,
+                  timezone: profile.timezone || 'America/New_York',
+                },
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+          return reply(t('confirm_edit_location', userLang, { task: foundTask.summary, new_location: newLocation }));
+        }
+
+        case 'edit_description': {
+          const newDescription = (effectiveMessage || '').trim();
+          if (!newDescription) {
+            return reply(t('edit_need_value', userLang));
+          }
+          const editCtx = (session.context_data || {}) as ConversationContext;
+          await supabase
+            .from('user_sessions')
+            .update({
+              conversation_state: 'AWAITING_CONFIRMATION',
+              context_data: {
+                ...editCtx,
+                pending_action: {
+                  type: 'edit_description',
+                  task_id: foundTask.id,
+                  task_summary: foundTask.summary,
+                  new_description: newDescription,
+                  prior_description: foundTask.original_text ?? null,
+                  timezone: profile.timezone || 'America/New_York',
+                },
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+          return reply(t('confirm_edit_description', userLang, {
+            task: foundTask.summary,
+            new_description: newDescription.length > 60 ? newDescription.slice(0, 60) + '…' : newDescription,
+          }));
+        }
+
+        case 'edit_duration': {
+          const raw = (effectiveMessage || '').trim();
+          const parsedMinutes = parseInt(raw, 10);
+          if (!parsedMinutes || parsedMinutes <= 0) {
+            return reply(t('edit_need_value', userLang));
+          }
+          const editCtx = (session.context_data || {}) as ConversationContext;
+          await supabase
+            .from('user_sessions')
+            .update({
+              conversation_state: 'AWAITING_CONFIRMATION',
+              context_data: {
+                ...editCtx,
+                pending_action: {
+                  type: 'edit_duration',
+                  task_id: foundTask.id,
+                  task_summary: foundTask.summary,
+                  new_duration_minutes: parsedMinutes,
+                  timezone: profile.timezone || 'America/New_York',
+                },
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+          return reply(t('confirm_edit_duration', userLang, {
+            task: foundTask.summary,
+            minutes: String(parsedMinutes),
+          }));
+        }
+
         case 'delete': {
           const deleteCtx = (session.context_data || {}) as ConversationContext;
+
+          // Phase 1.4 — capture full restorable row so undo can re-insert
+          // it. We pick a whitelisted column set to avoid resurrecting
+          // search vectors / embeddings that triggers will regenerate.
+          let restoredRow: Record<string, unknown> | null = null;
+          try {
+            const { data: rowSnap } = await supabase
+              .from('clerk_notes')
+              .select('id, author_id, space_id, summary, original_text, due_date, reminder_time, priority, list_id, completed, category, is_sensitive, created_at')
+              .eq('id', foundTask.id)
+              .maybeSingle();
+            restoredRow = rowSnap || null;
+          } catch (snapErr) {
+            console.warn('[delete-offer] failed to snapshot row for undo:', snapErr);
+          }
+
+          // Also remember which Google event was linked at offer time —
+          // undo doesn't recreate the event, but we keep the id for
+          // observability and a future Phase 2 recreate path.
+          let linkedGoogleEventId: string | null = null;
+          try {
+            const { data: cal } = await supabase
+              .from('calendar_events')
+              .select('google_event_id')
+              .eq('note_id', foundTask.id)
+              .maybeSingle();
+            linkedGoogleEventId = cal?.google_event_id ?? null;
+          } catch { /* ignore */ }
+
           await supabase
             .from('user_sessions')
             .update({
@@ -5055,7 +5974,12 @@ Description: "${parsedExpense.description}"`;
                 pending_action: {
                   type: 'delete',
                   task_id: foundTask.id,
-                  task_summary: foundTask.summary
+                  task_summary: foundTask.summary,
+                  prior_due_date: foundTask.due_date || null,
+                  prior_reminder_time: foundTask.reminder_time || null,
+                  restored_row: restoredRow,
+                  google_event_id: linkedGoogleEventId,
+                  timezone: profile.timezone || 'America/New_York'
                 }
               },
               updated_at: new Date().toISOString()
@@ -5158,6 +6082,35 @@ Description: "${parsedExpense.description}"`;
           const remindCtx = (session.context_data || {}) as ConversationContext;
 
           if (parsed.date) {
+            // Phase 3.1 — conflict detection on the reminder window.
+            // Reminders are timed by definition, so we always treat as
+            // a 1-hour window. Errors are non-fatal.
+            const remindTz = profile.timezone || 'America/New_York';
+            let remindConflicts: ConflictSummary[] = [];
+            try {
+              const remindEnd = new Date(new Date(parsed.date).getTime() + 60 * 60 * 1000).toISOString();
+              remindConflicts = await findConflicts(supabase, {
+                userId,
+                proposedStart: parsed.date,
+                proposedEnd: remindEnd,
+                excludeNoteId: foundTask.id,
+              });
+            } catch (cfErr) {
+              console.warn('[remind] conflict detection failed (non-fatal):', cfErr);
+            }
+
+            // Phase 3.5 — pattern hint for the reminder offer.
+            let remindPatterns: MatchedPattern[] = [];
+            try {
+              remindPatterns = await findMatchingPatterns(supabase, {
+                userId,
+                proposedIso: parsed.date,
+                timezone: remindTz,
+              });
+            } catch (pErr) {
+              console.warn('[remind] pattern lookup failed (non-fatal):', pErr);
+            }
+
             await supabase
               .from('user_sessions')
               .update({
@@ -5170,14 +6123,22 @@ Description: "${parsedExpense.description}"`;
                     task_summary: foundTask.summary,
                     time: parsed.date,
                     readable: parsed.readable,
-                    has_due_date: !!foundTask.due_date
+                    has_due_date: !!foundTask.due_date,
+                    // Phase 1.4 — captured for undo.
+                    prior_due_date: foundTask.due_date || null,
+                    prior_reminder_time: foundTask.reminder_time || null,
+                    timezone: remindTz
                   }
                 },
                 updated_at: new Date().toISOString()
               })
               .eq('id', session.id);
 
-            return reply(t('confirm_set_reminder', userLang, { task: foundTask.summary, when: parsed.readable }));
+            return reply(
+              t('confirm_set_reminder', userLang, { task: foundTask.summary, when: parsed.readable })
+              + buildWhatsAppConflictSuffix(remindConflicts, userLang, remindTz)
+              + buildWhatsAppPatternSuffix(remindPatterns, userLang),
+            );
           }
 
           // SMART REMINDER DEFAULTS: Based on task's due_date or event time
@@ -7705,9 +8666,12 @@ If the user's message is long and conversational — asking for help with someth
       const sessionCtxArtifact = (session.context_data || {}) as ConversationContext;
       // Prefer the structured pending_offer (frozen at offer time, immune to CHAT clobber).
       // Fall back to last_assistant_* for legacy / "save this" flows where no offer was set.
-      const freshOffer = isPendingOfferFresh(sessionCtxArtifact.pending_offer)
+      // Narrow on type — PendingOffer is now a union and only the
+      // save_artifact variant has artifact_content / artifact_request.
+      const rawOffer = isPendingOfferFresh(sessionCtxArtifact.pending_offer)
         ? sessionCtxArtifact.pending_offer
         : null;
+      const freshOffer = rawOffer && rawOffer.type === 'save_artifact' ? rawOffer : null;
       const artifactContent = freshOffer?.artifact_content || sessionCtxArtifact.last_assistant_output;
       const artifactRequest = freshOffer?.artifact_request || sessionCtxArtifact.last_assistant_request || '';
 

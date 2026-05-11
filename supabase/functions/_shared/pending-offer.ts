@@ -6,19 +6,148 @@
 // short multilingual confirmations ("yes", "sì", "do it") can be resolved back to
 // the original proposed artifact unambiguously.
 //
-// Today only `save_artifact` is modeled; the type field exists so future offer
-// kinds (schedule_event, create_reminder, share_with_partner) plug in without a
-// schema migration — they're stored in the same JSON column.
+// Discriminated by `type`. New variants plug in without a schema migration —
+// they all live in user_sessions.context_data.pending_action.
+
+import type { ConflictSummary } from "./conflict-detector.ts";
+import type { MatchedPattern } from "./pattern-detector.ts";
 
 export const PENDING_OFFER_TTL_MS = 10 * 60 * 1000;
 
-export interface PendingOffer {
+// Original save-artifact offer (web search / contextual ask / chat).
+export interface SaveArtifactOffer {
   type: 'save_artifact';
   artifact_content: string;
   artifact_request: string;
   artifact_kind: 'web_search' | 'contextual_ask' | 'chat';
   offered_at: string;
 }
+
+// Reschedule offer — set_due / remind. Carries the resolved target and the
+// new datetime so confirmation is deterministic (no re-parsing of "Thursday
+// at 6pm" against a possibly-shifted current time).
+export interface RescheduleTaskOffer {
+  type: 'reschedule_task';
+  task_id: string;
+  task_summary: string;
+  field: 'due_date' | 'reminder_time';
+  new_iso: string;            // full ISO timestamp to write
+  has_time: boolean;          // false → store as date-only + treat as all-day on calendar
+  prior_due_date: string | null;
+  prior_reminder_time: string | null;
+  readable: string;           // human-friendly phrase for confirmation copy
+  timezone: string;
+  // Phase 3.1 — calendar conflicts detected at offer time. Up to N entries
+  // (typically 3-5). Empty array = no conflicts. Absent = conflict
+  // detection wasn't run (older offers, or user has no calendar
+  // connection). Surfaced in the offer line so the user sees the
+  // conflict before confirming.
+  conflicts?: ConflictSummary[];
+  // Phase 3.5 — strong user patterns matching the proposed action.
+  // Empty array = no strong match. Absent = pattern lookup wasn't
+  // run. At most one entry by current planner convention (one hint
+  // per offer); array shape keeps room for future multi-pattern
+  // surfacing without a contract break.
+  pattern_hints?: MatchedPattern[];
+  offered_at: string;
+}
+
+// Generic edit offer — title / location / description / duration. Used by
+// Phase 1's update_title intent; calendar mutation follows by patch.
+export interface EditTaskOffer {
+  type: 'edit_task';
+  task_id: string;
+  task_summary: string;            // current summary (used as label in copy)
+  changes: {
+    new_title?: string;
+    new_location?: string;
+    new_description?: string;
+    new_duration_minutes?: number;
+  };
+  prior: {
+    summary: string;
+    description: string | null;
+  };
+  // Phase 3.1 — only meaningful for `new_duration_minutes` edits where
+  // the event window changes. Title/location/description don't affect
+  // scheduling so conflict detection is skipped for those.
+  conflicts?: ConflictSummary[];
+  offered_at: string;
+}
+
+// Delete offer — destructive, always confirmed even when classifier is
+// confident, to keep parity with the WhatsApp confirmation discipline.
+export interface DeleteTaskOffer {
+  type: 'delete_task';
+  task_id: string;
+  task_summary: string;
+  prior_due_date: string | null;
+  prior_reminder_time: string | null;
+  offered_at: string;
+}
+
+// Disambiguation offer — surfaced when ≥2 tasks match the user's reference.
+// Candidates are pre-resolved so the next-turn reply ("the SoHo one")
+// resolves against the same shortlist Olive showed.
+export interface DisambiguationOffer {
+  type: 'disambiguate';
+  // The intent we'll execute once disambiguated.
+  pending_intent:
+    | { kind: 'reschedule_task'; new_iso: string; has_time: boolean; readable: string; timezone: string }
+    | { kind: 'delete_task' }
+    | { kind: 'edit_task'; changes: EditTaskOffer['changes'] };
+  candidates: Array<{
+    task_id: string;
+    summary: string;
+    due_date: string | null;
+    reminder_time: string | null;
+  }>;
+  original_message: string;
+  offered_at: string;
+}
+
+// Phase 3.2 — bulk reschedule by weekday. The user says "move all my
+// Tuesday tasks to Thursday" and Olive surfaces a preview of every
+// affected task BEFORE confirming. Per-candidate prior state is
+// captured here so bulk undo can reverse each one to its original
+// schedule.
+export interface BulkRescheduleCandidate {
+  task_id: string;
+  task_summary: string;
+  prior_due_date: string | null;
+  prior_reminder_time: string | null;
+  // Pre-computed new ISO (date portion shifted, time-of-day preserved
+  // in user's tz). Stored at offer time so confirmation is
+  // deterministic — no re-parsing or re-shifting against a shifted
+  // clock between offer and confirm.
+  new_iso: string;
+  // The new write-target column. Mirrors RescheduleTaskOffer.field.
+  field: 'due_date' | 'reminder_time';
+  // Whether the original schedule had a time-of-day (we preserve
+  // that distinction across the shift — all-day Tuesday becomes
+  // all-day Thursday).
+  has_time: boolean;
+}
+
+export interface BulkRescheduleOffer {
+  type: 'bulk_reschedule_weekday';
+  from_dow: number; // Sun=0..Sat=6
+  to_dow: number;
+  timezone: string;
+  candidates: BulkRescheduleCandidate[];
+  // The original message that triggered this — handy for the
+  // confirmation prompt's context and for telemetry.
+  original_message: string;
+  offered_at: string;
+}
+
+export type PendingOffer =
+  | SaveArtifactOffer
+  | RescheduleTaskOffer
+  | EditTaskOffer
+  | DeleteTaskOffer
+  | DisambiguationOffer
+  | BulkRescheduleOffer;
 
 export function isPendingOfferFresh(
   offer: PendingOffer | null | undefined,

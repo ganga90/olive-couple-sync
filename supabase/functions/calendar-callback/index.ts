@@ -166,6 +166,20 @@ serve(async (req) => {
       { onConflict: "connection_id" }
     );
 
+    // Phase 2.2 — register a Google Calendar push channel so Olive
+    // gets real-time notifications when the user edits an event in
+    // Google's UI. Lenient: registration failure shouldn't block the
+    // OAuth completion (the user is mid-redirect waiting on us). The
+    // hourly renewal cron picks up watch_state='failed' connections
+    // and retries, so this gets self-healed.
+    try {
+      await supabase.functions.invoke("calendar-watch-register", {
+        body: { connection_id: connection.id },
+      });
+    } catch (watchErr) {
+      console.warn("[calendar-callback] watch registration failed (non-fatal):", watchErr);
+    }
+
     // Redirect to home page after successful connection
     const redirectOrigin = origin || 'https://witholive.app';
     return new Response(null, {

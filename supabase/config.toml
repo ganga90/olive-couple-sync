@@ -36,6 +36,13 @@ verify_jwt = false
 [functions.calendar-create-event]
 verify_jwt = false
 
+# Phase 2.2 — Google Calendar push notifications. The callback
+# receives POSTs from Google with no Authorization header (Google
+# authenticates by echoing our token in X-Goog-Channel-Token, which
+# the edge function verifies app-side). MUST be verify_jwt = false.
+[functions.calendar-watch-callback]
+verify_jwt = false
+
 [functions.generate-olive-tip]
 verify_jwt = false
 
