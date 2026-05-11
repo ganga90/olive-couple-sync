@@ -13,6 +13,33 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import {
+  classifyConfirmationReply,
+  isPendingOfferFresh,
+  type DisambiguationOffer,
+  type PendingOffer,
+} from "../_shared/pending-offer.ts";
+import {
+  clearLastAction,
+  clearPendingAction,
+  getOrCreateSession,
+  isLastActionUndoable,
+  looksLikeUndoCommand,
+  stampLastAction,
+  type WebSession,
+} from "../_shared/web-session.ts";
+import {
+  executeDelete,
+  executeEdit,
+  executeReschedule,
+  executeUndo,
+  type ExecutedAction,
+} from "../_shared/action-executor-offers.ts";
+import {
+  buildResultHint,
+  buildUndoConfirmation,
+} from "../_shared/offer-copy.ts";
+import { pickDisambiguation } from "../_shared/task-disambiguation.ts";
 // GoogleGenAI is now used via shared _shared/intent-classifier.ts
 
 const corsHeaders = {
@@ -426,6 +453,289 @@ function isRelativeRef(target: string): boolean {
   return RELATIVE_REF_PATTERNS.some(p => p.test(target.trim()));
 }
 
+// ─── Pre-flow gate helpers (Phase 1.1 + 1.4) ──────────────────────────
+// Shared with ask-olive-stream via _shared/. The fallback path needs
+// these so that a confirmation reply received here (after stream fails
+// mid-session) still resolves the pending offer instead of being treated
+// as a fresh message.
+
+async function fetchUserTimezoneFallback(supabase: SupabaseClient, userId: string): Promise<string | null> {
+  try {
+    const { data } = await supabase
+      .from('clerk_profiles')
+      .select('timezone')
+      .eq('id', userId)
+      .maybeSingle();
+    return data?.timezone || null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Calendar sync helpers ────────────────────────────────────────────
+//
+// Wrap the calendar-update-event / calendar-delete-event edge functions.
+// Errors NEVER block the local DB mutation — they flow back as a
+// `calendar_sync` field on the action's details so the chat reply can
+// tell the user the truth ("updated in Olive, couldn't reach Google").
+
+type CalendarSyncStatus =
+  | 'updated'
+  | 'deleted'
+  | 'already_gone'
+  | 'not_connected'
+  | 'no_linked_event'
+  | 'etag_conflict'
+  | 'google_api_error'
+  | 'token_refresh_failed'
+  | 'invoke_failed';
+
+interface CalendarSyncReport {
+  status: CalendarSyncStatus;
+  message?: string;
+}
+
+async function syncCalendarUpdate(
+  supabase: SupabaseClient,
+  userId: string,
+  noteId: string,
+  patch: { start_time?: string; all_day?: boolean; timezone?: string; title?: string },
+): Promise<CalendarSyncReport> {
+  try {
+    const { data, error } = await supabase.functions.invoke('calendar-update-event', {
+      body: { user_id: userId, note_id: noteId, patch },
+    });
+    if (error) {
+      console.warn('[ask-olive-individual] calendar-update-event invoke failed:', error);
+      return { status: 'invoke_failed', message: error.message };
+    }
+    return {
+      status: (data?.sync_status as CalendarSyncStatus) || 'invoke_failed',
+      message: data?.error,
+    };
+  } catch (e) {
+    console.warn('[ask-olive-individual] calendar-update-event threw:', e);
+    return { status: 'invoke_failed', message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+async function syncCalendarDelete(
+  supabase: SupabaseClient,
+  userId: string,
+  noteId: string,
+): Promise<CalendarSyncReport> {
+  try {
+    const { data, error } = await supabase.functions.invoke('calendar-delete-event', {
+      body: { user_id: userId, note_id: noteId },
+    });
+    if (error) {
+      console.warn('[ask-olive-individual] calendar-delete-event invoke failed:', error);
+      return { status: 'invoke_failed', message: error.message };
+    }
+    return {
+      status: (data?.sync_status as CalendarSyncStatus) || 'invoke_failed',
+      message: data?.error,
+    };
+  } catch (e) {
+    console.warn('[ask-olive-individual] calendar-delete-event threw:', e);
+    return { status: 'invoke_failed', message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// Build a hint line the LLM can fold into the confirmation message so
+// the chat doesn't lie about Google Calendar state.
+function buildCalendarSyncHint(report: CalendarSyncReport | undefined): string {
+  if (!report) return '';
+  switch (report.status) {
+    case 'updated':
+      return ' (also synced to your Google Calendar)';
+    case 'deleted':
+      return ' (also removed from your Google Calendar)';
+    case 'already_gone':
+      return '';
+    case 'not_connected':
+    case 'no_linked_event':
+      return '';
+    case 'etag_conflict':
+    case 'google_api_error':
+    case 'token_refresh_failed':
+    case 'invoke_failed':
+      return ' — updated in Olive, but I couldn\'t reach your Google Calendar this time';
+  }
+}
+
+// ─── Pre-flow gate (fallback path) ────────────────────────────────────
+//
+// Handles undo, pending-confirmation, and disambiguation pick replies.
+// Returns a JSON Response when it short-circuits, or null to let the
+// normal RAG/chat pipeline run.
+
+async function preFlowGateFallback(args: {
+  supabase: SupabaseClient;
+  userId: string;
+  message: string;
+  userTimezone: string;
+  lang: 'en' | 'es' | 'it';
+  corsHeaders: Record<string, string>;
+}): Promise<Response | null> {
+  const { supabase, userId, message, userTimezone, lang, corsHeaders } = args;
+
+  // 1. Undo
+  if (looksLikeUndoCommand(message)) {
+    const session = await getOrCreateSession(supabase, userId);
+    const last = session.context_data.last_action ?? null;
+    if (isLastActionUndoable(last)) {
+      const result = await executeUndo(
+        { supabase, userId, invokedFrom: 'ask-olive-individual' },
+        last,
+      );
+      await clearLastAction(supabase, session);
+      const summary = 'task_summary' in last ? last.task_summary : 'that one';
+      const line = buildUndoConfirmation(
+        { kind: result.kind, reverted: result.reverted, detail: result.detail },
+        summary,
+      );
+      return jsonReply(line, corsHeaders);
+    }
+    // No undoable action — fall through. Don't return here; the user
+    // might have meant "undo" in some other figurative sense.
+  }
+
+  // 2. Pending confirmation
+  const session = await getOrCreateSession(supabase, userId);
+  const pending = session.context_data.pending_action;
+  if (session.conversation_state === 'AWAITING_CONFIRMATION' && isPendingOfferFresh(pending)) {
+    if (pending.type === 'disambiguate') {
+      return await resolveDisambiguationFallback(
+        supabase, session, pending, message, userTimezone, lang, corsHeaders,
+      );
+    }
+    const confirmation = classifyConfirmationReply(message);
+    if (confirmation === 'affirm' && pending.type !== 'save_artifact') {
+      return await executeOfferFallback(
+        supabase, session, pending, userTimezone, lang, corsHeaders,
+      );
+    }
+    if (confirmation === 'deny') {
+      await clearPendingAction(supabase, session);
+      return jsonReply("🌿 Got it, leaving things as they were.", corsHeaders);
+    }
+    // Neither yes nor no — clear the stale offer and let normal flow proceed.
+    await clearPendingAction(supabase, session);
+    return null;
+  }
+
+  return null;
+}
+
+async function executeOfferFallback(
+  supabase: SupabaseClient,
+  session: WebSession,
+  offer: Exclude<PendingOffer, DisambiguationOffer | { type: 'save_artifact' }>,
+  userTimezone: string,
+  lang: 'en' | 'es' | 'it',
+  corsHeaders: Record<string, string>,
+): Promise<Response> {
+  let result: ExecutedAction | null = null;
+  const ctx = { supabase, userId: session.user_id, invokedFrom: 'ask-olive-individual' };
+  if (offer.type === 'reschedule_task') result = await executeReschedule(ctx, offer);
+  else if (offer.type === 'delete_task') result = await executeDelete(ctx, offer);
+  else if (offer.type === 'edit_task') result = await executeEdit(ctx, offer);
+
+  if (!result) {
+    await clearPendingAction(supabase, session);
+    return jsonReply("🌿 I tried but something went wrong. Want to try again?", corsHeaders);
+  }
+  await stampLastAction(supabase, session, result.last_action);
+  const line = buildResultHint(result, { timezone: userTimezone, lang });
+  return jsonReply(`🌿 ${line}`, corsHeaders);
+}
+
+async function resolveDisambiguationFallback(
+  supabase: SupabaseClient,
+  session: WebSession,
+  offer: DisambiguationOffer,
+  message: string,
+  userTimezone: string,
+  lang: 'en' | 'es' | 'it',
+  corsHeaders: Record<string, string>,
+): Promise<Response> {
+  const pick = pickDisambiguation(
+    message,
+    offer.candidates.map((c) => ({
+      id: c.task_id,
+      summary: c.summary,
+      due_date: c.due_date,
+      reminder_time: c.reminder_time,
+      updated_at: null,
+    })),
+  );
+  if (pick.kind !== 'PICKED') {
+    if (pick.kind === 'NONE_OF_THESE') {
+      await clearPendingAction(supabase, session);
+      return jsonReply("🌿 Got it — let me know what you meant and I'll try again.", corsHeaders);
+    }
+    return jsonReply(
+      `🌿 I'm not sure which one — could you reply with the number?\n${offer.candidates.map((c, i) => `${i + 1}. ${c.summary}`).join('\n')}`,
+      corsHeaders,
+    );
+  }
+  // Build the resolved offer and execute.
+  const pi = offer.pending_intent;
+  let resolved: PendingOffer | null = null;
+  if (pi.kind === 'reschedule_task') {
+    resolved = {
+      type: 'reschedule_task',
+      task_id: pick.task.id,
+      task_summary: pick.task.summary,
+      field: pi.has_time ? 'reminder_time' : 'due_date',
+      new_iso: pi.new_iso,
+      has_time: pi.has_time,
+      prior_due_date: pick.task.due_date,
+      prior_reminder_time: pick.task.reminder_time,
+      readable: pi.readable,
+      timezone: pi.timezone,
+      offered_at: new Date().toISOString(),
+    };
+  } else if (pi.kind === 'delete_task') {
+    resolved = {
+      type: 'delete_task',
+      task_id: pick.task.id,
+      task_summary: pick.task.summary,
+      prior_due_date: pick.task.due_date,
+      prior_reminder_time: pick.task.reminder_time,
+      offered_at: new Date().toISOString(),
+    };
+  } else if (pi.kind === 'edit_task') {
+    resolved = {
+      type: 'edit_task',
+      task_id: pick.task.id,
+      task_summary: pick.task.summary,
+      changes: pi.changes,
+      prior: { summary: pick.task.summary, description: null },
+      offered_at: new Date().toISOString(),
+    };
+  }
+  if (!resolved) {
+    await clearPendingAction(supabase, session);
+    return jsonReply("🌿 Something went wrong resolving that — could you rephrase?", corsHeaders);
+  }
+  return executeOfferFallback(
+    supabase, session, resolved as Exclude<PendingOffer, DisambiguationOffer | { type: 'save_artifact' }>,
+    userTimezone, lang, corsHeaders,
+  );
+}
+
+function jsonReply(text: string, corsHeaders: Record<string, string>): Response {
+  // Match the existing ask-olive-individual response shape: a JSON body
+  // with `response` string. The web client renders this as the assistant
+  // message.
+  return new Response(
+    JSON.stringify({ response: text, success: true, source: 'gate' }),
+    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+  );
+}
+
 // Execute a task action server-side and return the result
 async function executeTaskAction(
   supabase: SupabaseClient,
@@ -713,10 +1023,35 @@ async function executeTaskAction(
 
         if (error) throw error;
         console.log(`[executeTaskAction] Set ${updateField}:`, taskSummary, '→', targetDate.toISOString());
-        return { type: intent.intent, task_id: taskId, task_summary: taskSummary || '', success: true, details: { [`new_${updateField}`]: targetDate.toISOString(), readable } };
+
+        // Propagate the new schedule to Google Calendar if the task has a
+        // linked event. The signal for all-day vs timed comes straight
+        // from the parser: when `hours` was set (named time-of-day or
+        // explicit "at 6pm"), it's a timed event. Otherwise the parser
+        // assigned a default hour just to have a target, but the user's
+        // intent was a day-level reschedule → all-day event on Google.
+        const calendarSync = await syncCalendarUpdate(supabase, userId, taskId, {
+          start_time: targetDate.toISOString(),
+          all_day: hours === null,
+          timezone: userTimezone,
+        });
+
+        return {
+          type: intent.intent,
+          task_id: taskId,
+          task_summary: taskSummary || '',
+          success: true,
+          details: { [`new_${updateField}`]: targetDate.toISOString(), readable, calendar_sync: calendarSync },
+        };
       }
 
       case 'delete': {
+        // Remove the linked Google Calendar event BEFORE the clerk_notes
+        // delete — calendar_events.note_id is ON DELETE SET NULL, so
+        // doing it the other way would orphan the event with no link
+        // back. Errors are non-fatal; sync state flows to the reply.
+        const calendarSync = await syncCalendarDelete(supabase, userId, taskId);
+
         const { error } = await supabase
           .from('clerk_notes')
           .delete()
@@ -724,7 +1059,13 @@ async function executeTaskAction(
 
         if (error) throw error;
         console.log('[executeTaskAction] Deleted task:', taskSummary);
-        return { type: 'delete', task_id: taskId, task_summary: taskSummary || '', success: true };
+        return {
+          type: 'delete',
+          task_id: taskId,
+          task_summary: taskSummary || '',
+          success: true,
+          details: { calendar_sync: calendarSync },
+        };
       }
 
       case 'move': {
@@ -958,6 +1299,26 @@ serve(async (req) => {
     let supabase: SupabaseClient | null = null;
     if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
       supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    }
+
+    // ── Phase 1 pre-flow gate ──
+    // Fallback path needs to honor pending offers + undo so that when
+    // ask-olive-stream fails mid-session and the user falls through here,
+    // their "yes" / "no" / "undo" reply still resolves correctly.
+    if (supabase && actualUserId && actualMessage) {
+      const userTz =
+        (await fetchUserTimezoneFallback(supabase, actualUserId)) ||
+        (context?.timezone as string) ||
+        'America/New_York';
+      const gateResp = await preFlowGateFallback({
+        supabase,
+        userId: actualUserId,
+        message: actualMessage,
+        userTimezone: userTz,
+        lang: (context?.language as 'en' | 'es' | 'it') || 'en',
+        corsHeaders,
+      });
+      if (gateResp) return gateResp;
     }
 
     // Fetch user memories for context personalization
@@ -1618,13 +1979,17 @@ serve(async (req) => {
 
       // If an action was executed, tell Gemini so it responds naturally
       if (actionResult && actionResult.success) {
+        // Calendar sync suffix — appended to verbs that touch calendar
+        // state (set_due, remind, delete) so the chat reply is truthful
+        // about whether Google Calendar was actually updated.
+        const calHint = buildCalendarSyncHint(actionResult.details?.calendar_sync);
         const actionVerbs: Record<string, string> = {
           complete: 'marked as complete',
           set_priority: `changed the priority to ${actionResult.details?.new_priority || 'updated'}`,
-          set_due: `updated the due date/time to ${actionResult.details?.new_due_date ? new Date(actionResult.details.new_due_date).toLocaleString() : 'updated'}`,
-          delete: 'deleted',
+          set_due: `updated the due date/time to ${actionResult.details?.new_due_date ? new Date(actionResult.details.new_due_date).toLocaleString() : 'updated'}${calHint}`,
+          delete: `deleted${calHint}`,
           expense: `logged an expense of ${actionResult.details?.amount ? '$' + actionResult.details.amount : ''} at ${actionResult.details?.merchant || 'unknown'} (${actionResult.details?.category || 'other'})`,
-          remind: `set a reminder ${actionResult.details?.readable || 'for ' + (actionResult.details?.new_reminder_time ? new Date(actionResult.details.new_reminder_time).toLocaleString() : 'later')}`,
+          remind: `set a reminder ${actionResult.details?.readable || 'for ' + (actionResult.details?.new_reminder_time ? new Date(actionResult.details.new_reminder_time).toLocaleString() : 'later')}${calHint}`,
           partner_message: actionResult.details?.sent
             ? `sent a WhatsApp message to ${actionResult.details?.partner_name || 'your partner'}${actionResult.details?.task_created ? ' and created a task assigned to them' : ''}`
             : actionResult.details?.error === 'no_phone'

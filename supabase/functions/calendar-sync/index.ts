@@ -25,7 +25,7 @@ serve(async (req) => {
     // Get user's calendar connection (only needed columns — no SELECT *)
     const { data: connection, error: connError } = await supabase
       .from("calendar_connections")
-      .select("id, google_email, calendar_name, sync_enabled, last_sync_time, access_token, refresh_token, token_expiry, primary_calendar_id, is_active")
+      .select("id, google_email, calendar_name, sync_enabled, last_sync_time, access_token, refresh_token, token_expiry, primary_calendar_id, is_active, watch_channel_id, watch_resource_id")
       .eq("user_id", user_id)
       .eq("is_active", true)
       .maybeSingle();
@@ -103,6 +103,35 @@ serve(async (req) => {
     }
 
     if (action === 'disconnect') {
+      // Phase 2.2 — stop the push channel BEFORE we delete the
+      // connection row. Otherwise Google keeps delivering callbacks
+      // to a channel id we'll no longer recognize, and the receiver
+      // logs noise indefinitely. We use a direct POST to Google's
+      // channels/stop endpoint rather than the shared helper because
+      // this function predates the helper and we want minimal new
+      // imports in the legacy path.
+      if (connection.watch_channel_id && connection.watch_resource_id) {
+        try {
+          await fetch("https://www.googleapis.com/calendar/v3/channels/stop", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              id: connection.watch_channel_id,
+              resourceId: connection.watch_resource_id,
+            }),
+          });
+        } catch (e) {
+          // Non-fatal: the connection is going away anyway. Worst case
+          // is Google delivers a few more callbacks that hit the
+          // unknown-channel branch in calendar-watch-callback and
+          // get logged as such.
+          console.warn('[calendar-sync] watch channel stop failed (non-fatal):', e);
+        }
+      }
+
       // Revoke token
       try {
         await fetch(`https://oauth2.googleapis.com/revoke?token=${accessToken}`, {
