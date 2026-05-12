@@ -841,8 +841,11 @@ const ExpensesPage: React.FC = () => {
 
   const hasDateFilter = dateFrom || dateTo;
 
+  // AppLayout's <main> uses overflow-hidden on mobile, so each page is
+  // responsible for its own scroll container. Before this fix the expense
+  // list spilled past the bottom tab bar and was unreachable.
   return (
-    <div className="space-y-4 pb-32 md:pb-8 px-1">
+    <div className="h-full overflow-y-auto scrollbar-thin space-y-4 pb-32 md:pb-8 px-1">
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
