@@ -93,26 +93,40 @@ serve(async (req) => {
     const userInfo = await userInfoResponse.json();
     console.log('[calendar-callback] Got user info:', userInfo.email);
 
-    // Get user's calendars
-    const calendarsResponse = await fetch(
-      "https://www.googleapis.com/calendar/v3/users/me/calendarList",
-      { headers: { Authorization: `Bearer ${tokens.access_token}` } }
-    );
-
-    if (!calendarsResponse.ok) {
-      return errorRedirect("Failed to get calendar list", undefined, origin);
-    }
-
-    const calendars = await calendarsResponse.json();
-    const primaryCalendar = calendars.items?.find(
-      (cal: any) => cal.primary === true
-    );
-
-    if (!primaryCalendar) {
-      return errorRedirect("No primary calendar found", undefined, origin);
-    }
-
-    console.log('[calendar-callback] Found primary calendar:', primaryCalendar.summary);
+    // Resolve the primary calendar identifier.
+    //
+    // Historical note: this used to GET /users/me/calendarList to find
+    // the entry with `primary: true`. That endpoint requires the
+    // calendar.calendarlist.readonly scope (or the broader `calendar`
+    // scope). To pass Google's verification review, calendar-auth-url
+    // was narrowed to request only `calendar.events` — which is the
+    // smallest scope that lets Olive read AND write events. With that
+    // narrow scope, the /calendarList GET returns 403 and the OAuth
+    // flow ends in "Failed to get calendar list" right after the
+    // user successfully grants permission. That's the bug we're
+    // fixing here.
+    //
+    // The fix: don't call /calendarList. Google's Calendar API treats
+    // the literal string "primary" as a reserved alias for the
+    // authenticated user's primary calendar in every event-related
+    // endpoint (events.list, events.insert, events.patch, channels/watch,
+    // etc.). So we can store `"primary"` as the calendar id, hand it
+    // to the same /calendars/{id}/events URLs we already build
+    // downstream (calendar-create-event, calendar-update-event,
+    // calendar-watch-register, etc.), and everything keeps working
+    // with no scope change. The user-visible calendar_name falls back
+    // to their email — which is what most users would recognize
+    // anyway, and what Google shows for the primary calendar by
+    // default when no override has been set.
+    //
+    // Backwards compatibility: existing connections that already
+    // stored an email-based primary_calendar_id (from before the scope
+    // narrowing) keep working — Google's API accepts the email form
+    // too. So we DON'T migrate existing rows; we just stop creating
+    // broken ones.
+    const PRIMARY_CALENDAR_ID = "primary";
+    const calendarDisplayName = userInfo.email || "Primary";
+    console.log('[calendar-callback] Using primary calendar alias for', userInfo.email);
 
     // Check if Tasks scope was granted
     let tasksEnabled = false;
@@ -137,8 +151,8 @@ serve(async (req) => {
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token,
           token_expiry: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-          primary_calendar_id: primaryCalendar.id,
-          calendar_name: primaryCalendar.summary,
+          primary_calendar_id: PRIMARY_CALENDAR_ID,
+          calendar_name: calendarDisplayName,
           calendar_type: "individual",
           sync_enabled: true,
           is_active: true,
