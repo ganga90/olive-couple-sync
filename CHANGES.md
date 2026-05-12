@@ -12,6 +12,47 @@ there are no behavioral rollbacks.
 
 ---
 
+## 2026-05-12 — Home / MyDay / Expenses mobile polish
+
+Three surface-level UI fixes on mobile, none touching data.
+
+**1. Partner activity widget — collapsed by default ([PartnerActivityWidget.tsx](practical-lichterman/src/components/PartnerActivityWidget.tsx)).**
+Home was showing up to 5 recent updates from other space members
+inline, which on a tall family/friend space turned the feed into a wall
+of cards. The widget now shows only the freshest update and a small
+"See N more" pill that expands to up to 5; expanding shows a "Show less"
+affordance. Card surface switched from grey muted tint to clean
+`bg-white/70` with hairline stone border to match the paper aesthetic.
+
+**2. Agent insights — redesigned cards on MyDay ([AgentInsightsSection.tsx](practical-lichterman/src/components/AgentInsightsSection.tsx)).**
+Old layout dropped each agent result onto a saturated tinted body that
+clashed with the calm Olive surface, and rendered bullet-listed agent
+output as `whitespace-pre-wrap` text. New layout: white card + hairline
+border, larger 28%-radius squircle agent icon with the agent's color
+on the icon only, list-aware `AgentMessage` renderer that detects
+bulleted reports and renders a real `<ul>` with leaf bullets and
+hanging indent. Badges desaturated to stone/amber/emerald-50 tints so
+true status colors (red overdue) actually pop when they fire. Header
+gained a serif title and pill-style "Manage" button. "More" → "Show
+more / Show less" with a rotating chevron.
+
+**3. Expenses page scrolls again ([Expenses.tsx](practical-lichterman/src/pages/Expenses.tsx)).**
+`AppLayout`'s mobile `<main>` is `overflow-hidden` (each page owns its
+scroll). Home wraps in `overflow-y-auto`; Expenses didn't, so rows past
+the viewport were unreachable and the user had to force a rubber-band
+scroll. Added `h-full overflow-y-auto scrollbar-thin` to the page root
+and verified live in the local preview.
+
+**i18n.** New keys (`titleMulti`, `emptyMulti`, `seeMore`, `showLess`,
+`showingCount`) added to en/es-ES/it-IT `home.json` per the
+no-hardcoded-strings rule.
+
+| Date | Task | Files | Description |
+|------|------|-------|-------------|
+| 2026-05-12 | UI-MOBILE-POLISH | src/components/PartnerActivityWidget.tsx, src/components/AgentInsightsSection.tsx, src/pages/Expenses.tsx, public/locales/{en,es-ES,it-IT}/home.json | Collapse partner activity to 1 row + See more; redesign agent insight cards; fix Expenses scroll container |
+
+---
+
 ## 2026-05-12 — Calendar edit hotfix: the bug Phases 1–3 didn't catch
 
 Phases 1.5 through 3.6 shipped on 2026-05-10–11 with a full observability +
