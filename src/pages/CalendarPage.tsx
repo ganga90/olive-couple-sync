@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, MapPin, RefreshCw, Loader2 } from "lucide-react";
+import { CalendarSyncQueueBadge } from "@/components/CalendarSyncQueueBadge";
 // FloatingActionButton import removed — duplicate Quick Add FAB was
 // stacking on top of the global FloatingSpeedDial (AppLayout). Brain-dump
 // from the speed-dial replaces this entry point.
@@ -124,6 +125,14 @@ const CalendarPage = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/*
+              PR 2C: visibility for the retry queue. The chat-side
+              promise ("I'll keep trying in the background") is now
+              auditable from here. Component self-hides when the
+              queue is empty so the header stays calm on the steady-
+              state happy path.
+            */}
+            <CalendarSyncQueueBadge />
             {/* Today button */}
             <Button
               variant="ghost"

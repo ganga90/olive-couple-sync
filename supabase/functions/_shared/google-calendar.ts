@@ -89,12 +89,27 @@ export interface GoogleEventResponse {
 // meeting silently on people is bad form.
 export type SendUpdatesPolicy = "all" | "externalOnly" | "none";
 
+// Failure reasons returned by the Google Calendar helpers. The original
+// (Phase 1.5) set collapsed every non-2xx response into "google_api_error",
+// which meant callers couldn't distinguish "user needs to reconnect"
+// (401/403 — permanent until the user does something) from "Google's
+// rate-limiting us right now" (429 — transient with a Retry-After header)
+// from "Google is down" (5xx — transient but unbounded) from "the event
+// you're trying to update doesn't exist anymore" (404/410 — terminal
+// success for delete, terminal already-gone for update). Layer 2 of the
+// 2026-05-12 fix walks the reasons through each edge function to do the
+// right thing per class.
 export type CalendarFailureReason =
   | "not_connected"
   | "no_linked_event"
   | "token_refresh_failed"
   | "etag_conflict"
-  | "google_api_error"
+  | "event_not_found"        // 404/410 — event gone from Google's side
+  | "auth_expired"           // 401 — access token rejected by Google
+  | "scope_insufficient"     // 403 — OAuth scope doesn't cover this action
+  | "rate_limited"           // 429 — retry per Retry-After header
+  | "google_unavailable"     // 5xx — retry with backoff
+  | "google_api_error"       // anything else (4xx without a more specific class)
   | "missing_input";
 
 export interface CalendarOk<T> {
@@ -106,8 +121,52 @@ export interface CalendarErr {
   reason: CalendarFailureReason;
   status?: number;
   message?: string;
+  // When `reason === "rate_limited"` and Google sent a Retry-After header,
+  // this carries the parsed milliseconds. Callers should pass this through
+  // to `enqueueRetry` so the next-attempt time honors Google's hint
+  // instead of using our generic 30s backoff (which would just trip the
+  // same rate limit again).
+  retry_after_ms?: number;
 }
 export type CalendarResult<T> = CalendarOk<T> | CalendarErr;
+
+// Map an HTTP status code from a Google Calendar API response to the
+// CalendarFailureReason that best describes what the caller should do
+// about it. The intent here is *prescriptive* — each reason maps to a
+// distinct recovery path in calendar-update-event / calendar-delete-event.
+//
+// Not in this map: 412 (etag_conflict). That's handled separately at the
+// call site because etag presence on the request is what makes the 412
+// possible — it's a caller-controlled outcome, not a server condition.
+export function classifyHttpError(status: number): CalendarFailureReason {
+  if (status === 401) return "auth_expired";
+  if (status === 403) return "scope_insufficient";
+  if (status === 404 || status === 410) return "event_not_found";
+  if (status === 429) return "rate_limited";
+  if (status >= 500 && status < 600) return "google_unavailable";
+  return "google_api_error";
+}
+
+// Parse a Retry-After header value (either a delta-seconds integer or an
+// HTTP-date) into milliseconds-from-now. Returns undefined if the header
+// is absent, malformed, or in the past. Google occasionally sends both
+// forms — we accept either to be conservative.
+export function parseRetryAfter(header: string | null | undefined, nowMs: number = Date.now()): number | undefined {
+  if (!header) return undefined;
+  const trimmed = header.trim();
+  if (!trimmed) return undefined;
+  // Delta-seconds — RFC 7231 §7.1.3 says non-negative integer.
+  if (/^\d+$/.test(trimmed)) {
+    const sec = parseInt(trimmed, 10);
+    if (!Number.isFinite(sec) || sec < 0) return undefined;
+    return sec * 1000;
+  }
+  // HTTP-date.
+  const targetMs = Date.parse(trimmed);
+  if (!Number.isFinite(targetMs)) return undefined;
+  const deltaMs = targetMs - nowMs;
+  return deltaMs > 0 ? deltaMs : undefined;
+}
 
 // ─── Connection lookup ────────────────────────────────────────────────
 
@@ -149,6 +208,79 @@ export async function findLinkedEventByNoteId(
 
   if (error || !data) return null;
   return data as LinkedCalendarEvent;
+}
+
+// ─── Connection health ────────────────────────────────────────────────
+//
+// The two reasons calendar-update-event and calendar-delete-event can't
+// recover from on their own — auth_expired (401) and scope_insufficient
+// (403) — get persisted to `calendar_connections.health_status` so the
+// UI can render a reconnect banner. The user has to take an action to
+// fix this; no amount of retrying with the same OAuth tokens will help.
+//
+// `markConnectionHealthy` is the inverse: when a write actually
+// succeeds, clear stale flags so the banner goes away. The .neq() guard
+// keeps this from churning `last_health_change_at` on every successful
+// write — the timestamp only moves when the status actually transitions.
+
+export type ConnectionHealthStatus =
+  | "healthy"
+  | "auth_expired"
+  | "scope_insufficient"
+  | "persistently_failing";
+
+// Truncate health_message to match the column's documented contract
+// (free-form operator diagnosis text; not user-facing). Same MAX_ERR_LEN
+// as calendar-sync-logger.ts for consistency.
+const MAX_HEALTH_MESSAGE_LEN = 500;
+
+export async function markConnectionUnhealthy(
+  supabase: SupabaseClient,
+  connectionId: string,
+  reason: Exclude<ConnectionHealthStatus, "healthy">,
+  message?: string,
+): Promise<void> {
+  const trimmed = message ? message.slice(0, MAX_HEALTH_MESSAGE_LEN) : null;
+  const { error } = await supabase
+    .from("calendar_connections")
+    .update({
+      health_status: reason,
+      last_health_change_at: new Date().toISOString(),
+      health_message: trimmed,
+    })
+    .eq("id", connectionId);
+  if (error) {
+    console.warn(
+      "[google-calendar] markConnectionUnhealthy failed (non-fatal):",
+      error.message,
+    );
+  }
+}
+
+export async function markConnectionHealthy(
+  supabase: SupabaseClient,
+  connectionId: string,
+): Promise<void> {
+  // `.neq("health_status", "healthy")` guarantees we only write — and
+  // therefore only bump `last_health_change_at` — when the row's status
+  // actually transitions. Without this, every successful PATCH would
+  // refresh the timestamp on a healthy connection, making the column
+  // useless for "when did this user last have a problem" queries.
+  const { error } = await supabase
+    .from("calendar_connections")
+    .update({
+      health_status: "healthy",
+      last_health_change_at: new Date().toISOString(),
+      health_message: null,
+    })
+    .eq("id", connectionId)
+    .neq("health_status", "healthy");
+  if (error) {
+    console.warn(
+      "[google-calendar] markConnectionHealthy failed (non-fatal):",
+      error.message,
+    );
+  }
 }
 
 // ─── Token refresh ────────────────────────────────────────────────────
@@ -302,7 +434,11 @@ export async function createGoogleEvent(
 
   if (!res.ok) {
     const body = await safeReadBody(res);
-    return { ok: false, reason: "google_api_error", status: res.status, message: body };
+    const reason = classifyHttpError(res.status);
+    const retry_after_ms = reason === "rate_limited"
+      ? parseRetryAfter(res.headers.get("Retry-After"))
+      : undefined;
+    return { ok: false, reason, status: res.status, message: body, retry_after_ms };
   }
 
   const data = (await res.json()) as GoogleEventResponse;
@@ -334,12 +470,13 @@ export async function getGoogleEvent(
       message: err instanceof Error ? err.message : "fetch failed",
     };
   }
-  if (res.status === 404 || res.status === 410) {
-    return { ok: false, reason: "google_api_error", status: res.status, message: "not found" };
-  }
   if (!res.ok) {
     const body = await safeReadBody(res);
-    return { ok: false, reason: "google_api_error", status: res.status, message: body };
+    const reason = classifyHttpError(res.status);
+    const retry_after_ms = reason === "rate_limited"
+      ? parseRetryAfter(res.headers.get("Retry-After"))
+      : undefined;
+    return { ok: false, reason, status: res.status, message: body, retry_after_ms };
   }
   const data = (await res.json()) as GoogleEventResponse;
   return { ok: true, value: data };
@@ -387,13 +524,21 @@ export async function patchGoogleEvent(
     };
   }
 
+  // 412 stays special-cased here (not in classifyHttpError) because it's
+  // only meaningful when the caller sent an If-Match header — it's
+  // caller-controlled, not a server condition. Without that header the
+  // server can't return 412 in the first place.
   if (res.status === 412) {
     return { ok: false, reason: "etag_conflict", status: 412 };
   }
 
   if (!res.ok) {
     const body = await safeReadBody(res);
-    return { ok: false, reason: "google_api_error", status: res.status, message: body };
+    const reason = classifyHttpError(res.status);
+    const retry_after_ms = reason === "rate_limited"
+      ? parseRetryAfter(res.headers.get("Retry-After"))
+      : undefined;
+    return { ok: false, reason, status: res.status, message: body, retry_after_ms };
   }
 
   const data = (await res.json()) as GoogleEventResponse;
@@ -431,13 +576,21 @@ export async function deleteGoogleEvent(
     };
   }
 
+  // DELETE 404/410 stays a terminal-success: the event we wanted to
+  // delete is already gone, so the desired state is reached. This is
+  // unlike PATCH 404, where event-not-found means the *change* the user
+  // asked for couldn't land.
   if (res.status === 404 || res.status === 410) {
     return { ok: true, value: { alreadyGone: true } };
   }
 
   if (!res.ok && res.status !== 204) {
     const body = await safeReadBody(res);
-    return { ok: false, reason: "google_api_error", status: res.status, message: body };
+    const reason = classifyHttpError(res.status);
+    const retry_after_ms = reason === "rate_limited"
+      ? parseRetryAfter(res.headers.get("Retry-After"))
+      : undefined;
+    return { ok: false, reason, status: res.status, message: body, retry_after_ms };
   }
 
   return { ok: true, value: { alreadyGone: false } };

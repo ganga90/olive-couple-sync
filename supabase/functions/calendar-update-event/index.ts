@@ -17,6 +17,8 @@ import {
   findLinkedEventByNoteId,
   getActiveCalendarConnection,
   getGoogleEvent,
+  markConnectionHealthy,
+  markConnectionUnhealthy,
   patchGoogleEvent,
   type CalendarConnection,
   type GoogleEventPatch,
@@ -87,7 +89,16 @@ serve(async (req) => {
     status: CalendarSyncStatus,
     httpStatus: number,
     payload: Record<string, unknown>,
-    extra: { etag_conflict?: boolean; google_status?: number; error?: string } = {},
+    extra: {
+      etag_conflict?: boolean;
+      google_status?: number;
+      error?: string;
+      // L2 (2026-05-12): Google's Retry-After hint. Passed through to
+      // enqueueRetry so the next-attempt time honors it instead of
+      // using the default 30s backoff (which would just trip the same
+      // rate limit again).
+      retry_after_ms?: number;
+    } = {},
   ): Promise<Response> {
     await logCalendarSync(supabase, {
       user_id: userId,
@@ -105,7 +116,8 @@ serve(async (req) => {
 
     // Phase 2.1: enqueue retry on transient failures. Two guards:
     //   1. The status itself must be retryable (shouldRetry filters out
-    //      missing_input / not_connected / no_linked_event / etag_conflict).
+    //      missing_input / not_connected / no_linked_event / etag_conflict
+    //      and, after L2, needs_reconnect / already_gone).
     //   2. The caller must NOT be the retry worker itself — without this
     //      check, every failed retry would enqueue a fresh row on top of
     //      the one already being worked, causing exponential queue growth.
@@ -125,12 +137,45 @@ serve(async (req) => {
         initial_failure_status: status,
         initial_http_status: extra.google_status ?? null,
         initial_error: extra.error ?? null,
+        // L2: when Google gave us a Retry-After (only for rate_limited
+        // today), the queue's first attempt waits that long instead of
+        // the default 30s. Defending the same rate limit by trying
+        // again in 30s would just re-trip it.
+        retry_after_ms: extra.retry_after_ms,
       });
       if (enq.enqueued) {
         // Reflect the enqueue in the response so callers can tell the
         // user "I'll retry" instead of just "it failed."
         (payload as Record<string, unknown>).retry_enqueued = true;
         (payload as Record<string, unknown>).retry_id = enq.id;
+      } else {
+        // L3 (2026-05-12): enqueue actually failed despite shouldRetry
+        // saying yes. This is the case where the user-facing copy used
+        // to dead-end on "but I couldn't reach Google Calendar this
+        // time" with no recourse — the retry queue silently rejected
+        // the row and the chat reply had no way to know.
+        //
+        // We DON'T overwrite payload.sync_status because that would
+        // lose the original Google reason in analytics. Instead we
+        // surface enqueue_failed as a separate signal AND write a
+        // second log row so this state is visible in
+        // olive_calendar_sync_log.
+        (payload as Record<string, unknown>).retry_enqueued = false;
+        (payload as Record<string, unknown>).enqueue_failed = true;
+        (payload as Record<string, unknown>).enqueue_failure_reason = enq.reason ?? "unknown";
+        await logCalendarSync(supabase, {
+          user_id: userId,
+          action: "update",
+          sync_status: "enqueue_failed",
+          note_id: noteId,
+          connection_id: connectionId,
+          google_event_id: googleEventId,
+          http_status: null,
+          latency_ms: 0,
+          invoked_from: invokedFrom,
+          error_message: `enqueue_failed (origin=${status}): ${enq.reason ?? "unknown"}`,
+          metadata: { origin_sync_status: status },
+        });
       }
     }
 
@@ -291,23 +336,133 @@ serve(async (req) => {
     );
 
     if (!patchResult.ok) {
-      const sync_status: CalendarSyncStatus =
-        patchResult.reason === "etag_conflict" ? "etag_conflict" : "google_api_error";
       console.error(
         "[calendar-update-event] Google PATCH failed:",
+        patchResult.reason,
         patchResult.status,
         patchResult.message,
       );
-      return exit(sync_status, 200, {
-        success: false,
-        synced_to_google: false,
-        sync_status,
-        error: patchResult.message,
-      }, {
-        etag_conflict: patchResult.reason === "etag_conflict",
-        google_status: patchResult.status,
-        error: patchResult.message,
-      });
+
+      // L2 (2026-05-12): branch on classifier. Each reason maps to a
+      // distinct sync_status that callers downstream (retry queue,
+      // offer-copy, eventual UI surface) use to pick the right next
+      // action. Centralizing this here keeps the policy out of the
+      // helpers and out of the chat layer.
+      switch (patchResult.reason) {
+        case "etag_conflict":
+          return exit("etag_conflict", 200, {
+            success: false,
+            synced_to_google: false,
+            sync_status: "etag_conflict",
+            error: patchResult.message,
+          }, {
+            etag_conflict: true,
+            google_status: patchResult.status,
+            error: patchResult.message,
+          });
+
+        case "event_not_found": {
+          // The Google event we were going to PATCH is gone. The local
+          // mirror is now misleading — calendar-update-event would loop
+          // forever returning event_not_found if a future invocation
+          // saw the same stale link. Drop the link.
+          const { error: unlinkErr } = await supabase
+            .from("calendar_events")
+            .delete()
+            .eq("id", linked.id);
+          if (unlinkErr) {
+            console.warn(
+              "[calendar-update-event] unlink stale mirror failed (non-fatal):",
+              unlinkErr.message,
+            );
+          }
+          // Success-shaped from the user's perspective: their Olive
+          // task moved, the Google event was already gone.
+          return exit("already_gone", 200, {
+            success: true,
+            synced_to_google: false,
+            sync_status: "already_gone",
+          }, {
+            google_status: patchResult.status,
+            error: patchResult.message,
+          });
+        }
+
+        case "auth_expired":
+        case "scope_insufficient":
+          // Permanent (until user reconnects). shouldRetry must NOT
+          // include needs_reconnect — otherwise the retry queue would
+          // grind through five 30s/2m/10m/1h/6h retries that all 401
+          // identically. The user-facing copy + the UI banner (PR 2B)
+          // are what get the user to act.
+          //
+          // PR 2B: persist the health state on the connection row so
+          // the calendar settings page can render a persistent
+          // reconnect banner. Fire-and-forget — failure here is
+          // non-fatal (the response and sync log already carry the
+          // truth; the banner is gravy).
+          await markConnectionUnhealthy(
+            supabase,
+            connection.id,
+            patchResult.reason,
+            patchResult.message,
+          );
+          return exit("needs_reconnect", 200, {
+            success: false,
+            synced_to_google: false,
+            sync_status: "needs_reconnect",
+            needs_reconnect: true,
+            reconnect_reason: patchResult.reason,
+            error: patchResult.message,
+          }, {
+            google_status: patchResult.status,
+            error: patchResult.message,
+          });
+
+        case "rate_limited":
+          // Transient. The exit() helper enqueues a retry; we pass
+          // retry_after_ms through so it can honor Google's hint instead
+          // of using the default 30s backoff (which would just trip the
+          // same limit again).
+          return exit("rate_limited", 200, {
+            success: false,
+            synced_to_google: false,
+            sync_status: "rate_limited",
+            retry_after_ms: patchResult.retry_after_ms,
+            error: patchResult.message,
+          }, {
+            google_status: patchResult.status,
+            error: patchResult.message,
+            retry_after_ms: patchResult.retry_after_ms,
+          });
+
+        case "google_unavailable":
+          // 5xx: transient, exponential backoff. exit() will enqueue.
+          return exit("google_unavailable", 200, {
+            success: false,
+            synced_to_google: false,
+            sync_status: "google_unavailable",
+            error: patchResult.message,
+          }, {
+            google_status: patchResult.status,
+            error: patchResult.message,
+          });
+
+        case "google_api_error":
+        default:
+          // Unclassified 4xx. Retryable in case it's actually transient
+          // (e.g. a race between two of our PATCH attempts); abandons
+          // after the backoff schedule if not.
+          return exit("google_api_error", 200, {
+            success: false,
+            synced_to_google: false,
+            sync_status: "google_api_error",
+            error: patchResult.message,
+          }, {
+            google_status: patchResult.status,
+            error: patchResult.message,
+          });
+      }
     }
 
     const googleEvent = patchResult.value;
@@ -333,6 +488,12 @@ serve(async (req) => {
     if (mirrorErr) {
       console.warn("[calendar-update-event] local mirror update failed:", mirrorErr);
     }
+
+    // PR 2B: clear any stale health flag on the connection — the
+    // OAuth state is demonstrably good, the user's calendar caught
+    // up, the banner should go away. No-op when already healthy
+    // thanks to the .neq guard inside markConnectionHealthy.
+    await markConnectionHealthy(supabase, connection.id);
 
     return exit("updated", 200, {
       success: true,

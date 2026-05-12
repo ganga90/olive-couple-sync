@@ -119,10 +119,15 @@
   },
   "partnerActivity": {
     "title": "Attività recente di {{name}}",
+    "titleMulti": "Attività recente",
     "railTitle": "Partner",
     "added": "ha aggiunto un'attività condivisa",
     "assignedYou": "ti ha assegnato un'attività",
-    "empty": "{{name}} è sospettosamente silenzioso/a... 🤔"
+    "empty": "{{name}} è sospettosamente silenzioso/a... 🤔",
+    "emptyMulti": "Nessuna attività recente dagli altri membri.",
+    "showingCount": "Mostro {{count}}",
+    "seeMore": "Vedi altri {{count}}",
+    "showLess": "Mostra meno"
   },
   "contextRail": {
     "calendar": "Calendario",

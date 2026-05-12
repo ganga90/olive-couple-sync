@@ -12,6 +12,587 @@ there are no behavioral rollbacks.
 
 ---
 
+## 2026-05-12 — Home / MyDay / Expenses mobile polish
+
+Three surface-level UI fixes on mobile, none touching data.
+
+**1. Partner activity widget — collapsed by default ([PartnerActivityWidget.tsx](practical-lichterman/src/components/PartnerActivityWidget.tsx)).**
+Home was showing up to 5 recent updates from other space members
+inline, which on a tall family/friend space turned the feed into a wall
+of cards. The widget now shows only the freshest update and a small
+"See N more" pill that expands to up to 5; expanding shows a "Show less"
+affordance. Card surface switched from grey muted tint to clean
+`bg-white/70` with hairline stone border to match the paper aesthetic.
+
+**2. Agent insights — redesigned cards on MyDay ([AgentInsightsSection.tsx](practical-lichterman/src/components/AgentInsightsSection.tsx)).**
+Old layout dropped each agent result onto a saturated tinted body that
+clashed with the calm Olive surface, and rendered bullet-listed agent
+output as `whitespace-pre-wrap` text. New layout: white card + hairline
+border, larger 28%-radius squircle agent icon with the agent's color
+on the icon only, list-aware `AgentMessage` renderer that detects
+bulleted reports and renders a real `<ul>` with leaf bullets and
+hanging indent. Badges desaturated to stone/amber/emerald-50 tints so
+true status colors (red overdue) actually pop when they fire. Header
+gained a serif title and pill-style "Manage" button. "More" → "Show
+more / Show less" with a rotating chevron.
+
+**3. Expenses page scrolls again ([Expenses.tsx](practical-lichterman/src/pages/Expenses.tsx)).**
+`AppLayout`'s mobile `<main>` is `overflow-hidden` (each page owns its
+scroll). Home wraps in `overflow-y-auto`; Expenses didn't, so rows past
+the viewport were unreachable and the user had to force a rubber-band
+scroll. Added `h-full overflow-y-auto scrollbar-thin` to the page root
+and verified live in the local preview.
+
+**i18n.** New keys (`titleMulti`, `emptyMulti`, `seeMore`, `showLess`,
+`showingCount`) added to en/es-ES/it-IT `home.json` per the
+no-hardcoded-strings rule.
+
+| Date | Task | Files | Description |
+|------|------|-------|-------------|
+| 2026-05-12 | UI-MOBILE-POLISH | src/components/PartnerActivityWidget.tsx, src/components/AgentInsightsSection.tsx, src/pages/Expenses.tsx, public/locales/{en,es-ES,it-IT}/home.json | Collapse partner activity to 1 row + See more; redesign agent insight cards; fix Expenses scroll container |
+
+---
+
+## 2026-05-12 — Calendar retry queue visibility on /calendar (PR 2C)
+
+Closes the final loop in the 2026-05-12 calendar reliability story.
+PR 2 made the retry queue honest about its state in the API response
+and chat suffix ("I'll keep trying in the background"). PR 2B added
+the reconnect banner for the permanent-failure case. This PR makes
+the queue's state visible on `/calendar` so the user can verify that
+"in the background" promise — and trigger a retry on demand.
+
+**A pre-existing RLS bug discovered (and fixed) along the way.** The
+Phase 2.1 `olive_calendar_sync_queue` migration shipped with:
+
+```sql
+USING (auth.uid()::text = user_id)
+```
+
+But this app authenticates via Clerk, not Supabase Auth. The user
+identifier lives in `auth.jwt() ->> 'sub'` (a Clerk-issued
+`user_xxx…` text id); `auth.uid()` returns either NULL or a Supabase
+Auth UUID that never matches. So the policy as-shipped silently
+rejected every client-side SELECT on the queue. The retry worker
+(service-role) bypassed RLS so the queue itself worked — the bug
+only surfaced now, building this PR, when a real user JWT tried to
+read the queue.
+
+Migration `20260512033908_fix_olive_calendar_sync_queue_rls_for_clerk`
+replaces the policy with the same Clerk pattern every other table in
+the repo uses (clerk_notes, calendar_connections,
+olive_calendar_sync_log).
+
+**The visibility surface.**
+
+`useCalendarSyncQueue` (`src/hooks/useCalendarSyncQueue.ts`):
+- Reads pending rows from `olive_calendar_sync_queue` for the
+  authenticated user (relies on the just-fixed RLS policy)
+- 30s polling cadence, paused via `visibilitychange` when the tab is
+  hidden so a backgrounded `/calendar` doesn't burn cycles
+- `retryNow()` POSTs to `calendar-sync-retry` (the cron-driven
+  worker, which also accepts ad-hoc invocations) with
+  `invoked_from='manual-retry-now'` for analytics segmentation
+- Re-fetches 1.5s after `retryNow` so the count drops promptly when
+  fast retries (~500ms) finish; slow ones resolve on the next poll
+- Returns `{ queue, pendingCount, loading, retrying, retryNow,
+  refetch }` — UI-agnostic, reusable from any surface
+
+`CalendarSyncQueueBadge`
+(`src/components/CalendarSyncQueueBadge.tsx`):
+- **Hidden entirely when `pendingCount === 0`.** The queue being
+  empty is the steady state. Showing "0 pending" creates anxiety
+  where there shouldn't be any; the calendar header stays calm on
+  the happy path.
+- When count > 0: small amber pill in the header (between "Today"
+  and "Sync") showing "N updates pending"
+- Click expands a dropdown listing each queue row (action type +
+  relative next-attempt timestamp from date-fns + the user's locale)
+- "Retry now" button POSTs to `calendar-sync-retry`; spinner while
+  in-flight; success toast with count, error toast on failure
+- Click-outside backdrop closes the dropdown
+- Past timestamps render as `—` instead of date-fns's confusing
+  "less than a minute ago" for a queue that hasn't fired yet
+
+i18n in en / es-ES / it-IT under `calendar.pendingSyncs` — singular
++ plural badge labels, action-type labels (create/update/delete →
+"New event" / "Time change" / "Deletion"), retry button states,
+success/error toast copy.
+
+**Files touched.**
+
+| Path | Change |
+|---|---|
+| `supabase/migrations/20260512033908_fix_olive_calendar_sync_queue_rls_for_clerk.sql` | DROP + recreate SELECT policy with Clerk JWT pattern |
+| `src/hooks/useCalendarSyncQueue.ts` | New hook |
+| `src/components/CalendarSyncQueueBadge.tsx` | New component |
+| `src/pages/CalendarPage.tsx` | Render the badge in the header |
+| `public/locales/{en,es-ES,it-IT}/calendar.json` | `pendingSyncs` keys |
+
+**Verification.**
+- 1126 deno tests still pass — backend unchanged
+- TypeScript clean
+- Migration applied to prod via Supabase MCP
+- Vite served `useCalendarSyncQueue.ts` and
+  `CalendarSyncQueueBadge.tsx` via the module graph without error;
+  no new console errors in the dev server's runtime logs
+- **Full E2E browser verification blocked by prod-Clerk-on-localhost
+  limitation.** Clerk's production publishable key refuses to load on
+  `localhost:8080` (well-known dev-environment issue, unrelated to
+  this PR), so the dev server's `/calendar` page shows the
+  "Sign in to view your calendar" stub. The badge code path only
+  renders for an authenticated user with a calendar connection, so
+  the actual badge UI couldn't be exercised in the preview. Verified
+  via:
+    - Module-graph compilation (Vite served both new files clean)
+    - TypeScript compilation
+    - Read-through of every code path with the production schema in
+      mind
+  End-to-end verification with a real user will land via the next
+  deploy to a domain Clerk's prod key accepts.
+
+**The full PR chain.** This is the last piece of the 2026-05-12
+calendar reliability story:
+
+1. [#99](https://github.com/ganga90/olive-couple-sync/pull/99) (PR 1)
+   — register the calendar functions in `config.toml`, replace the
+   racy `process-note` invocation with a Postgres trigger, backfill
+   orphan rows.
+2. [#103](https://github.com/ganga90/olive-couple-sync/pull/103)
+   (PR 2) — classify Google errors at the source, branch the edge
+   functions, honest retry queue, differentiated user-facing copy.
+3. [#104](https://github.com/ganga90/olive-couple-sync/pull/104)
+   (PR 2B) — persist connection health, render the reconnect banner,
+   parallel WhatsApp i18n, nightly CI smoke check.
+4. This PR (PR 2C) — visibility for the retry queue itself.
+
+After this chain merges, the chat-reply contract is verifiable
+end-to-end: classify → branch → enqueue honestly → render banner →
+render queue → retry on demand. No silent dead-ends.
+
+---
+
+## 2026-05-12 — Calendar connection health + UI surfacing (PR 2B)
+
+PR 2 made `calendar-update-event` and `calendar-delete-event` return
+the right `sync_status` per failure class — including `needs_reconnect`
+for 401/403. But that status only lived in the API response and the
+chat suffix; a user who got the message in WhatsApp and ignored it,
+then checked the web app later, saw no reason to act. PR 2B closes
+that loop by persisting health state, surfacing it as a banner in
+the settings UI, and parallel-updating WhatsApp's localized copy so
+the same vocabulary lands on every surface.
+
+**Four pieces (Piece 4 — pending-queue badge — deferred to PR 2C).**
+
+**Piece 1 — Connection health persistence.** Migration
+`20260512031557_calendar_connections_health_status` adds three columns
+to `calendar_connections`:
+- `health_status text NOT NULL DEFAULT 'healthy'` (CHECK constraint:
+  `'healthy' | 'auth_expired' | 'scope_insufficient' | 'persistently_failing'`)
+- `last_health_change_at timestamptz`
+- `health_message text` (truncated at 500 chars at the helper)
+
+Plus a partial index `idx_calendar_connections_health_unhealthy` on
+`(user_id, health_status) WHERE health_status != 'healthy'` — cheap
+lookup for the banner query, doesn't bloat the index when ~all rows
+are healthy (which is the steady state).
+
+Two helpers in `_shared/google-calendar.ts`:
+- `markConnectionUnhealthy(supabase, connectionId, reason, message?)`
+  writes the columns; called from the `auth_expired` /
+  `scope_insufficient` branches in calendar-update-event and
+  calendar-delete-event.
+- `markConnectionHealthy(supabase, connectionId)` clears them.
+  Uses `.neq("health_status", "healthy")` so the timestamp doesn't
+  churn on already-healthy rows — important for "when did this user
+  last have a problem" queries.
+- Both swallow DB errors as non-fatal: the calendar mutation itself
+  has already succeeded by the time we get here, the banner state is
+  gravy.
+
+Called from:
+- Failure paths (auth_expired / scope_insufficient) → mark unhealthy
+- Success paths (after successful PATCH + local mirror update, after
+  successful DELETE + mirror cleanup) → clear flag
+
+**Piece 2 — Reconnect banner.** `GoogleCalendarConnect.tsx` now reads
+`health_status` from `calendar_connections` (RLS already allows users
+to SELECT their own row) and renders a destructive-variant alert above
+the existing "connected" card when status != 'healthy'. The banner:
+- Uses the destructive design token (red surround, AlertTriangle icon)
+  so it reads as "action required", not a generic note
+- Differentiates copy between `auth_expired` ("Olive can't reach Google
+  with your current sign-in") and `scope_insufficient` ("Olive doesn't
+  have the right permissions")
+- CTA button reuses the existing `handleConnect()` OAuth flow — no
+  new code path, just a different entry point
+- i18n in en / es-ES / it-IT under `profile.googleCalendar.reconnectBanner`
+
+Self-healing by design: when the user reconnects, the next successful
+calendar call hits `markConnectionHealthy`, the column clears, the
+banner disappears on next page load.
+
+**Piece 3 — WhatsApp parallel copy.** `_shared/whatsapp-calendar-sync.ts`
+got the same L4 differentiation that landed in `_shared/offer-copy.ts`
+for PR 2:
+- New status values added to `WhatsAppCalendarSyncStatus` enum:
+  `needs_reconnect`, `rate_limited`, `google_unavailable`,
+  `enqueue_failed`
+- New fields on `WhatsAppCalendarSyncReport`: `enqueue_failed`,
+  `enqueue_failure_reason`, `retry_after_ms`, `needs_reconnect`,
+  threaded through from the edge function responses
+- `buildWhatsAppCalendarSuffix` switch covers every new status with
+  en / es-ES / it-IT translations
+- Retired the dead-end "couldn't reach Google Calendar this time"
+  copy, mirroring the L4 change on the web side
+- `rate_limited` quotes the Retry-After hint in seconds when in the
+  10s–10min readable window; falls back to generic copy outside it
+- `etag_conflict` kept on the legacy "didn't respond / keep trying"
+  string verbatim — its semantics didn't change
+
+**Piece 5 — CI smoke check.** New GitHub Actions workflow
+`.github/workflows/calendar-smoke.yml` runs nightly (09:17 UTC) +
+on-demand via workflow_dispatch:
+- POSTs to `calendar-update-event` with a known test user_id +
+  note_id (from repo secrets — never hardcoded)
+- Idempotent: targets a static future time so re-runs don't drift
+  state (Google PATCH is a no-op when state already matches)
+- Asserts HTTP 200 + `sync_status: "updated"` + `synced_to_google: true`
+- Surfaces the specific failure mode in the workflow error message
+  (e.g. "needs_reconnect → reconnect the test account") so on-call
+  knows the recovery action without re-running locally
+- Catches exactly the class of gateway-auth bug PR 1 fixed; deno
+  tests pass with stubbed fetch and can't catch real Supabase
+  configuration drift
+
+Required secrets (set up before first run):
+- `SUPABASE_FUNCTIONS_URL`
+- `SUPABASE_FUNCTIONS_ANON_KEY`
+- `CALENDAR_SMOKE_USER_ID`
+- `CALENDAR_SMOKE_NOTE_ID`
+
+**Tests** — 1126 total (+22 from PR 2's 1103):
+- 6 in `google-calendar.test.ts` for `markConnectionUnhealthy` /
+  `markConnectionHealthy` — write contract, message truncation,
+  .neq guard against timestamp churn, swallowed DB errors
+- 16 in `whatsapp-calendar-sync.test.ts` for every new status × every
+  locale, plus retry-precedence and Retry-After hint quoting
+- Updated 3 existing tests that asserted the now-retired "couldn't
+  reach" copy
+
+**E2E verification on prod (the part that matters):**
+- Migration applied via Supabase MCP — 7 existing connections defaulted
+  to `'healthy'`, no behavior change
+- Happy-path regression: `calendar-update-event` for Demo Reviewer's
+  grocery task → HTTP 200, `sync_status: "updated"`
+- **Health self-heal verified**: pre-set Demo Reviewer's
+  `health_status='auth_expired'` via SQL → ran a successful update →
+  observed the flag auto-clear to `'healthy'` with a fresh
+  `last_health_change_at` (~12 seconds later). The full health
+  lifecycle (mark unhealthy on failure → mark healthy on next success)
+  works against prod.
+
+The `markConnectionUnhealthy` side of the lifecycle has unit-test
+coverage but no live E2E — forcing a real Google 401 against Demo
+Reviewer's OAuth would mean corrupting their access token. That class
+of failure will surface in production as users naturally encounter
+401s; the new banner + sync log will catch them.
+
+**Files touched.**
+
+| Path | Change |
+|---|---|
+| `supabase/migrations/20260512031557_calendar_connections_health_status.sql` | Three columns + CHECK + partial index |
+| `_shared/google-calendar.ts` | `ConnectionHealthStatus` type, `markConnectionUnhealthy`, `markConnectionHealthy` |
+| `calendar-update-event/index.ts` | Call `markConnectionUnhealthy` in auth-expired branch; `markConnectionHealthy` on success |
+| `calendar-delete-event/index.ts` | Same wiring |
+| `_shared/whatsapp-calendar-sync.ts` | New status values + differentiated copy in en/es/it |
+| `src/components/GoogleCalendarConnect.tsx` | Reconnect banner + health_status query |
+| `public/locales/{en,es-ES,it-IT}/profile.json` | `reconnectBanner` keys (title, authExpired, scopeInsufficient, cta) |
+| `_shared/google-calendar.test.ts` | +6 tests for health helpers |
+| `_shared/whatsapp-calendar-sync.test.ts` | +16 tests for new status × locale matrix |
+| `.github/workflows/calendar-smoke.yml` | New: nightly real-network smoke check |
+
+**Known v1 boundary (deferred to PR 2C):**
+- No pending-queue badge / retry-now affordance on `/calendar`. The
+  retry queue is fully wired and honest about its state in the chat
+  reply, but `/calendar` doesn't yet show a "N updates pending" badge
+  or let the user trigger a retry on demand. Needs deeper
+  CalendarPage integration than PR 2B's scope allowed; spawning as a
+  separate task.
+
+Stacked on PR #103 (PR 2). Won't fully take effect until that PR
+merges first — the new `needs_reconnect` sync_status that triggers
+`markConnectionUnhealthy` is defined there.
+
+---
+
+## 2026-05-12 — Calendar error classification (PR 2: the 5-layer architectural fix)
+
+PR 1 (the hotfix below) unbroke the immediate symptom — Ask Olive reschedules
+now actually move Google Calendar events. But it left the broader
+architectural gap the original review surfaced: *every* non-2xx Google
+response still collapsed into `google_api_error`, which meant the retry
+queue couldn't distinguish "back off, you're rate-limited" from "stop
+trying, the user has to reconnect" from "the event vanished, treat as
+success." Same dead-end message regardless. PR 2 closes that gap.
+
+**Five layers, all in one PR because they're coupled.**
+
+**L1 — Classify Google errors at the source** ([_shared/google-calendar.ts](practical-lichterman/supabase/functions/_shared/google-calendar.ts)). Added
+`classifyHttpError(status)` that maps each HTTP status to a recovery-
+relevant `CalendarFailureReason`:
+
+| HTTP | Reason | Recovery |
+|---|---|---|
+| 401 | `auth_expired` | User reconnects (no retry) |
+| 403 | `scope_insufficient` | User reconnects (no retry) |
+| 404 / 410 | `event_not_found` | Unlink local mirror, success |
+| 412 | `etag_conflict` | Existing path |
+| 429 | `rate_limited` | Retry per `Retry-After` |
+| 5xx | `google_unavailable` | Retry with backoff |
+| else | `google_api_error` | Retry with backoff |
+
+`parseRetryAfter()` handles both delta-seconds and HTTP-date forms,
+returning undefined for malformed or in-the-past values. Wired through
+`patchGoogleEvent`, `deleteGoogleEvent`, `getGoogleEvent`. `CalendarErr`
+carries an optional `retry_after_ms` field so the queue can honor
+Google's hint instead of defaulting to 30s (which would just re-trip
+the rate limit).
+
+**L2 — Branched handling in `calendar-update-event` + `calendar-delete-event`.**
+Each function now switches on the classified reason:
+- `event_not_found` → delete the stale local `calendar_events` mirror,
+  return `sync_status: "already_gone"`, success-shaped (Olive task
+  moved, the Google event was already gone)
+- `auth_expired` / `scope_insufficient` → `sync_status: "needs_reconnect"`
+  + payload flag, do **not** enqueue retry (would loop indefinitely)
+- `rate_limited` → `sync_status: "rate_limited"`, enqueue retry with
+  Google's `Retry-After` ms
+- `google_unavailable` → `sync_status: "google_unavailable"`, default
+  retry backoff
+- Everything else → unchanged
+
+New sync statuses added to the enum in three places kept in sync:
+`_shared/calendar-sync-logger.ts`, `_shared/action-executor-offers.ts`,
+and the local copies in `ask-olive-stream` and `ask-olive-individual`.
+DB has no CHECK constraint on `sync_status` so no migration needed —
+the column accepts the new values directly.
+
+**L3 — Make `enqueueRetry` honest.** Three changes:
+- Expanded `RETRYABLE_STATUSES` (added `rate_limited`, `google_unavailable`;
+  excluded `needs_reconnect`, `enqueue_failed`)
+- New `retry_after_ms` arg on `EnqueueArgs`; floored at the default 30s
+  backoff so `Retry-After: 0` doesn't make us hammer Google
+- **Honest failure surfacing**: when `shouldRetry()` returns true but
+  the queue insert itself fails (RLS, quota, dead DB), `exit()` in
+  `calendar-update-event` / `calendar-delete-event` now writes a
+  *second* `olive_calendar_sync_log` row tagged
+  `sync_status: "enqueue_failed"` + sets `enqueue_failed: true` in the
+  response payload. This is the case the 2026-05-12 bug hit: the
+  user-facing copy could pretend a retry was queued when it wasn't.
+
+**L4 — Differentiated user-facing copy.** [_shared/offer-copy.ts](practical-lichterman/supabase/functions/_shared/offer-copy.ts) `buildCalendarSuffix`
+now picks the right message per `sync_status`:
+- `needs_reconnect` → `" — your Google Calendar needs reconnecting (Settings → Calendar)"`
+- `rate_limited` (10s–10min hint) → `" — Google's rate-limiting, I'll catch up in about Ns"`
+- `google_unavailable` → `" — Google's having a moment, I'll keep trying in the background"`
+- `enqueue_failed` → `" — couldn't queue the Google sync, I'll try again next time you ask"`
+- `google_api_error` (no retry) → **`" — Google didn't respond, I'll try again next time you ask"`** — replaces the original dead-end `" — but I couldn't reach Google Calendar this time"` copy that the bug-reporting user saw
+
+`buildResultHint` reads the new optional `enqueue_failed` and
+`retry_after_ms` fields off `CalendarSyncReport` and threads them
+through. Web copy only in this PR; WhatsApp + i18n in PR 2B.
+
+**Tests — 39 new, 1103 total (was 1064 at PR 1's tip).**
+- 20 unit tests in `google-calendar.test.ts` for `classifyHttpError`,
+  `parseRetryAfter`, and per-HTTP-code stubbed-fetch behavior
+- 5 retry-queue tests covering `shouldRetry` expansion (with
+  `needs_reconnect` / `enqueue_failed` in the negative set),
+  `retry_after_ms` honoring vs flooring, and `google_unavailable`
+  enqueue
+- 10 copy tests for each new `sync_status` branch + the
+  `enqueueFailed` option + Retry-After hint quoting
+- 2 existing tests updated to reflect the retired `"couldn't reach
+  Google Calendar this time"` string
+
+**End-to-end verification against prod (the part that matters).**
+- Happy path regression: PATCH Demo Reviewer's grocery task → HTTP
+  200, `sync_status: updated`, Google event moved.
+- **Forced 404 → `already_gone`**: inserted a `calendar_events` row
+  with a fabricated `google_event_id`, called `calendar-update-event`,
+  observed HTTP 200 + `sync_status: "already_gone"` + `success: true`.
+  Three-way confirmation:
+  - Stale mirror row was deleted (function unlinks)
+  - Sync log row written with `http_status: 404` + Google's full JSON
+    error body captured
+  - Retry queue had zero entries for the note (`already_gone` is
+    correctly not in `RETRYABLE_STATUSES`)
+
+The `needs_reconnect`, `rate_limited`, and `google_unavailable` E2E
+paths require forcing a real Google 401/429/5xx, which would mean
+corrupting Demo Reviewer's OAuth token — not worth the risk for
+verification when the unit + integration tests pin the contract. Those
+classes will trip in production over time and the new telemetry
+(`olive_calendar_sync_log.sync_status`) makes them queryable.
+
+**Files touched.**
+
+| Path | Change |
+|---|---|
+| `_shared/google-calendar.ts` | `classifyHttpError`, `parseRetryAfter`, new `CalendarFailureReason` values, `retry_after_ms` on `CalendarErr`, wiring through patch/delete/get helpers |
+| `_shared/calendar-sync-logger.ts` | `CalendarSyncStatus` += `needs_reconnect`, `rate_limited`, `google_unavailable`, `enqueue_failed` |
+| `_shared/calendar-retry-queue.ts` | `RETRYABLE_STATUSES` += `rate_limited`, `google_unavailable`; `enqueueRetry` accepts + floors `retry_after_ms` |
+| `_shared/action-executor-offers.ts` | `CalendarSyncReport.status` enum extended + new optional payload fields |
+| `_shared/offer-copy.ts` | Differentiated `buildCalendarSuffix` per status; `enqueueFailed` + `retryAfterMs` options |
+| `calendar-update-event/index.ts` | Switch on `patchResult.reason`; thread `retry_after_ms` through `exit()`; write `enqueue_failed` log row when queue rejects |
+| `calendar-delete-event/index.ts` | Same branching for DELETE (without the `event_not_found` branch — that's handled upstream as alreadyGone success) |
+| `ask-olive-stream/index.ts` | Local `CalendarSyncStatus` mirror updated |
+| `ask-olive-individual/index.ts` | Same |
+| `_shared/google-calendar.test.ts` | +20 tests |
+| `_shared/calendar-retry-queue.test.ts` | +5 tests |
+| `_shared/offer-copy.test.ts` | +10 tests, 2 existing tests updated for new copy |
+
+**Known v1 boundaries (deferred to PR 2B).**
+- No DB column for connection health — `needs_reconnect` lives only in
+  the `sync_status` and the response payload. UI surfacing (banner on
+  `/calendar`, badge on settings) needs a `calendar_connections.health_status`
+  column to read from.
+- WhatsApp copy not updated. `_shared/whatsapp-calendar-sync.ts` still
+  uses the pre-L4 collapse — its English/Spanish/Italian translations
+  need parallel updates.
+- No "queue pending" badge / "retry now" affordance in the UI.
+  Backend now reliably tells the truth about queued retries; the UI
+  doesn't surface it yet.
+- No CI smoke check exercising a real Google round-trip against prod
+  OAuth. The flagged open follow-up from PR 1's recap is still open.
+
+---
+
+## 2026-05-12 — Calendar edit hotfix: the bug Phases 1–3 didn't catch
+
+Phases 1.5 through 3.6 shipped on 2026-05-10–11 with a full observability +
+retry stack: every Google call funneled through one `exit()` helper that
+writes to `olive_calendar_sync_log`, transient failures enqueued into
+`olive_calendar_sync_queue`, the retry worker running every 2 minutes,
+1064 tests passing.
+
+A user reported on 2026-05-12 02:15 UTC that Ask Olive said it moved
+"Visit grocery store" to Friday 12pm but Google Calendar didn't change.
+None of the new safety nets triggered. The Olive message was the dead-end
+copy from `offer-copy.ts:326-331`: *"in Olive — but I couldn't reach
+Google Calendar this time"* — which only fires when `sync_status` is in
+the retryable set AND `retry_enqueued` is false. That should be
+impossible by construction.
+
+**Two bugs hiding behind one symptom.**
+
+**Bug A — auth at the gateway.** Five edge functions added in Phases 1.5
+/ 2.1 / 2.2 (`calendar-update-event`, `calendar-delete-event`,
+`calendar-watch-register`, `calendar-watch-renew`, `calendar-sync-retry`)
+had no `[functions.X]` block in `supabase/config.toml`. They silently
+inherited Supabase's default `verify_jwt = true`. When `ask-olive-stream`
+invoked them server-to-server, the gateway 401'd before the function
+body could run — bypassing every Phase 2.1 telemetry path. Edge function
+logs at 02:15:07.290 UTC show `POST | 401 | calendar-update-event`
+matching the user's confirmation timestamp.
+
+**Bug B — orphan calendar_events rows.** Independent of A, `process-note`
+fired `autoAddToCalendar(supabase, result, user_id)` with the Gemini
+result *before* the caller (web/SimpleNoteInput.tsx, ask-olive-stream,
+whatsapp-webhook, etc.) had a chance to insert the row into
+`clerk_notes`. So the `calendar_events` row was created with
+`note_id = NULL` — the link back to the note was permanently broken.
+Even after fixing Bug A, `calendar-update-event` would have returned
+`no_linked_event` for every task auto-promoted via this path.
+A prod scan found 49 such orphans across 5 users; 47 were uniquely
+re-linkable, 0 ambiguous.
+
+**Fix.**
+
+1. **Register the five missing functions** in `supabase/config.toml`
+   with `verify_jwt = false` — the convention every other Olive edge
+   function follows (they self-authenticate from `body.user_id` using
+   a service-role client they build internally). One comment block in
+   the file documents why future entries are required.
+
+2. **Replace the racy fire-and-forget with a Postgres trigger.**
+   Migration `20260512024215_clerk_notes_auto_calendar_trigger`
+   creates `AFTER INSERT ON clerk_notes` → calls `auto-calendar-event`
+   via `pg_net.http_post` (same literal-URL + anon-JWT convention as
+   the existing crons). Because the trigger fires *after* commit,
+   `NEW.id` is the persisted UUID — the race is gone by construction.
+   Process-note's `autoAddToCalendar` call site is removed; the helper
+   function is left as dead code for one release in case of rollback.
+
+3. **Backfill 47 orphan calendar_events rows.** Migration
+   `20260512024253_backfill_orphan_calendar_events_note_id` matches
+   each orphan to a clerk_notes row by `(author_id, summary)` within
+   ±120 seconds of the event's creation. Only unique matches are
+   applied; ambiguous matches are intentionally skipped. The 2
+   unmatched orphans likely have deleted-then-recreated notes.
+   An audit table `backfilled_calendar_event_links_20260512` records
+   every row we touched for precise rollback.
+
+4. **Defense in depth in `auto-calendar-event`.** Early-return guard
+   refuses to create an event when `note.id` is missing — better to
+   skip + log than to create another orphan. After the trigger fix
+   this branch shouldn't fire from the primary path; it defends
+   against any future caller (manual re-runs, batch tooling, the old
+   fire-and-forget if it gets resurrected by accident).
+
+5. **CI guardrail.** New test
+   `_shared/config-toml-coverage.test.ts` walks `supabase/functions/`
+   and asserts every dir has a `[functions.X]` entry. Fails the build
+   immediately if a new function lacks a config block. A
+   `KNOWN_LEGACY_STRAGGLERS` allow-list documents 20 pre-existing gaps
+   (now 18 after `email-*` were registered alongside this work);
+   future PRs shrink the list one cluster at a time. The whole point
+   is the next time someone adds a function without registering it,
+   they don't get past CI.
+
+**Verification — end-to-end against prod, not just unit tests.**
+
+- `calendar-update-event` called for the user's stuck grocery task →
+  HTTP 200, `sync_status: "updated"`, Google event moved to
+  `2026-05-15T16:00:00Z` (Friday May 15 12pm NY — the user's original
+  ask). Sync log row written with `latency_ms: 892`.
+- Trigger test: inserted a probe note via SQL → 5s later, a
+  `calendar_events` row appeared with `note_id` correctly populated,
+  matching `olive_calendar_sync_log` entry written, Google event
+  created. Cleaned up via `calendar-delete-event` (also returned HTTP
+  200 — proving the auth fix works for both new functions).
+- 1064 deno tests still pass; 4 new tests added in
+  `config-toml-coverage.test.ts` (all green).
+
+**Files touched.**
+
+| Path | Change |
+|---|---|
+| `supabase/config.toml` | 5 new `[functions.X]` blocks; comment documenting why |
+| `supabase/migrations/20260512024215_clerk_notes_auto_calendar_trigger.sql` | New trigger + SECURITY DEFINER function |
+| `supabase/migrations/20260512024253_backfill_orphan_calendar_events_note_id.sql` | Re-link 47 orphans + audit table |
+| `supabase/functions/process-note/index.ts` | Remove `autoAddToCalendar()` call; comment explaining the trigger now owns this |
+| `supabase/functions/auto-calendar-event/index.ts` | Early-return guard when `note.id` missing |
+| `supabase/functions/_shared/config-toml-coverage.test.ts` | New: 4 guardrail tests |
+
+**Known v1 boundaries kept.** The two unmatched orphans are not touched
+(their parent clerk_notes rows look deleted). The 18-entry
+`KNOWN_LEGACY_STRAGGLERS` allow-list is a deliberate stopgap — those
+functions also default to `verify_jwt = true` but aren't currently
+invoked server-to-server in a way that would surface the 401. Follow-up
+PRs (one per cluster — email, trust/soul, memory, utilities) close that
+gap without bundling unrelated risk into this hotfix.
+
+**The Phase 1.5 safety net works — when the function reaches it.** The
+sync log + retry queue caught nothing here because the request 401'd at
+the gateway, before any function code ran. That's not a bug in those
+systems; it's a bug in the layer below them, and the CI test prevents
+the same gap from opening again.
+
+---
+
 ## 2026-05-10 — Phase 2.2: bidirectional sync via Google push channels
 
 Closes the last piece of the reliability story. Before this, Olive →

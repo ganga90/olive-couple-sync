@@ -1,0 +1,154 @@
+name: Calendar smoke check
+
+# Nightly real-network round-trip against calendar-update-event. The
+# point: catch the class of bug PR 1 fixed (a deployed edge function
+# 401'ing at the Supabase gateway because of a config.toml omission)
+# before users do. The 2026-05-12 incident shipped with 1064 deno tests
+# passing — those tests stub fetch, so they can't catch a gateway-auth
+# regression that only shows up against real Supabase.
+#
+# Design constraints:
+#   - No OAuth dance from the runner. We reuse the existing test
+#     account's already-stored refresh token by hitting
+#     calendar-update-event with the test account's user_id; the edge
+#     function loads the stored token and talks to Google itself.
+#   - Idempotent: the PATCH targets a static future time (2026-05-15
+#     16:00 UTC) so re-runs don't drift state. Google's PATCH is a
+#     no-op when the requested state already matches.
+#   - Pre-conditions live in repo secrets, not the YAML, so a future
+#     test-account rotation doesn't require a code change.
+#
+# Failure modes that should turn this red:
+#   - HTTP non-200 from the edge function (gateway auth broken,
+#     function down, network unreachable)
+#   - sync_status anything other than "updated" (needs_reconnect,
+#     google_api_error, token_refresh_failed, invoke_failed, etc.)
+#     — each of these means a real user would see a failure today
+#   - jq parse failure (response shape changed unexpectedly)
+#
+# Required GitHub repository secrets:
+#   - SUPABASE_FUNCTIONS_URL          e.g. https://wtfspzvcetxmcfftwonq.supabase.co/functions/v1
+#   - SUPABASE_FUNCTIONS_ANON_KEY     the public anon JWT (same one the cron jobs use)
+#   - CALENDAR_SMOKE_USER_ID          test-account clerk_id (e.g. user_39ML…)
+#   - CALENDAR_SMOKE_NOTE_ID          a note that has an active calendar_events mirror for that user
+
+on:
+  schedule:
+    # 09:17 UTC daily — offset from the top of the hour to avoid
+    # contention with the calendar-watch-renew cron (also :17) is
+    # intentional: if the renew cron is hammering Google, the smoke
+    # check should see the same load.
+    - cron: '17 9 * * *'
+  workflow_dispatch:  # manual trigger via GH UI for ad-hoc verification
+
+# Concurrency guard: a still-running scheduled job shouldn't be
+# preempted by a manually-triggered one. Cancel pending runs in favour
+# of the most recent.
+concurrency:
+  group: calendar-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Sanity-check secrets are present
+        env:
+          SUPABASE_FUNCTIONS_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          SUPABASE_FUNCTIONS_ANON_KEY: ${{ secrets.SUPABASE_FUNCTIONS_ANON_KEY }}
+          CALENDAR_SMOKE_USER_ID: ${{ secrets.CALENDAR_SMOKE_USER_ID }}
+          CALENDAR_SMOKE_NOTE_ID: ${{ secrets.CALENDAR_SMOKE_NOTE_ID }}
+        run: |
+          set -e
+          # Use `test -n` not `echo` — never print a secret, even
+          # truncated. A missing secret should fail the workflow, not
+          # leak its non-existence in a way that's grep-able.
+          for v in SUPABASE_FUNCTIONS_URL SUPABASE_FUNCTIONS_ANON_KEY CALENDAR_SMOKE_USER_ID CALENDAR_SMOKE_NOTE_ID; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Missing required secret: $v"
+              exit 1
+            fi
+          done
+
+      - name: PATCH a known calendar event and assert sync_status=updated
+        env:
+          SUPABASE_FUNCTIONS_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          SUPABASE_FUNCTIONS_ANON_KEY: ${{ secrets.SUPABASE_FUNCTIONS_ANON_KEY }}
+          CALENDAR_SMOKE_USER_ID: ${{ secrets.CALENDAR_SMOKE_USER_ID }}
+          CALENDAR_SMOKE_NOTE_ID: ${{ secrets.CALENDAR_SMOKE_NOTE_ID }}
+        run: |
+          set -euo pipefail
+
+          # Static future time. Google accepts repeated PATCHes to the
+          # same value as no-ops; etag is intentionally omitted (last-
+          # write-wins, same as the production call path).
+          body=$(cat <<EOF
+          {
+            "user_id": "$CALENDAR_SMOKE_USER_ID",
+            "note_id": "$CALENDAR_SMOKE_NOTE_ID",
+            "patch": {
+              "start_time": "2026-05-15T16:00:00.000Z",
+              "all_day": false,
+              "timezone": "America/New_York",
+              "duration_minutes": 60
+            },
+            "invoked_from": "ci-calendar-smoke"
+          }
+          EOF
+          )
+
+          # -w writes status_code on its own line, --fail-with-body
+          # makes curl error on non-2xx (but we DON'T want that here —
+          # we want to inspect the body either way), so we do the
+          # status-code check ourselves below.
+          response=$(curl -sS -X POST \
+            "$SUPABASE_FUNCTIONS_URL/calendar-update-event" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $SUPABASE_FUNCTIONS_ANON_KEY" \
+            --data "$body" \
+            -w "\n__HTTP_STATUS__%{http_code}")
+
+          http_status=$(echo "$response" | grep -oE '__HTTP_STATUS__[0-9]+$' | sed 's/__HTTP_STATUS__//')
+          payload=$(echo "$response" | sed '$d')
+
+          echo "HTTP status: $http_status"
+          echo "Response body:"
+          echo "$payload" | jq .
+
+          if [ "$http_status" != "200" ]; then
+            echo "::error::Expected HTTP 200 from calendar-update-event, got $http_status. This is exactly the class of gateway-auth bug the 2026-05-12 incident hit."
+            exit 1
+          fi
+
+          sync_status=$(echo "$payload" | jq -r '.sync_status // "MISSING"')
+          if [ "$sync_status" != "updated" ]; then
+            echo "::error::Expected sync_status=updated, got '$sync_status'. Means a real user trying to reschedule a calendar-linked task right now would see a failure."
+            # Surface specific recovery hint based on the status we got.
+            case "$sync_status" in
+              needs_reconnect)
+                echo "::error::Test account's Google OAuth connection is expired — reconnect at /calendar in the app."
+                ;;
+              token_refresh_failed)
+                echo "::error::Refresh token is no longer valid — reconnect the test account."
+                ;;
+              google_api_error|google_unavailable|rate_limited)
+                echo "::error::Google's API is unhappy. Check status.googleapis.com; this may resolve itself."
+                ;;
+              already_gone)
+                echo "::error::The smoke test's reference calendar event was deleted — re-create the CALENDAR_SMOKE_NOTE_ID's event or update the secret."
+                ;;
+              no_linked_event)
+                echo "::error::The note exists but has no calendar_events mirror — re-add it to the calendar."
+                ;;
+            esac
+            exit 1
+          fi
+
+          synced_to_google=$(echo "$payload" | jq -r '.synced_to_google // false')
+          if [ "$synced_to_google" != "true" ]; then
+            echo "::error::sync_status=updated but synced_to_google=false; payload contract is inconsistent."
+            exit 1
+          fi
+
+          echo "✅ Calendar smoke check passed: HTTP 200 + sync_status=updated + synced_to_google=true"

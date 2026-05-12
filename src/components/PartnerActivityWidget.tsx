@@ -1,7 +1,7 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Users, ArrowRight, UserPlus } from "lucide-react";
+import { Users, ArrowRight, UserPlus, ChevronDown } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
 import { useSpace } from "@/providers/SpaceProvider";
@@ -17,8 +17,10 @@ interface PartnerActivityWidgetProps {
 
 // Phase 3-1: Lift the 2-member cap. Show recent shared activity from
 // every other member of the current space (not just "the partner").
-// Display up to MAX_VISIBLE_ACTIVITIES rows so the widget stays
-// glanceable on Home; deeper history lives on the Space Activity page.
+// Default to one collapsed row (the freshest update) so Home stays calm;
+// a single tap reveals up to MAX_VISIBLE_ACTIVITIES recent rows.
+// Deeper history lives on the Space Activity page.
+const COLLAPSED_VISIBLE = 1;
 const MAX_VISIBLE_ACTIVITIES = 5;
 
 export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ notes }) => {
@@ -29,6 +31,7 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
   const { currentSpace } = useSpace();
   const { getLocalizedPath } = useLanguage();
   const dateLocale = useDateLocale();
+  const [expanded, setExpanded] = useState(false);
 
   const partnerName = partner || t('common:common.partner');
   const userId = user?.id;
@@ -121,29 +124,44 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
     );
   }
 
+  const visibleCount = expanded ? MAX_VISIBLE_ACTIVITIES : COLLAPSED_VISIBLE;
+  const cappedTotal = Math.min(partnerActivity.length, MAX_VISIBLE_ACTIVITIES);
+  const visible = partnerActivity.slice(0, visibleCount);
+  const hiddenCount = cappedTotal - visibleCount;
+  const canExpand = partnerActivity.length > COLLAPSED_VISIBLE;
+
   return (
     <div className="animate-fade-up stagger-2 mt-6">
       {/* Section Header - proper spacing and visual hierarchy */}
-      <div className="flex items-center gap-2 mb-3 px-1">
-        <Users className="w-4 h-4 text-muted-foreground" />
-        <span className="text-sm font-semibold text-muted-foreground tracking-wide">
-          {sectionTitle}
-        </span>
+      <div className="flex items-center justify-between mb-3 px-1">
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-semibold text-muted-foreground tracking-wide">
+            {sectionTitle}
+          </span>
+        </div>
+        {canExpand && (
+          <span className="text-[11px] text-muted-foreground/70">
+            {expanded
+              ? t('home:partnerActivity.showingCount', { count: visible.length, defaultValue: 'Showing {{count}}' })
+              : t('home:partnerActivity.recentCount', { count: partnerActivity.length })}
+          </span>
+        )}
       </div>
 
-      {/* Activity Cards. Phase 3-1: render up to MAX_VISIBLE_ACTIVITIES
-          (was capped at 2 — invisible to space members 3 through 10). */}
+      {/* Activity Cards. By default we render only COLLAPSED_VISIBLE (1)
+          so Home stays calm — the rest reveal on tap. */}
       <div className="space-y-2">
-        {partnerActivity.slice(0, MAX_VISIBLE_ACTIVITIES).map((activity) => (
+        {visible.map((activity) => (
           <button
             key={activity.id}
             onClick={() => handleActivityClick(activity.id)}
             className={cn(
-              "w-full text-left px-4 py-3.5 rounded-xl",
-              "bg-muted/30 hover:bg-muted/50",
-              "border border-border/50 hover:border-primary/20",
+              "w-full text-left px-4 py-3.5 rounded-2xl",
+              "bg-white/70 hover:bg-white",
+              "border border-stone-100 hover:border-primary/20",
               "transition-all duration-200 group",
-              "active:scale-[0.98]"
+              "active:scale-[0.99]"
             )}
           >
             <div className="flex items-start gap-3">
@@ -188,6 +206,32 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
           </button>
         ))}
       </div>
+
+      {/* See more / Show less — keeps the surface calm by default */}
+      {canExpand && (
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className={cn(
+            "mt-2.5 w-full inline-flex items-center justify-center gap-1.5",
+            "py-2 px-3 rounded-full",
+            "text-xs font-medium text-muted-foreground hover:text-foreground",
+            "hover:bg-muted/40 transition-colors"
+          )}
+          aria-expanded={expanded}
+        >
+          <span>
+            {expanded
+              ? t('home:partnerActivity.showLess', { defaultValue: 'Show less' })
+              : t('home:partnerActivity.seeMore', { count: hiddenCount, defaultValue: 'See {{count}} more' })}
+          </span>
+          <ChevronDown
+            className={cn(
+              "w-3.5 h-3.5 transition-transform duration-200",
+              expanded && "rotate-180"
+            )}
+          />
+        </button>
+      )}
     </div>
   );
 };

@@ -329,6 +329,11 @@ async function streamGeminiResponse(
 // returned `calendar_sync` so the chat confirmation can say the truth
 // ("Updated in Olive, but I couldn't reach your Google Calendar").
 
+// Mirror of CalendarSyncStatus in _shared/calendar-sync-logger.ts. Kept
+// local because this file historically pre-dated the shared module; the
+// duplicate is fine as long as both stay in sync (Layer 2 of the
+// 2026-05-12 fix added needs_reconnect / rate_limited / google_unavailable
+// / enqueue_failed in both places).
 type CalendarSyncStatus =
   | 'updated'
   | 'deleted'
@@ -336,6 +341,10 @@ type CalendarSyncStatus =
   | 'not_connected'
   | 'no_linked_event'
   | 'etag_conflict'
+  | 'needs_reconnect'
+  | 'rate_limited'
+  | 'google_unavailable'
+  | 'enqueue_failed'
   | 'google_api_error'
   | 'token_refresh_failed'
   | 'invoke_failed';

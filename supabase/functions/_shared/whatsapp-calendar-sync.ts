@@ -12,6 +12,13 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
+// Mirrors CalendarSyncStatus from _shared/calendar-sync-logger.ts.
+// Kept local to this module because WhatsApp's surface predates the
+// shared enum; keeping a copy lets us add WhatsApp-only values
+// (`skipped`) without bloating the shared module. PR 2B parity:
+// needs_reconnect / rate_limited / google_unavailable / enqueue_failed
+// added so the WhatsApp suffix can speak about them the same way the
+// web suffix does in offer-copy.ts.
 export type WhatsAppCalendarSyncStatus =
   | "updated"
   | "deleted"
@@ -19,6 +26,10 @@ export type WhatsAppCalendarSyncStatus =
   | "not_connected"
   | "no_linked_event"
   | "etag_conflict"
+  | "needs_reconnect"
+  | "rate_limited"
+  | "google_unavailable"
+  | "enqueue_failed"
   | "google_api_error"
   | "token_refresh_failed"
   | "invoke_failed"
@@ -33,6 +44,11 @@ export interface WhatsAppCalendarSyncReport {
   // suffix uses this to soften the failure copy.
   retry_enqueued?: boolean;
   retry_id?: string;
+  // PR 2B parity with offer-copy.ts CalendarSyncReport.
+  enqueue_failed?: boolean;
+  enqueue_failure_reason?: string;
+  retry_after_ms?: number;
+  needs_reconnect?: boolean;
   // Phase 2.3 — set when Google's sendUpdates notified attendees.
   attendees_notified?: boolean;
   attendee_count?: number;
@@ -75,6 +91,12 @@ export async function whatsappCalendarUpdate(
       message: data?.error,
       retry_enqueued: data?.retry_enqueued,
       retry_id: data?.retry_id,
+      // PR 2B parity — surface the new payload fields so the suffix
+      // builder can render the differentiated copy.
+      enqueue_failed: data?.enqueue_failed,
+      enqueue_failure_reason: data?.enqueue_failure_reason,
+      retry_after_ms: data?.retry_after_ms,
+      needs_reconnect: data?.needs_reconnect,
       attendees_notified: data?.attendees_notified,
       attendee_count: data?.attendee_count,
     };
@@ -101,6 +123,10 @@ export async function whatsappCalendarDelete(
       message: data?.error,
       retry_enqueued: data?.retry_enqueued,
       retry_id: data?.retry_id,
+      enqueue_failed: data?.enqueue_failed,
+      enqueue_failure_reason: data?.enqueue_failure_reason,
+      retry_after_ms: data?.retry_after_ms,
+      needs_reconnect: data?.needs_reconnect,
       attendees_notified: data?.attendees_notified,
       attendee_count: data?.attendee_count,
     };
@@ -155,10 +181,86 @@ export function buildWhatsAppCalendarSuffix(
     case "missing_input":
     case "skipped":
       return "";
+    case "needs_reconnect":
+      // PR 2B: 401/403 → user must reconnect. Don't soften into "I'll
+      // keep trying" — we won't, because we can't.
+      return shortLang === "es"
+        ? " ⚠️ Tu Google Calendar necesita reconexión (Ajustes → Calendario)."
+        : shortLang === "it"
+        ? " ⚠️ Il tuo Google Calendar va riconnesso (Impostazioni → Calendario)."
+        : " ⚠️ Your Google Calendar needs reconnecting (Settings → Calendar).";
+
+    case "rate_limited": {
+      // PR 2B: if Google's Retry-After hint is in the readable window
+      // (10s–10min), quote the seconds. Otherwise fall back to the
+      // generic retry copy — quoting "30 minutes" is more anxiety-
+      // inducing than helpful, and "3 seconds" is silly.
+      const ms = sync.retry_after_ms ?? 0;
+      if (ms >= 10_000 && ms <= 600_000) {
+        const sec = Math.round(ms / 1000);
+        return shortLang === "es"
+          ? ` ⚠️ Google está limitando peticiones — me pondré al día en ~${sec}s.`
+          : shortLang === "it"
+          ? ` ⚠️ Google sta limitando le richieste — recupero in ~${sec}s.`
+          : ` ⚠️ Google's rate-limiting — I'll catch up in about ${sec}s.`;
+      }
+      if (sync.retry_enqueued) {
+        return shortLang === "es"
+          ? " ⚠️ Google está limitando peticiones — seguiré intentándolo en segundo plano."
+          : shortLang === "it"
+          ? " ⚠️ Google sta limitando le richieste — continuerò a riprovare in background."
+          : " ⚠️ Google's rate-limiting — I'll keep trying in the background.";
+      }
+      if (sync.enqueue_failed) {
+        return shortLang === "es"
+          ? " ⚠️ Google está limitando peticiones y no pude programar un reintento — lo intentaré la próxima vez."
+          : shortLang === "it"
+          ? " ⚠️ Google sta limitando le richieste e non sono riuscita a programmare un nuovo tentativo — riproverò la prossima volta."
+          : " ⚠️ Google's rate-limiting and I couldn't queue a retry — I'll try again next time you ask.";
+      }
+      return shortLang === "es"
+        ? " ⚠️ Google está limitando peticiones."
+        : shortLang === "it"
+        ? " ⚠️ Google sta limitando le richieste."
+        : " ⚠️ Google's rate-limiting.";
+    }
+
+    case "google_unavailable":
+      // PR 2B: 5xx — Google's having a moment. Same shape as the
+      // generic retry copy but explicit about the source.
+      if (sync.retry_enqueued) {
+        return shortLang === "es"
+          ? " ⚠️ Google está teniendo problemas — seguiré intentándolo en segundo plano."
+          : shortLang === "it"
+          ? " ⚠️ Google sta avendo un momento difficile — continuerò a riprovare in background."
+          : " ⚠️ Google's having a moment — I'll keep trying in the background.";
+      }
+      if (sync.enqueue_failed) {
+        return shortLang === "es"
+          ? " ⚠️ Google está teniendo problemas y no pude programar un reintento — lo intentaré la próxima vez."
+          : shortLang === "it"
+          ? " ⚠️ Google sta avendo un momento difficile e non sono riuscita a programmare un nuovo tentativo — riproverò la prossima volta."
+          : " ⚠️ Google's having a moment and I couldn't queue a retry — I'll try again next time you ask.";
+      }
+      return shortLang === "es"
+        ? " ⚠️ Google está teniendo problemas."
+        : shortLang === "it"
+        ? " ⚠️ Google sta avendo un momento difficile."
+        : " ⚠️ Google's having a moment.";
+
+    case "enqueue_failed":
+      // PR 2B: shouldn't appear as the primary status (the original
+      // Google reason is what we surface), but defend the branch.
+      return shortLang === "es"
+        ? " ⚠️ No pude programar la sincronización con Google — lo intentaré la próxima vez."
+        : shortLang === "it"
+        ? " ⚠️ Non sono riuscita a programmare la sincronizzazione con Google — riproverò la prossima volta."
+        : " ⚠️ Couldn't queue the Google sync — I'll try again next time you ask.";
+
     case "etag_conflict":
-    case "google_api_error":
-    case "token_refresh_failed":
-    case "invoke_failed":
+      // Existing behavior — preserved verbatim to keep WhatsApp parity
+      // with PR 2's offer-copy.ts which also kept etag_conflict as the
+      // legacy "didn't respond/keep trying" message.
       if (sync.retry_enqueued) {
         return shortLang === "es"
           ? " ⚠️ Google Calendar no respondió — seguiré intentándolo en segundo plano."
@@ -171,6 +273,34 @@ export function buildWhatsAppCalendarSuffix(
         : shortLang === "it"
         ? " ⚠️ Ma non sono riuscita a sincronizzare con Google Calendar stavolta."
         : " ⚠️ But I couldn't reach Google Calendar this time.";
+
+    case "google_api_error":
+    case "token_refresh_failed":
+    case "invoke_failed":
+      // PR 2B: retired the dead-end "couldn't reach" copy, mirroring
+      // the L4 change in offer-copy.ts. Now three states:
+      //   1. retryEnqueued: "I'll keep trying"
+      //   2. enqueueFailed: be honest, promise "next time"
+      //   3. neither: shouldRetry was false → "next time" anyway
+      if (sync.retry_enqueued) {
+        return shortLang === "es"
+          ? " ⚠️ Google Calendar no respondió — seguiré intentándolo en segundo plano."
+          : shortLang === "it"
+          ? " ⚠️ Google Calendar non ha risposto — continuerò a riprovare in background."
+          : " ⚠️ Google Calendar didn't respond — I'll keep trying in the background.";
+      }
+      if (sync.enqueue_failed) {
+        return shortLang === "es"
+          ? " ⚠️ Google no respondió y no pude programar un reintento — lo intentaré la próxima vez."
+          : shortLang === "it"
+          ? " ⚠️ Google non ha risposto e non sono riuscita a programmare un nuovo tentativo — riproverò la prossima volta."
+          : " ⚠️ Google didn't respond and I couldn't queue a retry — I'll try again next time you ask.";
+      }
+      return shortLang === "es"
+        ? " ⚠️ Google no respondió — lo intentaré la próxima vez."
+        : shortLang === "it"
+        ? " ⚠️ Google non ha risposto — riproverò la prossima volta."
+        : " ⚠️ Google didn't respond — I'll try again next time you ask.";
   }
 }
 

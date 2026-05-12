@@ -119,12 +119,17 @@
   },
   "partnerActivity": {
     "title": "{{name}}'s recent activity",
+    "titleMulti": "Recent activity",
     "railTitle": "Partner",
     "added": "added a shared task",
     "assignedYou": "assigned you a task",
     "empty": "{{name}} is being suspiciously quiet... 🤔",
+    "emptyMulti": "No recent activity from other members yet.",
     "recentCount": "{{count}} recent update",
-    "recentCount_plural": "{{count}} recent updates"
+    "recentCount_plural": "{{count}} recent updates",
+    "showingCount": "Showing {{count}}",
+    "seeMore": "See {{count}} more",
+    "showLess": "Show less"
   },
   "contextRail": {
     "calendar": "Calendar",

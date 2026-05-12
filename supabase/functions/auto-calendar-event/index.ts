@@ -82,6 +82,30 @@ serve(async (req) => {
     for (const note of calendarWorthy) {
       const noteTimer = startSyncTimer();
       try {
+        // Refuse to process a note without a persisted clerk_notes UUID.
+        // The whole reason this function exists is to mirror a saved
+        // note into Google Calendar — without `note.id` we'd create
+        // a Google event AND a `calendar_events` row that points back
+        // at NULL, exactly the orphan pattern fixed by migration
+        // 20260512024215. Better to skip + log than to repeat history.
+        //
+        // After that migration this branch shouldn't fire from the
+        // primary path (the AFTER INSERT trigger on clerk_notes always
+        // passes a committed id), but defending here makes any future
+        // caller — manual re-runs, batch tooling, the old fire-and-
+        // forget code path if it gets resurrected by accident —
+        // fail loudly instead of silently corrupting state.
+        if (!note.id) {
+          console.warn(
+            "[auto-calendar-event] ⛔ Refusing to create event for note " +
+            "without an id (would orphan calendar_events.note_id). " +
+            "Summary:",
+            note.summary,
+          );
+          skippedCount++;
+          continue;
+        }
+
         // Prefer reminder_time (full timestamp) over due_date (date only).
         // The previous heuristic — `hours===12 → all-day` — false-positived
         // any legitimate noon meeting. We now infer from the input shape:
@@ -89,21 +113,19 @@ serve(async (req) => {
         const startTime: string = note.reminder_time || note.due_date;
         const isAllDay = typeof startTime === "string" && startTime.length <= 10;
 
-        if (note.id) {
-          const { data: existing } = await supabase
-            .from("calendar_events")
-            .select("id")
-            .eq("connection_id", connection.id)
-            .eq("note_id", note.id)
-            .limit(1);
+        const { data: existing } = await supabase
+          .from("calendar_events")
+          .select("id")
+          .eq("connection_id", connection.id)
+          .eq("note_id", note.id)
+          .limit(1);
 
-          if (existing && existing.length > 0) {
-            console.log("[auto-calendar-event] ⏭️ Skipped (already exists):", note.summary);
-            skippedCount++;
-            // No log row: duplicate-skip isn't a sync event, just a no-op.
-            // Counting it here would inflate the analytics table.
-            continue;
-          }
+        if (existing && existing.length > 0) {
+          console.log("[auto-calendar-event] ⏭️ Skipped (already exists):", note.summary);
+          skippedCount++;
+          // No log row: duplicate-skip isn't a sync event, just a no-op.
+          // Counting it here would inflate the analytics table.
+          continue;
         }
 
         const timing = buildEventTiming(startTime, {
@@ -168,7 +190,9 @@ serve(async (req) => {
           end_time: googleEvent.end.dateTime || googleEvent.end.date,
           all_day: !googleEvent.start.dateTime,
           event_type: "from_note",
-          note_id: note.id || null,
+          // note.id is guaranteed non-null by the early-return guard above.
+          // Don't fall back to `|| null` here — that was the original bug.
+          note_id: note.id,
           etag: googleEvent.etag,
           timezone: userTimezone,
         });
