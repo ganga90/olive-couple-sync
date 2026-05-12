@@ -210,6 +210,79 @@ export async function findLinkedEventByNoteId(
   return data as LinkedCalendarEvent;
 }
 
+// ─── Connection health ────────────────────────────────────────────────
+//
+// The two reasons calendar-update-event and calendar-delete-event can't
+// recover from on their own — auth_expired (401) and scope_insufficient
+// (403) — get persisted to `calendar_connections.health_status` so the
+// UI can render a reconnect banner. The user has to take an action to
+// fix this; no amount of retrying with the same OAuth tokens will help.
+//
+// `markConnectionHealthy` is the inverse: when a write actually
+// succeeds, clear stale flags so the banner goes away. The .neq() guard
+// keeps this from churning `last_health_change_at` on every successful
+// write — the timestamp only moves when the status actually transitions.
+
+export type ConnectionHealthStatus =
+  | "healthy"
+  | "auth_expired"
+  | "scope_insufficient"
+  | "persistently_failing";
+
+// Truncate health_message to match the column's documented contract
+// (free-form operator diagnosis text; not user-facing). Same MAX_ERR_LEN
+// as calendar-sync-logger.ts for consistency.
+const MAX_HEALTH_MESSAGE_LEN = 500;
+
+export async function markConnectionUnhealthy(
+  supabase: SupabaseClient,
+  connectionId: string,
+  reason: Exclude<ConnectionHealthStatus, "healthy">,
+  message?: string,
+): Promise<void> {
+  const trimmed = message ? message.slice(0, MAX_HEALTH_MESSAGE_LEN) : null;
+  const { error } = await supabase
+    .from("calendar_connections")
+    .update({
+      health_status: reason,
+      last_health_change_at: new Date().toISOString(),
+      health_message: trimmed,
+    })
+    .eq("id", connectionId);
+  if (error) {
+    console.warn(
+      "[google-calendar] markConnectionUnhealthy failed (non-fatal):",
+      error.message,
+    );
+  }
+}
+
+export async function markConnectionHealthy(
+  supabase: SupabaseClient,
+  connectionId: string,
+): Promise<void> {
+  // `.neq("health_status", "healthy")` guarantees we only write — and
+  // therefore only bump `last_health_change_at` — when the row's status
+  // actually transitions. Without this, every successful PATCH would
+  // refresh the timestamp on a healthy connection, making the column
+  // useless for "when did this user last have a problem" queries.
+  const { error } = await supabase
+    .from("calendar_connections")
+    .update({
+      health_status: "healthy",
+      last_health_change_at: new Date().toISOString(),
+      health_message: null,
+    })
+    .eq("id", connectionId)
+    .neq("health_status", "healthy");
+  if (error) {
+    console.warn(
+      "[google-calendar] markConnectionHealthy failed (non-fatal):",
+      error.message,
+    );
+  }
+}
+
 // ─── Token refresh ────────────────────────────────────────────────────
 
 // Refresh threshold: if the token expires within 5 minutes, refresh.

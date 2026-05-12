@@ -16,6 +16,8 @@ import {
   findLinkedEventByNoteId,
   getActiveCalendarConnection,
   getGoogleEvent,
+  markConnectionHealthy,
+  markConnectionUnhealthy,
   type LinkedCalendarEvent,
   type SendUpdatesPolicy,
 } from "../_shared/google-calendar.ts";
@@ -234,6 +236,14 @@ serve(async (req) => {
       switch (deleteResult.reason) {
         case "auth_expired":
         case "scope_insufficient":
+          // PR 2B: persist health state on the connection row. Same
+          // rationale as the equivalent branch in calendar-update-event.
+          await markConnectionUnhealthy(
+            supabase,
+            connection.id,
+            deleteResult.reason,
+            deleteResult.message,
+          );
           return exit("needs_reconnect", 200, {
             success: false,
             synced_to_google: false,
@@ -292,6 +302,11 @@ serve(async (req) => {
     if (mirrorErr) {
       console.warn("[calendar-delete-event] local mirror delete failed:", mirrorErr);
     }
+
+    // PR 2B: clear any stale health flag on the connection. We got
+    // through the auth + the API call, so this connection is
+    // demonstrably good. No-op when already healthy.
+    await markConnectionHealthy(supabase, connection.id);
 
     const status: CalendarSyncStatus = deleteResult.value.alreadyGone ? "already_gone" : "deleted";
     return exit(status, 200, {

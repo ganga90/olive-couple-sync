@@ -21,6 +21,8 @@ import {
   deleteGoogleEvent,
   getGoogleEvent,
   listEventsIncremental,
+  markConnectionHealthy,
+  markConnectionUnhealthy,
   parseRetryAfter,
   patchGoogleEvent,
   stopCalendarChannel,
@@ -806,4 +808,102 @@ Deno.test("getGoogleEvent: 401 → auth_expired", async () => {
       }
     },
   );
+});
+
+// ─── Connection health (PR 2B) ────────────────────────────────────────
+//
+// markConnectionUnhealthy and markConnectionHealthy persist Layer 2's
+// auth_expired/scope_insufficient detection on the calendar_connections
+// row so the UI can render a reconnect banner. The tests use a small
+// mock supabase client to pin the contract — write path, idempotency
+// guard, and message truncation.
+
+interface CalConnMock {
+  updates: Array<{ patch: Record<string, unknown>; eqs: Array<[string, unknown]>; neqs: Array<[string, unknown]> }>;
+  updateError?: { message: string };
+}
+
+function makeCalConnMock(state: CalConnMock) {
+  const builder = (eqs: Array<[string, unknown]>, neqs: Array<[string, unknown]>, patch?: Record<string, unknown>) => ({
+    eq(col: string, val: unknown) {
+      return builder([...eqs, [col, val]], neqs, patch);
+    },
+    neq(col: string, val: unknown) {
+      return builder(eqs, [...neqs, [col, val]], patch);
+    },
+    then(resolve: (r: { error?: { message: string } }) => unknown) {
+      state.updates.push({ patch: patch ?? {}, eqs, neqs });
+      resolve(state.updateError ? { error: state.updateError } : {});
+    },
+  });
+  return {
+    from(_table: string) {
+      return {
+        update(patch: Record<string, unknown>) {
+          return builder([], [], patch);
+        },
+      };
+    },
+  } as unknown as Parameters<typeof markConnectionUnhealthy>[0];
+}
+
+Deno.test("markConnectionUnhealthy: writes status + timestamp + message, scoped to connection id", async () => {
+  const state: CalConnMock = { updates: [] };
+  await markConnectionUnhealthy(makeCalConnMock(state), "conn-1", "auth_expired", "Token expired");
+  assertEquals(state.updates.length, 1);
+  const w = state.updates[0];
+  assertEquals(w.patch.health_status, "auth_expired");
+  assertEquals(w.patch.health_message, "Token expired");
+  assert(typeof w.patch.last_health_change_at === "string", "expected timestamp");
+  // Scoped to the right connection
+  assertEquals(w.eqs, [["id", "conn-1"]]);
+  // No neq filter — every call writes regardless of current status
+  assertEquals(w.neqs, []);
+});
+
+Deno.test("markConnectionUnhealthy: scope_insufficient flows through with the same shape", async () => {
+  const state: CalConnMock = { updates: [] };
+  await markConnectionUnhealthy(makeCalConnMock(state), "conn-2", "scope_insufficient");
+  assertEquals(state.updates.length, 1);
+  assertEquals(state.updates[0].patch.health_status, "scope_insufficient");
+  assertEquals(state.updates[0].patch.health_message, null);
+});
+
+Deno.test("markConnectionUnhealthy: truncates message at 500 chars (matches column contract)", async () => {
+  const state: CalConnMock = { updates: [] };
+  const long = "x".repeat(2000);
+  await markConnectionUnhealthy(makeCalConnMock(state), "conn-3", "auth_expired", long);
+  const msg = state.updates[0].patch.health_message as string;
+  assertEquals(msg.length, 500);
+});
+
+Deno.test("markConnectionUnhealthy: DB error is swallowed (non-fatal)", async () => {
+  // Calendar mutation succeeded; failing to persist the banner state
+  // shouldn't error out the request. Health flag is gravy on top of
+  // the response payload and sync log.
+  const state: CalConnMock = { updates: [], updateError: { message: "RLS" } };
+  await markConnectionUnhealthy(makeCalConnMock(state), "conn-x", "auth_expired");
+  // No throw is the assertion. Reach this line → pass.
+  assertEquals(state.updates.length, 1);
+});
+
+Deno.test("markConnectionHealthy: writes status + timestamp + nulls message, with .neq guard against churn", async () => {
+  const state: CalConnMock = { updates: [] };
+  await markConnectionHealthy(makeCalConnMock(state), "conn-1");
+  assertEquals(state.updates.length, 1);
+  const w = state.updates[0];
+  assertEquals(w.patch.health_status, "healthy");
+  assertEquals(w.patch.health_message, null);
+  assert(typeof w.patch.last_health_change_at === "string");
+  assertEquals(w.eqs, [["id", "conn-1"]]);
+  // The .neq is the linchpin — without it every successful PATCH would
+  // bump last_health_change_at on already-healthy rows, making the
+  // column useless for "when did this user last have a problem".
+  assertEquals(w.neqs, [["health_status", "healthy"]]);
+});
+
+Deno.test("markConnectionHealthy: DB error is swallowed (non-fatal)", async () => {
+  const state: CalConnMock = { updates: [], updateError: { message: "transient" } };
+  await markConnectionHealthy(makeCalConnMock(state), "conn-x");
+  assertEquals(state.updates.length, 1);
 });

@@ -17,6 +17,8 @@ import {
   findLinkedEventByNoteId,
   getActiveCalendarConnection,
   getGoogleEvent,
+  markConnectionHealthy,
+  markConnectionUnhealthy,
   patchGoogleEvent,
   type CalendarConnection,
   type GoogleEventPatch,
@@ -391,8 +393,20 @@ serve(async (req) => {
           // Permanent (until user reconnects). shouldRetry must NOT
           // include needs_reconnect — otherwise the retry queue would
           // grind through five 30s/2m/10m/1h/6h retries that all 401
-          // identically. The user-facing copy + (Phase 2B) the UI banner
+          // identically. The user-facing copy + the UI banner (PR 2B)
           // are what get the user to act.
+          //
+          // PR 2B: persist the health state on the connection row so
+          // the calendar settings page can render a persistent
+          // reconnect banner. Fire-and-forget — failure here is
+          // non-fatal (the response and sync log already carry the
+          // truth; the banner is gravy).
+          await markConnectionUnhealthy(
+            supabase,
+            connection.id,
+            patchResult.reason,
+            patchResult.message,
+          );
           return exit("needs_reconnect", 200, {
             success: false,
             synced_to_google: false,
@@ -474,6 +488,12 @@ serve(async (req) => {
     if (mirrorErr) {
       console.warn("[calendar-update-event] local mirror update failed:", mirrorErr);
     }
+
+    // PR 2B: clear any stale health flag on the connection — the
+    // OAuth state is demonstrably good, the user's calendar caught
+    // up, the banner should go away. No-op when already healthy
+    // thanks to the .neq guard inside markConnectionHealthy.
+    await markConnectionHealthy(supabase, connection.id);
 
     return exit("updated", 200, {
       success: true,
