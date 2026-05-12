@@ -185,3 +185,35 @@ verify_jwt = false
 
 [functions.email-oauth-callback]
 verify_jwt = false
+
+# Trust/Soul cluster — SOUL.MD layered identity + trust gating.
+# Each entry matches the function's actual deployed state in prod
+# (verified 2026-05-12 via the Supabase admin API). This PR is a
+# config drift fix, not a behavior change — see PR body for details.
+#
+# - olive-trust-gate: invoked server-to-server from the orchestrator
+#   before any action runs. Already deployed verify_jwt = false; needs
+#   to stay that way so server-to-server callers forwarding a Clerk
+#   JWT (the calendar-update-event failure mode) reach the body.
+# - olive-soul-seed: invoked from the web client with a Supabase JWT
+#   after onboarding completes. Already verify_jwt = false in prod.
+# - olive-reflect: invoked from frontend + agent code after every
+#   action to record outcome. Already verify_jwt = false in prod.
+# - olive-soul-evolve: weekly pg_cron + occasional manual invocation
+#   for testing. Currently deployed verify_jwt = true and works
+#   because every caller (pg_cron's pg_net + admin scripts) carries
+#   a valid Supabase JWT. Kept at verify_jwt = true here to preserve
+#   exact deployed behavior — flipping to false would be a deliberate
+#   security-surface change that belongs in its own PR after the
+#   function body is audited for direct callers without a JWT.
+[functions.olive-trust-gate]
+verify_jwt = false
+
+[functions.olive-soul-seed]
+verify_jwt = false
+
+[functions.olive-soul-evolve]
+verify_jwt = true
+
+[functions.olive-reflect]
+verify_jwt = false
