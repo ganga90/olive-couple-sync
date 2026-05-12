@@ -24,5 +24,21 @@
   "contextRail": {
     "todaysFocus": "Enfoque de Hoy",
     "noTasksToday": "Sin tareas para hoy"
+  },
+  "pendingSyncs": {
+    "badgeOne": "1 actualización pendiente",
+    "badgeMany": "{{count}} actualizaciones pendientes",
+    "dialogTitle": "Pendiente de sincronizar con Google Calendar",
+    "actions": {
+      "create": "Nuevo evento",
+      "update": "Cambio de horario",
+      "delete": "Eliminación"
+    },
+    "retryButton": "Reintentar ahora",
+    "retryingButton": "Reintentando…",
+    "retryToast_one": "Reintentando — espera un momento",
+    "retryToast_other": "Reintentando {{count}} actualizaciones — espera un momento",
+    "retryToast": "Reintentando — espera un momento",
+    "retryError": "No pude iniciar el reintento — vuelve a intentarlo en un minuto"
   }
 }
