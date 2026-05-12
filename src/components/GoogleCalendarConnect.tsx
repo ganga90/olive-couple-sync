@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Check, Loader2, RefreshCw, Unlink } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, Loader2, RefreshCw, Unlink } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
@@ -12,12 +12,26 @@ import { CalendarSettings } from '@/components/CalendarSettings';
 import { useOnboardingTooltip } from '@/hooks/useOnboardingTooltip';
 import { OnboardingTooltip } from '@/components/OnboardingTooltip';
 
+// Mirror of the constraint on calendar_connections.health_status
+// (see migration 20260512031557). 'healthy' is the steady state; the
+// three failure states all mean "user has to reconnect", differentiated
+// only for copy/diagnostics.
+type ConnectionHealthStatus =
+  | 'healthy'
+  | 'auth_expired'
+  | 'scope_insufficient'
+  | 'persistently_failing';
+
 interface CalendarConnection {
   connected: boolean;
   email?: string;
   calendar_name?: string;
   sync_enabled?: boolean;
   last_sync?: string;
+  // PR 2B — added so the UI can render a reconnect banner when
+  // calendar-update-event / calendar-delete-event flagged the connection.
+  health_status?: ConnectionHealthStatus;
+  health_change_at?: string;
 }
 
 export function GoogleCalendarConnect() {
@@ -69,12 +83,28 @@ export function GoogleCalendarConnect() {
       if (error) throw error;
       
       if (data?.success && data?.connected) {
+        // PR 2B — pull health_status alongside. Direct table read is
+        // cheaper than a second function invocation, and RLS already
+        // restricts SELECT to the authenticated user's own row
+        // (calendar_connections_select_own policy on user_id =
+        // auth.jwt() ->> 'sub'). If the column read fails for any
+        // reason (older schema, RLS edge case), fall back to 'healthy'
+        // — the banner stays hidden, same as before this PR.
+        const { data: healthRow } = await supabase
+          .from('calendar_connections')
+          .select('health_status, last_health_change_at')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .maybeSingle();
+
         setConnection({
           connected: true,
           email: data.email,
           calendar_name: data.calendar_name,
           sync_enabled: data.sync_enabled,
           last_sync: data.last_sync,
+          health_status: (healthRow?.health_status as ConnectionHealthStatus) ?? 'healthy',
+          health_change_at: healthRow?.last_health_change_at ?? undefined,
         });
       } else {
         setConnection({ connected: false });
@@ -180,8 +210,58 @@ export function GoogleCalendarConnect() {
   }
 
   if (connection?.connected) {
+    const isUnhealthy =
+      connection.health_status && connection.health_status !== 'healthy';
+
     return (
       <div className="space-y-4">
+        {/*
+          PR 2B reconnect banner. Renders ONLY when calendar-update-event /
+          calendar-delete-event has flagged the connection as needing a
+          reconnect (auth_expired = 401, scope_insufficient = 403). The
+          health_status flag is persistent in the DB and gets cleared on
+          the next successful Google call, so this banner is self-healing
+          when the user fixes the underlying issue.
+
+          The styled-block uses a destructive variant so it reads as
+          "action required", not as a generic informational note.
+        */}
+        {isUnhealthy && (
+          <div
+            data-testid="calendar-reconnect-banner"
+            className="flex items-start gap-3 p-3 bg-destructive/10 border border-destructive/30 rounded-lg"
+          >
+            <div className="w-10 h-10 rounded-full bg-destructive/15 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-sm text-foreground">
+                {t('googleCalendar.reconnectBanner.title')}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {connection.health_status === 'scope_insufficient'
+                  ? t('googleCalendar.reconnectBanner.scopeInsufficient')
+                  : t('googleCalendar.reconnectBanner.authExpired')}
+              </p>
+              <Button
+                size="sm"
+                onClick={handleConnect}
+                disabled={connecting}
+                className="mt-2"
+              >
+                {connecting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {t('googleCalendar.connecting')}
+                  </>
+                ) : (
+                  t('googleCalendar.reconnectBanner.cta')
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-start gap-3 p-3 bg-primary/5 rounded-lg border border-primary/10">
           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
             <Calendar className="h-5 w-5 text-primary" />

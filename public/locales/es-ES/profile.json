@@ -70,6 +70,12 @@
     "onboarding": {
       "title": "📅 Sincroniza tu Calendario",
       "description": "¡Conecta Google Calendar para ver todos tus eventos en Olive y crear automáticamente eventos desde tus notas!"
+    },
+    "reconnectBanner": {
+      "title": "Tu Google Calendar necesita reconexión",
+      "authExpired": "Olive no puede acceder a Google con tu sesión actual. Reconéctate para mantener tu calendario sincronizado.",
+      "scopeInsufficient": "Olive no tiene los permisos necesarios en tu Google Calendar. Reconéctate para concederlos.",
+      "cta": "Reconectar Google Calendar"
     }
   },
   "calendarSettings": {

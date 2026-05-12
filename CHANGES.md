@@ -53,6 +53,162 @@ no-hardcoded-strings rule.
 
 ---
 
+## 2026-05-12 — Calendar connection health + UI surfacing (PR 2B)
+
+PR 2 made `calendar-update-event` and `calendar-delete-event` return
+the right `sync_status` per failure class — including `needs_reconnect`
+for 401/403. But that status only lived in the API response and the
+chat suffix; a user who got the message in WhatsApp and ignored it,
+then checked the web app later, saw no reason to act. PR 2B closes
+that loop by persisting health state, surfacing it as a banner in
+the settings UI, and parallel-updating WhatsApp's localized copy so
+the same vocabulary lands on every surface.
+
+**Four pieces (Piece 4 — pending-queue badge — deferred to PR 2C).**
+
+**Piece 1 — Connection health persistence.** Migration
+`20260512031557_calendar_connections_health_status` adds three columns
+to `calendar_connections`:
+- `health_status text NOT NULL DEFAULT 'healthy'` (CHECK constraint:
+  `'healthy' | 'auth_expired' | 'scope_insufficient' | 'persistently_failing'`)
+- `last_health_change_at timestamptz`
+- `health_message text` (truncated at 500 chars at the helper)
+
+Plus a partial index `idx_calendar_connections_health_unhealthy` on
+`(user_id, health_status) WHERE health_status != 'healthy'` — cheap
+lookup for the banner query, doesn't bloat the index when ~all rows
+are healthy (which is the steady state).
+
+Two helpers in `_shared/google-calendar.ts`:
+- `markConnectionUnhealthy(supabase, connectionId, reason, message?)`
+  writes the columns; called from the `auth_expired` /
+  `scope_insufficient` branches in calendar-update-event and
+  calendar-delete-event.
+- `markConnectionHealthy(supabase, connectionId)` clears them.
+  Uses `.neq("health_status", "healthy")` so the timestamp doesn't
+  churn on already-healthy rows — important for "when did this user
+  last have a problem" queries.
+- Both swallow DB errors as non-fatal: the calendar mutation itself
+  has already succeeded by the time we get here, the banner state is
+  gravy.
+
+Called from:
+- Failure paths (auth_expired / scope_insufficient) → mark unhealthy
+- Success paths (after successful PATCH + local mirror update, after
+  successful DELETE + mirror cleanup) → clear flag
+
+**Piece 2 — Reconnect banner.** `GoogleCalendarConnect.tsx` now reads
+`health_status` from `calendar_connections` (RLS already allows users
+to SELECT their own row) and renders a destructive-variant alert above
+the existing "connected" card when status != 'healthy'. The banner:
+- Uses the destructive design token (red surround, AlertTriangle icon)
+  so it reads as "action required", not a generic note
+- Differentiates copy between `auth_expired` ("Olive can't reach Google
+  with your current sign-in") and `scope_insufficient` ("Olive doesn't
+  have the right permissions")
+- CTA button reuses the existing `handleConnect()` OAuth flow — no
+  new code path, just a different entry point
+- i18n in en / es-ES / it-IT under `profile.googleCalendar.reconnectBanner`
+
+Self-healing by design: when the user reconnects, the next successful
+calendar call hits `markConnectionHealthy`, the column clears, the
+banner disappears on next page load.
+
+**Piece 3 — WhatsApp parallel copy.** `_shared/whatsapp-calendar-sync.ts`
+got the same L4 differentiation that landed in `_shared/offer-copy.ts`
+for PR 2:
+- New status values added to `WhatsAppCalendarSyncStatus` enum:
+  `needs_reconnect`, `rate_limited`, `google_unavailable`,
+  `enqueue_failed`
+- New fields on `WhatsAppCalendarSyncReport`: `enqueue_failed`,
+  `enqueue_failure_reason`, `retry_after_ms`, `needs_reconnect`,
+  threaded through from the edge function responses
+- `buildWhatsAppCalendarSuffix` switch covers every new status with
+  en / es-ES / it-IT translations
+- Retired the dead-end "couldn't reach Google Calendar this time"
+  copy, mirroring the L4 change on the web side
+- `rate_limited` quotes the Retry-After hint in seconds when in the
+  10s–10min readable window; falls back to generic copy outside it
+- `etag_conflict` kept on the legacy "didn't respond / keep trying"
+  string verbatim — its semantics didn't change
+
+**Piece 5 — CI smoke check.** New GitHub Actions workflow
+`.github/workflows/calendar-smoke.yml` runs nightly (09:17 UTC) +
+on-demand via workflow_dispatch:
+- POSTs to `calendar-update-event` with a known test user_id +
+  note_id (from repo secrets — never hardcoded)
+- Idempotent: targets a static future time so re-runs don't drift
+  state (Google PATCH is a no-op when state already matches)
+- Asserts HTTP 200 + `sync_status: "updated"` + `synced_to_google: true`
+- Surfaces the specific failure mode in the workflow error message
+  (e.g. "needs_reconnect → reconnect the test account") so on-call
+  knows the recovery action without re-running locally
+- Catches exactly the class of gateway-auth bug PR 1 fixed; deno
+  tests pass with stubbed fetch and can't catch real Supabase
+  configuration drift
+
+Required secrets (set up before first run):
+- `SUPABASE_FUNCTIONS_URL`
+- `SUPABASE_FUNCTIONS_ANON_KEY`
+- `CALENDAR_SMOKE_USER_ID`
+- `CALENDAR_SMOKE_NOTE_ID`
+
+**Tests** — 1126 total (+22 from PR 2's 1103):
+- 6 in `google-calendar.test.ts` for `markConnectionUnhealthy` /
+  `markConnectionHealthy` — write contract, message truncation,
+  .neq guard against timestamp churn, swallowed DB errors
+- 16 in `whatsapp-calendar-sync.test.ts` for every new status × every
+  locale, plus retry-precedence and Retry-After hint quoting
+- Updated 3 existing tests that asserted the now-retired "couldn't
+  reach" copy
+
+**E2E verification on prod (the part that matters):**
+- Migration applied via Supabase MCP — 7 existing connections defaulted
+  to `'healthy'`, no behavior change
+- Happy-path regression: `calendar-update-event` for Demo Reviewer's
+  grocery task → HTTP 200, `sync_status: "updated"`
+- **Health self-heal verified**: pre-set Demo Reviewer's
+  `health_status='auth_expired'` via SQL → ran a successful update →
+  observed the flag auto-clear to `'healthy'` with a fresh
+  `last_health_change_at` (~12 seconds later). The full health
+  lifecycle (mark unhealthy on failure → mark healthy on next success)
+  works against prod.
+
+The `markConnectionUnhealthy` side of the lifecycle has unit-test
+coverage but no live E2E — forcing a real Google 401 against Demo
+Reviewer's OAuth would mean corrupting their access token. That class
+of failure will surface in production as users naturally encounter
+401s; the new banner + sync log will catch them.
+
+**Files touched.**
+
+| Path | Change |
+|---|---|
+| `supabase/migrations/20260512031557_calendar_connections_health_status.sql` | Three columns + CHECK + partial index |
+| `_shared/google-calendar.ts` | `ConnectionHealthStatus` type, `markConnectionUnhealthy`, `markConnectionHealthy` |
+| `calendar-update-event/index.ts` | Call `markConnectionUnhealthy` in auth-expired branch; `markConnectionHealthy` on success |
+| `calendar-delete-event/index.ts` | Same wiring |
+| `_shared/whatsapp-calendar-sync.ts` | New status values + differentiated copy in en/es/it |
+| `src/components/GoogleCalendarConnect.tsx` | Reconnect banner + health_status query |
+| `public/locales/{en,es-ES,it-IT}/profile.json` | `reconnectBanner` keys (title, authExpired, scopeInsufficient, cta) |
+| `_shared/google-calendar.test.ts` | +6 tests for health helpers |
+| `_shared/whatsapp-calendar-sync.test.ts` | +16 tests for new status × locale matrix |
+| `.github/workflows/calendar-smoke.yml` | New: nightly real-network smoke check |
+
+**Known v1 boundary (deferred to PR 2C):**
+- No pending-queue badge / retry-now affordance on `/calendar`. The
+  retry queue is fully wired and honest about its state in the chat
+  reply, but `/calendar` doesn't yet show a "N updates pending" badge
+  or let the user trigger a retry on demand. Needs deeper
+  CalendarPage integration than PR 2B's scope allowed; spawning as a
+  separate task.
+
+Stacked on PR #103 (PR 2). Won't fully take effect until that PR
+merges first — the new `needs_reconnect` sync_status that triggers
+`markConnectionUnhealthy` is defined there.
+
+---
+
 ## 2026-05-12 — Calendar error classification (PR 2: the 5-layer architectural fix)
 
 PR 1 (the hotfix below) unbroke the immediate symptom — Ask Olive reschedules
