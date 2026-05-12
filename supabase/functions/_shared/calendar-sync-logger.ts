@@ -14,6 +14,17 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0
 
 export type CalendarSyncAction = "create" | "update" | "delete";
 
+// The status of a single calendar mutation attempt. New entries in this
+// type are the *only* way for telemetry to learn about new failure
+// classes — the rest of the system reads `sync_status` as opaque text
+// (no DB CHECK constraint, no exhaustive switch outside offer-copy.ts),
+// so missing a value here just means it lands in the catch-all branch.
+//
+// Layer 2 additions (2026-05-12 followup) split the old monolithic
+// "google_api_error" into the recovery-relevant subclasses produced by
+// classifyHttpError() in google-calendar.ts. Without these the retry
+// queue can't tell "retry me later" (rate_limited) from "stop trying,
+// user has to do something" (needs_reconnect).
 export type CalendarSyncStatus =
   | "created"
   | "updated"
@@ -22,9 +33,13 @@ export type CalendarSyncStatus =
   | "not_connected"
   | "no_linked_event"
   | "etag_conflict"
-  | "google_api_error"
+  | "needs_reconnect"         // L2: 401/403 — permanent until user reconnects
+  | "rate_limited"            // L2: 429 — transient, honor Retry-After
+  | "google_unavailable"      // L2: 5xx — transient, exponential backoff
+  | "google_api_error"        // legacy catch-all; still used for unclassified 4xx
   | "token_refresh_failed"
   | "invoke_failed"
+  | "enqueue_failed"          // L3: shouldRetry returned true but the queue INSERT itself failed
   | "missing_input";
 
 export interface CalendarSyncLogEntry {

@@ -154,7 +154,11 @@ Deno.test("buildResultHint: rescheduled with calendar success → includes 'sync
   assert(out.includes("undo"));
 });
 
-Deno.test("buildResultHint: rescheduled with calendar failure → honest copy", () => {
+Deno.test("buildResultHint: rescheduled with calendar failure → honest copy (L4: 'try again next time' replaces dead-end)", () => {
+  // Updated 2026-05-12: previously asserted "couldn't reach google
+  // calendar" — that was the dead-end copy the original bug-report user
+  // saw. Layer 4 replaced it with "I'll try again next time you ask"
+  // which is honest about what actually happens on the next interaction.
   const r: ExecutedAction = {
     action: "task_rescheduled",
     task_id: "t1",
@@ -168,7 +172,11 @@ Deno.test("buildResultHint: rescheduled with calendar failure → honest copy", 
     last_action: {} as never,
   };
   const out = buildResultHint(r, { timezone: tz, lang: "en" });
-  assert(out.toLowerCase().includes("couldn't reach google calendar"));
+  assert(
+    out.toLowerCase().includes("try again next time") || out.toLowerCase().includes("didn't respond"),
+    `unexpected copy: ${out}`,
+  );
+  assert(!out.toLowerCase().includes("couldn't reach"));
 });
 
 Deno.test("buildResultHint: deleted → 'bring it back' phrasing for undo", () => {
@@ -198,9 +206,21 @@ Deno.test("buildCalendarSuffix: no_linked_event → empty", () => {
   assertEquals(buildCalendarSuffix({ status: "no_linked_event" }), "");
 });
 
-Deno.test("buildCalendarSuffix: google_api_error → honest failure", () => {
+Deno.test("buildCalendarSuffix: google_api_error → honest failure (L4: 'try again next time' replaces dead-end 'couldn't reach')", () => {
+  // L4 (2026-05-12): the "couldn't reach Google Calendar this time"
+  // copy used to be the dead-end terminal state — no retry, no recourse,
+  // and that string is what the user complained about. We replaced it
+  // with "I'll try again next time you ask," which is honest about
+  // what actually happens (the next user interaction re-triggers a
+  // PATCH, which will likely succeed if Google was the transient
+  // problem).
   const out = buildCalendarSuffix({ status: "google_api_error" });
-  assert(out.toLowerCase().includes("couldn't reach"));
+  assert(
+    out.toLowerCase().includes("try again next time") || out.toLowerCase().includes("didn't respond"),
+    `unexpected copy: ${out}`,
+  );
+  // The retired phrase shouldn't reappear.
+  assert(!out.toLowerCase().includes("couldn't reach"), `dead-end copy still present: ${out}`);
 });
 
 // Phase 2.1 — softened failure copy when retry was queued.
@@ -208,13 +228,120 @@ Deno.test("buildCalendarSuffix: google_api_error → honest failure", () => {
 Deno.test("buildCalendarSuffix: failure + retryEnqueued → 'I'll keep trying' copy", () => {
   const out = buildCalendarSuffix({ status: "google_api_error" }, { retryEnqueued: true });
   assert(out.toLowerCase().includes("keep trying") || out.toLowerCase().includes("background"));
-  // Should NOT use the abandoned-feeling 'couldn't reach' phrasing.
+  // Should NOT use the dead-end 'couldn't reach' phrasing.
   assert(!out.toLowerCase().includes("couldn't reach"));
 });
 
-Deno.test("buildCalendarSuffix: failure WITHOUT retry → permanent-feeling copy", () => {
+Deno.test("buildCalendarSuffix: failure WITHOUT retry → honest 'try again next time' copy (L4)", () => {
   const out = buildCalendarSuffix({ status: "google_api_error" }, { retryEnqueued: false });
-  assert(out.toLowerCase().includes("couldn't reach"));
+  assert(
+    out.toLowerCase().includes("try again next time") || out.toLowerCase().includes("didn't respond"),
+    `unexpected copy: ${out}`,
+  );
+  assert(!out.toLowerCase().includes("couldn't reach"));
+});
+
+// L3 (2026-05-12) — enqueue_failed branch: when the retry queue itself
+// rejected the row, the chat reply must be honest that no background
+// retry is queued (we can't promise "I'll keep trying" if we won't).
+
+Deno.test("buildCalendarSuffix: failure + enqueueFailed → 'I couldn't queue a retry' copy", () => {
+  const out = buildCalendarSuffix(
+    { status: "google_api_error" },
+    { retryEnqueued: false, enqueueFailed: true },
+  );
+  assert(
+    out.toLowerCase().includes("couldn't queue") || out.toLowerCase().includes("try again next time"),
+    `unexpected copy: ${out}`,
+  );
+  // Must NOT pretend a retry is queued.
+  assert(!out.toLowerCase().includes("keep trying"));
+  assert(!out.toLowerCase().includes("background"));
+});
+
+Deno.test("buildCalendarSuffix: retryEnqueued takes precedence over enqueueFailed (defensive — both should never be true)", () => {
+  // Belt + braces: if a future bug somehow sets both flags, the
+  // retryEnqueued path wins — better to over-promise a queued retry
+  // than to under-promise when there actually is one.
+  const out = buildCalendarSuffix(
+    { status: "google_api_error" },
+    { retryEnqueued: true, enqueueFailed: true },
+  );
+  assert(out.toLowerCase().includes("keep trying") || out.toLowerCase().includes("background"));
+});
+
+// L2 (2026-05-12) — new status branches.
+
+Deno.test("buildCalendarSuffix: needs_reconnect → directs user to reconnect (NOT a retry message)", () => {
+  // Critical: the user has to do something. Don't soften this into "I'll
+  // keep trying" — we won't, because we can't.
+  const out = buildCalendarSuffix({ status: "needs_reconnect" });
+  assert(out.toLowerCase().includes("reconnect"), `expected 'reconnect' in: ${out}`);
+  // Should NOT promise any background retry.
+  assert(!out.toLowerCase().includes("keep trying"));
+  assert(!out.toLowerCase().includes("try again next time"));
+});
+
+Deno.test("buildCalendarSuffix: rate_limited + short retry hint → quotes seconds", () => {
+  // When Google sends Retry-After: 45s, we can give the user a real
+  // number ("I'll catch up in about 45s") rather than a vague promise.
+  const out = buildCalendarSuffix(
+    { status: "rate_limited" },
+    { retryAfterMs: 45_000, retryEnqueued: true },
+  );
+  assert(out.toLowerCase().includes("rate-limit"), `missing rate-limit context: ${out}`);
+  assert(out.includes("45s"), `expected '45s' in: ${out}`);
+});
+
+Deno.test("buildCalendarSuffix: rate_limited + retry hint < 10s → fall back to generic retry copy (don't quote 3s)", () => {
+  // Quoting "I'll catch up in 3 seconds" is silly — by the time the
+  // user reads the message we'll have retried. Floor the quoted hint at
+  // 10s so it feels intentional.
+  const out = buildCalendarSuffix(
+    { status: "rate_limited" },
+    { retryAfterMs: 3_000, retryEnqueued: true },
+  );
+  assert(!out.includes("3s"), `should not quote 3s: ${out}`);
+  assert(out.toLowerCase().includes("rate-limit"));
+  assert(out.toLowerCase().includes("keep trying") || out.toLowerCase().includes("background"));
+});
+
+Deno.test("buildCalendarSuffix: rate_limited + retry hint > 10min → fall back to generic (don't quote 30min)", () => {
+  // 30 minutes is too long to feel like "catching up" — fall back to
+  // the generic retry copy so the user doesn't anchor on a long wait.
+  const out = buildCalendarSuffix(
+    { status: "rate_limited" },
+    { retryAfterMs: 30 * 60 * 1000, retryEnqueued: true },
+  );
+  assert(!out.toLowerCase().includes("1800s"), `should not quote 1800s: ${out}`);
+  assert(out.toLowerCase().includes("rate-limit"));
+});
+
+Deno.test("buildCalendarSuffix: rate_limited without retry + enqueueFailed → 'try again next time'", () => {
+  const out = buildCalendarSuffix(
+    { status: "rate_limited" },
+    { retryEnqueued: false, enqueueFailed: true },
+  );
+  assert(out.toLowerCase().includes("rate-limit"));
+  assert(out.toLowerCase().includes("try again next time"));
+});
+
+Deno.test("buildCalendarSuffix: google_unavailable + retryEnqueued → 'having a moment' + 'keep trying'", () => {
+  const out = buildCalendarSuffix(
+    { status: "google_unavailable" },
+    { retryEnqueued: true },
+  );
+  assert(out.toLowerCase().includes("having a moment"), `missing 'having a moment': ${out}`);
+  assert(out.toLowerCase().includes("keep trying") || out.toLowerCase().includes("background"));
+});
+
+Deno.test("buildCalendarSuffix: google_unavailable without retry → 'having a moment' + 'try again next time'", () => {
+  const out = buildCalendarSuffix(
+    { status: "google_unavailable" },
+    { retryEnqueued: false, enqueueFailed: true },
+  );
+  assert(out.toLowerCase().includes("having a moment"));
+  assert(out.toLowerCase().includes("try again next time"));
 });
 
 // Phase 2.3 — attendee notification surfaced.

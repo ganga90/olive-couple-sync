@@ -53,6 +53,148 @@ no-hardcoded-strings rule.
 
 ---
 
+## 2026-05-12 — Calendar error classification (PR 2: the 5-layer architectural fix)
+
+PR 1 (the hotfix below) unbroke the immediate symptom — Ask Olive reschedules
+now actually move Google Calendar events. But it left the broader
+architectural gap the original review surfaced: *every* non-2xx Google
+response still collapsed into `google_api_error`, which meant the retry
+queue couldn't distinguish "back off, you're rate-limited" from "stop
+trying, the user has to reconnect" from "the event vanished, treat as
+success." Same dead-end message regardless. PR 2 closes that gap.
+
+**Five layers, all in one PR because they're coupled.**
+
+**L1 — Classify Google errors at the source** ([_shared/google-calendar.ts](practical-lichterman/supabase/functions/_shared/google-calendar.ts)). Added
+`classifyHttpError(status)` that maps each HTTP status to a recovery-
+relevant `CalendarFailureReason`:
+
+| HTTP | Reason | Recovery |
+|---|---|---|
+| 401 | `auth_expired` | User reconnects (no retry) |
+| 403 | `scope_insufficient` | User reconnects (no retry) |
+| 404 / 410 | `event_not_found` | Unlink local mirror, success |
+| 412 | `etag_conflict` | Existing path |
+| 429 | `rate_limited` | Retry per `Retry-After` |
+| 5xx | `google_unavailable` | Retry with backoff |
+| else | `google_api_error` | Retry with backoff |
+
+`parseRetryAfter()` handles both delta-seconds and HTTP-date forms,
+returning undefined for malformed or in-the-past values. Wired through
+`patchGoogleEvent`, `deleteGoogleEvent`, `getGoogleEvent`. `CalendarErr`
+carries an optional `retry_after_ms` field so the queue can honor
+Google's hint instead of defaulting to 30s (which would just re-trip
+the rate limit).
+
+**L2 — Branched handling in `calendar-update-event` + `calendar-delete-event`.**
+Each function now switches on the classified reason:
+- `event_not_found` → delete the stale local `calendar_events` mirror,
+  return `sync_status: "already_gone"`, success-shaped (Olive task
+  moved, the Google event was already gone)
+- `auth_expired` / `scope_insufficient` → `sync_status: "needs_reconnect"`
+  + payload flag, do **not** enqueue retry (would loop indefinitely)
+- `rate_limited` → `sync_status: "rate_limited"`, enqueue retry with
+  Google's `Retry-After` ms
+- `google_unavailable` → `sync_status: "google_unavailable"`, default
+  retry backoff
+- Everything else → unchanged
+
+New sync statuses added to the enum in three places kept in sync:
+`_shared/calendar-sync-logger.ts`, `_shared/action-executor-offers.ts`,
+and the local copies in `ask-olive-stream` and `ask-olive-individual`.
+DB has no CHECK constraint on `sync_status` so no migration needed —
+the column accepts the new values directly.
+
+**L3 — Make `enqueueRetry` honest.** Three changes:
+- Expanded `RETRYABLE_STATUSES` (added `rate_limited`, `google_unavailable`;
+  excluded `needs_reconnect`, `enqueue_failed`)
+- New `retry_after_ms` arg on `EnqueueArgs`; floored at the default 30s
+  backoff so `Retry-After: 0` doesn't make us hammer Google
+- **Honest failure surfacing**: when `shouldRetry()` returns true but
+  the queue insert itself fails (RLS, quota, dead DB), `exit()` in
+  `calendar-update-event` / `calendar-delete-event` now writes a
+  *second* `olive_calendar_sync_log` row tagged
+  `sync_status: "enqueue_failed"` + sets `enqueue_failed: true` in the
+  response payload. This is the case the 2026-05-12 bug hit: the
+  user-facing copy could pretend a retry was queued when it wasn't.
+
+**L4 — Differentiated user-facing copy.** [_shared/offer-copy.ts](practical-lichterman/supabase/functions/_shared/offer-copy.ts) `buildCalendarSuffix`
+now picks the right message per `sync_status`:
+- `needs_reconnect` → `" — your Google Calendar needs reconnecting (Settings → Calendar)"`
+- `rate_limited` (10s–10min hint) → `" — Google's rate-limiting, I'll catch up in about Ns"`
+- `google_unavailable` → `" — Google's having a moment, I'll keep trying in the background"`
+- `enqueue_failed` → `" — couldn't queue the Google sync, I'll try again next time you ask"`
+- `google_api_error` (no retry) → **`" — Google didn't respond, I'll try again next time you ask"`** — replaces the original dead-end `" — but I couldn't reach Google Calendar this time"` copy that the bug-reporting user saw
+
+`buildResultHint` reads the new optional `enqueue_failed` and
+`retry_after_ms` fields off `CalendarSyncReport` and threads them
+through. Web copy only in this PR; WhatsApp + i18n in PR 2B.
+
+**Tests — 39 new, 1103 total (was 1064 at PR 1's tip).**
+- 20 unit tests in `google-calendar.test.ts` for `classifyHttpError`,
+  `parseRetryAfter`, and per-HTTP-code stubbed-fetch behavior
+- 5 retry-queue tests covering `shouldRetry` expansion (with
+  `needs_reconnect` / `enqueue_failed` in the negative set),
+  `retry_after_ms` honoring vs flooring, and `google_unavailable`
+  enqueue
+- 10 copy tests for each new `sync_status` branch + the
+  `enqueueFailed` option + Retry-After hint quoting
+- 2 existing tests updated to reflect the retired `"couldn't reach
+  Google Calendar this time"` string
+
+**End-to-end verification against prod (the part that matters).**
+- Happy path regression: PATCH Demo Reviewer's grocery task → HTTP
+  200, `sync_status: updated`, Google event moved.
+- **Forced 404 → `already_gone`**: inserted a `calendar_events` row
+  with a fabricated `google_event_id`, called `calendar-update-event`,
+  observed HTTP 200 + `sync_status: "already_gone"` + `success: true`.
+  Three-way confirmation:
+  - Stale mirror row was deleted (function unlinks)
+  - Sync log row written with `http_status: 404` + Google's full JSON
+    error body captured
+  - Retry queue had zero entries for the note (`already_gone` is
+    correctly not in `RETRYABLE_STATUSES`)
+
+The `needs_reconnect`, `rate_limited`, and `google_unavailable` E2E
+paths require forcing a real Google 401/429/5xx, which would mean
+corrupting Demo Reviewer's OAuth token — not worth the risk for
+verification when the unit + integration tests pin the contract. Those
+classes will trip in production over time and the new telemetry
+(`olive_calendar_sync_log.sync_status`) makes them queryable.
+
+**Files touched.**
+
+| Path | Change |
+|---|---|
+| `_shared/google-calendar.ts` | `classifyHttpError`, `parseRetryAfter`, new `CalendarFailureReason` values, `retry_after_ms` on `CalendarErr`, wiring through patch/delete/get helpers |
+| `_shared/calendar-sync-logger.ts` | `CalendarSyncStatus` += `needs_reconnect`, `rate_limited`, `google_unavailable`, `enqueue_failed` |
+| `_shared/calendar-retry-queue.ts` | `RETRYABLE_STATUSES` += `rate_limited`, `google_unavailable`; `enqueueRetry` accepts + floors `retry_after_ms` |
+| `_shared/action-executor-offers.ts` | `CalendarSyncReport.status` enum extended + new optional payload fields |
+| `_shared/offer-copy.ts` | Differentiated `buildCalendarSuffix` per status; `enqueueFailed` + `retryAfterMs` options |
+| `calendar-update-event/index.ts` | Switch on `patchResult.reason`; thread `retry_after_ms` through `exit()`; write `enqueue_failed` log row when queue rejects |
+| `calendar-delete-event/index.ts` | Same branching for DELETE (without the `event_not_found` branch — that's handled upstream as alreadyGone success) |
+| `ask-olive-stream/index.ts` | Local `CalendarSyncStatus` mirror updated |
+| `ask-olive-individual/index.ts` | Same |
+| `_shared/google-calendar.test.ts` | +20 tests |
+| `_shared/calendar-retry-queue.test.ts` | +5 tests |
+| `_shared/offer-copy.test.ts` | +10 tests, 2 existing tests updated for new copy |
+
+**Known v1 boundaries (deferred to PR 2B).**
+- No DB column for connection health — `needs_reconnect` lives only in
+  the `sync_status` and the response payload. UI surfacing (banner on
+  `/calendar`, badge on settings) needs a `calendar_connections.health_status`
+  column to read from.
+- WhatsApp copy not updated. `_shared/whatsapp-calendar-sync.ts` still
+  uses the pre-L4 collapse — its English/Spanish/Italian translations
+  need parallel updates.
+- No "queue pending" badge / "retry now" affordance in the UI.
+  Backend now reliably tells the truth about queued retries; the UI
+  doesn't surface it yet.
+- No CI smoke check exercising a real Google round-trip against prod
+  OAuth. The flagged open follow-up from PR 1's recap is still open.
+
+---
+
 ## 2026-05-12 — Calendar edit hotfix: the bug Phases 1–3 didn't catch
 
 Phases 1.5 through 3.6 shipped on 2026-05-10–11 with a full observability +

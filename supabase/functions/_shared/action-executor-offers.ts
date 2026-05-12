@@ -23,6 +23,16 @@ import { recordReschedulePattern } from "./pattern-detector.ts";
 
 // ─── Result types ──────────────────────────────────────────────────────
 
+// Mirrors CalendarSyncStatus in _shared/calendar-sync-logger.ts, plus
+// the two values calendar-update/delete-event can return that aren't
+// terminal logger statuses (`skipped` for bulk operations).
+//
+// Layer 2 (2026-05-12 followup): added needs_reconnect / rate_limited /
+// google_unavailable so the chat reply can distinguish "user needs to
+// reconnect Google" (permanent until they act) from "Google's busy"
+// (transient, we'll retry) from "Google's down" (transient, longer
+// retry). Layer 3 added enqueue_failed so the chat doesn't go silent
+// when the retry queue itself can't accept the row.
 export type CalendarSyncReport = {
   status:
     | "updated"
@@ -31,6 +41,10 @@ export type CalendarSyncReport = {
     | "not_connected"
     | "no_linked_event"
     | "etag_conflict"
+    | "needs_reconnect"
+    | "rate_limited"
+    | "google_unavailable"
+    | "enqueue_failed"
     | "google_api_error"
     | "token_refresh_failed"
     | "invoke_failed"
@@ -43,6 +57,19 @@ export type CalendarSyncReport = {
   // glitch, I'll catch up on my own."
   retry_enqueued?: boolean;
   retry_id?: string;
+  // L3 (2026-05-12): set when shouldRetry was true but the queue INSERT
+  // itself failed. Without this the user-facing copy can't distinguish
+  // "Google failed and we'll retry" from "Google failed AND the retry
+  // queue is also broken" — which is exactly the dead-end state we shipped.
+  enqueue_failed?: boolean;
+  enqueue_failure_reason?: string;
+  // L2 (2026-05-12): set on auth_expired / scope_insufficient so the
+  // chat reply (and eventually a UI banner) can prompt a reconnect.
+  needs_reconnect?: boolean;
+  // L2 (2026-05-12): parsed Retry-After milliseconds when Google
+  // rate-limited us. Surfaced so the chat can say "I'll catch up in N
+  // seconds" rather than the generic "I'll keep trying."
+  retry_after_ms?: number;
   // Phase 2.3 — populated when Google's sendUpdates notified attendees.
   attendees_notified?: boolean;
   attendee_count?: number;

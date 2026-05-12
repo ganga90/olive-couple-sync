@@ -50,16 +50,34 @@ const BACKOFF_SCHEDULE_SEC = [30, 120, 600, 3600, 21600]; // 30s, 2m, 10m, 1h, 6
 const MAX_ATTEMPTS = BACKOFF_SCHEDULE_SEC.length + 1; // initial + 5 retries
 
 // Statuses we consider transient and retry-worthy. Everything else is a
-// permanent state: missing input is a caller bug, not_connected /
-// no_linked_event are terminal product states ("there's nothing to
-// sync"), etag_conflict means the user edited externally and our last-
-// write-wins fallback is the right answer (we don't want to re-fight
-// the conflict five times). missing_input cannot be retried — re-issuing
-// the same broken request will produce the same broken response.
+// permanent state and not in this set:
+//   - missing_input: caller bug — same request produces same failure.
+//   - not_connected / no_linked_event: terminal product states.
+//   - etag_conflict: the user edited externally; last-write-wins is the
+//     right answer, don't re-fight.
+//   - needs_reconnect (L2): user has to reconnect Google. Retrying
+//     identical OAuth tokens 5x with 30s/2m/10m/1h/6h backoff just
+//     produces 5 more 401s and 5 more sync log rows; it doesn't fix
+//     anything. The user-facing copy + (Phase 2B) the UI banner are the
+//     recovery path.
+//   - already_gone: success — the event vanished from Google's side, we
+//     handled it, nothing to retry.
+//   - enqueue_failed: meta-status produced by the exit() helper when
+//     the queue INSERT itself fails. Retrying THAT in the queue is
+//     circular — if the queue is broken, the next attempt will hit
+//     the same failure mode.
+//
+// New L2 additions: rate_limited and google_unavailable. Both are
+// transient by definition (429 = back off, 5xx = Google's having a
+// moment) — they should hit the queue and resolve themselves. The new
+// `retry_after_ms` field on EnqueueArgs lets rate_limited honor
+// Google's hint instead of using the default 30s backoff.
 const RETRYABLE_STATUSES = new Set([
   "google_api_error",
   "token_refresh_failed",
   "invoke_failed",
+  "rate_limited",        // L2: 429 — honor Retry-After
+  "google_unavailable",  // L2: 5xx — back off with default schedule
 ]);
 
 export function shouldRetry(syncStatus: string): boolean {
@@ -78,6 +96,12 @@ export interface EnqueueArgs {
   initial_failure_status: string;
   initial_http_status?: number | null;
   initial_error?: string | null;
+  // L2 (2026-05-12): Google's Retry-After hint in milliseconds. When set
+  // (currently only on 429 → rate_limited), the queue's first attempt
+  // uses this delay instead of BACKOFF_SCHEDULE_SEC[0]. Subsequent
+  // retries fall back to the regular schedule — there's no way to know
+  // ahead of time that Google will rate-limit us again next time.
+  retry_after_ms?: number;
 }
 
 export async function enqueueRetry(
@@ -87,6 +111,15 @@ export async function enqueueRetry(
   if (!shouldRetry(args.initial_failure_status)) {
     return { enqueued: false, reason: "non_transient_status" };
   }
+  // L2: honor Google's Retry-After when provided. Floor at the default
+  // backoff to avoid hammering on a 429 with `Retry-After: 0` — Google
+  // does occasionally return that, and we shouldn't trip the limit
+  // again immediately.
+  const defaultMs = BACKOFF_SCHEDULE_SEC[0] * 1000;
+  const firstDelayMs =
+    args.retry_after_ms !== undefined && args.retry_after_ms > defaultMs
+      ? args.retry_after_ms
+      : defaultMs;
   try {
     const { data, error } = await supabase
       .from("olive_calendar_sync_queue")
@@ -96,12 +129,15 @@ export async function enqueueRetry(
         action: args.action,
         payload: args.payload,
         status: "pending",
-        // First retry fires after the initial backoff window.
-        next_attempt_at: new Date(Date.now() + BACKOFF_SCHEDULE_SEC[0] * 1000).toISOString(),
+        next_attempt_at: new Date(Date.now() + firstDelayMs).toISOString(),
         last_error: args.initial_error ?? null,
         metadata: {
           initial_failure_status: args.initial_failure_status,
           initial_http_status: args.initial_http_status ?? null,
+          // Preserve Google's hint in metadata for analytics + a future
+          // operator running "why did this row's first attempt take 90s
+          // instead of 30s" query.
+          retry_after_ms: args.retry_after_ms ?? null,
         },
       })
       .select("id")
