@@ -57,19 +57,7 @@ const NON_FUNCTION_DIRS = new Set(["_shared"]);
 // removed by registering it properly in config.toml. The list shrinks,
 // it doesn't grow. New functions that lack config entries will fail
 // the test immediately — which is the whole point.
-const KNOWN_LEGACY_STRAGGLERS = new Set([
-  "email-auth-url",
-  "email-oauth-callback",
-  "olive-collaboration",
-  "olive-community-detect",
-  "olive-compile-memory",
-  "olive-knowledge-extract",
-  "olive-memory-maintenance",
-  "olive-reflect",
-  "olive-soul-evolve",
-  "olive-soul-seed",
-  "olive-trust-gate",
-]);
+const KNOWN_LEGACY_STRAGGLERS = new Set<string>([]);
 
 async function listFunctionDirs(): Promise<string[]> {
   const dirs: string[] = [];
