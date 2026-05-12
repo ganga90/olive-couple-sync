@@ -217,3 +217,32 @@ verify_jwt = true
 
 [functions.olive-reflect]
 verify_jwt = false
+
+# Memory / knowledge cluster — Second Brain compilation, maintenance,
+# extraction, community detection, and collaboration primitives.
+# All five deployed verify_jwt = false in prod (verified 2026-05-12
+# via the Supabase admin API); registering here makes config.toml
+# the source of truth so future redeploys are reproducible.
+# - olive-compile-memory runs daily via pg_cron (2am UTC), on-demand
+#   otherwise. pg_cron's pg_net carries a Supabase JWT, so the
+#   gateway lets it through either way; verify_jwt = false matches
+#   the deployed state and the repo convention for body-self-auth.
+# - olive-memory-maintenance runs weekly via pg_cron (Sun 3am UTC).
+#   Its file header literally documents `verify_jwt: false (called
+#   by pg_cron / service role)` — that intent finally made it from
+#   prose into config.
+# All five self-authenticate from body.user_id with SERVICE_ROLE_KEY.
+[functions.olive-compile-memory]
+verify_jwt = false
+
+[functions.olive-memory-maintenance]
+verify_jwt = false
+
+[functions.olive-knowledge-extract]
+verify_jwt = false
+
+[functions.olive-community-detect]
+verify_jwt = false
+
+[functions.olive-collaboration]
+verify_jwt = false

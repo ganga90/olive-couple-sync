@@ -60,11 +60,6 @@ const NON_FUNCTION_DIRS = new Set(["_shared"]);
 const KNOWN_LEGACY_STRAGGLERS = new Set([
   "clerk-sync",
   "daily-pulse",
-  "olive-collaboration",
-  "olive-community-detect",
-  "olive-compile-memory",
-  "olive-knowledge-extract",
-  "olive-memory-maintenance",
   "olive-prompt-evolve",
   "olive-space-manage",
   "onboarding-finalize",
