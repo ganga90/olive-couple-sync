@@ -246,3 +246,58 @@ verify_jwt = false
 
 [functions.olive-collaboration]
 verify_jwt = false
+
+# Final straggler cluster — utilities, webhooks, and cron jobs.
+# Each entry matches the function's actual deployed state in prod
+# (verified 2026-05-12 via the Supabase admin API). This PR is a
+# config drift fix, not a behavior change.
+#
+# - clerk-sync: Clerk → Supabase user sync webhook authenticated by
+#   Svix signature (svix-id, svix-timestamp, svix-signature). Clerk's
+#   infra sends no Authorization header — same auth shape as
+#   calendar-watch-callback — so this MUST stay verify_jwt = false or
+#   every webhook would 401 at the gateway. Already deployed false.
+# - daily-pulse: deployed false. No pg_cron job is actually scheduled
+#   for it today despite the file header's claim; the function is
+#   currently invoked on-demand.
+# - olive-prompt-evolve: deployed TRUE. Weekly pg_cron + occasional
+#   manual admin invocation; all callers carry a Supabase JWT so the
+#   verify_jwt = true gate is non-blocking. Kept at true here to
+#   preserve deployed behavior — flipping is a deliberate security-
+#   surface change for a separate PR.
+# - onboarding-finalize: deployed TRUE. Invoked from the web client
+#   post-onboarding with a Supabase JWT; the gate is non-blocking
+#   but provides a defense-in-depth layer. Kept at true to match
+#   deployed reality.
+# - repair-embeddings: deployed TRUE. Admin utility, manually invoked
+#   with service-role credentials. Kept at true to match deployed
+#   reality and preserve the admin-only access shape.
+# - olive-space-manage, process-receipt, save-link, send-invite:
+#   already deployed verify_jwt = false; standard repo convention
+#   (service-role client built internally, trust body params).
+[functions.clerk-sync]
+verify_jwt = false
+
+[functions.daily-pulse]
+verify_jwt = false
+
+[functions.olive-prompt-evolve]
+verify_jwt = true
+
+[functions.olive-space-manage]
+verify_jwt = false
+
+[functions.onboarding-finalize]
+verify_jwt = true
+
+[functions.process-receipt]
+verify_jwt = false
+
+[functions.repair-embeddings]
+verify_jwt = true
+
+[functions.save-link]
+verify_jwt = false
+
+[functions.send-invite]
+verify_jwt = false
