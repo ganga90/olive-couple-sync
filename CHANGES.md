@@ -12,6 +12,112 @@ there are no behavioral rollbacks.
 
 ---
 
+## 2026-05-12 — ContextRail "Thu, May 14" off-by-one fix (date-only due_date in negative-offset timezones)
+
+A user reported that the right-side calendar panel on the Home page
+showed "Visit grocery store / Thu, May 14" — but the task had already
+been moved to Friday May 15 at 12pm via Ask Olive (verified end-to-end
+in PR #99: HTTP 200 + sync_status=updated + Google Calendar PATCH
+landed). The chat flow worked. The display didn't.
+
+**The bug — two layers.**
+
+**Layer 1: surfaces read `due_date` only, ignoring `reminder_time`.**
+After a "move to Friday at 12pm" reschedule, `clerk_notes` ends up with
+two fields:
+- `reminder_time = 2026-05-15 16:00:00+00` (Friday 12pm NY — correct)
+- `due_date = 2026-05-15 00:00:00+00` (Friday midnight UTC — stale
+  from the original date-only capture)
+
+`ContextRail.tsx`, `CalendarPage.tsx`, and `Home.tsx`'s weekly view all
+read `note.dueDate` and ignored `reminder_time`. The fresher of the two
+truths was being thrown away.
+
+**Layer 2: `new Date("2026-05-15 00:00:00+00").toLocaleString()` in any
+negative-offset timezone returns the previous day.** Midnight UTC on
+May 15 is May 14 8pm in NY (UTC-4), May 14 5pm in LA (UTC-7), May 14
+9pm in Halifax (UTC-3), etc. This is the same off-by-one class of bug
+that was already fixed in the server-side `_shared/bulk-resolver.ts`
+and `_shared/pattern-detector.ts` — but the frontend never got the
+parallel treatment. Frontend kept doing `new Date(dueDate)` directly.
+
+**The fix.**
+
+New shared helper at [src/lib/note-display-moment.ts](practical-lichterman/src/lib/note-display-moment.ts):
+`getNoteDisplayMoment(note, timeZone)` returns `{ moment: Date,
+isTimed: boolean } | null`. Two-line contract:
+
+1. **Precedence**: if `reminder_time` is set, use it — it's the
+   authoritative "when". Otherwise fall back to `due_date`.
+2. **Date-only handling**: when the value matches the "midnight UTC"
+   shape (the convention Olive uses for date-only entries in a
+   `timestamptz` column), parse the Y-M-D and anchor at noon in the
+   user's IANA timezone. Plain `YYYY-MM-DD` strings also handled.
+   Otherwise the value is a real timed moment — trust it as-is.
+
+The "noon in the user's timezone" anchor is the key trick. Any hour
+between 1am and 11pm in any zone keeps the calendar day stable across
+`toLocaleDateString` / date-fns `format` calls. Noon also survives DST
+transitions cleanly (the helper falls back to a second offset-correction
+pass for DST boundary days — covered by tests).
+
+Implementation uses `Intl.DateTimeFormat.formatToParts` to compute the
+UTC offset at a specific instant — the only cross-browser standard API
+that's aware of historical DST rules. No date-fns-tz dependency added.
+
+**17 unit tests** at
+[supabase/functions/_shared/note-display-moment-helper.test.ts](practical-lichterman/supabase/functions/_shared/note-display-moment-helper.test.ts)
+cover:
+- reminder_time precedence (both fields set, only reminder, only due)
+- date-only due_date in NY (the exact reported case), LA, Madrid, UTC,
+  and the no-timezone default
+- DST transition days: 2026-03-08 NY spring-forward + 2026-04-05
+  Sydney fall-back
+- both Postgres `timestamptz` format (`2026-05-15 00:00:00+00`,
+  `+00:00`) AND ISO 8601 format (`T00:00:00.000Z`)
+- degenerate inputs (null, undefined, malformed strings)
+
+Each test renders the resulting moment as "Fri, May 15" in the
+target timezone — pinning the user-visible string, not just the
+underlying Date.
+
+**Three surfaces wired up in this PR.**
+
+| File | Change |
+|---|---|
+| `src/components/layout/ContextRail.tsx` | All three useMemos (upcomingEvents, taskDates, todaysTasks) refactored to use a single shared `datedNotes` array of `{ note, moment, isTimed }`. `formatEventDate` now takes a `Date` instead of a string — no more second `new Date(...)` parse that could re-introduce the bug. |
+| `src/pages/CalendarPage.tsx` | `getTasksForDate` reads from a memoized `datedTasks` array. Day-grid dots now appear on the right day in negative-offset zones. |
+| `src/pages/Home.tsx` | `getTasksForDays` (the weekly-view bucketing function) resolves each note's moment once via the helper, then buckets per day. |
+
+Each gets a `userTimeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])` threaded through.
+
+**Surfaces not yet wired up** (deferred to a follow-up — same helper,
+mechanical application): `src/pages/MyDay.tsx`,
+`src/pages/Reminders.tsx`, `src/pages/Lists.tsx`,
+`src/components/NoteCard.tsx`, `src/components/TaskItem.tsx`,
+`src/components/SwipeableReminderCard.tsx`, etc. Spawning the follow-up
+task. ~15 components total — keeping this PR focused on the three
+highest-visibility surfaces (the ones the user can immediately see
+broken).
+
+**Tests:** 1141 deno tests pass (+17 new from the helper).
+
+**Known gap (separate from this PR):** the grocery note's
+`calendar_events` mirror was deleted during earlier testing and the
+most recent Ask Olive reschedule didn't re-create it. The chat flow
+hit `no_linked_event` and returned. The display-layer fix in this PR
+unblocks the user's reported symptom (right-side panel shows the right
+date), but the missing mirror means the Google Calendar event itself
+isn't currently linked back. Recovery path designed in the spawned
+follow-up: have `executeReschedule` fall back to `calendar-create-event`
+when the mirror is missing.
+
+| Date | Files | Description |
+|---|---|---|
+| 2026-05-12 | `src/lib/note-display-moment.ts`, `src/components/layout/ContextRail.tsx`, `src/pages/CalendarPage.tsx`, `src/pages/Home.tsx`, `supabase/functions/_shared/note-display-moment-helper.test.ts` | New display-moment helper + applied to ContextRail / CalendarPage / Home weekly view; 17 unit tests. |
+
+---
+
 ## 2026-05-12 — Home / MyDay / Expenses mobile polish
 
 Three surface-level UI fixes on mobile, none touching data.

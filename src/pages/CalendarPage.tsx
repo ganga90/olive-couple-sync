@@ -18,6 +18,7 @@ import { useDateLocale } from "@/hooks/useDateLocale";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, parseISO, getDay, startOfWeek, endOfWeek, isToday as checkIsToday } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Note } from "@/types/note";
+import { getNoteDisplayMoment } from "@/lib/note-display-moment";
 
 const CalendarPage = () => {
   const { t } = useTranslation(['calendar', 'common']);
@@ -40,10 +41,31 @@ const CalendarPage = () => {
   // Show Google Calendar events based on user preference
   const showGoogleEvents = connection?.show_google_events ?? true;
 
-  // Filter notes with due dates
-  const tasksWithDates = useMemo(() => {
-    return notes.filter(note => note.dueDate);
-  }, [notes]);
+  // Browser's resolved timezone. Threads through `getNoteDisplayMoment`
+  // so date-only `due_date` values (stored as UTC midnight in the
+  // timestamptz column) render in the user's calendar day. Without
+  // this, the day-grid dots are placed one day too early in any
+  // negative-offset zone — same off-by-one as the 2026-05-12 right-
+  // panel screenshot bug.
+  const userTimeZone = useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    [],
+  );
+
+  // Resolve each task to its display moment once, then key the per-day
+  // grid lookups against the resolved Date. Drops notes without either
+  // a `due_date` or a `reminder_time` (nothing to show on the grid).
+  // Precedence: reminder_time wins, because a freshly-rescheduled
+  // task has the correct reminder_time but possibly a stale date-only
+  // due_date.
+  const datedTasks = useMemo(() => {
+    return notes
+      .map(note => {
+        const display = getNoteDisplayMoment(note, userTimeZone);
+        return display ? { note, moment: display.moment } : null;
+      })
+      .filter((x): x is { note: Note; moment: Date } => x !== null);
+  }, [notes, userTimeZone]);
 
   // Get Google Calendar events for a specific date
   const getGoogleEventsForDate = (date: Date): CalendarEvent[] => {
@@ -55,10 +77,10 @@ const CalendarPage = () => {
   };
 
   // Get tasks for a specific date
-  const getTasksForDate = (date: Date) => {
-    return tasksWithDates.filter(task => 
-      task.dueDate && isSameDay(parseISO(task.dueDate), date)
-    );
+  const getTasksForDate = (date: Date): Note[] => {
+    return datedTasks
+      .filter(({ moment }) => isSameDay(moment, date))
+      .map(({ note }) => note);
   };
 
   // Get calendar days with padding for proper grid
