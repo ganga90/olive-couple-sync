@@ -73,7 +73,31 @@ WHERE version >= '20260427' ORDER BY version DESC LIMIT 5;
 
 The new migration should appear.
 
-### 5. Commit in the same PR as dependent code
+### 5. Align the filename with the ledger timestamp
+
+**This step is the one most easily forgotten and is the only known way the doctrine drifts in practice.**
+
+The MCP records the **apply time** in `schema_migrations.version`, not the **authoring time** in your filename. If the gap is more than a few seconds (e.g. you wrote the file in the morning and applied at lunch), the timestamps diverge — and `supabase db push` thinks your local file is unapplied, then crashes trying to re-run it on top of a schema that already has it.
+
+After step 4, compare the ledger version against your filename and rename if they differ:
+
+```bash
+# If your file was 20260510194217_olive_calendar_sync_log.sql but the
+# ledger ended up registering it as version 20260511013911:
+git mv supabase/migrations/20260510194217_olive_calendar_sync_log.sql \
+       supabase/migrations/20260511013911_olive_calendar_sync_log.sql
+```
+
+Automate the check (run it after every `apply_migration`):
+
+```bash
+./scripts/sync-migration-filenames.sh         # detect drift, exits 1 if any
+./scripts/sync-migration-filenames.sh --fix   # auto-rename via psql lookup (needs SUPABASE_DB_URL)
+```
+
+The script is also the recovery path: if drift accumulated over multiple migrations, one `--fix` run aligns everything.
+
+### 6. Commit in the same PR as dependent code
 
 The PR description must declare the migration in the [PR template](.github/pull_request_template.md) checkboxes. CI lint will check filename format, RLS, search_path, DROP idempotency.
 

@@ -20,8 +20,9 @@ touch "supabase/migrations/${TS}_${NAME}.sql"
 ## After authoring
 
 1. `apply_migration(name='${NAME}', query='<file contents>')` via MCP
-2. Commit the file in the same PR as the dependent code
-3. Mark the migration in the PR template's "Database changes" section
+2. **Rename the local file to the ledger's version.** The MCP records the apply time, not your authoring time. If they differ, `supabase db push` breaks. Run `./scripts/sync-migration-filenames.sh` to detect drift; add `--fix` to auto-rename. Skipping this step is the #1 way the doctrine drifts in practice.
+3. Commit the file in the same PR as the dependent code
+4. Mark the migration in the PR template's "Database changes" section
 
 ## When in doubt
 
