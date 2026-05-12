@@ -20,13 +20,36 @@ import {
 // ─── shouldRetry ──────────────────────────────────────────────────────
 
 Deno.test("shouldRetry: transient statuses → true", () => {
-  for (const s of ["google_api_error", "token_refresh_failed", "invoke_failed"]) {
+  // L2 (2026-05-12): added rate_limited and google_unavailable. Both
+  // are transient by definition and should hit the queue.
+  for (const s of [
+    "google_api_error",
+    "token_refresh_failed",
+    "invoke_failed",
+    "rate_limited",
+    "google_unavailable",
+  ]) {
     assertEquals(shouldRetry(s), true, `expected retry for ${s}`);
   }
 });
 
 Deno.test("shouldRetry: terminal statuses → false", () => {
-  for (const s of ["updated", "deleted", "created", "already_gone", "not_connected", "no_linked_event", "etag_conflict", "missing_input"]) {
+  // L2 (2026-05-12): added needs_reconnect — 401/403 are permanent
+  // until the user reconnects. Retrying them just produces more 401s.
+  // L3 (2026-05-12): added enqueue_failed — retrying the queue insert
+  // through the queue is circular.
+  for (const s of [
+    "updated",
+    "deleted",
+    "created",
+    "already_gone",
+    "not_connected",
+    "no_linked_event",
+    "etag_conflict",
+    "missing_input",
+    "needs_reconnect",
+    "enqueue_failed",
+  ]) {
     assertEquals(shouldRetry(s), false, `expected NO retry for ${s}`);
   }
 });
@@ -146,6 +169,82 @@ Deno.test("enqueueRetry: non-transient status → no insert", async () => {
   assertEquals(r.enqueued, false);
   assertEquals(r.reason, "non_transient_status");
   assertEquals(state.inserts.length, 0);
+});
+
+Deno.test("enqueueRetry: needs_reconnect → no insert (L2 — permanent until user acts)", async () => {
+  // Critical: this enforces that 401/403 → needs_reconnect doesn't loop
+  // through the queue retrying identical OAuth tokens five times. The
+  // user-facing copy (and PR 2B's UI banner) are what get the user to
+  // act; the queue stays out of it.
+  const state = freshState();
+  const r = await enqueueRetry(makeMock(state), {
+    user_id: "u1",
+    action: "update",
+    payload: {},
+    initial_failure_status: "needs_reconnect",
+  });
+  assertEquals(r.enqueued, false);
+  assertEquals(state.inserts.length, 0);
+});
+
+Deno.test("enqueueRetry: rate_limited honors retry_after_ms when > default backoff", async () => {
+  // L2 (2026-05-12): when Google sends Retry-After: 90s, the queue's
+  // first attempt must wait 90s — not the default 30s — otherwise we
+  // re-trip the same rate limit immediately.
+  const state = freshState();
+  const t0 = Date.now();
+  const r = await enqueueRetry(makeMock(state), {
+    user_id: "u1",
+    action: "update",
+    payload: {},
+    initial_failure_status: "rate_limited",
+    retry_after_ms: 90_000,
+  });
+  assertEquals(r.enqueued, true);
+  const next = new Date(state.inserts[0].next_attempt_at as string).getTime();
+  // Should land in the 88-95s window from `t0`. Tolerate jitter on
+  // either side so the test isn't flaky on slow CI.
+  assert(next - t0 >= 88_000, `retry too soon: ${next - t0}ms`);
+  assert(next - t0 <= 95_000, `retry too late: ${next - t0}ms`);
+  // Metadata records the hint so an operator can see why the row's
+  // first attempt was offset.
+  const meta = state.inserts[0].metadata as Record<string, unknown>;
+  assertEquals(meta.retry_after_ms, 90_000);
+});
+
+Deno.test("enqueueRetry: retry_after_ms < default backoff → floor at default (don't hammer)", async () => {
+  // If Google returns Retry-After: 0 (or any value below our default
+  // 30s), we should still wait the default — re-trying immediately
+  // after a 429 just trips the same limit. The floor protects us.
+  const state = freshState();
+  const t0 = Date.now();
+  const r = await enqueueRetry(makeMock(state), {
+    user_id: "u1",
+    action: "update",
+    payload: {},
+    initial_failure_status: "rate_limited",
+    retry_after_ms: 0,
+  });
+  assertEquals(r.enqueued, true);
+  const next = new Date(state.inserts[0].next_attempt_at as string).getTime();
+  // Expect ~30s (default), not ~0s.
+  assert(next - t0 >= 28_000, `floor broke: ${next - t0}ms`);
+});
+
+Deno.test("enqueueRetry: google_unavailable enqueues with default backoff (L2)", async () => {
+  const state = freshState();
+  const r = await enqueueRetry(makeMock(state), {
+    user_id: "u1",
+    action: "update",
+    payload: {},
+    initial_failure_status: "google_unavailable",
+    initial_http_status: 503,
+  });
+  assertEquals(r.enqueued, true);
+  assertEquals(state.inserts.length, 1);
+  const meta = state.inserts[0].metadata as Record<string, unknown>;
+  assertEquals(meta.initial_failure_status, "google_unavailable");
+  assertEquals(meta.initial_http_status, 503);
 });
 
 Deno.test("enqueueRetry: not_connected → no insert (terminal product state)", async () => {

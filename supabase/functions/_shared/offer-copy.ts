@@ -237,16 +237,21 @@ export function buildResultHint(
   if (result.action === "tasks_bulk_rescheduled") {
     return buildBulkResultHint(result, ctx);
   }
-  // Read the optional Phase 2 fields off the calendar_sync report —
-  // they're added by calendar-update-event / calendar-delete-event but
-  // older callers may not populate them, so default safely.
+  // Read the optional Phase 2 + L2/L3 fields off the calendar_sync
+  // report — they're added by calendar-update-event /
+  // calendar-delete-event but older callers may not populate them, so
+  // default safely.
   const cs = result.calendar_sync as CalendarSyncReport & {
     retry_enqueued?: boolean;
+    enqueue_failed?: boolean;
+    retry_after_ms?: number;
     attendees_notified?: boolean;
     attendee_count?: number;
   };
   const sync = buildCalendarSuffix(result.calendar_sync, {
     retryEnqueued: cs.retry_enqueued,
+    enqueueFailed: cs.enqueue_failed,
+    retryAfterMs: cs.retry_after_ms,
     attendeesNotified: cs.attendees_notified,
     attendeeCount: cs.attendee_count,
   });
@@ -285,16 +290,27 @@ export function buildResultHint(
 // Translate a calendar sync status into the user-facing trailing clause.
 // Empty string when nothing's worth saying (not_connected, no_linked).
 //
-// Phase 2 extensions:
+// Phase 2 + L4 extensions (2026-05-12):
 //   - `retryEnqueued`: when a transient failure was queued for retry,
-//     soften the failure message — the user's calendar WILL catch up,
-//     they just shouldn't expect it instantly.
+//     soften the failure message — the user's calendar WILL catch up.
+//   - `enqueueFailed`: shouldRetry was true but the queue insert itself
+//     failed. Distinct from "no retry attempted" so the copy can be
+//     honest about it ("I'll try again next time" rather than the dead-
+//     end "couldn't reach Google" that originally shipped).
+//   - `retryAfterMs`: Google's Retry-After hint. Lets rate_limited
+//     copy quote a time when we have one.
 //   - `attendeesNotified` + `attendeeCount`: when Google's notification
-//     was triggered, mention it. Moving a meeting silently on people
-//     is the kind of thing the brand voice cares about.
+//     was triggered, mention it. Moving a meeting silently on people is
+//     the kind of thing the brand voice cares about.
 export function buildCalendarSuffix(
   sync: CalendarSyncReport,
-  options: { retryEnqueued?: boolean; attendeesNotified?: boolean; attendeeCount?: number } = {},
+  options: {
+    retryEnqueued?: boolean;
+    enqueueFailed?: boolean;
+    retryAfterMs?: number;
+    attendeesNotified?: boolean;
+    attendeeCount?: number;
+  } = {},
 ): string {
   switch (sync.status) {
     case "updated": {
@@ -316,6 +332,16 @@ export function buildCalendarSuffix(
       return base;
     }
     case "already_gone":
+      // L2 (2026-05-12): after this PR, already_gone arises in two ways:
+      // (1) delete found the event already deleted on Google's side
+      //     — caller asked us to delete, terminal state reached, no
+      //     extra copy needed
+      // (2) update hit a 404/410 — we unlinked the stale local mirror;
+      //     telling the user is useful so they don't wonder where the
+      //     Google event went
+      // Without extra context we can't distinguish, so keep the (1) case
+      // (the existing behavior) and let the update path optionally
+      // override at the call site if needed.
       return "";
     case "not_connected":
     case "no_linked_event":
@@ -323,12 +349,66 @@ export function buildCalendarSuffix(
     case "missing_input":
       return "";
     case "etag_conflict":
-    case "google_api_error":
-    case "token_refresh_failed":
-    case "invoke_failed":
+      // Existing behavior — same as before L2.
       return options.retryEnqueued
         ? " in Olive — Google Calendar didn't respond, I'll keep trying in the background"
         : " in Olive — but I couldn't reach Google Calendar this time";
+
+    case "needs_reconnect":
+      // L2: distinct from generic Google errors. The user has to do
+      // something (reconnect their Google account); no amount of
+      // retrying on our side will help.
+      return " in Olive — your Google Calendar needs reconnecting (Settings → Calendar)";
+
+    case "rate_limited": {
+      // L2: Google's rate-limiting us. If we have a Retry-After hint
+      // worth quoting (≥10s, ≤10min — short enough that a user would
+      // see the catch-up; long enough to be worth mentioning), surface
+      // it. Otherwise fall back to the generic retry copy.
+      const ms = options.retryAfterMs ?? 0;
+      if (ms >= 10_000 && ms <= 600_000) {
+        const sec = Math.round(ms / 1000);
+        return ` in Olive — Google's rate-limiting, I'll catch up in about ${sec}s`;
+      }
+      return options.retryEnqueued
+        ? " in Olive — Google's rate-limiting, I'll keep trying in the background"
+        : options.enqueueFailed
+          ? " in Olive — Google's rate-limiting and I couldn't queue a retry, I'll try again next time you ask"
+          : " in Olive — Google's rate-limiting";
+    }
+
+    case "google_unavailable":
+      // L2: Google's having a 5xx moment. Same shape as the generic
+      // retry copy — emphasize Google as the source so the user
+      // doesn't think it's Olive.
+      return options.retryEnqueued
+        ? " in Olive — Google's having a moment, I'll keep trying in the background"
+        : options.enqueueFailed
+          ? " in Olive — Google's having a moment and I couldn't queue a retry, I'll try again next time you ask"
+          : " in Olive — Google's having a moment";
+
+    case "enqueue_failed":
+      // L3: shouldn't appear as the primary sync_status (the original
+      // Google reason is what we send back), but defend the branch in
+      // case a future caller surfaces it directly.
+      return " in Olive — couldn't queue the Google sync, I'll try again next time you ask";
+
+    case "google_api_error":
+    case "token_refresh_failed":
+    case "invoke_failed":
+      // L3: the dead-end branch the 2026-05-12 bug hit. Now has three
+      // states instead of two:
+      //   1. retryEnqueued: classic transient — "I'll keep trying"
+      //   2. enqueueFailed: retry queue itself broke — be honest about
+      //      it; promise to try again on the user's next interaction
+      //      rather than implying a background retry that isn't happening
+      //   3. neither: shouldRetry was false (e.g. invoke_failed bypassed
+      //      the queue for some reason) — same honest "next time" copy
+      return options.retryEnqueued
+        ? " in Olive — Google Calendar didn't respond, I'll keep trying in the background"
+        : options.enqueueFailed
+          ? " in Olive — Google didn't respond and I couldn't queue a retry, I'll try again next time you ask"
+          : " in Olive — Google didn't respond, I'll try again next time you ask";
   }
 }
 

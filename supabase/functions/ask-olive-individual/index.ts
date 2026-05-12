@@ -479,6 +479,8 @@ async function fetchUserTimezoneFallback(supabase: SupabaseClient, userId: strin
 // `calendar_sync` field on the action's details so the chat reply can
 // tell the user the truth ("updated in Olive, couldn't reach Google").
 
+// Mirror of CalendarSyncStatus in _shared/calendar-sync-logger.ts. See
+// ask-olive-stream/index.ts for the rationale on the duplicate.
 type CalendarSyncStatus =
   | 'updated'
   | 'deleted'
@@ -486,6 +488,10 @@ type CalendarSyncStatus =
   | 'not_connected'
   | 'no_linked_event'
   | 'etag_conflict'
+  | 'needs_reconnect'
+  | 'rate_limited'
+  | 'google_unavailable'
+  | 'enqueue_failed'
   | 'google_api_error'
   | 'token_refresh_failed'
   | 'invoke_failed';

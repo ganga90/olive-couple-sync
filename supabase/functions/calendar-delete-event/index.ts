@@ -60,7 +60,13 @@ serve(async (req) => {
     status: CalendarSyncStatus,
     httpStatus: number,
     payload: Record<string, unknown>,
-    extra: { google_status?: number; error?: string } = {},
+    extra: {
+      google_status?: number;
+      error?: string;
+      // L2 (2026-05-12): Google's Retry-After in ms; threaded into the
+      // retry queue when set.
+      retry_after_ms?: number;
+    } = {},
   ): Promise<Response> {
     await logCalendarSync(supabase, {
       user_id: userId,
@@ -75,8 +81,9 @@ serve(async (req) => {
       error_message: extra.error ?? null,
     });
 
-    // Phase 2.1: enqueue retry on transient failures (see same logic
-    // in calendar-update-event for the rationale).
+    // Phase 2.1 + L3 (2026-05-12): enqueue retry on transient failures.
+    // See identical logic in calendar-update-event for the rationale on
+    // each guard and the enqueue_failed escape hatch.
     if (
       shouldRetry(status) &&
       invokedFrom !== "calendar-sync-retry" &&
@@ -91,10 +98,30 @@ serve(async (req) => {
         initial_failure_status: status,
         initial_http_status: extra.google_status ?? null,
         initial_error: extra.error ?? null,
+        retry_after_ms: extra.retry_after_ms,
       });
       if (enq.enqueued) {
         (payload as Record<string, unknown>).retry_enqueued = true;
         (payload as Record<string, unknown>).retry_id = enq.id;
+      } else {
+        // L3: surface the dead-end state instead of letting the chat
+        // reply pretend a retry is queued.
+        (payload as Record<string, unknown>).retry_enqueued = false;
+        (payload as Record<string, unknown>).enqueue_failed = true;
+        (payload as Record<string, unknown>).enqueue_failure_reason = enq.reason ?? "unknown";
+        await logCalendarSync(supabase, {
+          user_id: userId,
+          action: "delete",
+          sync_status: "enqueue_failed",
+          note_id: noteId,
+          connection_id: connectionId,
+          google_event_id: googleEventId,
+          http_status: null,
+          latency_ms: 0,
+          invoked_from: invokedFrom,
+          error_message: `enqueue_failed (origin=${status}): ${enq.reason ?? "unknown"}`,
+          metadata: { origin_sync_status: status },
+        });
       }
     }
 
@@ -193,15 +220,68 @@ serve(async (req) => {
     if (!deleteResult.ok) {
       console.error(
         "[calendar-delete-event] Google DELETE failed:",
+        deleteResult.reason,
         deleteResult.status,
         deleteResult.message,
       );
-      return exit("google_api_error", 200, {
-        success: false,
-        synced_to_google: false,
-        sync_status: "google_api_error",
-        error: deleteResult.message,
-      }, { google_status: deleteResult.status, error: deleteResult.message });
+
+      // L2 (2026-05-12): branch on classifier — same logic as
+      // calendar-update-event. Note that event_not_found CANNOT happen
+      // here: deleteGoogleEvent maps 404/410 to ok+alreadyGone=true and
+      // never returns a reason of "event_not_found". So we only handle
+      // auth_expired / scope_insufficient / rate_limited /
+      // google_unavailable / catch-all.
+      switch (deleteResult.reason) {
+        case "auth_expired":
+        case "scope_insufficient":
+          return exit("needs_reconnect", 200, {
+            success: false,
+            synced_to_google: false,
+            sync_status: "needs_reconnect",
+            needs_reconnect: true,
+            reconnect_reason: deleteResult.reason,
+            error: deleteResult.message,
+          }, {
+            google_status: deleteResult.status,
+            error: deleteResult.message,
+          });
+
+        case "rate_limited":
+          return exit("rate_limited", 200, {
+            success: false,
+            synced_to_google: false,
+            sync_status: "rate_limited",
+            retry_after_ms: deleteResult.retry_after_ms,
+            error: deleteResult.message,
+          }, {
+            google_status: deleteResult.status,
+            error: deleteResult.message,
+            retry_after_ms: deleteResult.retry_after_ms,
+          });
+
+        case "google_unavailable":
+          return exit("google_unavailable", 200, {
+            success: false,
+            synced_to_google: false,
+            sync_status: "google_unavailable",
+            error: deleteResult.message,
+          }, {
+            google_status: deleteResult.status,
+            error: deleteResult.message,
+          });
+
+        case "google_api_error":
+        default:
+          return exit("google_api_error", 200, {
+            success: false,
+            synced_to_google: false,
+            sync_status: "google_api_error",
+            error: deleteResult.message,
+          }, {
+            google_status: deleteResult.status,
+            error: deleteResult.message,
+          });
+      }
     }
 
     const { error: mirrorErr } = await supabase
