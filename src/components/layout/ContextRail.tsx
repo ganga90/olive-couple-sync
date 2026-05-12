@@ -12,6 +12,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { format, isSameDay, addDays, isToday, startOfDay, formatDistanceToNow, startOfMonth, endOfMonth } from 'date-fns';
 import type { Note } from '@/types/note';
 import { cn } from '@/lib/utils';
+import { getNoteDisplayMoment } from '@/lib/note-display-moment';
 
 export const ContextRail: React.FC = () => {
   const { t } = useTranslation(['home', 'common', 'lists', 'calendar']);
@@ -30,36 +31,57 @@ export const ContextRail: React.FC = () => {
   const cleanPath = stripLocalePath(location.pathname);
   const userId = user?.id;
 
-  // Get upcoming events (tasks with due dates in next 7 days)
+  // Browser's resolved timezone. We pass this to `getNoteDisplayMoment`
+  // so date-only `due_date` values (stored as UTC midnight in the
+  // `timestamptz` column) render in the user's calendar day, not the
+  // server's. Without this, "Friday" notes show as "Thursday" in any
+  // negative-offset zone — the 2026-05-12 screenshot bug.
+  const userTimeZone = useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    [],
+  );
+
+  // Resolve each note to its display moment ONCE here so every downstream
+  // memo (upcoming list, taskDates, todaysTasks) sees the same answer.
+  // Drops notes that have neither dueDate nor reminder_time, and drops
+  // completed notes — those are the only filters the previous code
+  // applied anyway, hoisted out of each individual useMemo.
+  const datedNotes = useMemo(() => {
+    return notes
+      .filter(note => !note.completed)
+      .map(note => {
+        const display = getNoteDisplayMoment(note, userTimeZone);
+        return display ? { note, moment: display.moment, isTimed: display.isTimed } : null;
+      })
+      .filter((x): x is { note: Note; moment: Date; isTimed: boolean } => x !== null);
+  }, [notes, userTimeZone]);
+
+  // Get upcoming events (tasks with display moments in next 7 days).
+  // PR fix: precedence is `reminder_time` > `due_date`, so a note
+  // with a stale UTC-midnight due_date but a fresh reminder_time
+  // (the post-reschedule state) sorts and displays from the
+  // reminder_time, not the stale due_date.
   const upcomingEvents = useMemo(() => {
     const today = new Date();
     const nextWeek = addDays(today, 7);
-    
-    return notes
-      .filter(note => {
-        if (note.completed) return false;
-        if (!note.dueDate) return false;
-        const dueDate = new Date(note.dueDate);
-        return dueDate >= today && dueDate <= nextWeek;
-      })
-      .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
+    return datedNotes
+      .filter(({ moment }) => moment >= today && moment <= nextWeek)
+      .sort((a, b) => a.moment.getTime() - b.moment.getTime())
       .slice(0, 4);
-  }, [notes]);
+  }, [datedNotes]);
 
-  // Get dates that have tasks
+  // Get dates that have tasks (for the calendar grid's "has task" dot)
   const taskDates = useMemo(() => {
-    return notes
-      .filter(note => !note.completed && note.dueDate)
-      .map(note => new Date(note.dueDate!));
-  }, [notes]);
+    return datedNotes.map(({ moment }) => moment);
+  }, [datedNotes]);
 
   // Get today's tasks for Calendar page
   const todaysTasks = useMemo(() => {
     const today = startOfDay(new Date());
-    return notes
-      .filter(note => !note.completed && note.dueDate && isSameDay(new Date(note.dueDate), today))
+    return datedNotes
+      .filter(({ moment }) => isSameDay(moment, today))
       .slice(0, 3);
-  }, [notes]);
+  }, [datedNotes]);
 
   // Get popular lists for Lists page
   const popularLists = useMemo(() => {
@@ -88,12 +110,15 @@ export const ContextRail: React.FC = () => {
     navigate(getLocalizedPath(`/lists/${listId}`));
   };
 
-  // Format date for display
-  const formatEventDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+  // Format a pre-resolved display Date for the upcoming-events list.
+  // Note: the input is already the *correct* moment (timezone-anchored
+  // via getNoteDisplayMoment), so we render with date-fns directly —
+  // no second `new Date(...)` parse that could re-introduce the
+  // off-by-one bug.
+  const formatEventDate = (date: Date) => {
     const today = new Date();
     const tomorrow = addDays(today, 1);
-    
+
     if (isSameDay(date, today)) return t('common:common.today');
     if (isSameDay(date, tomorrow)) return t('common:common.tomorrow');
     return format(date, 'EEE, MMM d');
@@ -253,7 +278,7 @@ export const ContextRail: React.FC = () => {
       
       {upcomingEvents.length > 0 ? (
         <div className="space-y-2">
-          {upcomingEvents.map((event) => (
+          {upcomingEvents.map(({ note: event, moment }) => (
             <button
               key={event.id}
               onClick={() => handleEventClick(event.id)}
@@ -263,7 +288,7 @@ export const ContextRail: React.FC = () => {
                 <CalendarDays className="w-3.5 h-3.5 text-stone-400 mt-0.5 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-stone-400 mb-0.5">
-                    {formatEventDate(event.dueDate!)}
+                    {formatEventDate(moment)}
                   </p>
                   <p className="text-sm text-stone-600 group-hover:text-stone-800 truncate transition-colors">
                     {event.summary}
@@ -326,7 +351,7 @@ export const ContextRail: React.FC = () => {
       
       {todaysTasks.length > 0 ? (
         <div className="space-y-2">
-          {todaysTasks.map((task) => (
+          {todaysTasks.map(({ note: task }) => (
             <button
               key={task.id}
               onClick={() => handleEventClick(task.id)}

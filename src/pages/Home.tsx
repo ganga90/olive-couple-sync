@@ -15,6 +15,7 @@ import { NoteInput } from "@/components/NoteInput";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { format, addDays, startOfDay, isSameDay, formatDistanceToNow } from "date-fns";
 import { useDateLocale } from "@/hooks/useDateLocale";
+import { getNoteDisplayMoment } from "@/lib/note-display-moment";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 // Categories are now derived dynamically from user's actual notes
 import { useOrganizeAgent } from "@/hooks/useOrganizeAgent";
@@ -178,24 +179,37 @@ const Home = () => {
 
   // Helper to get tasks for a range of days
   const getTasksForDays = (dayOffsets: number[]) => {
+    // Browser's resolved timezone — see ContextRail for the rationale.
+    // Without it, date-only `due_date` values render one day too early
+    // in any negative-offset zone, scattering tasks across the wrong
+    // weekly-view columns.
+    const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const today = startOfDay(new Date());
+
+    // Resolve each note's display moment once, then bucket per day.
+    // Precedence: reminder_time wins over due_date (matches the rest
+    // of the surfaces — see getNoteDisplayMoment's contract).
+    const candidates = filteredNotes
+      .filter(note => !note.completed)
+      .map(note => {
+        const display = getNoteDisplayMoment(note, userTimeZone);
+        return display ? { note, moment: display.moment } : null;
+      })
+      .filter((x): x is { note: Note; moment: Date } => x !== null);
+
     return dayOffsets.map(offset => {
       const day = addDays(today, offset);
       return {
         date: day,
-        tasks: filteredNotes
-          .filter(note => {
-            if (note.completed) return false;
-            if (!note.dueDate) return false;
-            const taskDate = startOfDay(new Date(note.dueDate));
-            return isSameDay(taskDate, day);
-          })
+        tasks: candidates
+          .filter(({ moment }) => isSameDay(startOfDay(moment), day))
+          .map(({ note }) => note)
           .sort((a, b) => {
             const priorityOrder = { high: 3, medium: 2, low: 1 };
             const aPriority = priorityOrder[a.priority || 'low'];
             const bPriority = priorityOrder[b.priority || 'low'];
             return bPriority - aPriority;
-          })
+          }),
       };
     });
   };
