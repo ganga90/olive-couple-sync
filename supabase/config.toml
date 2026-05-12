@@ -174,6 +174,18 @@ verify_jwt = false
 [functions.olive-conflicts]
 verify_jwt = false
 
+# Gmail OAuth flow. Both functions self-authenticate from body.user_id
+# (email-auth-url) or state.user_id (email-oauth-callback, which Google
+# redirects to with no Authorization header). Same pattern as the
+# oura-* OAuth pair. Must be verify_jwt = false — email-oauth-callback
+# in particular MUST NOT verify a JWT because Google's redirect carries
+# none.
+[functions.email-auth-url]
+verify_jwt = false
+
+[functions.email-oauth-callback]
+verify_jwt = false
+
 # Trust/Soul cluster — SOUL.MD layered identity + trust gating.
 # Each entry matches the function's actual deployed state in prod
 # (verified 2026-05-12 via the Supabase admin API). This PR is a
