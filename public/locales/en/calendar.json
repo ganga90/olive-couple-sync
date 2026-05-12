@@ -24,5 +24,21 @@
   "contextRail": {
     "todaysFocus": "Today's Focus",
     "noTasksToday": "No tasks for today"
+  },
+  "pendingSyncs": {
+    "badgeOne": "1 update pending",
+    "badgeMany": "{{count}} updates pending",
+    "dialogTitle": "Waiting to sync to Google Calendar",
+    "actions": {
+      "create": "New event",
+      "update": "Time change",
+      "delete": "Deletion"
+    },
+    "retryButton": "Retry now",
+    "retryingButton": "Retrying…",
+    "retryToast_one": "Retrying — give it a minute",
+    "retryToast_other": "Retrying {{count}} updates — give it a minute",
+    "retryToast": "Retrying — give it a minute",
+    "retryError": "Couldn't kick off retry — try again in a minute"
   }
 }
