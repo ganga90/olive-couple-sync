@@ -58,8 +58,6 @@ const NON_FUNCTION_DIRS = new Set(["_shared"]);
 // it doesn't grow. New functions that lack config entries will fail
 // the test immediately — which is the whole point.
 const KNOWN_LEGACY_STRAGGLERS = new Set([
-  "clerk-sync",
-  "daily-pulse",
   "email-auth-url",
   "email-oauth-callback",
   "olive-collaboration",
@@ -67,17 +65,10 @@ const KNOWN_LEGACY_STRAGGLERS = new Set([
   "olive-compile-memory",
   "olive-knowledge-extract",
   "olive-memory-maintenance",
-  "olive-prompt-evolve",
   "olive-reflect",
   "olive-soul-evolve",
   "olive-soul-seed",
-  "olive-space-manage",
   "olive-trust-gate",
-  "onboarding-finalize",
-  "process-receipt",
-  "repair-embeddings",
-  "save-link",
-  "send-invite",
 ]);
 
 async function listFunctionDirs(): Promise<string[]> {
