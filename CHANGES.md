@@ -12,6 +12,129 @@ there are no behavioral rollbacks.
 
 ---
 
+## 2026-05-12 — Calendar edit hotfix: the bug Phases 1–3 didn't catch
+
+Phases 1.5 through 3.6 shipped on 2026-05-10–11 with a full observability +
+retry stack: every Google call funneled through one `exit()` helper that
+writes to `olive_calendar_sync_log`, transient failures enqueued into
+`olive_calendar_sync_queue`, the retry worker running every 2 minutes,
+1064 tests passing.
+
+A user reported on 2026-05-12 02:15 UTC that Ask Olive said it moved
+"Visit grocery store" to Friday 12pm but Google Calendar didn't change.
+None of the new safety nets triggered. The Olive message was the dead-end
+copy from `offer-copy.ts:326-331`: *"in Olive — but I couldn't reach
+Google Calendar this time"* — which only fires when `sync_status` is in
+the retryable set AND `retry_enqueued` is false. That should be
+impossible by construction.
+
+**Two bugs hiding behind one symptom.**
+
+**Bug A — auth at the gateway.** Five edge functions added in Phases 1.5
+/ 2.1 / 2.2 (`calendar-update-event`, `calendar-delete-event`,
+`calendar-watch-register`, `calendar-watch-renew`, `calendar-sync-retry`)
+had no `[functions.X]` block in `supabase/config.toml`. They silently
+inherited Supabase's default `verify_jwt = true`. When `ask-olive-stream`
+invoked them server-to-server, the gateway 401'd before the function
+body could run — bypassing every Phase 2.1 telemetry path. Edge function
+logs at 02:15:07.290 UTC show `POST | 401 | calendar-update-event`
+matching the user's confirmation timestamp.
+
+**Bug B — orphan calendar_events rows.** Independent of A, `process-note`
+fired `autoAddToCalendar(supabase, result, user_id)` with the Gemini
+result *before* the caller (web/SimpleNoteInput.tsx, ask-olive-stream,
+whatsapp-webhook, etc.) had a chance to insert the row into
+`clerk_notes`. So the `calendar_events` row was created with
+`note_id = NULL` — the link back to the note was permanently broken.
+Even after fixing Bug A, `calendar-update-event` would have returned
+`no_linked_event` for every task auto-promoted via this path.
+A prod scan found 49 such orphans across 5 users; 47 were uniquely
+re-linkable, 0 ambiguous.
+
+**Fix.**
+
+1. **Register the five missing functions** in `supabase/config.toml`
+   with `verify_jwt = false` — the convention every other Olive edge
+   function follows (they self-authenticate from `body.user_id` using
+   a service-role client they build internally). One comment block in
+   the file documents why future entries are required.
+
+2. **Replace the racy fire-and-forget with a Postgres trigger.**
+   Migration `20260512024215_clerk_notes_auto_calendar_trigger`
+   creates `AFTER INSERT ON clerk_notes` → calls `auto-calendar-event`
+   via `pg_net.http_post` (same literal-URL + anon-JWT convention as
+   the existing crons). Because the trigger fires *after* commit,
+   `NEW.id` is the persisted UUID — the race is gone by construction.
+   Process-note's `autoAddToCalendar` call site is removed; the helper
+   function is left as dead code for one release in case of rollback.
+
+3. **Backfill 47 orphan calendar_events rows.** Migration
+   `20260512024253_backfill_orphan_calendar_events_note_id` matches
+   each orphan to a clerk_notes row by `(author_id, summary)` within
+   ±120 seconds of the event's creation. Only unique matches are
+   applied; ambiguous matches are intentionally skipped. The 2
+   unmatched orphans likely have deleted-then-recreated notes.
+   An audit table `backfilled_calendar_event_links_20260512` records
+   every row we touched for precise rollback.
+
+4. **Defense in depth in `auto-calendar-event`.** Early-return guard
+   refuses to create an event when `note.id` is missing — better to
+   skip + log than to create another orphan. After the trigger fix
+   this branch shouldn't fire from the primary path; it defends
+   against any future caller (manual re-runs, batch tooling, the old
+   fire-and-forget if it gets resurrected by accident).
+
+5. **CI guardrail.** New test
+   `_shared/config-toml-coverage.test.ts` walks `supabase/functions/`
+   and asserts every dir has a `[functions.X]` entry. Fails the build
+   immediately if a new function lacks a config block. A
+   `KNOWN_LEGACY_STRAGGLERS` allow-list documents 20 pre-existing gaps
+   (now 18 after `email-*` were registered alongside this work);
+   future PRs shrink the list one cluster at a time. The whole point
+   is the next time someone adds a function without registering it,
+   they don't get past CI.
+
+**Verification — end-to-end against prod, not just unit tests.**
+
+- `calendar-update-event` called for the user's stuck grocery task →
+  HTTP 200, `sync_status: "updated"`, Google event moved to
+  `2026-05-15T16:00:00Z` (Friday May 15 12pm NY — the user's original
+  ask). Sync log row written with `latency_ms: 892`.
+- Trigger test: inserted a probe note via SQL → 5s later, a
+  `calendar_events` row appeared with `note_id` correctly populated,
+  matching `olive_calendar_sync_log` entry written, Google event
+  created. Cleaned up via `calendar-delete-event` (also returned HTTP
+  200 — proving the auth fix works for both new functions).
+- 1064 deno tests still pass; 4 new tests added in
+  `config-toml-coverage.test.ts` (all green).
+
+**Files touched.**
+
+| Path | Change |
+|---|---|
+| `supabase/config.toml` | 5 new `[functions.X]` blocks; comment documenting why |
+| `supabase/migrations/20260512024215_clerk_notes_auto_calendar_trigger.sql` | New trigger + SECURITY DEFINER function |
+| `supabase/migrations/20260512024253_backfill_orphan_calendar_events_note_id.sql` | Re-link 47 orphans + audit table |
+| `supabase/functions/process-note/index.ts` | Remove `autoAddToCalendar()` call; comment explaining the trigger now owns this |
+| `supabase/functions/auto-calendar-event/index.ts` | Early-return guard when `note.id` missing |
+| `supabase/functions/_shared/config-toml-coverage.test.ts` | New: 4 guardrail tests |
+
+**Known v1 boundaries kept.** The two unmatched orphans are not touched
+(their parent clerk_notes rows look deleted). The 18-entry
+`KNOWN_LEGACY_STRAGGLERS` allow-list is a deliberate stopgap — those
+functions also default to `verify_jwt = true` but aren't currently
+invoked server-to-server in a way that would surface the 401. Follow-up
+PRs (one per cluster — email, trust/soul, memory, utilities) close that
+gap without bundling unrelated risk into this hotfix.
+
+**The Phase 1.5 safety net works — when the function reaches it.** The
+sync log + retry queue caught nothing here because the request 401'd at
+the gateway, before any function code ran. That's not a bug in those
+systems; it's a bug in the layer below them, and the CI test prevents
+the same gap from opening again.
+
+---
+
 ## 2026-05-10 — Phase 2.2: bidirectional sync via Google push channels
 
 Closes the last piece of the reliability story. Before this, Olive →
