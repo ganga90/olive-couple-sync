@@ -36,6 +36,35 @@ verify_jwt = false
 [functions.calendar-create-event]
 verify_jwt = false
 
+# Phase 1.5 / 2.1 / 2.2 — calendar mutation + retry/watch helpers.
+# All five do their own auth: they construct a service-role Supabase
+# client internally and trust `user_id` in the JSON body (same pattern
+# as calendar-create-event). They must be verify_jwt = false so callers
+# invoking them via `supabase.functions.invoke()` from another edge
+# function (which forwards whatever auth the parent runs under — often a
+# Clerk JWT for ask-olive-stream) aren't rejected at the gateway.
+#
+# Omitting these here is what caused the 2026-05-12 incident where
+# ask-olive-stream → calendar-update-event returned 401 at the gateway,
+# the function body never ran, no sync log row was written, no retry was
+# enqueued, and the user saw "but I couldn't reach Google Calendar this
+# time" with no further recourse. See [config.test.ts] for the guardrail
+# that prevents this drift in future.
+[functions.calendar-update-event]
+verify_jwt = false
+
+[functions.calendar-delete-event]
+verify_jwt = false
+
+[functions.calendar-sync-retry]
+verify_jwt = false
+
+[functions.calendar-watch-register]
+verify_jwt = false
+
+[functions.calendar-watch-renew]
+verify_jwt = false
+
 # Phase 2.2 — Google Calendar push notifications. The callback
 # receives POSTs from Google with no Authorization header (Google
 # authenticates by echoing our token in X-Goog-Channel-Token, which

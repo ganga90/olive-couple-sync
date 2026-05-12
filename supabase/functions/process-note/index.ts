@@ -2812,11 +2812,20 @@ Use this header as shared context across ALL items:
     console.log('[GenAI SDK] Final result:', result);
 
     // ======================================================================
-    // AUTO-ADD TO GOOGLE CALENDAR: Create events for notes with dates
+    // AUTO-ADD TO GOOGLE CALENDAR: handled by trigger, not from here.
     // ======================================================================
-    autoAddToCalendar(supabase, result, user_id).catch(err => {
-      console.warn('[Auto Calendar] Non-blocking error:', err);
-    });
+    // Previously this fired auto-calendar-event with `result` directly,
+    // but `result` is the AI-generated structured note BEFORE the caller
+    // (web/SimpleNoteInput.tsx, ask-olive-stream, whatsapp-webhook,
+    // etc.) has had a chance to insert it into clerk_notes. That race
+    // created calendar_events rows with note_id = NULL — permanently
+    // broken links that downstream reschedules couldn't follow.
+    //
+    // Migration 20260512024215 replaces this with an AFTER INSERT
+    // trigger on clerk_notes that fires auto-calendar-event with the
+    // committed row id. See `autoAddToCalendar` helper above; it's no
+    // longer called, but kept around for one release in case we need to
+    // re-introduce an explicit invocation path.
 
     // ======================================================================
     // AUTO-DETECT EXPENSES: Check if note contains monetary amounts
