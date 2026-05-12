@@ -53,6 +53,125 @@ no-hardcoded-strings rule.
 
 ---
 
+## 2026-05-12 — Calendar retry queue visibility on /calendar (PR 2C)
+
+Closes the final loop in the 2026-05-12 calendar reliability story.
+PR 2 made the retry queue honest about its state in the API response
+and chat suffix ("I'll keep trying in the background"). PR 2B added
+the reconnect banner for the permanent-failure case. This PR makes
+the queue's state visible on `/calendar` so the user can verify that
+"in the background" promise — and trigger a retry on demand.
+
+**A pre-existing RLS bug discovered (and fixed) along the way.** The
+Phase 2.1 `olive_calendar_sync_queue` migration shipped with:
+
+```sql
+USING (auth.uid()::text = user_id)
+```
+
+But this app authenticates via Clerk, not Supabase Auth. The user
+identifier lives in `auth.jwt() ->> 'sub'` (a Clerk-issued
+`user_xxx…` text id); `auth.uid()` returns either NULL or a Supabase
+Auth UUID that never matches. So the policy as-shipped silently
+rejected every client-side SELECT on the queue. The retry worker
+(service-role) bypassed RLS so the queue itself worked — the bug
+only surfaced now, building this PR, when a real user JWT tried to
+read the queue.
+
+Migration `20260512033908_fix_olive_calendar_sync_queue_rls_for_clerk`
+replaces the policy with the same Clerk pattern every other table in
+the repo uses (clerk_notes, calendar_connections,
+olive_calendar_sync_log).
+
+**The visibility surface.**
+
+`useCalendarSyncQueue` (`src/hooks/useCalendarSyncQueue.ts`):
+- Reads pending rows from `olive_calendar_sync_queue` for the
+  authenticated user (relies on the just-fixed RLS policy)
+- 30s polling cadence, paused via `visibilitychange` when the tab is
+  hidden so a backgrounded `/calendar` doesn't burn cycles
+- `retryNow()` POSTs to `calendar-sync-retry` (the cron-driven
+  worker, which also accepts ad-hoc invocations) with
+  `invoked_from='manual-retry-now'` for analytics segmentation
+- Re-fetches 1.5s after `retryNow` so the count drops promptly when
+  fast retries (~500ms) finish; slow ones resolve on the next poll
+- Returns `{ queue, pendingCount, loading, retrying, retryNow,
+  refetch }` — UI-agnostic, reusable from any surface
+
+`CalendarSyncQueueBadge`
+(`src/components/CalendarSyncQueueBadge.tsx`):
+- **Hidden entirely when `pendingCount === 0`.** The queue being
+  empty is the steady state. Showing "0 pending" creates anxiety
+  where there shouldn't be any; the calendar header stays calm on
+  the happy path.
+- When count > 0: small amber pill in the header (between "Today"
+  and "Sync") showing "N updates pending"
+- Click expands a dropdown listing each queue row (action type +
+  relative next-attempt timestamp from date-fns + the user's locale)
+- "Retry now" button POSTs to `calendar-sync-retry`; spinner while
+  in-flight; success toast with count, error toast on failure
+- Click-outside backdrop closes the dropdown
+- Past timestamps render as `—` instead of date-fns's confusing
+  "less than a minute ago" for a queue that hasn't fired yet
+
+i18n in en / es-ES / it-IT under `calendar.pendingSyncs` — singular
++ plural badge labels, action-type labels (create/update/delete →
+"New event" / "Time change" / "Deletion"), retry button states,
+success/error toast copy.
+
+**Files touched.**
+
+| Path | Change |
+|---|---|
+| `supabase/migrations/20260512033908_fix_olive_calendar_sync_queue_rls_for_clerk.sql` | DROP + recreate SELECT policy with Clerk JWT pattern |
+| `src/hooks/useCalendarSyncQueue.ts` | New hook |
+| `src/components/CalendarSyncQueueBadge.tsx` | New component |
+| `src/pages/CalendarPage.tsx` | Render the badge in the header |
+| `public/locales/{en,es-ES,it-IT}/calendar.json` | `pendingSyncs` keys |
+
+**Verification.**
+- 1126 deno tests still pass — backend unchanged
+- TypeScript clean
+- Migration applied to prod via Supabase MCP
+- Vite served `useCalendarSyncQueue.ts` and
+  `CalendarSyncQueueBadge.tsx` via the module graph without error;
+  no new console errors in the dev server's runtime logs
+- **Full E2E browser verification blocked by prod-Clerk-on-localhost
+  limitation.** Clerk's production publishable key refuses to load on
+  `localhost:8080` (well-known dev-environment issue, unrelated to
+  this PR), so the dev server's `/calendar` page shows the
+  "Sign in to view your calendar" stub. The badge code path only
+  renders for an authenticated user with a calendar connection, so
+  the actual badge UI couldn't be exercised in the preview. Verified
+  via:
+    - Module-graph compilation (Vite served both new files clean)
+    - TypeScript compilation
+    - Read-through of every code path with the production schema in
+      mind
+  End-to-end verification with a real user will land via the next
+  deploy to a domain Clerk's prod key accepts.
+
+**The full PR chain.** This is the last piece of the 2026-05-12
+calendar reliability story:
+
+1. [#99](https://github.com/ganga90/olive-couple-sync/pull/99) (PR 1)
+   — register the calendar functions in `config.toml`, replace the
+   racy `process-note` invocation with a Postgres trigger, backfill
+   orphan rows.
+2. [#103](https://github.com/ganga90/olive-couple-sync/pull/103)
+   (PR 2) — classify Google errors at the source, branch the edge
+   functions, honest retry queue, differentiated user-facing copy.
+3. [#104](https://github.com/ganga90/olive-couple-sync/pull/104)
+   (PR 2B) — persist connection health, render the reconnect banner,
+   parallel WhatsApp i18n, nightly CI smoke check.
+4. This PR (PR 2C) — visibility for the retry queue itself.
+
+After this chain merges, the chat-reply contract is verifiable
+end-to-end: classify → branch → enqueue honestly → render banner →
+render queue → retry on demand. No silent dead-ends.
+
+---
+
 ## 2026-05-12 — Calendar connection health + UI surfacing (PR 2B)
 
 PR 2 made `calendar-update-event` and `calendar-delete-event` return
