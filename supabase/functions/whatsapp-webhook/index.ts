@@ -54,6 +54,16 @@ import {
   looksLikeConfirmation,
   type PendingOffer,
 } from "../_shared/pending-offer.ts";
+// Change 3 — topical follow-up: silent-attach a sub-detail
+// ("Email: foo@bar.com") to a recent parent note when the user types
+// "Email for <Topic>\n<value>" within the look-back window. The user
+// can undo within the offer TTL by replying "undo" / "no" / "split".
+import {
+  attachToParent,
+  findFollowupParent,
+  isUndoReply,
+  revertAttach,
+} from "../_shared/topical-followup.ts";
 // Phase 1 WhatsApp port: shared with web Ask Olive.
 import {
   buildWhatsAppCalendarSuffix,
@@ -4398,6 +4408,157 @@ Description: "${parsedExpense.description}"`;
         }
         // No match → fall through. The offer stays alive until TTL or next save offer
         // overwrites it; meanwhile the message is classified normally.
+      }
+    }
+
+    // ========================================================================
+    // POST-CLASSIFICATION SAFETY NET #1.4b: Undo a topical-followup attach.
+    //
+    // When the previous CREATE turn silently attached a sub-detail
+    // ("Email: foo@bar.com") to a recent parent note, the user can
+    // reply "undo" / "no" / "split" within the 10-min offer TTL to
+    // reverse it. We:
+    //   1. Restore the parent's items[] to the pre-attach snapshot.
+    //   2. Re-process the original message through process-note so the
+    //      standalone note gets a clean AI-derived summary, category,
+    //      and tags — same path the cluster CREATE flow uses.
+    //   3. Clear the offer so a subsequent "undo" can't double-revert.
+    //
+    // This handler short-circuits the rest of the message handling
+    // (no intent classification needed; this is a structured reversal).
+    // ========================================================================
+    if (messageBody) {
+      const sessionCtxAttach = (session.context_data || {}) as ConversationContext;
+      const attachOffer = sessionCtxAttach.pending_offer;
+      if (
+        isPendingOfferFresh(attachOffer) &&
+        attachOffer.type === 'attached_to_parent' &&
+        isUndoReply(messageBody)
+      ) {
+        console.log(
+          `[SafetyNet#1.4b] Topical attach offer + undo reply ("${messageBody.substring(0, 40)}") → reverting`,
+        );
+
+        // 1. Restore prior items on the parent. If this fails, the
+        //    attach stays — better than a half-undone state.
+        const reverted = await revertAttach(
+          supabase,
+          attachOffer.parent_note_id,
+          attachOffer.prior_items,
+        );
+        if (!reverted) {
+          console.warn('[SafetyNet#1.4b] revertAttach failed; bailing without creating standalone');
+          return reply(
+            userLang.startsWith('it')
+              ? "🌿 Non sono riuscita ad annullare. La nota è ancora collegata."
+              : userLang.startsWith('es')
+              ? "🌿 No pude deshacerlo. La nota sigue adjunta."
+              : "🌿 I couldn't undo that — the attach is still in place. Try again or edit it in the app.",
+          );
+        }
+
+        // 2. Re-process the original message via process-note + insert.
+        //    Same shape as the cluster CREATE path, minus media.
+        try {
+          const standalonePayload: Record<string, unknown> = {
+            text: attachOffer.original_message,
+            user_id: userId,
+            couple_id: effectiveCoupleId,
+            timezone: profile.timezone || 'America/New_York',
+            language: userLang,
+            source: 'whatsapp',
+          };
+          const { data: processData, error: processError } = await supabase.functions.invoke(
+            'process-note',
+            { body: standalonePayload },
+          );
+          let insertedSummary = '';
+          if (!processError && processData) {
+            const isMultiple = processData.multiple === true && Array.isArray(processData.notes);
+            const notesToInsert: any[] = isMultiple ? processData.notes : [processData];
+            for (const note of notesToInsert) {
+              const noteSummary = note?.summary || 'Saved note';
+              const { data: inserted, error: insertErr } = await supabase
+                .from('clerk_notes')
+                .insert({
+                  author_id: userId,
+                  couple_id: effectiveCoupleId,
+                  original_text: note?.original_text || attachOffer.original_message,
+                  summary: noteSummary,
+                  category: note?.category || 'task',
+                  due_date: note?.due_date || null,
+                  reminder_time: note?.reminder_time || null,
+                  recurrence_frequency: note?.recurrence_frequency || null,
+                  recurrence_interval: note?.recurrence_interval || null,
+                  priority: note?.priority || 'medium',
+                  tags: note?.tags || [],
+                  items: note?.items || [],
+                  task_owner: note?.task_owner || null,
+                  list_id: note?.list_id || null,
+                  completed: false,
+                })
+                .select('id, summary')
+                .single();
+              if (!insertErr && inserted) insertedSummary = inserted.summary;
+            }
+          } else {
+            console.warn('[SafetyNet#1.4b] process-note for standalone failed, doing a minimal insert:', processError);
+            // Hard fallback: insert a minimal note so the user's data is preserved.
+            const fallbackSummary =
+              attachOffer.original_message.length > 80
+                ? attachOffer.original_message.substring(0, 77) + '...'
+                : attachOffer.original_message;
+            const { data: fb } = await supabase
+              .from('clerk_notes')
+              .insert({
+                author_id: userId,
+                couple_id: effectiveCoupleId,
+                original_text: attachOffer.original_message,
+                summary: fallbackSummary,
+                category: 'task',
+                priority: 'medium',
+                tags: [],
+                items: [],
+                completed: false,
+              })
+              .select('id, summary')
+              .single();
+            if (fb) insertedSummary = fb.summary;
+          }
+
+          // 3. Clear the offer (so a follow-up "undo" doesn't re-fire).
+          try {
+            await supabase
+              .from('user_sessions')
+              .update({
+                context_data: { ...sessionCtxAttach, pending_offer: null },
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', session.id);
+          } catch (clearErr) {
+            console.warn('[SafetyNet#1.4b] Failed to clear pending_offer after undo (non-critical):', clearErr);
+          }
+
+          const sl = (userLang || 'en').split('-')[0];
+          const undoneCopy: Record<string, string> = {
+            en: `🌿 Got it — saved separately${insertedSummary ? ` as "${insertedSummary}"` : ''}.`,
+            es: `🌿 Listo — guardado por separado${insertedSummary ? ` como "${insertedSummary}"` : ''}.`,
+            it: `🌿 Fatto — salvata separatamente${insertedSummary ? ` come "${insertedSummary}"` : ''}.`,
+          };
+          return reply(undoneCopy[sl] || undoneCopy.en);
+        } catch (undoErr) {
+          console.error('[SafetyNet#1.4b] Standalone creation after revert threw:', undoErr);
+          // The revert already succeeded; the user just doesn't get
+          // the standalone note. Surface what happened plainly so they
+          // can retry.
+          return reply(
+            userLang.startsWith('it')
+              ? "🌿 Ho annullato l'allegato, ma non sono riuscita a creare la nota separata. Rimandala?"
+              : userLang.startsWith('es')
+              ? "🌿 Deshice el adjunto, pero no pude crear la nota separada. ¿Lo reenvías?"
+              : "🌿 Undone — but I couldn't create the standalone note. Resend it?",
+          );
+        }
       }
     }
 
@@ -9144,12 +9305,121 @@ FORMAT for WhatsApp (max 1500 chars):
       const prevMsg = sessionContext.last_user_message;
       const prevMsgAt = sessionContext.last_user_message_at;
       const isRecent = prevMsgAt && (Date.now() - new Date(prevMsgAt).getTime()) < 10 * 60 * 1000; // 10 min TTL
-      
+
       if (prevMsg && isRecent) {
         console.log('[CREATE] Pronoun-only create detected, using previous message:', prevMsg.substring(0, 80));
         createMessage = prevMsg;
       } else {
         console.log('[CREATE] Pronoun-only but no recent context, proceeding with original message');
+      }
+    }
+
+    // ========================================================================
+    // TOPICAL FOLLOW-UP CHECK (Change 3)
+    //
+    // Detect "Email/Phone/Address/Notes for <Topic>\n<value>" patterns
+    // that refer to a parent note the user captured in the last 30
+    // minutes, and silently attach the new field to that parent's
+    // items[] array instead of creating a sibling row.
+    //
+    // The detector is conservative (≥ 0.7 confidence threshold,
+    // required proper-noun anchor or multi-token overlap), and the
+    // user can undo within 10 minutes by replying "undo" / "no" /
+    // "split". So a false positive is recoverable in one short reply.
+    //
+    // Only attempt when:
+    //   - We have a non-empty text message (not media-only).
+    //   - This isn't a pronoun-resolved create (those run on a
+    //     historical message and the follow-up signal wouldn't apply).
+    //   - There's no fresh save-artifact / reschedule / other offer
+    //     waiting; mixing offer types would confuse the user.
+    // ========================================================================
+    if (
+      createMessage &&
+      createMessage.trim().length > 0 &&
+      mediaUrls.length === 0 &&
+      !isPronounOnlyCreate &&
+      !isPendingOfferFresh(sessionContext.pending_offer)
+    ) {
+      try {
+        const followupMatch = await findFollowupParent(
+          supabase,
+          userId,
+          coupleId,
+          createMessage,
+        );
+        if (followupMatch) {
+          console.log(
+            `[CREATE] Topical follow-up detected — attaching to "${followupMatch.parentSummary}"`
+            + ` (confidence=${followupMatch.confidence.toFixed(2)}, addition="${followupMatch.addition}")`,
+          );
+          // Snapshot the parent's prior items BEFORE the write so undo
+          // can restore them exactly. nextItems already contains the
+          // addition appended; subtract the last element to recover
+          // priorItems without an extra round-trip.
+          const priorItems = followupMatch.nextItems.slice(0, -1);
+          const attached = await attachToParent(
+            supabase,
+            followupMatch.parentNoteId,
+            followupMatch.nextItems,
+          );
+          if (attached) {
+            // Persist an AttachedToParentOffer so a follow-up "undo"
+            // reply within the offer TTL can reverse the attach AND
+            // create a standalone note from the original message.
+            const offer: PendingOffer = {
+              type: 'attached_to_parent',
+              parent_note_id: followupMatch.parentNoteId,
+              parent_summary: followupMatch.parentSummary,
+              prior_items: priorItems,
+              addition: followupMatch.addition,
+              original_message: createMessage,
+              confidence: followupMatch.confidence,
+              offered_at: new Date().toISOString(),
+            };
+            try {
+              await supabase
+                .from('user_sessions')
+                .update({
+                  context_data: { ...sessionContext, pending_offer: offer },
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', session.id);
+            } catch (sessErr) {
+              console.warn('[CREATE] Topical follow-up: session update failed (attach stays, undo unavailable):', sessErr);
+            }
+
+            // Build the localized confirmation with the undo hint. Voice
+            // discipline per OLIVE_BRAND_BIBLE: direct, the 🌿 motif as
+            // signature, no exclamation spam.
+            const undoHintsLocalized: Record<string, string> = {
+              en: `Reply "undo" to save it as a separate note.`,
+              es: `Responde "deshacer" para guardarlo como nota aparte.`,
+              it: `Rispondi "annulla" per salvarla come nota separata.`,
+            };
+            const sl = (userLang || 'en').split('-')[0];
+            const undoHint = undoHintsLocalized[sl] || undoHintsLocalized.en;
+            const verbLocalized: Record<string, string> = {
+              en: 'Added to',
+              es: 'Añadido a',
+              it: 'Aggiunto a',
+            };
+            const verb = verbLocalized[sl] || verbLocalized.en;
+            const followupReply =
+              `🌿 ${verb} "${followupMatch.parentSummary}":\n` +
+              `  • ${followupMatch.addition}\n\n` +
+              `💡 ${undoHint}`;
+            return reply(followupReply);
+          }
+          // attachToParent returned false (DB write failed). Fall
+          // through to the standard CREATE path so the user's data
+          // still lands somewhere.
+          console.warn('[CREATE] Topical follow-up: attachToParent failed, falling back to standard create');
+        }
+      } catch (followupErr) {
+        // Defensive: never let a follow-up detection bug break the
+        // standard CREATE path. Log and continue.
+        console.warn('[CREATE] Topical follow-up check threw (non-blocking):', followupErr);
       }
     }
 
@@ -9421,10 +9691,37 @@ FORMAT for WhatsApp (max 1500 chars):
         // RICH RESPONSE BUILDER (LOCALIZED)
         // ================================================================
         let confirmationMessage: string;
-        
+
+        // Sub-items preview: when the saved note carries an items[] array
+        // (either from sub-items-mode brain dumps or from saved entity
+        // details like "Phone: …", "Address: …"), surface a short preview
+        // so the user immediately sees what landed in the note. Without
+        // this, a brain dump like "Examples for Hard Rock Stadium\n…"
+        // confirms only "Saved: Hard Rock Stadium examples" and the
+        // bullets feel invisible. We cap at 5 lines with a tail to keep
+        // the message tight.
+        const rawItems = Array.isArray(processData.items) ? processData.items : [];
+        const stringItems = rawItems
+          .map((it: any) => typeof it === 'string' ? it : (it && typeof it === 'object' && 'text' in it ? String(it.text) : ''))
+          .map((s: string) => s.trim())
+          .filter((s: string) => s.length > 0);
+        let itemsPreview = '';
+        if (stringItems.length > 0) {
+          const shown = stringItems.slice(0, 5);
+          const overflow = stringItems.length - shown.length;
+          const overflowLine: Record<string, string> = {
+            en: `  …and ${overflow} more`,
+            es: `  …y ${overflow} más`,
+            it: `  …e altri ${overflow}`,
+          };
+          const sl = (userLang || 'en').split('-')[0];
+          const overflowText = overflow > 0 ? '\n' + (overflowLine[sl] || overflowLine.en) : '';
+          itemsPreview = '\n' + shown.map((s: string) => `  • ${s}`).join('\n') + overflowText;
+        }
+
         if (duplicateWarning?.found) {
           confirmationMessage = [
-            t('note_saved', userLang, { summary: insertedNoteSummary }),
+            t('note_saved', userLang, { summary: insertedNoteSummary }) + itemsPreview,
             t('note_added_to', userLang, { list: listName }),
             ``,
             t('note_similar_found', userLang, { task: duplicateWarning.targetTitle }),
@@ -9432,7 +9729,7 @@ FORMAT for WhatsApp (max 1500 chars):
         } else {
           const sensitiveLabel = encryptionFields.is_sensitive ? '\n🔒 Encrypted at rest' : '';
           confirmationMessage = [
-            t('note_saved', userLang, { summary: rawSummary }),
+            t('note_saved', userLang, { summary: rawSummary }) + itemsPreview,
             t('note_added_to', userLang, { list: listName }),
             sensitiveLabel,
             ``,

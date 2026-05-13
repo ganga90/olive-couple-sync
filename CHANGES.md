@@ -1,5 +1,89 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-12 — Brain-dump organization: sub-items mode + topical follow-up attach
+
+Three coordinated improvements to how Olive captures and threads multi-line
+brain dumps. Fixes the production failure mode where a conceptual brain dump
+("Examples for hard rock stadium\nReplay\nSuite support\n…") fragmented into
+N sibling notes — including a phantom row for the header — and a subsequent
+sub-detail ("Email address for Hard Rock\nfoo@bar.com") got saved as a
+separate note instead of attaching to the parent.
+
+### What changed
+
+1. **Broader header detection.** `_shared`-adjacent detector
+   `multi-item-detect.ts` now recognizes noun-phrase intros across en/es/it
+   (`examples|ideas|topics|notes|options|points|considerations|highlights|
+   takeaways|priorities|brainstorm|discussion|agenda` + Spanish/Italian
+   equivalents) anchored to the first 30 chars of the line. This stops
+   "Examples for Hard Rock Stadium" from leaking through as a phantom task
+   while remaining inert for prose containing the same words mid-sentence.
+
+2. **`ListMode` classifier + subitems persistence path.** New
+   `classifyListMode(header, items)` returns `"siblings"` or `"subitems"`.
+   A conceptual header with short noun-phrase items in the 2–10 range and
+   < 30% action verbs persists as ONE parent note with the bullets in the
+   existing `items[]` JSONB column. Checklist-style headers (`Shopping
+   list`, `Things to do`, `Action items` + locale equivalents) always
+   force siblings. `process-note/index.ts` learned a new subitems branch
+   that makes ONE Flash-Lite call (vs. N parallel calls) with the items
+   locked into the response and two layers of deterministic fallback so
+   the user's brain dump is never lost on model failure. The system
+   prompt was rewritten to teach both modes consistently. The
+   WhatsApp single-note confirmation surfaces up to 5 sub-items
+   (localized overflow tail) so users see what landed.
+
+3. **Topical follow-up attach with undo.** New `_shared/topical-followup.ts`
+   detects "Label for Topic\nvalue" patterns (Email/Phone/Address/Link/
+   Notes in en/es/it), queries the user's last 5 notes within 30 min,
+   scores topic↔summary overlap (substring + multi-token + capitalized
+   anchor; threshold 0.7 with stop-words filter), and silently attaches
+   the new field to the matching parent's `items[]` instead of creating
+   a sibling note. The user gets a confirmation with an undo hint;
+   replying "undo" / "no" / "split" (or Spanish/Italian equivalents)
+   within the 10-min pending-offer TTL reverts the attach AND re-runs
+   the original message through process-note as a standalone note.
+   The follow-up check skips when other offers are alive, when there's
+   media, or when the message was pronoun-resolved.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `supabase/functions/process-note/multi-item-detect.ts` | +268 LOC. Broadened header regex, anchored keyword test, `ListMode` + `classifyListMode`, threaded `mode` through every return. |
+| `supabase/functions/process-note/multi-item-detect.test.ts` | +263 LOC. 19 new tests covering the screenshot bug, en/es/it conceptual headers, regression guards for checklists, and the classifier as a unit. |
+| `supabase/functions/process-note/index.ts` | +191 LOC. Subitems branch in the splitter, defensive items-restoration on AI failure, summary-prefix cleaning, updated system prompt for both modes. |
+| `supabase/functions/whatsapp-webhook/index.ts` | +305 LOC. CREATE-path topical-followup check (pre-process-note), SafetyNet #1.4b for undo replies, sub-items preview in single-note confirmation. |
+| `supabase/functions/_shared/topical-followup.ts` | **NEW** — 336 LOC. Pure detector + Supabase helpers + undo classifier. |
+| `supabase/functions/_shared/topical-followup.test.ts` | **NEW** — 40 tests including a hand-rolled thenable Supabase fake. |
+| `supabase/functions/_shared/pending-offer.ts` | +39 LOC. `AttachedToParentOffer` discriminated-union variant. |
+
+### Verification
+- ✅ `deno test supabase/functions/_shared/ supabase/functions/process-note/` — 1,220 / 1,220 passing.
+- ✅ Zero new TS errors (`deno check` clean on all touched files). The 9 pre-existing errors in `whatsapp-webhook/index.ts` and `orchestrator.ts` predate this change and are at unrelated lines.
+- ✅ Legacy detector behavior preserved: all 20 original `multi-item-detect.test.ts` cases pass unchanged.
+
+### Deploy notes
+- **No schema changes.** Writes only to existing columns (`clerk_notes.items`,
+  `user_sessions.context_data`).
+- **No new env vars.** Reuses `SUPABASE_URL`, service-role key, Gemini key.
+- Edge functions: `supabase functions deploy process-note whatsapp-webhook`
+  on push to `dev` per existing CI.
+- Frontend untouched — no Vercel rebuild needed for behavior, though the
+  preview will deploy automatically.
+
+### Out of scope (deferred follow-ups)
+- Expanding the topical-followup pattern set beyond "Label for Topic" intros
+  (e.g., recognizing `Topic: value` without an explicit label, or bare-
+  proper-noun continuations like "Sarah called back"). Deliberately kept
+  narrow for v1 to minimize false-positive attaches.
+- Surfacing sub-items in the web app's note detail view — already rendered
+  there via the existing `items` column read path; no UI change needed.
+- Topical-followup detection on the WEB-app process-note caller (currently
+  WhatsApp-only since the undo UX needs the channel's reply path).
+
+
+
 This log tracks structural changes made while delivering Phase 1 of the
 engineering hardening plan. Each task is additive and backwards-compatible;
 there are no behavioral rollbacks.

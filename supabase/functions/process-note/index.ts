@@ -551,14 +551,25 @@ HEADER/TITLE PATTERN — CRITICAL: When the input opens with a heading line that
 - contains a header keyword ("checklist", "to-do", "shopping list", "lista", "elenco", "cose da fare") AND is followed by list items, AND
 - does NOT itself start with an action verb (a verb-led "Buy these for dinner:" is itself the task — keep it).
 
-When a header is detected:
-- Do NOT create a note for the header line itself.
-- Use the header as SHARED CONTEXT: inherit time references ("tomorrow", "today", "this week") into each item's due_date when the item itself is timeless; inherit domain ("pets", "groceries") into category and list routing.
-- The header phrasing must NOT appear inside any item's summary.
-Example: input "Check-list for the pets tomorrow before leaving:\nMilka food\nChange cat litter\nRing camera" → 3 notes (Milka food, Change cat litter, Ring camera) — NOT 4. Each gets due_date=tomorrow, category="pets", target_list="Pets".
+When a header is detected, decide between TWO modes:
 
-DO NOT MERGE distinct tasks into one note with items array. Each task gets its OWN note.
-The items array is for SUB-DETAILS of a SINGLE task (e.g., phone, address, time), NOT for separate tasks.
+  (A) CHECKLIST MODE → N SEPARATE notes (default for task-shaped brain dumps):
+      Triggered when the header is task/checklist-like (checklist, to-do, shopping list, errands, action items, things to do, lista de compras, cose da fare) OR the items themselves are verb-led tasks ("call X", "buy Y", "schedule Z") OR any item carries its own date.
+      - Do NOT create a note for the header line itself.
+      - Use the header as SHARED CONTEXT: inherit time references ("tomorrow", "today", "this week") into each item's due_date when the item itself is timeless; inherit domain ("pets", "groceries") into category and list routing.
+      - The header phrasing must NOT appear inside any item's summary.
+      Example: "Check-list for the pets tomorrow before leaving:\nMilka food\nChange cat litter\nRing camera" → 3 notes (Milka food, Change cat litter, Ring camera). Each gets due_date=tomorrow, category="pets", target_list="Pets".
+
+  (B) SUB-ITEMS MODE → ONE note with the bullets in the items[] array (used for conceptual brain dumps):
+      Triggered when the header is a conceptual umbrella (Examples for X, Ideas for Y, Topics for Z, Notes on W, Options for V, Considerations for U, Highlights from T, Takeaways from S, Key points for R, Priorities for Q) AND the bullets are short noun phrases without action verbs AND no bullet carries an independent date AND there are between 2 and 10 bullets.
+      - Return EXACTLY ONE note in the notes array.
+      - summary: the cleaned umbrella (drop the boilerplate prefix; "Examples for Hard Rock Stadium" → "Hard Rock Stadium examples" or "Hard Rock Stadium").
+      - items: contains EACH bullet VERBATIM, same order, no rewriting.
+      - category/tags: chosen for the parent topic (the items together), not per-bullet.
+      Example: "Examples for Hard Rock Stadium\nReplay\nSuite support\nMusic\nPartner/sponsorship" → 1 note (summary="Hard Rock Stadium examples", items=["Replay","Suite support","Music","Partner/sponsorship"], category="work" or "entertainment"). NOT 5 notes.
+
+DO NOT MERGE distinct tasks into one note with items array. Each task in CHECKLIST MODE gets its OWN note.
+The items array IS used in SUB-ITEMS MODE for the bullets of one parent topic, AND for SUB-DETAILS of a single task (e.g., phone, address, time).
 
 SINGLE NOTE cases (do NOT split):
 - "fix the sink" → 1 note (single task)
@@ -1966,60 +1977,152 @@ Process this note:
     const preDetected = detectMultiItem(enhancedText);
     if (preDetected && preDetected.items.length > 1 && !hasMedia) {
       const detectedHeader = preDetected.header;
+      const detectedMode = preDetected.mode;
       console.log(
         '[process-note] Pre-split detected',
         preDetected.items.length,
         'items',
+        `(mode: ${detectedMode})`,
         detectedHeader ? `(header: "${detectedHeader.substring(0, 60)}")` : '(no header)',
-        '— processing in PARALLEL',
       );
 
-      // Build the shared-context block from the detected header. Empty
-      // when there's no header — keeps per-item prompts identical to
-      // legacy behavior in that path.
-      const sharedContextBlock = detectedHeader
-        ? `\n\nSHARED CONTEXT (header for the whole brain dump — DO NOT include in summary):
+      if (detectedMode === 'subitems' && detectedHeader) {
+        // ──────────────────────────────────────────────────────────────
+        // SUB-ITEMS MODE — one parent note, items[] = bullets.
+        //
+        // The detector flagged this as a conceptual brain dump
+        // ("Examples for X", "Ideas for Y", "Topics for Z") where the
+        // bullets belong together as sub-details of one topic rather
+        // than as N independent tasks. Persisting it as one note
+        // preserves the user's framing and keeps their list tidy.
+        //
+        // We make ONE Flash-Lite call to derive a clean summary and
+        // assign category/tags/list-routing for the parent note, with
+        // the detected items locked into the response. If the model
+        // call fails or returns an empty items array, we fall back to
+        // a deterministic note built directly from the detected
+        // header + items — the user's data is never lost just because
+        // the model dropped them.
+        // ──────────────────────────────────────────────────────────────
+        const subitemsPrompt = `${systemPrompt}${listsContext}
+
+SUB-ITEMS MODE — BUNDLE INTO ONE NOTE (do not split):
+This input is a conceptual brain dump that introduces a topic and then lists short sub-details. Return EXACTLY ONE note:
+- summary: a clean human title derived from the header "${detectedHeader}". Strip boilerplate prefixes like "Examples for", "Ideas for", "Topics for", "Notes on", "Options for", "Considerations for", "Highlights from". For "Examples for Hard Rock Stadium" return something like "Hard Rock Stadium examples" or "Hard Rock Stadium" — whichever reads cleanest. Max 80 chars. Title-case the proper nouns.
+- items: include EACH of the ${preDetected.items.length} sub-bullets below VERBATIM (same wording, same order). DO NOT summarize, rewrite, merge, or drop any item.
+- category, tags, priority, list routing: choose based on the topic of the header + items together (e.g., "work" for a meeting prep dump, "travel" for a trip ideas dump, "real_estate" for a client preferences dump).
+- due_date / reminder_time: null unless the header itself carries an explicit date.
+
+Header: "${detectedHeader}"
+
+Sub-bullets to place verbatim into items array (in order):
+${preDetected.items.map((it, i) => `${i + 1}. ${it}`).join('\n')}`;
+
+        try {
+          const subitemsResponse = await genai.models.generateContent({
+            model: 'gemini-2.5-flash-lite',
+            contents: subitemsPrompt,
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: singleNoteSchema,
+              temperature: 0.1,
+              maxOutputTokens: 600,
+            },
+          });
+          const parsed = JSON.parse(subitemsResponse.text || '{}');
+          // Defense in depth: if the model dropped the items array,
+          // restore the detector's items verbatim. We never want the
+          // user's brain dump to vanish because of a model hiccup.
+          if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
+            console.warn('[process-note] Subitems mode: model returned empty items[], restoring from detector');
+            parsed.items = preDetected.items;
+          }
+          // Belt-and-suspenders: never let the header itself end up
+          // as the summary verbatim (with the boilerplate prefix).
+          // If the model ignored the cleaning instruction, strip a
+          // common prefix here as a last-resort polish.
+          if (typeof parsed.summary === 'string' && parsed.summary.length > 0) {
+            parsed.summary = parsed.summary
+              .replace(
+                /^(?:examples?|ideas?|topics?|notes?|options?|points?|considerations?|highlights?|takeaways?|priorities|key\s+(?:points?|areas?))\s+(?:for|about|on|regarding|re:?|with)\s+/i,
+                '',
+              )
+              .trim();
+            if (parsed.summary.length === 0) {
+              parsed.summary = detectedHeader.replace(/[:：]$/, '').trim();
+            }
+          } else {
+            parsed.summary = detectedHeader.replace(/[:：]$/, '').trim();
+          }
+          processedResponse = { multiple: false, notes: [parsed] };
+        } catch (subitemsErr) {
+          console.warn('[process-note] Subitems mode AI call failed, building deterministic note:', subitemsErr);
+          // Hard fallback: synthesize the note locally so the user's
+          // brain dump is still saved even if the LLM is down.
+          processedResponse = {
+            multiple: false,
+            notes: [{
+              summary: detectedHeader.replace(/[:：]$/, '').trim().slice(0, 80),
+              category: 'task',
+              priority: 'medium',
+              tags: [],
+              items: preDetected.items,
+            }],
+          };
+        }
+      } else {
+        // ──────────────────────────────────────────────────────────────
+        // SIBLINGS MODE (legacy) — N independent notes, one per item.
+        // ──────────────────────────────────────────────────────────────
+        console.log('[process-note] Siblings mode — processing in PARALLEL');
+
+        // Build the shared-context block from the detected header. Empty
+        // when there's no header — keeps per-item prompts identical to
+        // legacy behavior in that path.
+        const sharedContextBlock = detectedHeader
+          ? `\n\nSHARED CONTEXT (header for the whole brain dump — DO NOT include in summary):
 "${detectedHeader}"
 
 Use this header as shared context across ALL items:
 - Inherit time references (e.g. "tomorrow", "today", "this week") into the item's due_date when the item itself is timeless.
 - Inherit domain/scope (e.g. "pets", "groceries", "trip") into category and target_list routing when the item is ambiguous.
 - The header itself is NOT a task and must not appear in the summary or items array.`
-        : '';
+          : '';
 
-      // Process ALL items in parallel for maximum speed
-      const itemPromises = preDetected.items.map(async (item) => {
-        const itemPrompt = `${systemPrompt}${listsContext}${sharedContextBlock}\n\nProcess this single note (this is ONE item from a multi-item brain dump):\n"${item}"`;
+        // Process ALL items in parallel for maximum speed
+        const itemPromises = preDetected.items.map(async (item) => {
+          const itemPrompt = `${systemPrompt}${listsContext}${sharedContextBlock}\n\nProcess this single note (this is ONE item from a multi-item brain dump):\n"${item}"`;
 
-        try {
-          const itemResponse = await genai.models.generateContent({
-            model: "gemini-2.5-flash-lite",  // Use lite model for simple single items — 3x faster
-            contents: itemPrompt,
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: singleNoteSchema,  // Use single schema — less tokens, faster
-              temperature: 0.1,
-              maxOutputTokens: 400
-            }
-          });
+          try {
+            const itemResponse = await genai.models.generateContent({
+              model: "gemini-2.5-flash-lite",  // Use lite model for simple single items — 3x faster
+              contents: itemPrompt,
+              config: {
+                responseMimeType: "application/json",
+                responseSchema: singleNoteSchema,  // Use single schema — less tokens, faster
+                temperature: 0.1,
+                maxOutputTokens: 400
+              }
+            });
 
-          return JSON.parse(itemResponse.text || '{}');
-        } catch (itemErr) {
-          console.warn('[process-note] Pre-split item failed:', item.substring(0, 50), itemErr);
-          return {
-            summary: item.length > 100 ? item.substring(0, 97) + '...' : item,
-            category: 'task',
-            priority: 'medium',
-            tags: [],
-            items: []
-          };
-        }
-      });
+            return JSON.parse(itemResponse.text || '{}');
+          } catch (itemErr) {
+            console.warn('[process-note] Pre-split item failed:', item.substring(0, 50), itemErr);
+            return {
+              summary: item.length > 100 ? item.substring(0, 97) + '...' : item,
+              category: 'task',
+              priority: 'medium',
+              tags: [],
+              items: []
+            };
+          }
+        });
 
-      const allProcessedNotes = await Promise.all(itemPromises);
+        const allProcessedNotes = await Promise.all(itemPromises);
 
-      // Skip the main AI call — we already have results
-      processedResponse = { multiple: true, notes: allProcessedNotes };
+        // Skip the main AI call — we already have results
+        processedResponse = { multiple: true, notes: allProcessedNotes };
+      }
     } else {
     // Standard AI processing path (single item or AI-detected multi)
     console.log('[GenAI SDK] Processing note with structured output...');
