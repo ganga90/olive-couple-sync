@@ -99,7 +99,8 @@
     "taskCompleted": "Attività completata!",
     "markedIncomplete": "Attività segnata come incompleta",
     "taskCompletedShort": "Attività completata!",
-    "failedToUpdate": "Impossibile aggiornare l'attività"
+    "failedToUpdate": "Impossibile aggiornare l'attività",
+    "pendingAssignment": "🌿 Ricevuto — e la assegnerei a {{name}}, in attesa della tua approvazione."
   },
   "recentTasks": {
     "by": "Da",

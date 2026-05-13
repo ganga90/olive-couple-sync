@@ -17,43 +17,60 @@ interface QuickEditBottomSheetProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (noteId: string, updates: Partial<Note>) => Promise<void>;
-  partnerName?: string;
+  /** Current user's user_id (clerk_profiles.id, e.g. user_xxx) */
+  currentUserId?: string;
+  /** Partner's user_id, or null if no partner in this space */
+  partnerUserId?: string | null;
+  /** Optional display name for the current user — for the button label */
   yourName?: string;
+  /** Optional display name for the partner — for the button label */
+  partnerName?: string;
 }
+
+// task_owner is canonical (NULL or user_id). We render three buttons
+// (You / Partner / Both) but the value WRITTEN to the DB is always
+// either currentUserId / partnerUserId / null — never the literal
+// strings 'you' / 'partner' / 'shared'. See migration
+// 20260513032720_canonicalize_task_owner for the rationale.
+const OWNER_BOTH: null = null;
 
 export const QuickEditBottomSheet: React.FC<QuickEditBottomSheetProps> = ({
   note,
   isOpen,
   onClose,
   onSave,
+  currentUserId,
+  partnerUserId,
   partnerName,
-  yourName
+  yourName,
 }) => {
   const navigate = useLocalizedNavigate();
   const [title, setTitle] = useState(note?.summary || '');
   const [dueDate, setDueDate] = useState<Date | undefined>(
     note?.dueDate ? new Date(note.dueDate) : undefined
   );
-  const [owner, setOwner] = useState(note?.task_owner || 'shared');
+  // `owner` holds the canonical user_id (or null = Both/unassigned).
+  // The buttons set this directly to the real id, not to a token.
+  const [owner, setOwner] = useState<string | null>(note?.task_owner ?? null);
   const [isSaving, setIsSaving] = useState(false);
 
   React.useEffect(() => {
     if (note) {
       setTitle(note.summary);
       setDueDate(note.dueDate ? new Date(note.dueDate) : undefined);
-      setOwner(note.task_owner || 'shared');
+      setOwner(note.task_owner ?? null);
     }
   }, [note]);
 
   const handleSave = async () => {
     if (!note) return;
-    
+
     setIsSaving(true);
     try {
       await onSave(note.id, {
         summary: title,
         dueDate: dueDate ? formatDateForStorage(dueDate) : null,
-        task_owner: owner
+        task_owner: owner,
       });
       onClose();
     } catch (error) {
@@ -78,7 +95,7 @@ export const QuickEditBottomSheet: React.FC<QuickEditBottomSheetProps> = ({
         <SheetHeader>
           <SheetTitle className="text-left">Quick Edit</SheetTitle>
         </SheetHeader>
-        
+
         <div className="space-y-4 mt-4">
           {/* Title */}
           <div className="space-y-2">
@@ -119,32 +136,33 @@ export const QuickEditBottomSheet: React.FC<QuickEditBottomSheetProps> = ({
             </Popover>
           </div>
 
-          {/* Owner */}
+          {/* Owner — buttons map to canonical user_ids (or null) */}
           <div className="space-y-2">
             <Label>Assigned To</Label>
             <div className="flex gap-2">
               <Button
                 type="button"
-                variant={owner === 'you' ? 'default' : 'outline'}
+                variant={owner === currentUserId ? 'default' : 'outline'}
                 className="flex-1"
-                onClick={() => setOwner('you')}
+                onClick={() => currentUserId && setOwner(currentUserId)}
+                disabled={!currentUserId}
               >
                 {yourName || 'You'}
               </Button>
               <Button
                 type="button"
-                variant={owner === 'partner' ? 'default' : 'outline'}
+                variant={owner === partnerUserId ? 'default' : 'outline'}
                 className="flex-1"
-                onClick={() => setOwner('partner')}
-                disabled={!partnerName}
+                onClick={() => partnerUserId && setOwner(partnerUserId)}
+                disabled={!partnerUserId}
               >
                 {partnerName || 'Partner'}
               </Button>
               <Button
                 type="button"
-                variant={owner === 'shared' ? 'default' : 'outline'}
+                variant={owner === OWNER_BOTH ? 'default' : 'outline'}
                 className="flex-1"
-                onClick={() => setOwner('shared')}
+                onClick={() => setOwner(OWNER_BOTH)}
               >
                 Both
               </Button>
@@ -153,16 +171,16 @@ export const QuickEditBottomSheet: React.FC<QuickEditBottomSheetProps> = ({
 
           {/* Actions */}
           <div className="flex flex-col gap-2 pt-2">
-            <Button 
-              onClick={handleSave} 
+            <Button
+              onClick={handleSave}
               disabled={isSaving}
               className="w-full"
             >
               {isSaving ? 'Saving...' : 'Save Changes'}
             </Button>
-            
-            <Button 
-              variant="ghost" 
+
+            <Button
+              variant="ghost"
               onClick={handleViewFullDetails}
               className="w-full"
             >
