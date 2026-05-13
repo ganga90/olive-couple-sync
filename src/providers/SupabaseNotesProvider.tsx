@@ -65,23 +65,57 @@ const convertSupabaseNoteToNote = (
     return "Unknown";
   };
 
-  const getTaskOwnerName = (taskOwner: string | null): string | undefined => {
-    if (!taskOwner) {
-      if (!supabaseNote.couple_id && supabaseNote.author_id) {
-        if (supabaseNote.author_id === currentUser?.id) {
-          return memberMap.get(supabaseNote.author_id) || currentUser?.firstName || "You";
-        }
-      }
-      return undefined;
+  // ─── Canonical task_owner resolution ─────────────────────────────
+  // Post-migration (20260513032720_canonicalize_task_owner) the DB
+  // column always stores NULL or a user_id (clerk_profiles.id, format
+  // `user_xxx`). We're defensive against legacy strings that might
+  // slip through (e.g. a stale write from an old client before this
+  // PR rolls out), but we DO NOT pass display-name strings through as
+  // task_owner anymore — that's a separate field, `task_owner_name`.
+  //
+  // Returns the canonical user_id (or null) for `task_owner`, plus
+  // the resolved display name for rendering.
+  const resolveTaskOwner = (
+    raw: string | null
+  ): { id: string | null; name: string | undefined } => {
+    if (!raw) return { id: null, name: undefined };
+
+    // Canonical: user_id (clerk format `user_xxx`).
+    if (raw.startsWith('user_')) {
+      const name = memberMap.get(raw)
+        ?? (raw === currentUser?.id ? (currentUser?.firstName || currentUser?.fullName) : undefined);
+      return { id: raw, name };
     }
-    if (taskOwner.startsWith('user_')) {
-      const name = memberMap.get(taskOwner);
-      if (name) return name;
-      if (taskOwner === currentUser?.id) return currentUser?.firstName || "You";
-      return "Unknown";
+
+    // Defensive: legacy tokens ('you' / 'partner' / 'shared') that
+    // somehow survived migration. Map them best-effort; they should
+    // NOT exist post-migration so we log once to surface drift.
+    if (raw === 'shared') return { id: null, name: undefined };
+    if (raw === 'you' && supabaseNote.author_id) {
+      const name = memberMap.get(supabaseNote.author_id)
+        ?? (supabaseNote.author_id === currentUser?.id ? (currentUser?.firstName || currentUser?.fullName) : undefined);
+      return { id: supabaseNote.author_id, name };
     }
-    return taskOwner;
+    if (raw === 'partner') {
+      // Best-effort: pick any non-author member as the partner.
+      const partnerId = Array.from(memberMap.keys()).find(id => id !== supabaseNote.author_id);
+      return partnerId
+        ? { id: partnerId, name: memberMap.get(partnerId) }
+        : { id: null, name: undefined };
+    }
+
+    // Defensive: legacy display-name string. Try to reverse-lookup
+    // via memberMap (O(n)); if found, return the user_id. Otherwise
+    // treat as unassigned — the display will fall back to author.
+    for (const [userId, displayName] of memberMap.entries()) {
+      if (displayName === raw) return { id: userId, name: displayName };
+    }
+    // Unresolvable. Don't render the raw string as a name (it could
+    // be 'partner' or other tokens). Treat as unassigned.
+    return { id: null, name: undefined };
   };
+
+  const taskOwnerResolved = resolveTaskOwner(supabaseNote.task_owner);
 
   return {
     id: supabaseNote.id,
@@ -101,7 +135,10 @@ const convertSupabaseNoteToNote = (
     priority: supabaseNote.priority || undefined,
     tags: supabaseNote.tags || undefined,
     items: supabaseNote.items || undefined,
-    task_owner: getTaskOwnerName(supabaseNote.task_owner),
+    // Canonical user_id (or null). Use this for filtering, writes, equality.
+    task_owner: taskOwnerResolved.id,
+    // Resolved display name. Use this for UI chips/labels.
+    task_owner_name: taskOwnerResolved.name,
     list_id: supabaseNote.list_id || undefined,
     media_urls: supabaseNote.media_urls || undefined,
     location: supabaseNote.location as any || undefined,

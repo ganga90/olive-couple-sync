@@ -48,7 +48,7 @@ const NoteDetails = () => {
   const { user } = useUser();
   const { t } = useTranslation('notes');
   const { notes, deleteNote, updateNote } = useSupabaseNotesContext();
-  const { currentCouple, you, partner } = useSupabaseCouple();
+  const { currentCouple, you, partner, members: coupleMembers } = useSupabaseCouple();
   const { currentSpace, getMembers } = useSpace();
   const { lists } = useSupabaseLists(currentCouple?.id, currentSpace?.id);
   const askOliveOnboarding = useOnboardingTooltip('ask-olive-chat');
@@ -118,7 +118,17 @@ const NoteDetails = () => {
   }, [currentSpace?.id, currentSpace?.member_count, getMembers]);
 
   const availableOwners = useMemo(() => {
-    // If we have space members, use those for richer multi-member assignment
+    // Source of truth, in priority order:
+    //   1. spaceMembers (multi-member space — has real user_ids)
+    //   2. coupleMembers (couple provider — has real user_ids)
+    //   3. last-resort fallback (avoid this — writes a non-canonical
+    //      id that the resolver has to patch up via reverse lookup).
+    //
+    // We prefer the canonical user_id everywhere because that's what
+    // gets written to clerk_notes.task_owner now (see migration
+    // 20260513032720_canonicalize_task_owner). Writing a display-name
+    // string or the literal 'partner' is what caused the long-standing
+    // bug where reassigning a task kept rendering "You" on Home.
     if (spaceMembers.length > 0) {
       return spaceMembers.map((m) => ({
         id: m.user_id,
@@ -126,18 +136,28 @@ const NoteDetails = () => {
         isCurrentUser: m.user_id === user?.id,
       }));
     }
-    // Fall back to couple-based owners
-    const owners = [];
-    if (you) {
-      owners.push({ id: user?.id || 'you', name: you, isCurrentUser: true });
-    } else if (user?.fullName) {
-      owners.push({ id: user.id, name: user.fullName, isCurrentUser: true });
+    if (coupleMembers && coupleMembers.length > 0) {
+      return coupleMembers.map((m) => ({
+        id: m.user_id,
+        name: m.display_name,
+        isCurrentUser: m.user_id === user?.id,
+      }));
     }
-    if (partner) {
-      owners.push({ id: 'partner', name: partner, isCurrentUser: false });
+    // Last-resort fallback: only used when neither space nor couple
+    // members have been loaded yet (race during first render). The
+    // ids here are intentionally the user's real id where available
+    // — we no longer fall back to the 'partner' token because that
+    // value is non-canonical and the resolver treats it as
+    // unassigned post-migration.
+    const owners: Array<{ id: string; name: string; isCurrentUser: boolean }> = [];
+    if (user?.id) {
+      owners.push({ id: user.id, name: you || user.fullName || 'You', isCurrentUser: true });
     }
+    // No partner user_id available in this fallback — skip rather
+    // than write a non-canonical token. The Popover will still show
+    // the "Unassigned" choice and the current user.
     return owners;
-  }, [user, you, partner, spaceMembers]);
+  }, [user, you, partner, spaceMembers, coupleMembers]);
 
   const isOverdue = note?.dueDate && !note.completed && isPast(parseISO(note.dueDate));
 
@@ -439,11 +459,13 @@ const NoteDetails = () => {
                   }}
                 />
 
-                {/* Owner Chip */}
+                {/* Owner Chip — task_owner is canonical user_id; the
+                    display label comes from task_owner_name (resolved
+                    by the provider via member lookup). */}
                 <Popover>
                   <PopoverTrigger asChild>
                    <button className="meta-chip whitespace-nowrap hover:bg-accent/50 transition-colors">
-                      👤 {note.task_owner || t('meta.unassigned')}
+                      👤 {note.task_owner_name || t('meta.unassigned')}
                     </button>
                   </PopoverTrigger>
                   <PopoverContent className="w-48 p-2" align="start">
@@ -463,11 +485,16 @@ const NoteDetails = () => {
                       {availableOwners.map((owner) => (
                         <Button
                           key={owner.id}
-                          variant={note.task_owner === owner.name ? "secondary" : "ghost"}
+                          variant={note.task_owner === owner.id ? "secondary" : "ghost"}
                           size="sm"
                           className="w-full justify-start rounded-lg"
                           onClick={async () => {
-                            await updateNote(note.id, { task_owner: owner.name });
+                            // Write the canonical user_id, never the
+                            // display name. Resolves the long-standing
+                            // bug where reassigning kept showing "You"
+                            // on Home because the resolver could not
+                            // disambiguate display-name strings.
+                            await updateNote(note.id, { task_owner: owner.id });
                             toast.success(t('actions.ownerUpdated'));
                           }}
                         >

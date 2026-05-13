@@ -1,5 +1,116 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-13 — Task ownership: canonicalization end-to-end + pending-assignment toast
+
+User-reported bug: typed "Almu book hotel for Mallorca" (Almu = partner).
+Note created and showed "You" in the Home weekly chip. User reassigned
+to Almu via the Owner Popover — Home chip still rendered "You".
+
+### Root causes (three of them, distinct)
+
+**Bug A — trust gate silent clear.** [process-note/index.ts](practical-lichterman/supabase/functions/process-note/index.ts) ran the AI's
+correct assignment ("Almu") through `checkTrustForAction('assign_task')`.
+For users with not-yet-elevated trust, the gate returns `allowed=false`
+and the original code silently set `task_owner = null`. The note then
+fell back to "no owner → author == me → You". User had no idea Olive
+*wanted* to assign to Almu but was waiting for trust approval.
+
+**Bug B — task_owner data format chaos.** Three writers stored three
+incompatible formats:
+
+  | Writer | Wrote | Format |
+  |---|---|---|
+  | process-note (AI) | "Almu", "G" | display-name string |
+  | NoteDetails Popover | owner.name | display-name string |
+  | QuickEditBottomSheet | 'you' / 'partner' / 'shared' | client token |
+
+The resolver in [Home.tsx](practical-lichterman/src/pages/Home.tsx) tried to handle all three with nested
+branches and hit one branch that compared `task_owner` to the literal
+string "You" returned by `getMemberName(currentUser.id)` (line 46 of
+[SupabaseCoupleProvider.tsx](practical-lichterman/src/providers/SupabaseCoupleProvider.tsx)). Reassigning to a partner whose
+display-name happened to start with the same letter as the current
+user could re-trigger the You branch. Even when it didn't, the resolver
+sometimes returned the raw token "partner" as the chip label.
+
+**Bug C — latent.** QuickEditBottomSheet (currently not mounted but
+defined in the codebase) wrote 'you' / 'partner' / 'shared' as raw
+strings. Any future surface that mounted it would re-introduce Bug B.
+
+### The fix — one canonical format, end-to-end
+
+**`clerk_notes.task_owner` is now `NULL` or a `user_id`. Nothing else.**
+
+1. **Migration** ([20260513034047_canonicalize_task_owner.sql](practical-lichterman/supabase/migrations/20260513034047_canonicalize_task_owner.sql)) — multi-pass
+   resolution to backfill legacy values. Pre-flight audit on production:
+   668 NULL + 29 display-name strings + 15 user_ids + 3 'shared' tokens.
+   Post-migration: 673 NULL + 42 user_ids, zero non-canonical values.
+   The resolution passes (space-scoped first, then couple-scoped):
+   exact display_name → nickname → first-name (case-insensitive) →
+   prefix match. 27 of 29 display-name rows resolved to real user_ids
+   ("Almu" → Almudena's user_id, "G" → Gianluca's). 2 unresolvable
+   rows ("Jonathan" not in space, "Olive" the AI itself) safely nulled.
+
+2. **process-note** now resolves the AI's chosen display name → user_id
+   via `olive_space_members` BEFORE writing. The trust gate keys off
+   user_id equality (`!== user_id` = other-assignment); when gated, it
+   returns `pending_assignment.intended_owner_name` so the client can
+   surface a toast.
+
+3. **NoteDetails Owner Popover** writes `owner.id` (canonical user_id),
+   not `owner.name`. The `availableOwners` fallback no longer pushes
+   the literal `'partner'` token — falls back to the current user's
+   real id, skipping the partner slot if it can't be resolved.
+
+4. **QuickEditBottomSheet** rewritten to accept `currentUserId` /
+   `partnerUserId` props and write user_ids directly. The three buttons
+   now set `owner` state to the literal user_id (or `null` for Both).
+
+5. **Resolver** extracted to a pure helper [src/lib/owner-display.ts](practical-lichterman/src/lib/owner-display.ts).
+   Single source of truth for the chip label across Home, PartnerActivityWidget,
+   ContextRail. Unit-tested in [_shared/owner-display.test.ts](practical-lichterman/supabase/functions/_shared/owner-display.test.ts) — 16 cases
+   covering the regression scenario, legacy token defensive paths, and
+   the "Everyone" fallback for user_ids that no longer match a member.
+
+6. **`SupabaseNotesProvider`** rewritten `getTaskOwnerName` → defensive
+   `resolveTaskOwner` that handles canonical user_ids and is bulletproof
+   against any legacy strings that might slip through (e.g., a stale
+   client between PR merge and cache refresh). Returns `{ id, name }`
+   so the Note type can carry both `task_owner` (canonical) and
+   `task_owner_name` (display).
+
+7. **Non-intrusive toast** on Home: when process-note returns
+   `pending_assignment`, NoteInput surfaces "🌿 Got it — and I'd assign
+   this to Almu, pending your approval." i18n keys in en/es-ES/it-IT.
+
+### Test plan
+
+- ✅ `deno test supabase/functions/_shared/` — **1213 passed / 0 failed**
+  (1197 existing + 16 new owner-display tests)
+- ✅ `npx tsc --noEmit` — clean
+- ✅ Pre/post-flight SQL audit on production: zero non-canonical
+  task_owner values remain
+- ✅ Migration ledger aligned via `scripts/sync-migration-filenames.sh`
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `supabase/migrations/20260513034047_canonicalize_task_owner.sql` | New migration (applied via MCP) |
+| `supabase/functions/process-note/index.ts` | Resolve AI name → user_id; trust-gate returns `pending_assignment` |
+| `supabase/functions/_shared/owner-display.test.ts` | New — 16 unit tests for the helper |
+| `src/lib/owner-display.ts` | New — pure resolver helper |
+| `src/types/note.ts` | Add `task_owner_name`, clarify `task_owner` contract |
+| `src/providers/SupabaseNotesProvider.tsx` | Defensive `resolveTaskOwner` |
+| `src/pages/NoteDetails.tsx` | Write `owner.id`; fallback no longer uses 'partner' token |
+| `src/pages/Home.tsx` | Use `resolveOwnerLabel` helper |
+| `src/components/QuickEditBottomSheet.tsx` | Rewrite to accept user_ids |
+| `src/components/NoteInput.tsx` | Pending-assignment toast |
+| `src/components/PartnerActivityWidget.tsx`, `src/components/layout/ContextRail.tsx` | Drop legacy 'you' triple-OR; use canonical equality |
+| `src/components/NoteRecap.tsx`, `src/components/MultipleNotesRecap.tsx` | Display `task_owner_name` (resolved) instead of raw user_id |
+| `public/locales/{en,es-ES,it-IT}/home.json` | `toast.pendingAssignment` key |
+
+---
+
 ## 2026-05-12 — Brain-dump organization: sub-items mode + topical follow-up attach
 
 Three coordinated improvements to how Olive captures and threads multi-line

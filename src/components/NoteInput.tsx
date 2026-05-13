@@ -320,10 +320,34 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       }
 
 
+      // ─── Pending-assignment notice ──────────────────────────────
+      // When the trust gate intercepts an AI-assigned partner task,
+      // process-note returns pending_assignment.intended_owner_name
+      // and clears task_owner. Surface a non-intrusive toast so the
+      // user knows Olive WANTED to assign to e.g. Almu but is waiting
+      // on their approval. Quiet voice, no emoji confetti, no CTA —
+      // just a head's-up that matches Olive's "she remembers, you
+      // confirm" loop.
+      const pending: { intended_owner_name?: string | null } | null =
+        aiProcessedNote.pending_assignment
+        || aiProcessedNote.notes?.find((n: any) => n.pending_assignment)?.pending_assignment
+        || null;
+      if (pending?.intended_owner_name) {
+        toast.message(
+          t('toast.pendingAssignment', {
+            defaultValue: '🌿 Got it — and I\'d assign this to {{name}}, pending your approval.',
+            name: pending.intended_owner_name,
+          }),
+        );
+      }
+
       // Check if we got multiple notes
       if (aiProcessedNote.multiple && aiProcessedNote.notes) {
 
-        // Show multiple notes recap for user review before saving
+        // Show multiple notes recap for user review before saving.
+        // task_owner is the canonical user_id (or null); task_owner_name
+        // is the resolved display name we pass through to the Recap
+        // UI so the chip reads "Almu", not "user_xxx".
         setMultipleNotes({
           notes: aiProcessedNote.notes.map((note: any) => ({
             summary: note.summary,
@@ -334,6 +358,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
             items: note.items,
             originalText: text.trim(),
             task_owner: note.task_owner,
+            task_owner_name: note.task_owner_name,
             list_id: note.list_id,
             media_urls: note.media_urls || mediaUrls
           })),
