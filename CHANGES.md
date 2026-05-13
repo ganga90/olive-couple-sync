@@ -1,5 +1,89 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-12 — Brain-dump organization: sub-items mode + topical follow-up attach
+
+Three coordinated improvements to how Olive captures and threads multi-line
+brain dumps. Fixes the production failure mode where a conceptual brain dump
+("Examples for hard rock stadium\nReplay\nSuite support\n…") fragmented into
+N sibling notes — including a phantom row for the header — and a subsequent
+sub-detail ("Email address for Hard Rock\nfoo@bar.com") got saved as a
+separate note instead of attaching to the parent.
+
+### What changed
+
+1. **Broader header detection.** `_shared`-adjacent detector
+   `multi-item-detect.ts` now recognizes noun-phrase intros across en/es/it
+   (`examples|ideas|topics|notes|options|points|considerations|highlights|
+   takeaways|priorities|brainstorm|discussion|agenda` + Spanish/Italian
+   equivalents) anchored to the first 30 chars of the line. This stops
+   "Examples for Hard Rock Stadium" from leaking through as a phantom task
+   while remaining inert for prose containing the same words mid-sentence.
+
+2. **`ListMode` classifier + subitems persistence path.** New
+   `classifyListMode(header, items)` returns `"siblings"` or `"subitems"`.
+   A conceptual header with short noun-phrase items in the 2–10 range and
+   < 30% action verbs persists as ONE parent note with the bullets in the
+   existing `items[]` JSONB column. Checklist-style headers (`Shopping
+   list`, `Things to do`, `Action items` + locale equivalents) always
+   force siblings. `process-note/index.ts` learned a new subitems branch
+   that makes ONE Flash-Lite call (vs. N parallel calls) with the items
+   locked into the response and two layers of deterministic fallback so
+   the user's brain dump is never lost on model failure. The system
+   prompt was rewritten to teach both modes consistently. The
+   WhatsApp single-note confirmation surfaces up to 5 sub-items
+   (localized overflow tail) so users see what landed.
+
+3. **Topical follow-up attach with undo.** New `_shared/topical-followup.ts`
+   detects "Label for Topic\nvalue" patterns (Email/Phone/Address/Link/
+   Notes in en/es/it), queries the user's last 5 notes within 30 min,
+   scores topic↔summary overlap (substring + multi-token + capitalized
+   anchor; threshold 0.7 with stop-words filter), and silently attaches
+   the new field to the matching parent's `items[]` instead of creating
+   a sibling note. The user gets a confirmation with an undo hint;
+   replying "undo" / "no" / "split" (or Spanish/Italian equivalents)
+   within the 10-min pending-offer TTL reverts the attach AND re-runs
+   the original message through process-note as a standalone note.
+   The follow-up check skips when other offers are alive, when there's
+   media, or when the message was pronoun-resolved.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `supabase/functions/process-note/multi-item-detect.ts` | +268 LOC. Broadened header regex, anchored keyword test, `ListMode` + `classifyListMode`, threaded `mode` through every return. |
+| `supabase/functions/process-note/multi-item-detect.test.ts` | +263 LOC. 19 new tests covering the screenshot bug, en/es/it conceptual headers, regression guards for checklists, and the classifier as a unit. |
+| `supabase/functions/process-note/index.ts` | +191 LOC. Subitems branch in the splitter, defensive items-restoration on AI failure, summary-prefix cleaning, updated system prompt for both modes. |
+| `supabase/functions/whatsapp-webhook/index.ts` | +305 LOC. CREATE-path topical-followup check (pre-process-note), SafetyNet #1.4b for undo replies, sub-items preview in single-note confirmation. |
+| `supabase/functions/_shared/topical-followup.ts` | **NEW** — 336 LOC. Pure detector + Supabase helpers + undo classifier. |
+| `supabase/functions/_shared/topical-followup.test.ts` | **NEW** — 40 tests including a hand-rolled thenable Supabase fake. |
+| `supabase/functions/_shared/pending-offer.ts` | +39 LOC. `AttachedToParentOffer` discriminated-union variant. |
+
+### Verification
+- ✅ `deno test supabase/functions/_shared/ supabase/functions/process-note/` — 1,220 / 1,220 passing.
+- ✅ Zero new TS errors (`deno check` clean on all touched files). The 9 pre-existing errors in `whatsapp-webhook/index.ts` and `orchestrator.ts` predate this change and are at unrelated lines.
+- ✅ Legacy detector behavior preserved: all 20 original `multi-item-detect.test.ts` cases pass unchanged.
+
+### Deploy notes
+- **No schema changes.** Writes only to existing columns (`clerk_notes.items`,
+  `user_sessions.context_data`).
+- **No new env vars.** Reuses `SUPABASE_URL`, service-role key, Gemini key.
+- Edge functions: `supabase functions deploy process-note whatsapp-webhook`
+  on push to `dev` per existing CI.
+- Frontend untouched — no Vercel rebuild needed for behavior, though the
+  preview will deploy automatically.
+
+### Out of scope (deferred follow-ups)
+- Expanding the topical-followup pattern set beyond "Label for Topic" intros
+  (e.g., recognizing `Topic: value` without an explicit label, or bare-
+  proper-noun continuations like "Sarah called back"). Deliberately kept
+  narrow for v1 to minimize false-positive attaches.
+- Surfacing sub-items in the web app's note detail view — already rendered
+  there via the existing `items` column read path; no UI change needed.
+- Topical-followup detection on the WEB-app process-note caller (currently
+  WhatsApp-only since the undo UX needs the channel's reply path).
+
+
+
 This log tracks structural changes made while delivering Phase 1 of the
 engineering hardening plan. Each task is additive and backwards-compatible;
 there are no behavioral rollbacks.
@@ -9,6 +93,87 @@ there are no behavioral rollbacks.
 - **Non-goals:** visible product changes, UI work, new user-facing features.
 - **Deployment shape:** one migration + edge-function updates. The migration
   is idempotent (`IF NOT EXISTS` + `DO` blocks) and safe to re-run.
+
+---
+
+## 2026-05-12 — iOS 1.2.1 (build 4) — patch release
+
+Patch bump packaging two days of `main` activity into a TestFlight build.
+Same Capacitor stack as 1.2, no plugin churn, no native code changes —
+just a fresh `dist/` bundle copied into the iOS shell via
+`npx cap copy ios` + `npx cap update ios`.
+
+### What's in the bundle vs 1.2 (3)
+
+**User-facing fixes:**
+- **Mobile UI polish ([#107](https://github.com/ganga90/olive-couple-sync/pull/107))** — Home partner-activity widget collapses to a single
+  freshest update with a *See N more* pill (was showing up to 5 inline,
+  turning the feed into a wall of cards on tall family/friend spaces).
+  MyDay agent-insight cards redesigned: white surface + hairline border,
+  squircle agent icon, list-aware bullet renderer that turns bulleted
+  reports into a real `<ul>`. Expenses page now scrolls — root div wraps
+  in `h-full overflow-y-auto`, fixing rows past the viewport being
+  unreachable (`AppLayout` mobile `<main>` is `overflow-hidden`).
+- **ContextRail date-only off-by-one ([#109](https://github.com/ganga90/olive-couple-sync/pull/109))** — calendar panel on the right showed
+  "Thu, May 14" for a task whose `due_date` was `2026-05-15` when the
+  user's timezone was negative-offset (e.g. America/New_York). Parsed
+  the `YYYY-MM-DD` string as local midnight instead of UTC midnight so
+  the displayed day matches the user's mental model.
+
+**Reliability behind the scenes (web-only, but iOS WebView benefits):**
+- Calendar error classification + branched retry ([#103](https://github.com/ganga90/olive-couple-sync/pull/103))
+- Calendar connection health + reconnect banner + WhatsApp i18n + CI smoke ([#104](https://github.com/ganga90/olive-couple-sync/pull/104))
+- Calendar retry queue visibility on `/calendar` ([#105](https://github.com/ganga90/olive-couple-sync/pull/105))
+- Calendar edit hotfix — auto-event note_id orphans backfilled ([#99](https://github.com/ganga90/olive-couple-sync/pull/99))
+
+**Infrastructure (zero user-visible delta):**
+- `config.toml` cleanup — every utility function explicitly registered;
+  `KNOWN_LEGACY_STRAGGLERS` allowlist purged (#98 / #100 / #101 / #102 / #106).
+
+### Why 1.2.1 not 1.3
+
+The UI work in #107 is real, but it's polish on existing surfaces, not
+new product. Calling it a patch keeps the marketing version honest —
+1.3 is the next time iOS users get a meaningfully different *thing to
+do*, not just better behavior on what they already had. Build number
+bump (3 → 4) is mandatory for App Store upload regardless.
+
+### Bundle state at archive time
+
+- `dist/` regenerated via `npm run build` (4.25s, full Vite output).
+- `ios/App/App/public/` refreshed via `npx cap copy ios` (gitignored;
+  bundle assets the WebView serves).
+- `ios/App/App/capacitor.config.json` + `config.xml` regenerated by
+  `npx cap update ios` (gitignored).
+- Pods reinstalled by `cap update`'s embedded `pod install` (3.29s).
+- 5 Capacitor plugins, all 7.x: `@capacitor/app@7.1.2`,
+  `camera@7.0.2`, `haptics@7.0.5`, `keyboard@7.0.6`, `status-bar@7.0.6`
+  — unchanged from 1.2.
+- `Podfile.lock` unchanged.
+
+### Repo change is intentionally minimal
+
+Only the Xcode version bump is committed:
+
+```
+ios/App/App.xcodeproj/project.pbxproj
+  CURRENT_PROJECT_VERSION  3 → 4    (Debug + Release, mandatory)
+  MARKETING_VERSION       1.2 → 1.2.1 (Debug + Release, editorial)
+```
+
+The regenerated `dist/`, `ios/App/App/public/`, `capacitor.config.json`,
+`config.xml`, and `Pods/` are all gitignored — they regenerate
+deterministically from a clean clone via the
+`ios/App/ci_scripts/ci_post_clone.sh` hook (used by Xcode Cloud) or by
+re-running `npm run build && npx cap sync ios` locally before Archive.
+
+### To archive + upload (manual — you do this in Xcode)
+
+1. Open `ios/App/App.xcworkspace` in Xcode (workspace, not project).
+2. Select target **withOlive** → scheme **App** → destination **Any iOS Device (arm64)**.
+3. Product → Archive. Wait for `** ARCHIVE SUCCEEDED **`.
+4. Window → Organizer → select the new 1.2.1 (4) archive → Distribute App → App Store Connect → Upload → Automatically manage signing.
+5. After processing in App Store Connect (~10 min), promote to TestFlight via the App Store Connect web UI.
 
 ---
 

@@ -141,13 +141,50 @@ export interface BulkRescheduleOffer {
   offered_at: string;
 }
 
+// Topical-follow-up attach offer — Change 3 of the brain-dump-organization
+// programme. When Olive silently attaches a sub-detail ("Email: foo@bar.com")
+// to a recent parent note ("Hard Rock Stadium examples") because the user
+// just typed "Email for Hard Rock\nfoo@bar.com", this variant records the
+// state needed to UNDO that attach within the 10-min TTL. The action is
+// taken eagerly (per Olive's "she just does it" brand), the offer here is
+// the REVERSAL path the user gets if they reply "undo" / "no" / "split".
+//
+// Stored at the moment of attach. Two writes happen in the same turn:
+//   1. clerk_notes.items is updated for parent_note_id with prior_items
+//      → next_items (next_items = [...prior_items, addition]).
+//   2. user_sessions.context_data.pending_offer = this row.
+//
+// On a follow-up "undo" reply within PENDING_OFFER_TTL_MS:
+//   - clerk_notes.items is reverted to prior_items.
+//   - A new standalone note is created from original_message.
+//   - The pending_offer is cleared.
+export interface AttachedToParentOffer {
+  type: 'attached_to_parent';
+  /** The note we wrote the new field onto. */
+  parent_note_id: string;
+  parent_summary: string;
+  /** The full items[] array before the attach — captured for reversal. */
+  prior_items: string[];
+  /** The single new entry we appended, e.g. "Email: foo@bar.com". */
+  addition: string;
+  /** The user's original raw message — used to reconstruct a standalone
+   *  note if the user undoes the attach. Without this we'd lose their
+   *  value when reverting. */
+  original_message: string;
+  /** Detector confidence at the time of attach — useful for telemetry
+   *  / threshold tuning, not consulted by the undo path itself. */
+  confidence: number;
+  offered_at: string;
+}
+
 export type PendingOffer =
   | SaveArtifactOffer
   | RescheduleTaskOffer
   | EditTaskOffer
   | DeleteTaskOffer
   | DisambiguationOffer
-  | BulkRescheduleOffer;
+  | BulkRescheduleOffer
+  | AttachedToParentOffer;
 
 export function isPendingOfferFresh(
   offer: PendingOffer | null | undefined,

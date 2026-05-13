@@ -13,6 +13,7 @@ import {
   assertNotEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  classifyListMode,
   detectMultiItem,
   detectMultiItemInput,
 } from "./multi-item-detect.ts";
@@ -33,6 +34,9 @@ Deno.test("header + plain newline-separated items (the screenshot bug)", () => {
   assertEquals(result!.items.length, 5);
   assertEquals(result!.items[0], "Milka food");
   assertEquals(result!.items[4], "Check water fountains");
+  // Checklist headers always stay in siblings mode — each pet errand is
+  // its own task, not a sub-bullet of a parent note.
+  assertEquals(result!.mode, "siblings");
 });
 
 Deno.test("header + numbered list strips the heading", () => {
@@ -232,4 +236,263 @@ Deno.test("detectMultiItemInput wrapper returns null when no structure detected"
   const input = "fix the sink";
   const result = detectMultiItemInput(input);
   assertEquals(result, null);
+});
+
+// ─── ListMode classifier — sub-items vs siblings ─────────────────────
+//
+// Why these tests matter: the screenshot bug had a *second* failure
+// behind the missed header — once Olive recognized "Examples for hard
+// rock stadium" as a header, the brain dump below it was still being
+// saved as five SIBLING tasks ("Replay", "Suite support", "Music", …)
+// scattered through the user's list, rather than as one parent note
+// with the five items as sub-bullets. The classifier decides which
+// shape a list takes; these tests pin that decision down for the
+// patterns we expect to see in the wild while preserving the legacy
+// "siblings" mode for every existing checklist-style input.
+
+Deno.test("noun-phrase header (the second screenshot bug) — Examples for X → subitems", () => {
+  // This is the exact message from the production WhatsApp screenshot.
+  // Before the fix: 6 sibling notes including "Examples for hard rock
+  // stadium" as a phantom row. After: one parent note titled by the
+  // header, with the five brain-dump items as sub-bullets.
+  const input =
+    "Examples for hard rock stadium\n\n" +
+    "Replay\n" +
+    "Find distance to position concessions and concession maps\n" +
+    "Suite support\n" +
+    "Music\n" +
+    "Partner/sponsorship";
+  const result = detectMultiItem(input);
+  assertNotEquals(result, null);
+  assertEquals(result!.header, "Examples for hard rock stadium");
+  assertEquals(result!.items.length, 5);
+  assertEquals(result!.items[0], "Replay");
+  assertEquals(result!.items[4], "Partner/sponsorship");
+  assertEquals(result!.mode, "subitems");
+});
+
+Deno.test("conceptual header — Ideas for the trip → subitems", () => {
+  const input =
+    "Ideas for the trip\n" +
+    "beach day\n" +
+    "wine tour\n" +
+    "fishing charter\n" +
+    "sunset cruise";
+  const result = detectMultiItem(input);
+  assertNotEquals(result, null);
+  assertEquals(result!.header, "Ideas for the trip");
+  assertEquals(result!.mode, "subitems");
+});
+
+Deno.test("conceptual header — Topics with colon and bullets → subitems", () => {
+  const input =
+    "Topics for the meeting:\n" +
+    "- pricing tier\n" +
+    "- team structure\n" +
+    "- launch timeline";
+  const result = detectMultiItem(input);
+  assertNotEquals(result, null);
+  assertEquals(result!.header, "Topics for the meeting:");
+  assertEquals(result!.items, ["pricing tier", "team structure", "launch timeline"]);
+  assertEquals(result!.mode, "subitems");
+});
+
+Deno.test("conceptual header in Spanish — Ejemplos para X → subitems", () => {
+  const input =
+    "Ejemplos para Madrid\n" +
+    "Plaza Mayor\n" +
+    "Retiro\n" +
+    "Museo del Prado\n" +
+    "Mercado de San Miguel";
+  const result = detectMultiItem(input);
+  assertNotEquals(result, null);
+  assertEquals(result!.header, "Ejemplos para Madrid");
+  assertEquals(result!.mode, "subitems");
+});
+
+Deno.test("conceptual header in Italian — Idee per la cena → subitems", () => {
+  const input =
+    "Idee per la cena\n" +
+    "pasta al pesto\n" +
+    "insalata di tonno\n" +
+    "tiramisù";
+  const result = detectMultiItem(input);
+  assertNotEquals(result, null);
+  assertEquals(result!.header, "Idee per la cena");
+  assertEquals(result!.mode, "subitems");
+});
+
+Deno.test("conceptual header but items are action verbs → siblings", () => {
+  // "Action items" is a conceptual-sounding header, BUT the items
+  // themselves are all verb-led tasks. We must not bundle five
+  // discrete to-dos into one parent — that would hide real work
+  // inside a JSONB blob.
+  const input =
+    "Action items from the call:\n" +
+    "Call vendor about pricing\n" +
+    "Send proposal to Sarah\n" +
+    "Schedule follow-up\n" +
+    "Update the spec doc";
+  const result = detectMultiItem(input);
+  assertNotEquals(result, null);
+  assertEquals(result!.mode, "siblings");
+});
+
+Deno.test("conceptual header but an item carries its own date → siblings", () => {
+  // Items with independent time anchors are scheduled tasks regardless
+  // of how the header reads. Saving them as sub-bullets would lose the
+  // due date in the user's reminders surface.
+  const input =
+    "Topics for next week\n" +
+    "pricing review tomorrow\n" +
+    "team offsite\n" +
+    "vendor demo";
+  const result = detectMultiItem(input);
+  assertNotEquals(result, null);
+  assertEquals(result!.mode, "siblings");
+});
+
+Deno.test("shopping list explicit header → siblings (regression)", () => {
+  // Hard-coded protection: a user who literally typed "Shopping list"
+  // wants discrete grocery tasks, even though the items are short noun
+  // phrases that otherwise look subitem-shaped.
+  const input =
+    "Shopping list:\n" +
+    "milk\n" +
+    "eggs\n" +
+    "bread";
+  const result = detectMultiItem(input);
+  assertNotEquals(result, null);
+  assertEquals(result!.header, "Shopping list:");
+  assertEquals(result!.mode, "siblings");
+});
+
+Deno.test("things to do header → siblings (regression)", () => {
+  const input =
+    "Things to do tomorrow:\n" +
+    "Buy milk\n" +
+    "Call dentist\n" +
+    "Book restaurant";
+  const result = detectMultiItem(input);
+  assertNotEquals(result, null);
+  assertEquals(result!.mode, "siblings");
+});
+
+Deno.test("prose with header keyword mid-sentence is NOT a header", () => {
+  // "discussion" was added to HEADER_KEYWORDS to catch headers like
+  // "Discussion topics:". But the keyword check is anchored to the
+  // start of the line so this paragraph-shaped sentence — which
+  // happens to contain "discussion" at character 51 — must NOT be
+  // misread as a header.
+  const input =
+    "I want to talk about a few examples we ran in the discussion\n" +
+    "tipo A\n" +
+    "tipo B";
+  const result = detectMultiItem(input);
+  // First line is 60+ chars and doesn't start with a keyword → no
+  // header. Pattern 3 may still split if avg length permits, but no
+  // header should be detected.
+  if (result !== null) {
+    assertEquals(result.header, null);
+  }
+});
+
+Deno.test("conceptual header but too many items → siblings (defensive cap)", () => {
+  // Lists with > 10 items are almost always task lists, not brain
+  // dumps. Defensive cap so a long actionable list never gets buried
+  // inside a sub-items array.
+  const items = [
+    "Item one",
+    "Item two",
+    "Item three",
+    "Item four",
+    "Item five",
+    "Item six",
+    "Item seven",
+    "Item eight",
+    "Item nine",
+    "Item ten",
+    "Item eleven",
+  ];
+  const input = "Topics for the project\n" + items.join("\n");
+  const result = detectMultiItem(input);
+  assertNotEquals(result, null);
+  assertEquals(result!.mode, "siblings");
+});
+
+Deno.test("conceptual header with one item → null (need ≥ 2 items for a list)", () => {
+  // detectHeader already requires ≥ 2 following lines. This test
+  // documents that the mode classifier never gets a chance to fire
+  // on degenerate single-item input.
+  const input =
+    "Examples for the meeting:\n" +
+    "topic A";
+  const result = detectMultiItem(input);
+  // Pattern 3 needs 2 lines AND avg < 80 — this passes, but the
+  // header detector requires 2+ following lines. Result: 2-line
+  // split with no header, mode siblings.
+  assertNotEquals(result, null);
+  assertEquals(result!.header, null);
+  assertEquals(result!.mode, "siblings");
+});
+
+// ─── classifyListMode — unit tests on the classifier itself ───────────
+
+Deno.test("classifyListMode: null header → siblings", () => {
+  assertEquals(classifyListMode(null, ["a", "b", "c"]), "siblings");
+});
+
+Deno.test("classifyListMode: checklist header → siblings even with noun-phrase items", () => {
+  assertEquals(
+    classifyListMode("Shopping list:", ["milk", "eggs", "bread"]),
+    "siblings",
+  );
+});
+
+Deno.test("classifyListMode: conceptual header + noun-phrase items → subitems", () => {
+  assertEquals(
+    classifyListMode("Examples for Madrid", ["Retiro", "Plaza Mayor", "Prado"]),
+    "subitems",
+  );
+});
+
+Deno.test("classifyListMode: conceptual header + verb-led items → siblings", () => {
+  assertEquals(
+    classifyListMode("Ideas for the launch", [
+      "Call the vendor",
+      "Schedule the demo",
+      "Send the proposal",
+    ]),
+    "siblings",
+  );
+});
+
+Deno.test("classifyListMode: items carrying their own dates → siblings", () => {
+  assertEquals(
+    classifyListMode("Topics for next week", [
+      "design review tomorrow",
+      "vendor call",
+      "offsite",
+    ]),
+    "siblings",
+  );
+});
+
+Deno.test("classifyListMode: too few or too many items → siblings", () => {
+  // < 2 items
+  assertEquals(classifyListMode("Examples", ["one"]), "siblings");
+  // > 10 items
+  const many = Array.from({ length: 11 }, (_, i) => `item ${i}`);
+  assertEquals(classifyListMode("Examples", many), "siblings");
+});
+
+Deno.test("classifyListMode: very long items on average → siblings", () => {
+  // Long items look more like prose tasks than sub-bullets of one
+  // concept; don't bundle them into a single note.
+  const longItems = [
+    "this is a much longer item that reads more like a sentence than a label",
+    "another longer item that probably represents a real task",
+    "yet another long-form description that doesn't belong in a sub-bullet",
+  ];
+  assertEquals(classifyListMode("Examples for X", longItems), "siblings");
 });
