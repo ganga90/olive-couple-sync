@@ -29,7 +29,10 @@ interface NoteRecapProps {
     originalText: string;
     author?: string;
     createdAt?: string;
+    /** Canonical user_id (or null). Used for writes. */
     task_owner?: string | null;
+    /** Resolved display name for the chip. Set by process-note / provider. */
+    task_owner_name?: string | null;
     taskOwner?: string | null;  // Support both formats
     list_id?: string | null;
     listId?: string | null;     // Support both formats
@@ -601,10 +604,10 @@ export const NoteRecap: React.FC<NoteRecapProps> = ({ note, onClose, onNoteUpdat
               <span>{note.author}</span>
             </div>
           )}
-          {note.task_owner && (
+          {(note.task_owner_name || note.task_owner) && (
             <div className="flex items-center gap-1.5">
               <User className="h-3.5 w-3.5 text-primary" />
-              <span className="text-primary">{note.task_owner}</span>
+              <span className="text-primary">{note.task_owner_name || note.task_owner}</span>
             </div>
           )}
           {note.createdAt && (() => {

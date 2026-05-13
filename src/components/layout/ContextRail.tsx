@@ -140,10 +140,8 @@ export const ContextRail: React.FC = () => {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 4)
       .map(note => {
-        const youName = currentCouple?.you_name;
-        const isAssignedToYou = note.task_owner === 'you' ||
-                                note.task_owner === youName ||
-                                note.task_owner === userId;
+        // task_owner is canonical (user_id or null) post-migration.
+        const isAssignedToYou = !!userId && note.task_owner === userId;
         return {
           id: note.id,
           summary: note.summary,

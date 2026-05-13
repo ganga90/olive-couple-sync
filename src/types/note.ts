@@ -35,7 +35,23 @@ export interface Note {
   priority?: "low" | "medium" | "high";
   tags?: string[];
   items?: string[];
+  /**
+   * Canonical owner reference — either NULL (unassigned/shared) or a
+   * `clerk_profiles.id` (e.g. `user_abc123`). Never a display name,
+   * never a token like 'you' / 'partner' / 'shared'. After migration
+   * 20260513032720_canonicalize_task_owner, all DB rows conform.
+   * New writes (NoteDetails, QuickEditBottomSheet, process-note) MUST
+   * write a user_id or null.
+   *
+   * For UI display, use `task_owner_name` (resolved by the provider).
+   */
   task_owner?: string | null;
+  /**
+   * Resolved display name for `task_owner`, computed by the provider
+   * via member lookup. Use this for rendering chips/labels, never for
+   * writes. `undefined` if unassigned or unresolvable.
+   */
+  task_owner_name?: string;
   list_id?: string | null;
   reminder_time?: string | null;
   recurrence_frequency?: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';

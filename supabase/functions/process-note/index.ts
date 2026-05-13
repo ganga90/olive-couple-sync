@@ -2760,22 +2760,39 @@ Use this header as shared context across ALL items:
       ? processedResponse.notes
       : [processedResponse.notes?.[0] || processedResponse];
 
-    // ─── Trust gate prep (Phase C-2.b) ────────────────────────────
-    // Fetch the user's own display name once so we can distinguish
-    // self-assignment ("Me to buy milk" → user's own name) from
-    // other-assignment ("Marco to buy milk" → partner). Only the
-    // latter goes through the trust gate; self-assignment runs
-    // autonomously, matching the existing UX.
-    let userOwnNameLower: string | null = null;
-    try {
-      const { data: ownProfile } = await supabase
-        .from('clerk_profiles')
-        .select('display_name')
-        .eq('id', user_id)
-        .maybeSingle();
-      userOwnNameLower = (ownProfile as any)?.display_name?.toLowerCase()?.trim() || null;
-    } catch (ownErr) {
-      console.warn('[process-note] Own display_name lookup failed (non-blocking):', ownErr);
+    // ─── Owner resolution prep (Phase C-2.b + canonicalization) ───
+    // Build a (lowercase-display-name → {user_id, displayName}) map
+    // for the current space. The AI returns task_owner as a display
+    // name string ("Almu"); we normalize that to the canonical
+    // user_id here BEFORE writing to clerk_notes.task_owner.
+    //
+    // Post-migration 20260513032720_canonicalize_task_owner, that
+    // column only accepts NULL or a user_id. Writing a display-name
+    // string is the legacy bug this PR closes.
+    //
+    // Trust gate (assign_task vs self-assignment) keys off whether
+    // the resolved user_id equals the requesting user_id — no longer
+    // needs a separate own-name lookup.
+    const ownerNameToUserId = new Map<string, { userId: string; displayName: string }>();
+    if (spaceId) {
+      try {
+        const { data: spaceMembersForOwner } = await supabase
+          .from('olive_space_members')
+          .select('user_id, nickname, clerk_profiles:user_id (display_name)')
+          .eq('space_id', spaceId);
+        for (const m of (spaceMembersForOwner || [])) {
+          const displayName =
+            (m as any).nickname || (m as any).clerk_profiles?.display_name || null;
+          if (displayName && (m as any).user_id) {
+            ownerNameToUserId.set(
+              String(displayName).toLowerCase().trim(),
+              { userId: (m as any).user_id, displayName },
+            );
+          }
+        }
+      } catch (membersErr) {
+        console.warn('[process-note] space members lookup failed (owner resolution will fall back to null):', membersErr);
+      }
     }
 
     const processedNotes = await Promise.all(
@@ -2801,45 +2818,69 @@ Use this header as shared context across ALL items:
             ? await findOrCreateList(note.category, note.tags || [], note.target_list, summary)
             : null);
 
+        // ─── Resolve AI-supplied display name to canonical user_id ──
+        // The AI returns task_owner as a display-name string (e.g.
+        // "Almu"). The DB column clerk_notes.task_owner is canonical
+        // (NULL or a user_id) post-migration 20260513032720, so we
+        // resolve the name here via the lowercase-name map we built
+        // in trust-gate prep. If the name doesn't match a space
+        // member (typo, name not in space), we keep the display name
+        // ONLY for surfacing in the response — task_owner itself
+        // gets written as NULL to avoid polluting the column.
+        const rawOwner = note.task_owner ? String(note.task_owner).trim() : null;
+        const ownerLookup = rawOwner
+          ? ownerNameToUserId.get(rawOwner.toLowerCase())
+          : null;
+
+        // resolvedOwnerId is the canonical user_id we'll write to
+        // clerk_notes.task_owner. resolvedOwnerName is the display
+        // name we hand back to the client (for the Recap UI and the
+        // pending-assignment toast).
+        let resolvedOwnerId: string | null = ownerLookup?.userId ?? null;
+        let resolvedOwnerName: string | null = ownerLookup?.displayName ?? rawOwner;
+
         // ─── Trust gate (Phase C-2.b) ─────────────────────────────
-        // The AI may have set task_owner = "Marco" (a partner). That's
-        // an `assign_task` action — affects another person, requires
-        // trust to do silently. Self-assignment (task_owner matches
-        // the requesting user's name) runs autonomously. Soul-gated
-        // and fail-soft inside the helper, so users without
+        // Self-assignment runs autonomously; assignment to another
+        // member is an `assign_task` action and requires trust.
+        // Soul-gated and fail-soft inside the helper — users without
         // soul_enabled keep current behavior byte-for-byte.
-        let resolvedTaskOwner: string | null = note.task_owner || null;
-        let pendingAssignment: { intended_owner: string; action_id: string } | null = null;
+        let pendingAssignment: {
+          intended_owner_id: string | null;
+          intended_owner_name: string | null;
+          action_id: string;
+        } | null = null;
 
-        if (resolvedTaskOwner) {
-          const ownerLower = String(resolvedTaskOwner).toLowerCase().trim();
-          const isSelfAssignment = userOwnNameLower !== null && ownerLower === userOwnNameLower;
+        if (resolvedOwnerId && resolvedOwnerId !== user_id) {
+          const trust = await checkTrustForAction(supabase, {
+            userId: user_id,
+            actionType: 'assign_task',
+            spaceId: spaceId || undefined,
+            actionPayload: {
+              task_summary: summary,
+              task_owner_id: resolvedOwnerId,
+              task_owner_name: resolvedOwnerName,
+              category: note.category || 'task',
+            },
+            actionDescription: `assign "${(summary as string).slice(0, 60)}" to ${resolvedOwnerName || resolvedOwnerId}`,
+            triggerType: 'reactive',
+          });
 
-          if (!isSelfAssignment) {
-            const trust = await checkTrustForAction(supabase, {
-              userId: user_id,
-              actionType: 'assign_task',
-              spaceId: spaceId || undefined,
-              actionPayload: {
-                task_summary: summary,
-                task_owner: resolvedTaskOwner,
-                category: note.category || 'task',
-              },
-              actionDescription: `assign "${(summary as string).slice(0, 60)}" to ${resolvedTaskOwner}`,
-              triggerType: 'reactive',
-            });
-
-            if (!trust.allowed) {
-              console.log(
-                `[process-note] assign_task gated (${trust.trust_level_name})`
-                + ` → queued ${trust.action_id}, clearing task_owner`,
-              );
-              pendingAssignment = {
-                intended_owner: resolvedTaskOwner,
-                action_id: trust.action_id || '',
-              };
-              resolvedTaskOwner = null; // Don't persist the assignment until approved.
-            }
+          if (!trust.allowed) {
+            console.log(
+              `[process-note] assign_task gated (${trust.trust_level_name})`
+              + ` → queued ${trust.action_id}, clearing task_owner`,
+            );
+            pendingAssignment = {
+              intended_owner_id: resolvedOwnerId,
+              intended_owner_name: resolvedOwnerName,
+              action_id: trust.action_id || '',
+            };
+            // Don't persist the assignment until approved. The pending
+            // intent is preserved in olive_trust_actions for approval,
+            // and surfaced to the client via pending_assignment so the
+            // UI can show a "Olive wants to assign this to Almu" toast.
+            resolvedOwnerId = null;
+            resolvedOwnerName = null;
           }
         }
 
@@ -2853,15 +2894,19 @@ Use this header as shared context across ALL items:
           priority: note.priority || "medium",
           tags: note.tags || [],
           items: note.items || [],
-          task_owner: resolvedTaskOwner,
+          // Canonical: user_id (or null). Written verbatim to clerk_notes.task_owner.
+          task_owner: resolvedOwnerId,
+          // Display name for the Recap UI. NOT written to the DB; the
+          // provider re-resolves it from task_owner on read.
+          task_owner_name: resolvedOwnerName,
           list_id: listId,
           original_text: safeText,
           media_urls: mediaUrls.length > 0 ? mediaUrls : null,
-          // Set when the gate queued the assignment for approval. Callers
-          // (web app, whatsapp-webhook) may surface this to inform the
-          // user that their assignment is pending — the queued row is in
-          // olive_trust_actions and the notification is in
-          // olive_trust_notifications.
+          // Set when the trust gate queued the assignment for approval.
+          // Web/WhatsApp clients surface this so the user can see that
+          // Olive intended to assign to a partner but is waiting on
+          // their approval. Approval row lives in olive_trust_actions;
+          // notification in olive_trust_notifications.
           pending_assignment: pendingAssignment,
         };
       })

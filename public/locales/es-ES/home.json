@@ -99,7 +99,8 @@
     "taskCompleted": "¡Tarea completada!",
     "markedIncomplete": "Tarea marcada como incompleta",
     "taskCompletedShort": "¡Tarea completada!",
-    "failedToUpdate": "Error al actualizar la tarea"
+    "failedToUpdate": "Error al actualizar la tarea",
+    "pendingAssignment": "🌿 Anotado — y se la asignaría a {{name}}, a la espera de tu aprobación."
   },
   "recentTasks": {
     "by": "Por",

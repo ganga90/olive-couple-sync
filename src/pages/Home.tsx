@@ -6,6 +6,7 @@ import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSupabaseCouple } from "@/providers/SupabaseCoupleProvider";
+import { resolveOwnerLabel } from "@/lib/owner-display";
 import { useSupabaseNotesContext } from "@/providers/SupabaseNotesProvider";
 import { useLanguage } from "@/providers/LanguageProvider";
 import { TaskItem } from "@/components/TaskItem";
@@ -277,31 +278,21 @@ const Home = () => {
   };
 
   const getAuthorName = (note: Note) => {
-    // For private tasks, always show the actual author
-    if (!note.isShared && note.authorId) {
-      if (note.authorId === user?.id) return t('home:taskOwner.you', 'You');
-      const resolved = getMemberName(note.authorId);
-      return resolved !== 'Unknown' ? resolved : note.addedBy;
-    }
-    // For shared tasks, use task_owner if set, otherwise resolve from authorId
-    if (note.task_owner) {
-      // If the resolved task_owner matches the current user, show "You"
-      if (note.authorId === user?.id && (!note.task_owner.startsWith('user_'))) {
-        // task_owner was resolved to a display name — check if it's actually us
-        const currentUserName = getMemberName(user?.id || '');
-        if (note.task_owner === currentUserName) return t('home:taskOwner.you', 'You');
-      }
-      const resolved = getMemberName(note.task_owner);
-      if (resolved !== 'Unknown') return resolved;
-      return note.task_owner;
-    }
-    // No task_owner on a shared task — resolve from authorId
-    if (note.authorId) {
-      if (note.authorId === user?.id) return t('home:taskOwner.you', 'You');
-      return getMemberName(note.authorId);
-    }
-    return t('home:taskOwner.everyone', 'Everyone');
+    // Single source of truth for owner labels across surfaces. The
+    // helper is unit-tested in supabase/functions/_shared/owner-display.test.ts
+    // and assumes `task_owner` is canonical user_id (or null), per
+    // migration 20260513032720_canonicalize_task_owner.
+    return resolveOwnerLabel({
+      note,
+      currentUserId: user?.id,
+      members,
+      t: {
+        you: t('home:taskOwner.you', 'You'),
+        everyone: t('home:taskOwner.everyone', 'Everyone'),
+      },
+    });
   };
+
 
   if (!isAuthenticated) {
     return (

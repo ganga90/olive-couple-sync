@@ -99,7 +99,8 @@
     "taskCompleted": "Task completed!",
     "markedIncomplete": "Task marked as incomplete",
     "taskCompletedShort": "Task completed!",
-    "failedToUpdate": "Failed to update task"
+    "failedToUpdate": "Failed to update task",
+    "pendingAssignment": "🌿 Got it — and I'd assign this to {{name}}, pending your approval."
   },
   "recentTasks": {
     "by": "By",

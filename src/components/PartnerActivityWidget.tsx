@@ -66,11 +66,11 @@ export const PartnerActivityWidget: React.FC<PartnerActivityWidgetProps> = ({ no
       .slice(0, MAX_VISIBLE_ACTIVITIES * 2);
 
     return sharedFromOthers.map(note => {
-      const currentMember = members.find(m => m.user_id === userId);
-      const youName = currentMember?.display_name || currentCouple?.you_name;
-      const isAssignedToYou = note.task_owner === 'you' ||
-                              note.task_owner === youName ||
-                              note.task_owner === userId;
+      // Post-canonicalization (PR fix/task-owner-canonicalization +
+      // migration 20260513032720), task_owner is always a user_id or
+      // null — so a clean equality check is all we need. The old
+      // triple-OR comparison was leaking the literal token 'you'.
+      const isAssignedToYou = !!userId && note.task_owner === userId;
 
       // Resolve the author's display name from space members.
       const authorName = note.authorId ? getMemberName(note.authorId) : partnerName;

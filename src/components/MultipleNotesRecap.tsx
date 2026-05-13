@@ -20,7 +20,10 @@ interface MultipleNotesRecapProps {
     tags?: string[];
     items?: string[];
     originalText: string;
+    /** Canonical user_id (or null). Written to clerk_notes.task_owner. */
     task_owner?: string | null;
+    /** Resolved display name for the chip. Resolved by process-note. */
+    task_owner_name?: string | null;
     list_id?: string | null;
   }>;
   originalText: string;
@@ -288,10 +291,10 @@ export const MultipleNotesRecap: React.FC<MultipleNotesRecapProps> = ({
                             </Badge>
                           )}
                           
-                          {note.task_owner && (
+                          {(note.task_owner_name || note.task_owner) && (
                             <Badge variant="outline" className="text-[10px] h-5 border-border/50">
                               <User className="w-2.5 h-2.5 mr-0.5" />
-                              {note.task_owner}
+                              {note.task_owner_name || note.task_owner}
                             </Badge>
                           )}
                           
