@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sun, Moon, Bell, Sparkles, Clock, AlarmClock } from 'lucide-react';
+import { Loader2, Sun, Moon, Bell, Sparkles, Clock, AlarmClock, Leaf } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +18,7 @@ interface OlivePreferences {
   overdue_nudge_enabled: boolean;
   pattern_suggestions_enabled: boolean;
   weekly_summary_enabled: boolean;
+  proactive_bridge_enabled: boolean;
   quiet_hours_start: string;
   quiet_hours_end: string;
   max_daily_messages: number;
@@ -32,6 +33,10 @@ const DEFAULT_PREFERENCES: OlivePreferences = {
   overdue_nudge_enabled: true,
   pattern_suggestions_enabled: true,
   weekly_summary_enabled: false,
+  // Opt-in: after a brain-dump CREATE with no date / reminder, Olive
+  // offers a single bounded "Want me to set a date?" follow-up. Off by
+  // default so the brain-dump flow stays frictionless until invited.
+  proactive_bridge_enabled: false,
   quiet_hours_start: '22:00',
   quiet_hours_end: '07:00',
   max_daily_messages: 5,
@@ -85,6 +90,7 @@ export const OliveProactivePreferences: React.FC = () => {
           overdue_nudge_enabled: data.overdue_nudge_enabled ?? true,
           pattern_suggestions_enabled: data.pattern_suggestions_enabled ?? true,
           weekly_summary_enabled: data.weekly_summary_enabled ?? false,
+          proactive_bridge_enabled: (data as any).proactive_bridge_enabled ?? false,
           quiet_hours_start: data.quiet_hours_start ?? '22:00',
           quiet_hours_end: data.quiet_hours_end ?? '07:00',
           max_daily_messages: data.max_daily_messages ?? 5,
@@ -254,9 +260,26 @@ export const OliveProactivePreferences: React.FC = () => {
               <p className="text-xs text-muted-foreground">{t('olivePreferences.weeklySummaryDesc', 'Get a weekly productivity report on Sundays')}</p>
             </div>
           </div>
-          <Switch 
-            checked={preferences.weekly_summary_enabled} 
-            onCheckedChange={(v) => updatePreference('weekly_summary_enabled', v)} 
+          <Switch
+            checked={preferences.weekly_summary_enabled}
+            onCheckedChange={(v) => updatePreference('weekly_summary_enabled', v)}
+          />
+        </div>
+
+        {/* Proactive Bridge — opt-in. When a brain-dump CREATE saves a
+            task with no date / reminder, Olive offers one bounded
+            follow-up ("Want me to set a date?"). One-shot, 5-min TTL. */}
+        <div className="flex items-center justify-between py-3">
+          <div className="flex items-center gap-3">
+            <Leaf className="h-5 w-5 text-primary" />
+            <div>
+              <Label className="text-sm font-medium">{t('olivePreferences.proactiveBridge', 'Brain-dump Date Bridge')}</Label>
+              <p className="text-xs text-muted-foreground">{t('olivePreferences.proactiveBridgeDesc', 'When you save a task with no date, Olive offers to add one — single, bounded prompt.')}</p>
+            </div>
+          </div>
+          <Switch
+            checked={preferences.proactive_bridge_enabled}
+            onCheckedChange={(v) => updatePreference('proactive_bridge_enabled', v)}
           />
         </div>
       </div>

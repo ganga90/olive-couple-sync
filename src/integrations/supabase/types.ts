@@ -3732,6 +3732,7 @@ export type Database = {
           overdue_nudge_enabled: boolean | null
           pattern_suggestions_enabled: boolean | null
           plan_id: string | null
+          proactive_bridge_enabled: boolean
           proactive_enabled: boolean | null
           quiet_hours_end: string | null
           quiet_hours_start: string | null
@@ -3754,6 +3755,7 @@ export type Database = {
           overdue_nudge_enabled?: boolean | null
           pattern_suggestions_enabled?: boolean | null
           plan_id?: string | null
+          proactive_bridge_enabled?: boolean
           proactive_enabled?: boolean | null
           quiet_hours_end?: string | null
           quiet_hours_start?: string | null
@@ -3776,6 +3778,7 @@ export type Database = {
           overdue_nudge_enabled?: boolean | null
           pattern_suggestions_enabled?: boolean | null
           plan_id?: string | null
+          proactive_bridge_enabled?: boolean
           proactive_enabled?: boolean | null
           quiet_hours_end?: string | null
           quiet_hours_start?: string | null
