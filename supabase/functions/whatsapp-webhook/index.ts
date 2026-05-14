@@ -49,6 +49,12 @@ import {
 import { parseExpenseText } from "../_shared/expense-detector.ts";
 import { captureReplyReflection } from "../_shared/reflection-capture.ts";
 import { checkTrustForAction } from "../_shared/trust-gate-check.ts";
+import {
+  insertNote,
+  insertNotesBatch,
+  whatsappSourceFromMessageType,
+  type NoteSource,
+} from "../_shared/note-insert.ts";
 import { assembleContextSoul } from "../_shared/context-soul/index.ts";
 import { resolveAddendum } from "../_shared/prompt-evolution/ab-router.ts";
 import {
@@ -1101,6 +1107,11 @@ async function createNoteFromCluster(
   reply: (text: string, mediaUrl?: string) => Promise<void>,
   // deno-lint-ignore no-explicit-any
   saveReferencedEntity: (task: any, oliveResponse: string, displayedList?: any) => Promise<void>,
+  // Bucket 3 — source attribution. Threaded from the IIFE handler scope
+  // so every clerk_notes insert in this path is tagged with the upstream
+  // WhatsApp message id and the derived channel.
+  inboundNoteSource: NoteSource,
+  wamid: string,
 ): Promise<void> {
   // Build the process-note payload. The combined text and media flow
   // through the same fields process-note already understands.
@@ -1143,9 +1154,11 @@ async function createNoteFromCluster(
   const insertedNotes: Array<{ id: string; summary: string; list_id: string | null }> = [];
   for (const note of notesToInsert) {
     const noteSummary = note?.summary || processData?.summary || "Saved capture";
-    const noteData = {
+    const { data: insertedNote, error: insertError } = await insertNote(supabase, {
       author_id: userId,
       couple_id: effectiveCoupleId,
+      source: inboundNoteSource,
+      source_ref: wamid,
       original_text: note?.original_text || combined.text || noteSummary,
       summary: noteSummary,
       category: note?.category || processData?.category || "task",
@@ -1160,17 +1173,16 @@ async function createNoteFromCluster(
       list_id: note?.list_id || processData?.list_id || null,
       media_urls: combined.media_urls.length > 0 ? combined.media_urls : null,
       completed: false,
-    };
-    const { data: insertedNote, error: insertError } = await supabase
-      .from("clerk_notes")
-      .insert(noteData)
-      .select("id, summary, list_id")
-      .single();
-    if (insertError) {
+    });
+    if (insertError || !insertedNote) {
       console.error("[Cluster CREATE] insert error:", insertError);
       continue;
     }
-    insertedNotes.push(insertedNote);
+    insertedNotes.push({
+      id: insertedNote.id,
+      summary: insertedNote.summary ?? "",
+      list_id: insertedNote.list_id,
+    });
   }
 
   if (insertedNotes.length === 0) {
@@ -2006,6 +2018,14 @@ interface MetaMessageData {
   phoneNumberId: string;
   messageId: string;
   /**
+   * Raw Meta `message.type` — used by callers to derive
+   * `inboundNoteSource` (whatsapp / whatsapp-voice / whatsapp-media)
+   * for clerk_notes inserts. Preserved as the raw type string so
+   * routing logic above this layer can switch on it; the helper
+   * `whatsappSourceFromMessageType` collapses it to a NoteSource.
+   */
+  messageType: string;
+  /**
    * PR4 / Block C — WAMID of the message the user is "replying to" /
    * quoting in WhatsApp's UI. Present only when `message.context.id` is
    * delivered by Meta. Used to disambiguate which task the user means
@@ -2119,6 +2139,7 @@ function extractMetaMessage(body: any): MetaMessageData | null {
       longitude: longitude || null,
       phoneNumberId: phoneNumberId || '',
       messageId: messageId || '',
+      messageType: message.type || 'text',
       quotedMessageId,
       receivedAtIso,
     };
@@ -2214,8 +2235,15 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { fromNumber: rawFromNumber, messageBody: rawMessageBody, mediaItems, latitude, longitude, phoneNumberId, messageId, quotedMessageId, receivedAtIso } = messageData;
+    const { fromNumber: rawFromNumber, messageBody: rawMessageBody, mediaItems, latitude, longitude, phoneNumberId, messageId, messageType, quotedMessageId, receivedAtIso } = messageData;
     const fromNumber = standardizePhoneNumber(rawFromNumber);
+
+    // Source attribution (Bucket 3): derived once at handler scope and reused
+    // at every clerk_notes insert site. `wamid` is Meta's per-message id
+    // (already destructured above as `messageId`); aliased for clarity at
+    // call sites.
+    const wamid: string = messageId;
+    const inboundNoteSource: NoteSource = whatsappSourceFromMessageType(messageType);
 
     // Mutable ref for userId so reply() can access it after auth
     let _authenticatedUserId: string | null = null;
@@ -2706,6 +2734,8 @@ serve(async (req) => {
                   combined,
                   reply,
                   saveReferencedEntity,
+                  inboundNoteSource,
+                  wamid,
                 );
               }
             } catch (clusterErr) {
@@ -2865,9 +2895,11 @@ serve(async (req) => {
 
         for (const note of notesToInsert) {
           const noteSummary = note.summary || processData.summary || 'Media attachment';
-          const noteData = {
+          const { data: insertedNote, error: insertError } = await insertNote(supabase, {
             author_id: mediaUserId,
             couple_id: mediaEffectiveCoupleId,
+            source: 'whatsapp-media',
+            source_ref: wamid,
             original_text: note.original_text || noteSummary,
             summary: noteSummary,
             category: note.category || processData.category || 'task',
@@ -2882,19 +2914,13 @@ serve(async (req) => {
             list_id: note.list_id || processData.list_id || null,
             media_urls: mediaUrls,
             completed: false,
-          };
+          });
 
-          const { data: insertedNote, error: insertError } = await supabase
-            .from('clerk_notes')
-            .insert(noteData)
-            .select('id, summary, list_id')
-            .single();
-
-          if (insertError) {
+          if (insertError || !insertedNote) {
             console.error('[WhatsApp] Insert error for media note:', insertError);
             continue; // Skip failed inserts, try the rest
           }
-          insertedNotes.push(insertedNote);
+          insertedNotes.push({ id: insertedNote.id, summary: insertedNote.summary ?? '', list_id: insertedNote.list_id });
         }
 
         if (insertedNotes.length === 0) {
@@ -4872,28 +4898,26 @@ Description: "${parsedExpense.description}"`;
             const notesToInsert: any[] = isMultiple ? processData.notes : [processData];
             for (const note of notesToInsert) {
               const noteSummary = note?.summary || 'Saved note';
-              const { data: inserted, error: insertErr } = await supabase
-                .from('clerk_notes')
-                .insert({
-                  author_id: userId,
-                  couple_id: effectiveCoupleId,
-                  original_text: note?.original_text || attachOffer.original_message,
-                  summary: noteSummary,
-                  category: note?.category || 'task',
-                  due_date: note?.due_date || null,
-                  reminder_time: note?.reminder_time || null,
-                  recurrence_frequency: note?.recurrence_frequency || null,
-                  recurrence_interval: note?.recurrence_interval || null,
-                  priority: note?.priority || 'medium',
-                  tags: note?.tags || [],
-                  items: note?.items || [],
-                  task_owner: note?.task_owner || null,
-                  list_id: note?.list_id || null,
-                  completed: false,
-                })
-                .select('id, summary')
-                .single();
-              if (!insertErr && inserted) insertedSummary = inserted.summary;
+              const { data: inserted, error: insertErr } = await insertNote(supabase, {
+                author_id: userId,
+                couple_id: effectiveCoupleId,
+                source: inboundNoteSource,
+                source_ref: wamid,
+                original_text: note?.original_text || attachOffer.original_message,
+                summary: noteSummary,
+                category: note?.category || 'task',
+                due_date: note?.due_date || null,
+                reminder_time: note?.reminder_time || null,
+                recurrence_frequency: note?.recurrence_frequency || null,
+                recurrence_interval: note?.recurrence_interval || null,
+                priority: note?.priority || 'medium',
+                tags: note?.tags || [],
+                items: note?.items || [],
+                task_owner: note?.task_owner || null,
+                list_id: note?.list_id || null,
+                completed: false,
+              });
+              if (!insertErr && inserted?.summary) insertedSummary = inserted.summary;
             }
           } else {
             console.warn('[SafetyNet#1.4b] process-note for standalone failed, doing a minimal insert:', processError);
@@ -4902,22 +4926,20 @@ Description: "${parsedExpense.description}"`;
               attachOffer.original_message.length > 80
                 ? attachOffer.original_message.substring(0, 77) + '...'
                 : attachOffer.original_message;
-            const { data: fb } = await supabase
-              .from('clerk_notes')
-              .insert({
-                author_id: userId,
-                couple_id: effectiveCoupleId,
-                original_text: attachOffer.original_message,
-                summary: fallbackSummary,
-                category: 'task',
-                priority: 'medium',
-                tags: [],
-                items: [],
-                completed: false,
-              })
-              .select('id, summary')
-              .single();
-            if (fb) insertedSummary = fb.summary;
+            const { data: fb } = await insertNote(supabase, {
+              author_id: userId,
+              couple_id: effectiveCoupleId,
+              source: inboundNoteSource,
+              source_ref: wamid,
+              original_text: attachOffer.original_message,
+              summary: fallbackSummary,
+              category: 'task',
+              priority: 'medium',
+              tags: [],
+              items: [],
+              completed: false,
+            });
+            if (fb?.summary) insertedSummary = fb.summary;
           }
 
           // 3. Clear the offer (so a follow-up "undo" doesn't re-fire).
@@ -6199,9 +6221,11 @@ Description: "${parsedExpense.description}"`;
             }
           }
           
-          const noteData: any = {
+          const { data: insertedNote, error: insertError } = await insertNote(supabase, {
             author_id: userId,
             couple_id: effectiveCoupleId,
+            source: inboundNoteSource,
+            source_ref: wamid,
             original_text: messageBody || taskDescription,
             summary: processData.summary || taskDescription,
             category: processData.category || 'Task',
@@ -6213,15 +6237,9 @@ Description: "${parsedExpense.description}"`;
             list_id: processData.list_id || null,
             media_urls: mediaUrls.length > 0 ? mediaUrls : null,
             completed: false,
-          };
-          
-          const { data: insertedNote, error: insertError } = await supabase
-            .from('clerk_notes')
-            .insert(noteData)
-            .select('id, summary, list_id')
-            .single();
-          
-          if (insertError) {
+          });
+
+          if (insertError || !insertedNote) {
             console.error('[TASK_ACTION] Insert error:', insertError);
             return reply(t('error_generic', userLang));
           }
@@ -6244,17 +6262,18 @@ Description: "${parsedExpense.description}"`;
               ? formatFriendlyDate(eventDueDate, true, userTz, userLang)
               : parseNaturalDate('tomorrow', userTz, userLang).readable;
 
+          const insertedSummary = insertedNote.summary ?? '';
           const confirmationMessage = [
-            t('note_saved', userLang, { summary: insertedNote.summary }),
+            t('note_saved', userLang, { summary: insertedSummary }),
             t('note_added_to', userLang, { list: listName }),
             t('note_reminder_set', userLang, { date: friendlyDate }),
             ``,
             t('note_manage', userLang),
           ].join('\n');
-          
+
           // Store as referenced entity for follow-up
           await saveReferencedEntity(
-            { id: insertedNote.id, summary: insertedNote.summary, list_id: insertedNote.list_id || undefined },
+            { id: insertedNote.id, summary: insertedSummary, list_id: insertedNote.list_id || undefined },
             confirmationMessage
           );
           
@@ -9141,9 +9160,14 @@ If the user's message is long and conversational — asking for help with someth
               console.error('[PARTNER_MESSAGE] process-note error:', processErr);
             }
 
-            const noteData = {
+            // Bucket 3: this is a relay note created on the partner's behalf —
+            // not a real user capture. Tagged `partner-relay` so it doesn't
+            // pollute "captures from WhatsApp" analytics.
+            const { data: insertedNote, error: insertErr } = await insertNote(supabase, {
               author_id: userId,
               couple_id: coupleId, // Partner tasks are always shared
+              source: 'partner-relay',
+              source_ref: `partner_relay:${partnerAction}`,
               original_text: partnerMessageContent,
               summary: processData?.summary || partnerMessageContent,
               category: processData?.category || 'task',
@@ -9156,26 +9180,19 @@ If the user's message is long and conversational — asking for help with someth
               items: processData?.items || [],
               task_owner: partnerId,
               list_id: processData?.list_id || null,
-              source: 'whatsapp',
-              source_ref: `partner_relay:${partnerAction}`,
               completed: false,
-            };
-
-            const { data: insertedNote, error: insertErr } = await supabase
-              .from('clerk_notes')
-              .insert(noteData)
-              .select('id, summary, list_id')
-              .single();
+            });
 
             if (insertErr) {
               console.error('[PARTNER_MESSAGE] Note insert error:', insertErr.message, insertErr.details);
             } else if (insertedNote) {
-              savedTask = { id: insertedNote.id, summary: insertedNote.summary };
-              console.log('[PARTNER_MESSAGE] ✅ Created task for partner:', insertedNote.summary, '| list_id:', insertedNote.list_id);
+              const partnerSummary = insertedNote.summary ?? '';
+              savedTask = { id: insertedNote.id, summary: partnerSummary };
+              console.log('[PARTNER_MESSAGE] ✅ Created task for partner:', partnerSummary, '| list_id:', insertedNote.list_id);
 
               // Generate embedding for semantic search (non-blocking)
               try {
-                const embedding = await generateEmbedding(insertedNote.summary);
+                const embedding = await generateEmbedding(partnerSummary);
                 if (embedding) {
                   await supabase
                     .from('clerk_notes')
@@ -9486,6 +9503,11 @@ Return ONLY valid JSON, no markdown.`,
         const noteData: any = {
           author_id: userId,
           couple_id: effectiveCoupleId,
+          // Bucket 3: capture channel is WhatsApp (user typed "save this" via
+          // WhatsApp); the artifact's *content* came from Olive's chat reply,
+          // but that's incidental to source attribution.
+          source: inboundNoteSource,
+          source_ref: wamid,
           original_text: (artifactRequest || 'Saved from Olive chat').substring(0, 2000),
           summary: title,
           category: category.toLowerCase().replace(/\s+/g, '_'),
@@ -9493,7 +9515,6 @@ Return ONLY valid JSON, no markdown.`,
           tags: tags,
           items: artifactLines.length > 0 ? artifactLines : [artifactContent.substring(0, 4000)],
           completed: false,
-          source: 'olive-chat',
         };
         
         // If user mentioned a specific list, try to find it (multi-word support)
@@ -9516,12 +9537,8 @@ Return ONLY valid JSON, no markdown.`,
           }
         }
         
-        const { data: savedNote, error: saveError } = await supabase
-          .from('clerk_notes')
-          .insert(noteData)
-          .select('id, summary, list_id')
-          .single();
-        
+        const { data: savedNote, error: saveError } = await insertNote(supabase, noteData);
+
         if (saveError || !savedNote) {
           console.error('[SAVE_ARTIFACT] Insert error:', saveError);
           return reply(t('artifact_save_error', userLang));
@@ -9567,8 +9584,9 @@ Return ONLY valid JSON, no markdown.`,
           if (listInfo) listConfirm = ` in your *${listInfo.name}* list`;
         }
         
-        const saveConfirm = t('artifact_saved', userLang, { title: savedNote.summary, list: listConfirm });
-        await saveReferencedEntity(savedNote, saveConfirm);
+        const savedSummary = savedNote.summary ?? '';
+        const saveConfirm = t('artifact_saved', userLang, { title: savedSummary, list: listConfirm });
+        await saveReferencedEntity({ id: savedNote.id, summary: savedSummary, list_id: savedNote.list_id ?? undefined }, saveConfirm);
         return reply(saveConfirm);
         
       } catch (artifactErr) {
@@ -9657,6 +9675,8 @@ Return ONLY valid JSON, no markdown.`,
           const notesToInsert = items.map((item: string) => ({
             author_id: userId,
             couple_id: effectiveCoupleId,
+            source: inboundNoteSource,
+            source_ref: wamid,
             original_text: item,
             summary: item,
             category: formattedName.toLowerCase().replace(/\s+/g, '_'),
@@ -9667,9 +9687,7 @@ Return ONLY valid JSON, no markdown.`,
             items: [],
           }));
 
-          const { error: itemsError } = await supabase
-            .from('clerk_notes')
-            .insert(notesToInsert);
+          const { error: itemsError } = await insertNotesBatch(supabase, notesToInsert);
 
           if (!itemsError) {
             itemsCreated = items.length;
@@ -10133,6 +10151,8 @@ FORMAT for WhatsApp (max 1500 chars):
           return {
             author_id: userId,
             couple_id: noteCoupleId,
+            source: inboundNoteSource,
+            source_ref: wamid,
             ...encFields,
             category: note.category || 'task',
             due_date: note.due_date,
@@ -10150,14 +10170,11 @@ FORMAT for WhatsApp (max 1500 chars):
           };
         }));
 
-        const { data: insertedNotes, error: insertError } = await supabase
-          .from('clerk_notes')
-          .insert(notesToInsert)
-          .select('id, summary, list_id');
+        const { data: insertedNotes, error: insertError } = await insertNotesBatch(supabase, notesToInsert);
 
         if (insertError) throw insertError;
 
-        const primaryListId = insertedNotes?.[0]?.list_id;
+        const primaryListId = insertedNotes?.[0]?.list_id ?? null;
         const listName = await getListName(primaryListId);
         
         const count = processData.notes.length;
@@ -10207,9 +10224,11 @@ FORMAT for WhatsApp (max 1500 chars):
           }
         }
         
-        const noteData = {
+        const { data: insertedNote, error: insertError } = await insertNote(supabase, {
           author_id: userId,
           couple_id: singleNoteCoupleId,
+          source: inboundNoteSource,
+          source_ref: wamid,
           ...encryptionFields,
           category: processData.category || 'task',
           due_date: processData.due_date,
@@ -10224,18 +10243,12 @@ FORMAT for WhatsApp (max 1500 chars):
           location: latitude && longitude ? { latitude, longitude } : null,
           media_urls: mediaUrls.length > 0 ? mediaUrls : null,
           completed: false
-        };
+        });
 
-        const { data: insertedNote, error: insertError } = await supabase
-          .from('clerk_notes')
-          .insert(noteData)
-          .select('id, summary, list_id')
-          .single();
-
-        if (insertError) throw insertError;
+        if (insertError || !insertedNote) throw insertError ?? new Error('Insert returned no row');
 
         insertedNoteId = insertedNote.id;
-        insertedNoteSummary = insertedNote.summary;
+        insertedNoteSummary = insertedNote.summary ?? '';
         insertedListId = insertedNote.list_id;
 
         const listName = await getListName(insertedListId);

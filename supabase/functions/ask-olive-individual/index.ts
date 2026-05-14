@@ -40,6 +40,7 @@ import {
   buildUndoConfirmation,
 } from "../_shared/offer-copy.ts";
 import { pickDisambiguation } from "../_shared/task-disambiguation.ts";
+import { insertNote } from "../_shared/note-insert.ts";
 // GoogleGenAI is now used via shared _shared/intent-classifier.ts
 
 const corsHeaders = {
@@ -1190,19 +1191,26 @@ async function executeTaskAction(
             const { data: processData } = await supabase.functions.invoke('process-note', {
               body: { text: partnerMsgContent, user_id: userId, space_id: spaceId }
             });
-            const noteData = {
-              author_id: userId, space_id: spaceId,
+            // Bucket 3: partner_message relay — same semantics as
+            // whatsapp-webhook's PARTNER_MESSAGE handler. Tagged
+            // `partner-relay` so it doesn't pollute capture-source analytics.
+            const { data: inserted } = await insertNote(supabase, {
+              author_id: userId,
+              space_id: spaceId,
+              source: 'partner-relay',
+              source_ref: `partner_relay:${partnerAction}`,
               original_text: partnerMsgContent,
               summary: processData?.summary || partnerMsgContent,
               category: processData?.category || 'task',
               priority: processData?.priority || 'medium',
-              task_owner: partnerId, completed: false,
-              tags: processData?.tags || [], items: processData?.items || [],
+              task_owner: partnerId,
+              completed: false,
+              tags: processData?.tags || [],
+              items: processData?.items || [],
               due_date: processData?.due_date || null,
               list_id: processData?.list_id || null,
-            };
-            const { data: inserted } = await supabase.from('clerk_notes').insert(noteData).select('id, summary').single();
-            if (inserted) savedTaskSummary = inserted.summary;
+            });
+            if (inserted?.summary) savedTaskSummary = inserted.summary;
           } catch (e) {
             console.error('[partner_message] Task creation error:', e);
           }
