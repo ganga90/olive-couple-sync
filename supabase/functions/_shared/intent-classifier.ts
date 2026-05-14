@@ -29,6 +29,13 @@ export interface ClassificationInput {
   userLists?: Array<{ name: string }>; // User's existing list names for disambiguation
   userLanguage?: string; // defaults to "en"
   hasMedia?: boolean; // Whether media (image, document, PDF) is attached
+  // Partner identity in the user's couple/shared space. Passed so the
+  // classifier can validate "text/tell/remind <name>" verbs against the
+  // ACTUAL partner — otherwise it has no way to know whether a name in
+  // the message is the partner or a third-party (e.g. "Text Jacopo"
+  // where the partner is Almu is a brain-dump task, not a relay).
+  partnerName?: string | null;
+  selfName?: string | null;
 }
 
 export interface ClassifiedIntent {
@@ -279,6 +286,7 @@ If a shortcut prefix is present, strip it from the content for processing. Set c
 - "create_list": User EXPLICITLY asks to CREATE A NEW LIST — they must use words like "create a list", "make a list", "start a list", "new list" + a topic/name. Examples: "create a list about wedding planning", "make a list for our trip to Rome", "start a grocery list", "new list: Home Renovation". This is NOT for creating a task — it's specifically for creating a new organizational LIST/FOLDER. The list_name parameter should contain the desired list name extracted from the message. If the user also provides initial items (e.g., "create a list of books: Atomic Habits, Deep Work"), include them in the partner_message_content parameter (repurposed for initial items). Set confidence to 0.9+.
 - "list_recap": User wants a DETAILED RECAP or REVIEW of a specific list — they want to see every item with full details, status, due dates, and an overall summary. Trigger words: "recap", "review", "summarize", "detail", "breakdown", "overview" combined with a list name. Examples: "recap my groceries list", "give me a detailed review of my travel list", "summarize my work list", "what's the status of my home improvement list?", "review everything in my books list". This is DIFFERENT from "search" (which shows a simple numbered list) — list_recap provides an AI-generated analytical summary with insights. Set list_name parameter to the target list name.
 - "partner_message": User wants to send a message TO their PARTNER (someone IN their Olive shared space) via Olive. Examples: "remind Marco to buy lemons", "tell Almu to pick up the kids", "ask partner to call the dentist", "let Marcus know dinner is ready", "dile a Marco que compre limones", "ricorda a Marco di comprare i limoni". The user is asking YOU to relay a message or task to their partner IN THE SHARED SPACE. Set partner_message_content to the message/task for the partner, and partner_action to the type (remind/tell/ask/notify). **CRITICAL: This is ONLY for messages to the user's PARTNER within the Olive space. If the message mentions an email address, an external colleague/client/friend, or asks Olive to "draft"/"compose"/"write"/"prepare" content, it is "chat" with chat_type="assistant" — NOT partner_message.**
+  **PARTNER NAME GUARD (HIGHEST PRIORITY for partner_message):** ${input.partnerName ? `The user's actual partner is named "${input.partnerName}". A message like "text/tell/remind/ask/message <NAME> to do X" is partner_message ONLY when <NAME> matches "${input.partnerName}" (case-insensitive, allows the partner's first name or any generic partner-reference like "my partner", "my husband", "my wife", "my spouse", or in ES/IT: "mi pareja", "mi marido", "mi esposa", "mio marito", "mia moglie", "mio partner"). If <NAME> is a DIFFERENT person (e.g., Jacopo, Mom, the dentist, my colleague, my boss, a friend's name), the message is a BRAIN DUMP task — classify as "create" (the user is jotting a reminder to text/call/message that third party themselves). NEVER infer partner_message when the named person is not the partner.` : `Partner identity unknown for this user. Without a confirmed partner name, lean toward "create" for "text/tell/remind <NAME>" patterns unless the message uses an unmistakable partner-reference like "my partner", "my husband", "my wife", "my spouse" (or the ES/IT equivalents). When in doubt → "create".`}
 
 ## MEDIA ATTACHMENT:
 ${hasMedia ? '⚠️ **THIS MESSAGE HAS A MEDIA ATTACHMENT (image, document, or file).** Messages with media are ALMOST ALWAYS "create" — the user is saving a photo, document, receipt, or visual note. The caption text describes what the media is about. Examples: [image] + "Health info urologist" = CREATE (saving health document). [image] + "Sofa measures" = CREATE (saving measurements). [image] + "Receipt from dinner" = CREATE or expense. The ONLY exceptions: "$25 receipt" with image = expense. An image with NO caption was already handled separately. ALWAYS classify media+caption as "create" unless the caption is clearly an expense with $ amount.' : 'No media attached.'}
@@ -326,6 +334,11 @@ The PRIMARY use case of this app is brain-dumping: users send quick thoughts, ta
    - "contextual_ask" if they want info from their SAVED data about the same topic
    - NEVER "create" for follow-up questions/clarifications. A follow-up question is NOT a brain dump.
    The KEY TEST: Does the conversation history show Olive recently answered a question or showed search results? If yes, and the user's message continues that thread → web_search or contextual_ask, NOT create.
+
+17a. **CALENDAR/AGENDA FOLLOW-UPS — carry the date forward.** If Olive's previous turn answered a calendar or agenda question ("What's on my calendar for tomorrow?", "What's due today?", "Show my Friday"), and the user sends a short follow-up that names a different day or date ("And for Friday?", "What about Monday?", "How about the 15th?", "Y el viernes?", "E venerdì?"), classify as **search** and set BOTH:
+   - query_type → keep the same dashboard frame as the previous turn if applicable ("today" / "tomorrow" / "this_week" matches), OR "general" if the named day isn't one of those buckets
+   - due_date_expression → the named day/date as the user wrote it ("Friday", "Monday", "the 15th", "next Wednesday", "venerdì"). This is the signal the handler uses to compute a date-scoped agenda window. Without this field, an arbitrary day-name defaults to "today" and surfaces a wrong empty-day response.
+   Confidence 0.9+ when conversation history shows a recent calendar/agenda answer.
 18. **Clarifications and corrections are ALWAYS continuations.** Messages like "I meant X", "no, the Y one", "not that one", "the restaurant", "I was asking about Z" are ALWAYS follow-ups to the previous turn. Route them the same way as the previous Olive response (web_search → web_search, contextual_ask → contextual_ask). NEVER classify these as "create".
 
 ## LIST MANAGEMENT EXAMPLES (CRITICAL — distinguish from search/create):

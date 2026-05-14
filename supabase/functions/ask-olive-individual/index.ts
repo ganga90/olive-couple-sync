@@ -1501,6 +1501,27 @@ serve(async (req) => {
           }
         } catch { /* non-blocking */ }
 
+        // Resolve partner-name so the classifier can validate "text/tell/
+        // remind <NAME>" verb-targets against the user's actual partner
+        // (prevents "Text Jacopo about X" from being routed to the
+        // partner Almu — same fix that whatsapp-webhook applies).
+        let webPartnerName: string | null = null;
+        let webSelfName: string | null = null;
+        if (actualSpaceId) {
+          try {
+            const { data: coupleRow } = await supabase
+              .from('clerk_couples')
+              .select('you_name, partner_name, created_by')
+              .eq('id', actualSpaceId)
+              .maybeSingle();
+            if (coupleRow) {
+              const isCreator = coupleRow.created_by === actualUserId;
+              webPartnerName = (isCreator ? coupleRow.partner_name : coupleRow.you_name) || null;
+              webSelfName = (isCreator ? coupleRow.you_name : coupleRow.partner_name) || null;
+            }
+          } catch { /* non-blocking */ }
+        }
+
         // Classify intent using shared classifier
         const { classifyIntent: sharedClassifyIntent } = await import("../_shared/intent-classifier.ts");
         const classificationResult = await sharedClassifyIntent({
@@ -1511,6 +1532,8 @@ serve(async (req) => {
           activatedSkills: activeSkills,
           userLists,
           userLanguage: webUserLang,
+          partnerName: webPartnerName,
+          selfName: webSelfName,
         });
         const aiResult = classificationResult.intent;
         const classificationLatencyMs = classificationResult.latencyMs;
