@@ -183,9 +183,9 @@ const LANG_NAMES: Record<string, string> = {
 
 const RESPONSES: Record<string, Record<string, string>> = {
   task_completed: {
-    en: '✅ Done! Marked "{task}" as complete. Great job! 🎉',
-    'es': '✅ ¡Hecho! "{task}" marcada como completada. ¡Buen trabajo! 🎉',
-    'it': '✅ Fatto! "{task}" segnata come completata. Ottimo lavoro! 🎉',
+    en: '🌿 Done — "{task}" is complete.',
+    'es': '🌿 Listo — "{task}" completada.',
+    'it': '🌿 Fatto — "{task}" completata.',
   },
   task_not_found: {
     en: 'I couldn\'t find a task matching "{query}". Try "show my tasks" to see your list.',
@@ -206,6 +206,37 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'es': '🌿 No estoy segura de qué tarea es. Dime el nombre o "mostrar mis tareas" y te enseño la lista.',
     'it': '🌿 Non sono sicura di quale attività intendi. Dimmi il nome o "mostra le mie attività" e te le mostro.',
   },
+  // Brand-voice empty-state replies. Previously hardcoded inline.
+  // Per skill voice: warm but not saccharine — no "Great news!" / "all
+  // caught up!", just say what's true and offer one bridge.
+  empty_no_urgent: {
+    en: '🌿 No urgent tasks right now. Want me to show what\'s coming up today?',
+    'es': '🌿 No hay nada urgente ahora mismo. ¿Te muestro lo que tienes hoy?',
+    'it': '🌿 Niente di urgente al momento. Vuoi vedere cosa hai oggi?',
+  },
+  empty_no_today: {
+    en: '🌿 Nothing due today. Want me to check tomorrow or this week?',
+    'es': '🌿 Nada vence hoy. ¿Te muestro mañana o esta semana?',
+    'it': '🌿 Niente in scadenza oggi. Vuoi che controlli domani o questa settimana?',
+  },
+  empty_no_date: {
+    en: '🌿 Nothing scheduled for {date}.',
+    'es': '🌿 Nada programado para {date}.',
+    'it': '🌿 Niente in programma per {date}.',
+  },
+  empty_no_recent: {
+    en: '🌿 No recent tasks. Send me something to save.',
+    'es': '🌿 No hay tareas recientes. Envíame algo para guardar.',
+    'it': '🌿 Nessuna attività recente. Mandami qualcosa da salvare.',
+  },
+  // Soft offer for weak-match TASK_ACTION queries (similarity 0.2–0.4):
+  // instead of "I couldn't find a task matching X", offer the closest
+  // candidate and accept "yes" or "1" to confirm.
+  task_did_you_mean: {
+    en: '🌿 Did you mean "{task}"? Reply "yes" to do it, or send the full task name.',
+    'es': '🌿 ¿Te refieres a "{task}"? Responde "sí" para hacerlo, o envía el nombre completo.',
+    'it': '🌿 Intendi "{task}"? Rispondi "sì" per farlo, o invia il nome completo.',
+  },
   // Offer the focal entity as a candidate when the user named a short
   // word that didn't match anything. Friendlier than dead-end "not found".
   task_focal_offer: {
@@ -214,9 +245,9 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'it': '🌿 Intendi "{task}" — quella di cui abbiamo appena parlato? Rispondi "sì" e la {action}.',
   },
   context_completed: {
-    en: '✅ Done! Marked "{task}" as complete (from your recent reminder). Great job! 🎉',
-    'es': '✅ ¡Hecho! "{task}" completada (de tu recordatorio reciente). ¡Buen trabajo! 🎉',
-    'it': '✅ Fatto! "{task}" completata (dal tuo promemoria recente). Ottimo lavoro! 🎉',
+    en: '🌿 Done — "{task}" is complete (from your recent reminder).',
+    'es': '🌿 Listo — "{task}" completada (de tu recordatorio reciente).',
+    'it': '🌿 Fatto — "{task}" completata (dal tuo promemoria recente).',
   },
   expense_logged: {
     en: '💰 Logged: {amount} at {merchant} ({category})',
@@ -239,9 +270,9 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'it': 'Includi un importo, es. "$25 caffè da Starbucks"',
   },
   action_cancelled: {
-    en: '👍 No problem, I cancelled that action.',
-    'es': '👍 Sin problema, cancelé esa acción.',
-    'it': '👍 Nessun problema, ho annullato quell\'azione.',
+    en: '🌿 Cancelled.',
+    'es': '🌿 Cancelado.',
+    'it': '🌿 Annullato.',
   },
   confirm_unclear: {
     en: 'I didn\'t understand. Please reply "yes" to confirm or "no" to cancel.',
@@ -254,9 +285,9 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'it': '{emoji} Aggiornato! "{task}" ora ha priorità {priority}.',
   },
   error_generic: {
-    en: 'Sorry, something went wrong. Please try again.',
-    'es': 'Lo siento, algo salió mal. Inténtalo de nuevo.',
-    'it': 'Mi dispiace, qualcosa è andato storto. Riprova.',
+    en: '🌿 Something went wrong on my end. Try again?',
+    'es': '🌿 Algo falló por mi parte. ¿Lo intentamos de nuevo?',
+    'it': '🌿 Qualcosa è andato storto da parte mia. Riproviamo?',
   },
   task_ambiguous: {
     en: '🤔 I found multiple tasks matching "{query}":\n\n{options}\n\nWhich one did you mean? Reply with the number.',
@@ -3142,8 +3173,19 @@ serve(async (req) => {
         
         // Try to parse a number from the response
         const numMatch = messageBody.trim().match(/^(\d+)\.?$/);
-        const selectedIndex = numMatch ? parseInt(numMatch[1]) - 1 : -1;
-        
+        let selectedIndex = numMatch ? parseInt(numMatch[1]) - 1 : -1;
+
+        // Single-candidate "Did you mean X?" offer also accepts "yes"
+        // (multilingual) as pick #1. Without this, the user has to type
+        // "1" which feels unnatural when there's only one option.
+        if (selectedIndex === -1 && candidates.length === 1) {
+          const isAffirmSingle = /^(yes|yeah|yep|sure|ok|okay|confirm|si|sí|sì|do it|go ahead|please|y)$/i
+            .test(messageBody.trim());
+          if (isAffirmSingle) {
+            selectedIndex = 0;
+          }
+        }
+
         if (selectedIndex >= 0 && selectedIndex < candidates.length) {
           const selectedTask = candidates[selectedIndex];
           console.log(`[DISAMBIGUATION] User selected #${selectedIndex + 1}: "${selectedTask.summary}"`);
@@ -5151,7 +5193,7 @@ Description: "${parsedExpense.description}"`;
               );
 
               if (dueOnDateTasks.length === 0 && dateCalendarEvents.length === 0) {
-                return reply(`📅 Nothing scheduled for ${dateLabel}.`);
+                return reply(t('empty_no_date', userLang, { date: dateLabel }));
               }
 
               let response = `📅 Agenda for ${dateLabel}:\n`;
@@ -5189,7 +5231,7 @@ Description: "${parsedExpense.description}"`;
 
       if (queryType === 'urgent') {
         if (urgentTasks.length === 0) {
-          return reply('🎉 Great news! You have no urgent tasks right now.\n\n💡 Use "!" prefix to mark tasks as urgent (e.g., "!call mom")');
+          return reply(t('empty_no_urgent', userLang));
         }
         
         // PR6 — rename `t` → `task` so we can call t() inside the callback.
@@ -5240,7 +5282,7 @@ Description: "${parsedExpense.description}"`;
         }
         
         if (dueTodayTasks.length === 0 && todayCalendarEvents.length === 0) {
-          return reply('📅 Nothing due today! You\'re all caught up.\n\n💡 Try "what\'s urgent" to see high-priority tasks');
+          return reply(t('empty_no_today', userLang));
         }
         
         let response = `📅 Today's Agenda:\n`;
@@ -5419,7 +5461,7 @@ Description: "${parsedExpense.description}"`;
         if (recentTasks.length === 0) {
           const lastFive = activeTasks.slice(0, 5);
           if (lastFive.length === 0) {
-            return reply('No recent tasks found. Send me something to save!');
+            return reply(t('empty_no_recent', userLang));
           }
           
           const recentList = lastFive.map((t, i) => `${i + 1}. ${t.summary}`).join('\n');
@@ -5744,20 +5786,31 @@ Description: "${parsedExpense.description}"`;
       const isPronoun = !actionTarget || /^(it|that|this|lo|eso|quello|la|esa|questa|quello)$/i.test(actionTarget.trim());
 
       // 2. If no direct match, use semantic search WITH ambiguity detection
+      // Also captures a weak candidate (quality 0.2–0.4) so we can offer a
+      // "Did you mean X?" prompt instead of dead-ending with task_not_found.
+      let weakCandidate: TaskCandidate | null = null;
       if (!foundTask && actionTarget && !isPronoun && !isRelativeReference(actionTarget)) {
         const candidates = await semanticTaskSearchMulti(supabase, userId, coupleId, actionTarget, generateEmbedding, 5);
-        
+
         if (candidates.length > 0) {
           const best = candidates[0];
           const bestMQ = best.matchQuality ?? 0;
-          
+
           // Check for ambiguity: are there multiple high-quality matches?
           const AMBIGUITY_THRESHOLD = 0.15; // If top 2 scores are within 15% of each other
           const MIN_MATCH_QUALITY = 0.4;    // Minimum word overlap to accept a match
-          
+          const WEAK_CANDIDATE_FLOOR = 0.2; // Below this we don't even offer
+
           if (bestMQ < MIN_MATCH_QUALITY) {
-            // Best match is too weak — don't use it
-            console.log(`[TASK_ACTION] Best match "${best.summary}" quality ${bestMQ.toFixed(2)} below threshold, skipping`);
+            // Best match is too weak to AUTO-USE, but if it's at least
+            // WEAK_CANDIDATE_FLOOR we'll offer it via "Did you mean X?"
+            // instead of dead-ending. Cheap UX win.
+            if (bestMQ >= WEAK_CANDIDATE_FLOOR) {
+              weakCandidate = best;
+              console.log(`[TASK_ACTION] Weak candidate "${best.summary}" quality ${bestMQ.toFixed(2)} — will offer as "did you mean?"`);
+            } else {
+              console.log(`[TASK_ACTION] Best match "${best.summary}" quality ${bestMQ.toFixed(2)} below threshold, skipping`);
+            }
           } else if (candidates.length >= 2) {
             const secondMQ = candidates[1].matchQuality ?? 0;
             const scoreDiff = bestMQ - secondMQ;
@@ -5998,6 +6051,35 @@ Description: "${parsedExpense.description}"`;
         // already detected pronouns up front at the `isPronoun` check.
         if (isPronoun) {
           return reply(t('task_pronoun_unclear', userLang));
+        }
+        // "Did you mean X?" — if semantic search returned a weak-but-
+        // not-zero candidate, offer it as a single-option pick via the
+        // existing AWAITING_DISAMBIGUATION machinery. User says "1" or
+        // "yes" → handler runs the action on that task. This kills
+        // dead-end "I couldn't find" replies when there's a clear
+        // neighbor (e.g. user said "set the hotel booking" but the
+        // task is "Book hotel for Mallorca").
+        if (weakCandidate) {
+          const offerCtx = (session.context_data || {}) as ConversationContext;
+          await supabase
+            .from('user_sessions')
+            .update({
+              conversation_state: 'AWAITING_DISAMBIGUATION',
+              context_data: {
+                ...offerCtx,
+                pending_action: {
+                  type: actionType,
+                  candidates: [{ id: weakCandidate.id, summary: weakCandidate.summary }],
+                  original_query: actionTarget,
+                },
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+          console.log(
+            `[TASK_ACTION] Offered weak candidate "${weakCandidate.summary}" via AWAITING_DISAMBIGUATION`,
+          );
+          return reply(t('task_did_you_mean', userLang, { task: weakCandidate.summary }));
         }
         return reply(t('task_not_found', userLang, { query: actionTarget }));
       }

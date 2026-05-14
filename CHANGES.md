@@ -1,5 +1,78 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-14 — Brand-voice warm-up on dead-end replies + "Did you mean X?" weak-candidate offer
+
+Follow-up to [CONV-1]. The previous PR landed the structural continuity
+fixes; this one warms the copy and adds a soft fallback for weak-match
+task searches. All changes in `en` / `es` / `it`.
+
+### Brand-voice rewrite — 6 keys
+
+Per `OLIVE_BRAND_BIBLE.md` + the olive-brand skill: "warm but not
+saccharine; quietly clever; Got it beats Got it! 🎉✨." Existing replies
+were over-cheerful for the actual user state.
+
+| Key | Before (en) | After (en) |
+|---|---|---|
+| `task_completed` | `'✅ Done! Marked "{task}" as complete. Great job! 🎉'` | `'🌿 Done — "{task}" is complete.'` |
+| `context_completed` | `'✅ Done! Marked "{task}" as complete (from your recent reminder). Great job! 🎉'` | `'🌿 Done — "{task}" is complete (from your recent reminder).'` |
+| `action_cancelled` | `'👍 No problem, I cancelled that action.'` | `'🌿 Cancelled.'` |
+| `error_generic` | `'Sorry, something went wrong. Please try again.'` | `'🌿 Something went wrong on my end. Try again?'` |
+
+Mirror rewrites for `es` and `it` to match. The 🌿 leaf becomes the
+signature prefix consistently across the brand voice.
+
+### Hardcoded → i18n migration — 4 new keys
+
+Three previously inline strings violated the "no hardcoded UI text" rule
+and felt saccharine. Now i18n keys with all three locales:
+
+- `empty_no_urgent`: en `'🌿 No urgent tasks right now. Want me to show what's coming up today?'` (was `'🎉 Great news! You have no urgent tasks right now.'`)
+- `empty_no_today`: en `'🌿 Nothing due today. Want me to check tomorrow or this week?'` (was `'📅 Nothing due today! You're all caught up.'`)
+- `empty_no_date`: en `'🌿 Nothing scheduled for {date}.'` (was `'📅 Nothing scheduled for ${dateLabel}.'`)
+- `empty_no_recent`: en `'🌿 No recent tasks. Send me something to save.'` (was `'No recent tasks found. Send me something to save!'`)
+
+### "Did you mean X?" weak-candidate offer
+
+When TASK_ACTION semantic search returned a candidate with quality below
+the 0.4 auto-use threshold, the old behavior dead-ended at `task_not_found`
+with the user's query echoed back. Now: if the best candidate's word-
+overlap quality is between 0.2 and 0.4, capture it as a `weakCandidate`
+and offer it via the existing AWAITING_DISAMBIGUATION machinery — single
+option, soft prompt: "🌿 Did you mean 'X'? Reply 'yes' to do it…"
+
+The disambiguation handler is extended to accept `yes`/`sí`/`sì` as
+"pick #1" when only one candidate is offered (previously only accepted
+a numeric pick — felt unnatural for single-option offers).
+
+| Key | New | Locales |
+|---|---|---|
+| `task_did_you_mean` | `'🌿 Did you mean "{task}"? Reply "yes" to do it, or send the full task name.'` | en, es, it |
+
+### Files
+
+| File | Change |
+|---|---|
+| `whatsapp-webhook/index.ts` | 4 brand-voice rewrites; 4 new empty-state keys; 1 new `task_did_you_mean` key; 3 hardcoded → i18n call-site swaps; weak-candidate capture in TASK_ACTION semantic search; weak-candidate offer at task_not_found site; single-candidate "yes" acceptance in AWAITING_DISAMBIGUATION |
+| `whatsapp-webhook/responses-i18n.test.ts` | Added 7 new keys to the i18n contract test |
+
+### Tests
+
+- 1280 passed (was 1217 before this PR). +63 mostly from the i18n contract test discovering my new keys × 2 assertions (locale completeness + placeholder consistency).
+- 1 pre-existing failure on `timezone-calendar.test.ts` (also fails on `main` — not introduced here).
+
+### Acceptance criteria
+
+- [x] All 4 warmed keys have `en`/`es`/`it` with consistent placeholders
+- [x] All 5 new keys (`empty_no_urgent`, `empty_no_today`, `empty_no_date`, `empty_no_recent`, `task_did_you_mean`) have `en`/`es`/`it`
+- [x] `task_pronoun_unclear`, `task_focal_offer` (from previous PR) added to i18n contract test
+- [x] Weak-candidate offer triggers when semantic match quality is 0.2–0.4
+- [x] Single-candidate "Did you mean X?" accepts "yes"/"sí"/"sì" as confirmation
+- [x] Hardcoded user-facing strings removed from 3 sites (urgent/today/date/recent empties)
+- [x] No regressions: 1280 / 1280 non-pre-existing tests pass
+
+---
+
 ## 2026-05-13 — Conversation continuity: focal-entity persistence, smart re-targeting, partner-name guard, date-scoped agenda
 
 Three reported production bugs from WhatsApp screenshots — all rooted in
