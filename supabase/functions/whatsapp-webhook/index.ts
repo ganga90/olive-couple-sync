@@ -16,6 +16,10 @@ import {
 } from "../_shared/prompts/whatsapp-prompts.ts";
 import { parseNaturalDate } from "../_shared/natural-date-parser.ts";
 import {
+  detectSetDueRefinement,
+  detectMisroutedPartnerRelay,
+} from "../_shared/conversation-continuity.ts";
+import {
   isRelativeReference,
   resolveRelativeReference,
   searchTaskByKeywords,
@@ -192,6 +196,22 @@ const RESPONSES: Record<string, Record<string, string>> = {
     en: 'I need to know which task you want to modify. Try "done with buy milk" or "make groceries urgent".',
     'es': 'Necesito saber qué tarea quieres modificar. Prueba "hecho con comprar leche" o "hacer urgente compras".',
     'it': 'Devo sapere quale attività vuoi modificare. Prova "fatto con comprare latte" o "rendi urgente la spesa".',
+  },
+  // Soft version of task_not_found when the user used a pronoun ("it",
+  // "that", "this") and we don't have a fresh focal entity to bind it
+  // to. Hard-quoting "it" reads robotic — better to ask which task they
+  // mean.
+  task_pronoun_unclear: {
+    en: '🌿 I\'m not sure which task you mean. Tell me the name or say "show my tasks" and I\'ll pull up the list.',
+    'es': '🌿 No estoy segura de qué tarea es. Dime el nombre o "mostrar mis tareas" y te enseño la lista.',
+    'it': '🌿 Non sono sicura di quale attività intendi. Dimmi il nome o "mostra le mie attività" e te le mostro.',
+  },
+  // Offer the focal entity as a candidate when the user named a short
+  // word that didn't match anything. Friendlier than dead-end "not found".
+  task_focal_offer: {
+    en: '🌿 Did you mean "{task}" — the one we just talked about? Reply "yes" and I\'ll {action} it.',
+    'es': '🌿 ¿Te refieres a "{task}" — la que acabamos de hablar? Responde "sí" y la {action}.',
+    'it': '🌿 Intendi "{task}" — quella di cui abbiamo appena parlato? Rispondi "sì" e la {action}.',
   },
   context_completed: {
     en: '✅ Done! Marked "{task}" as complete (from your recent reminder). Great job! 🎉',
@@ -1244,7 +1264,11 @@ function mapAIResultToIntentResult(
         queryType: params.query_type || 'general',
         cleanMessage: ai.target_task_name || undefined,
         _listName: params.list_name || undefined,
-      };
+        // Carry an explicit date expression for SEARCH so follow-ups
+        // like "And for Friday?" after a calendar query render a
+        // Friday-scoped agenda instead of defaulting to today's.
+        _dueDateExpr: params.due_date_expression || undefined,
+      } as any;
 
     case 'complete':
       return {
@@ -2974,6 +2998,34 @@ serve(async (req) => {
 
     const coupleId = coupleMember?.couple_id || null;
 
+    // Resolve the partner's display name (if any) so the intent classifier
+    // can validate "text/tell/remind <NAME>" verbs against the actual
+    // partner. Without this, the classifier had no way to tell that
+    // "Text Jacopo Amazon" was a brain-dump task — not a partner relay
+    // to Almu. Read once per request; failure is non-fatal (we just pass
+    // null to the classifier, which falls back to safer "create" bias).
+    let resolvedPartnerName: string | null = null;
+    let resolvedSelfName: string | null = null;
+    if (coupleId) {
+      try {
+        const { data: coupleRow } = await supabase
+          .from('clerk_couples')
+          .select('you_name, partner_name, created_by')
+          .eq('id', coupleId)
+          .maybeSingle();
+        if (coupleRow) {
+          const isCreator = coupleRow.created_by === userId;
+          resolvedPartnerName = (isCreator ? coupleRow.partner_name : coupleRow.you_name) || null;
+          resolvedSelfName = (isCreator ? coupleRow.you_name : coupleRow.partner_name) || null;
+        }
+      } catch (couplenameErr) {
+        console.warn(
+          '[Couple] partner-name lookup failed (non-fatal):',
+          couplenameErr instanceof Error ? couplenameErr.message : couplenameErr,
+        );
+      }
+    }
+
     // Respect user's default privacy preference for note creation
     // 'private' → couple_id = null; 'shared' (default) → couple_id = coupleId
     const defaultPrivacy = profile.default_privacy || 'shared';
@@ -3633,8 +3685,55 @@ serve(async (req) => {
 
         return reply(t('error_generic', userLang));
       } else {
-        // Non-confirmation message (not yes/no): auto-cancel pending action
-        // and fall through to process the message normally
+        // Before discarding the pending proposal, try to interpret the
+        // message as a REFINEMENT of the same action. The natural
+        // conversational pattern is "Olive proposes X → user replies
+        // with a tweak rather than yes/no". For `set_due_date`, this
+        // means the user is giving a different date — we update the
+        // proposal and re-prompt instead of cancelling.
+        let retargeted: { updated: any; replyText: string } | null = null;
+        try {
+          const pending = contextData?.pending_action;
+          const tz = (pending as any)?.timezone || profile.timezone || 'America/New_York';
+          const refined = detectSetDueRefinement(pending, messageBody, tz, userLang);
+          if (refined) {
+            retargeted = {
+              updated: refined.updated,
+              replyText: t('confirm_set_due', userLang, {
+                task: refined.updated.task_summary,
+                when: refined.parsedReadable,
+              }),
+            };
+          }
+        } catch (refineErr) {
+          console.warn(
+            '[AWAITING_CONFIRMATION] Re-target attempt failed (non-fatal):',
+            refineErr instanceof Error ? refineErr.message : refineErr,
+          );
+        }
+
+        if (retargeted) {
+          const preservedCtx = (contextData || {}) as ConversationContext;
+          await supabase
+            .from('user_sessions')
+            .update({
+              conversation_state: 'AWAITING_CONFIRMATION',
+              context_data: {
+                ...preservedCtx,
+                pending_action: retargeted.updated,
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+          console.log(
+            '[AWAITING_CONFIRMATION] Re-targeted pending set_due_date →',
+            retargeted.updated.readable,
+          );
+          return reply(retargeted.replyText);
+        }
+
+        // Non-confirmation message (not yes/no, not a refinement):
+        // auto-cancel pending action and fall through to normal processing.
         console.log('[AWAITING_CONFIRMATION] Non-confirmation message received, auto-cancelling pending action, processing as new message:', messageBody?.substring(0, 50));
         await clearPendingState();
         // DO NOT RETURN — fall through to normal intent classification below
@@ -4222,6 +4321,8 @@ Description: "${parsedExpense.description}"`;
       userLists,
       userLanguage: userLang,
       hasMedia: mediaUrls.length > 0,
+      partnerName: resolvedPartnerName,
+      selfName: resolvedSelfName,
     });
     const aiResult = classificationResult.intent;
     const classificationLatencyMs = classificationResult.latencyMs;
@@ -4308,6 +4409,31 @@ Description: "${parsedExpense.description}"`;
       } else if (isHelpRequest && messageBody.length > 60) {
         console.log(`[SafetyNet#0.5] Overriding ${intentResult.intent} → CHAT (assistant) — explicit help request`);
         intentResult = { ...intentResult, intent: 'CHAT', chatType: 'assistant' } as any;
+      }
+    }
+
+    // ========================================================================
+    // POST-CLASSIFICATION SAFETY NET #0.6: PARTNER_MESSAGE → CREATE when the
+    // target name is NOT the partner.
+    //
+    // The classifier prompt now warns about this, but we keep a server-side
+    // guardrail because (a) defensive, (b) the AI may still miss it. If the
+    // user says "text/tell/remind/ask/message <NAME> ..." and <NAME> is
+    // clearly not the partner, treat it as a brain-dump task instead of
+    // routing the wrong message to the partner over WhatsApp.
+    // ========================================================================
+    if (intentResult.intent === 'PARTNER_MESSAGE' && messageBody) {
+      const misroutedTarget = detectMisroutedPartnerRelay(
+        messageBody,
+        resolvedPartnerName,
+        resolvedSelfName,
+      );
+      if (misroutedTarget) {
+        const partnerFirst = (resolvedPartnerName || '').split(/\s+/)[0];
+        console.log(
+          `[SafetyNet#0.6] PARTNER_MESSAGE → CREATE — target name "${misroutedTarget}" ≠ partner "${partnerFirst || '(unknown)'}"`,
+        );
+        intentResult = { ...intentResult, intent: 'CREATE' } as any;
       }
     }
 
@@ -4954,7 +5080,113 @@ Description: "${parsedExpense.description}"`;
       // ================================================================
       // CONTEXTUAL QUERY RESPONSES
       // ================================================================
-      
+
+      // Arbitrary-date agenda (e.g., "And for Friday?" as a follow-up to
+      // "What's on my calendar for tomorrow?"). The classifier carries
+      // the date forward in `due_date_expression`; we compute the same
+      // (tasks + calendar) window the today/tomorrow paths use.
+      //
+      // Gates:
+      //   - The expression parses to a concrete date via parseNaturalDate
+      //   - The parsed date isn't already covered by today/tomorrow (those
+      //     have richer hand-tuned copy and we don't want to displace them)
+      const dueDateExpr = (intentResult as any)._dueDateExpr as string | undefined;
+      if (dueDateExpr && (!queryType || queryType === 'general')) {
+        try {
+          const parsedDate = parseNaturalDate(dueDateExpr, userTimezone, userLang);
+          if (parsedDate.date) {
+            const targetIso = parsedDate.date; // already absolute UTC
+            const target = new Date(targetIso);
+            // Compute a day-window in the user's timezone for that date.
+            // We diff against today (UTC-day-of-target − UTC-day-of-today)
+            // and call getRelativeDayWindowUtc with that day-offset so
+            // the window math stays in one helper (handles DST + locale).
+            const msPerDay = 24 * 60 * 60 * 1000;
+            const todayMs = todayWindow.start.getTime();
+            const targetDayStart = new Date(target);
+            targetDayStart.setUTCHours(0, 0, 0, 0);
+            const dayOffset = Math.round((targetDayStart.getTime() - todayMs) / msPerDay);
+
+            // Don't shadow the dedicated today/tomorrow paths.
+            if (dayOffset !== 0 && dayOffset !== 1) {
+              const dateWindow = getRelativeDayWindowUtc(now, userTimezone, dayOffset);
+
+              const dueOnDateTasks = activeTasks.filter(t =>
+                isInUtcRange(t.due_date, dateWindow.start, dateWindow.end),
+              );
+
+              let dateCalendarEvents: string[] = [];
+              try {
+                const { data: dateConnections } = await supabase
+                  .from('calendar_connections')
+                  .select('id')
+                  .eq('user_id', userId)
+                  .eq('is_active', true);
+                if (dateConnections && dateConnections.length > 0) {
+                  const connIds = dateConnections.map(c => c.id);
+                  const { data: events } = await supabase
+                    .from('calendar_events')
+                    .select('title, start_time, all_day')
+                    .in('connection_id', connIds)
+                    .gte('start_time', dateWindow.start.toISOString())
+                    .lt('start_time', dateWindow.end.toISOString())
+                    .order('start_time', { ascending: true })
+                    .limit(10);
+                  dateCalendarEvents = (events || []).map(e => {
+                    if (e.all_day) return `• ${e.title} (all day)`;
+                    const time = formatTimeForZone(e.start_time, userTimezone);
+                    return `• ${time}: ${e.title}`;
+                  });
+                }
+              } catch (calErr) {
+                console.warn('[WhatsApp/SEARCH date] Calendar fetch error:', calErr);
+              }
+
+              // Friendly date label (no time component — it's a day query).
+              const dateLabel = formatFriendlyDate(
+                dateWindow.start.toISOString(),
+                false,
+                profile.timezone,
+                userLang,
+              );
+
+              if (dueOnDateTasks.length === 0 && dateCalendarEvents.length === 0) {
+                return reply(`📅 Nothing scheduled for ${dateLabel}.`);
+              }
+
+              let response = `📅 Agenda for ${dateLabel}:\n`;
+              if (dateCalendarEvents.length > 0) {
+                response += `\n🗓️ Calendar (${dateCalendarEvents.length}):\n${dateCalendarEvents.join('\n')}\n`;
+              }
+              if (dueOnDateTasks.length > 0) {
+                const list = dueOnDateTasks.slice(0, 8).map((t2, i) => {
+                  const priority = t2.priority === 'high' ? ' 🔥' : '';
+                  return `${i + 1}. ${t2.summary}${priority}`;
+                }).join('\n');
+                const moreText = dueOnDateTasks.length > 8 ? `\n...and ${dueOnDateTasks.length - 8} more` : '';
+                response += `\n📋 Tasks Due (${dueOnDateTasks.length}):\n${list}${moreText}\n`;
+              }
+              response += '\n\n🔗 Manage: https://witholive.app';
+
+              const displayedDate = dueOnDateTasks.slice(0, 8);
+              if (displayedDate.length > 0) {
+                await saveReferencedEntity(
+                  displayedDate[0],
+                  response,
+                  displayedDate.map(t2 => ({ id: t2.id, summary: t2.summary })),
+                );
+              }
+              return reply(response);
+            }
+          }
+        } catch (dateBranchErr) {
+          console.warn(
+            '[WhatsApp/SEARCH date] Date-scoped branch failed (non-fatal, falling through):',
+            dateBranchErr instanceof Error ? dateBranchErr.message : dateBranchErr,
+          );
+        }
+      }
+
       if (queryType === 'urgent') {
         if (urgentTasks.length === 0) {
           return reply('🎉 Great news! You have no urgent tasks right now.\n\n💡 Use "!" prefix to mark tasks as urgent (e.g., "!call mom")');
@@ -5759,9 +5991,51 @@ Description: "${parsedExpense.description}"`;
       }
 
       if (!foundTask) {
+        // Natural-conversation upgrade: if the user used a pronoun
+        // ("it"/"that"/"this") and we had no focal entity to bind it
+        // to, the hard-quoted error reads robotic ("couldn't find a
+        // task matching 'it'"). Use the softer prompt instead. We
+        // already detected pronouns up front at the `isPronoun` check.
+        if (isPronoun) {
+          return reply(t('task_pronoun_unclear', userLang));
+        }
         return reply(t('task_not_found', userLang, { query: actionTarget }));
       }
-      
+
+      // Conversation continuity: stamp the resolved task as the session's
+      // focal entity so the next turn's pronouns ("it"/"that") resolve
+      // here. Survives auto-cancellation of AWAITING_CONFIRMATION because
+      // both clearPendingState and stampLastAction preserve this field.
+      // Idempotent — downstream pending writes spread `...currentCtx` so
+      // the stamp lives through them too.
+      try {
+        const _stampCtx = (session.context_data || {}) as ConversationContext;
+        const _stampedCtx: ConversationContext = {
+          ..._stampCtx,
+          last_referenced_entity: {
+            type: 'task',
+            id: foundTask.id,
+            summary: foundTask.summary,
+            due_date: (foundTask as any).due_date ?? undefined,
+            list_id: (foundTask as any).list_id ?? undefined,
+            priority: (foundTask as any).priority ?? undefined,
+          },
+          entity_referenced_at: new Date().toISOString(),
+        };
+        session.context_data = _stampedCtx;
+        await supabase
+          .from('user_sessions')
+          .update({ context_data: _stampedCtx, updated_at: new Date().toISOString() })
+          .eq('id', session.id);
+        _lastReferencedTaskId = foundTask.id;
+        _lastReferencedTaskSummary = foundTask.summary;
+      } catch (stampErr) {
+        console.warn(
+          '[TASK_ACTION] focal-entity stamp failed (non-fatal):',
+          stampErr instanceof Error ? stampErr.message : stampErr,
+        );
+      }
+
       switch (actionType) {
         case 'complete': {
           const { error } = await supabase

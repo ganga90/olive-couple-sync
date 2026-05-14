@@ -1147,6 +1147,26 @@ serve(async (req) => {
             .limit(10),
         ]);
 
+        // Resolve partner identity (best-effort, non-blocking) so the
+        // classifier can validate "text/tell <NAME>" verb-targets against
+        // the actual partner — same continuity fix applied in WhatsApp.
+        let streamPartnerName: string | null = null;
+        let streamSelfName: string | null = null;
+        if (scopeSpaceId) {
+          try {
+            const { data: coupleRow } = await supabase
+              .from('clerk_couples')
+              .select('you_name, partner_name, created_by')
+              .eq('id', scopeSpaceId)
+              .maybeSingle();
+            if (coupleRow) {
+              const isCreator = coupleRow.created_by === user_id;
+              streamPartnerName = (isCreator ? coupleRow.partner_name : coupleRow.you_name) || null;
+              streamSelfName = (isCreator ? coupleRow.you_name : coupleRow.partner_name) || null;
+            }
+          } catch { /* non-blocking */ }
+        }
+
         const result = await classifyIntent({
           message,
           conversationHistory,
@@ -1159,6 +1179,8 @@ serve(async (req) => {
           userMemories: memoriesResult.data || [],
           activatedSkills: [],
           userLanguage: context?.language || 'en',
+          partnerName: streamPartnerName,
+          selfName: streamSelfName,
         });
 
         if (result.intent) {
