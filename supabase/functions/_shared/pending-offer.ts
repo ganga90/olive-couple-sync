@@ -177,6 +177,24 @@ export interface AttachedToParentOffer {
   offered_at: string;
 }
 
+// Proactive bridge — opt-in (olive_user_preferences.proactive_bridge_enabled).
+// After a brain-dump CREATE saved a task with NO due_date AND NO
+// reminder_time, Olive appends a single bounded offer ("🌿 Want me to set
+// a date?") and waits ONE turn. If the next message parses to a date,
+// she applies it. If not, the offer expires (5-min TTL) and the message
+// is processed normally — no compounding nudges. This is the "Offer"
+// step of the Capture → Offer → Confirm → Execute loop for the case
+// where the brain dump had no temporal hint.
+export interface DateForRecentTaskOffer {
+  type: 'date_for_recent_task';
+  /** The task we just saved that's missing a date. */
+  task_id: string;
+  task_summary: string;
+  /** User's timezone — pinned at offer time to avoid re-resolution. */
+  timezone: string;
+  offered_at: string;
+}
+
 export type PendingOffer =
   | SaveArtifactOffer
   | RescheduleTaskOffer
@@ -184,7 +202,8 @@ export type PendingOffer =
   | DeleteTaskOffer
   | DisambiguationOffer
   | BulkRescheduleOffer
-  | AttachedToParentOffer;
+  | AttachedToParentOffer
+  | DateForRecentTaskOffer;
 
 export function isPendingOfferFresh(
   offer: PendingOffer | null | undefined,

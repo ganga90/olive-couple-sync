@@ -350,6 +350,25 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'es': '🌿 Entendí la tarea, pero tuve problemas al guardarla. ¿Probamos de nuevo?',
     'it': '🌿 Ho capito l\'attività, ma ho avuto problemi a salvarla. Riproviamo?',
   },
+  // ── Proactive bridge (opt-in) — appended to brain-dump confirmations
+  // when the saved task has no due_date or reminder_time. ONE offer,
+  // 5-min TTL, no compounding. The "💡 tip" line is replaced by this so
+  // we don't pile two prompts onto the same confirmation.
+  proactive_date_offer: {
+    en: '💡 Want me to set a date? Reply with one (e.g. "tomorrow at 5pm").',
+    'es': '💡 ¿Le pongo una fecha? Respóndeme con una (ej. "mañana a las 17").',
+    'it': '💡 Vuoi che le metta una data? Rispondi con una (es. "domani alle 17").',
+  },
+  proactive_date_applied: {
+    en: '🌿 Set "{task}" for {when}.',
+    'es': '🌿 "{task}" programada para {when}.',
+    'it': '🌿 "{task}" impostata per {when}.',
+  },
+  proactive_date_skipped: {
+    en: '🌿 No worries — saved as is.',
+    'es': '🌿 Sin problema — guardado tal cual.',
+    'it': '🌿 Nessun problema — salvato così com\'è.',
+  },
   context_completed: {
     en: '🌿 Done — "{task}" is complete (from your recent reminder).',
     'es': '🌿 Listo — "{task}" completada (de tu recordatorio reciente).',
@@ -4682,6 +4701,107 @@ Description: "${parsedExpense.description}"`;
         }
         // No match → fall through. The offer stays alive until TTL or next save offer
         // overwrites it; meanwhile the message is classified normally.
+      }
+    }
+
+    // ========================================================================
+    // POST-CLASSIFICATION SAFETY NET #1.4c: Proactive bridge — date_for_recent_task
+    //
+    // After a brain-dump CREATE saved a task with NO due_date / reminder_time,
+    // and the user has opted in (olive_user_preferences.proactive_bridge_enabled),
+    // we appended a single bounded offer ("Want me to set a date?") and saved
+    // a pending_offer.type='date_for_recent_task'. The user's NEXT message
+    // is either:
+    //   (a) a date phrase → apply it to that task's due_date
+    //   (b) a denial ("no" / "skip" / "never mind") → ack + clear
+    //   (c) anything else → clear the one-shot offer + fall through
+    //       to normal classification
+    // ========================================================================
+    if (messageBody) {
+      const sessionCtxBridge = (session.context_data || {}) as ConversationContext;
+      const bridgeOffer = sessionCtxBridge.pending_offer as any;
+      if (
+        isPendingOfferFresh(bridgeOffer) &&
+        bridgeOffer.type === 'date_for_recent_task'
+      ) {
+        const bridgeTz = bridgeOffer.timezone || profile.timezone || 'America/New_York';
+        const denyReply = /^\s*(no|nope|nah|skip|never\s?mind|forget\s+it|no\s+gracias|no\s+thanks|non\s+importa|lascia)\s*[.!?]?\s*$/i.test(messageBody);
+        if (denyReply) {
+          try {
+            await supabase
+              .from('user_sessions')
+              .update({
+                context_data: { ...sessionCtxBridge, pending_offer: null },
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', session.id);
+          } catch (clearErr) {
+            console.warn('[SafetyNet#1.4c] clear on deny failed (non-fatal):', clearErr);
+          }
+          console.log('[SafetyNet#1.4c] User declined proactive date offer');
+          return reply(t('proactive_date_skipped', userLang));
+        }
+        // Try to parse the message as a date refinement using the same
+        // gates as CONV-1's pending-action re-targeting (so unrelated
+        // chatter doesn't accidentally bind to the offer).
+        try {
+          const { detectDateRefinement } = await import('../_shared/conversation-continuity.ts');
+          const parsed = detectDateRefinement(messageBody, bridgeTz, userLang);
+          if (parsed) {
+            const { error: updateErr } = await supabase
+              .from('clerk_notes')
+              .update({
+                due_date: parsed.parsedDateIso,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', bridgeOffer.task_id);
+            if (updateErr) {
+              console.warn('[SafetyNet#1.4c] due_date update failed:', updateErr);
+            }
+            // Clear the offer so it can't be re-fired.
+            try {
+              await supabase
+                .from('user_sessions')
+                .update({
+                  context_data: { ...sessionCtxBridge, pending_offer: null },
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', session.id);
+            } catch (clearErr) {
+              console.warn('[SafetyNet#1.4c] clear after apply failed (non-fatal):', clearErr);
+            }
+            console.log(
+              '[SafetyNet#1.4c] Applied proactive date',
+              parsed.parsedReadable,
+              'to task',
+              bridgeOffer.task_id,
+            );
+            return reply(
+              t('proactive_date_applied', userLang, {
+                task: bridgeOffer.task_summary,
+                when: parsed.parsedReadable,
+              }),
+            );
+          }
+        } catch (parseErr) {
+          console.warn(
+            '[SafetyNet#1.4c] date parse / apply failed (non-fatal):',
+            parseErr instanceof Error ? parseErr.message : parseErr,
+          );
+        }
+        // Anything else → one-shot offer, clear it and fall through.
+        try {
+          await supabase
+            .from('user_sessions')
+            .update({
+              context_data: { ...sessionCtxBridge, pending_offer: null },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+          console.log('[SafetyNet#1.4c] Non-matching reply, offer cleared (one-shot)');
+        } catch (clearErr) {
+          console.warn('[SafetyNet#1.4c] one-shot clear failed (non-fatal):', clearErr);
+        }
       }
     }
 
@@ -10181,6 +10301,43 @@ FORMAT for WhatsApp (max 1500 chars):
           itemsPreview = '\n' + shown.map((s: string) => `  • ${s}`).join('\n') + overflowText;
         }
 
+        // Proactive bridge (opt-in): if the saved note has NO due_date
+        // AND NO reminder_time, AND the user opted in via
+        // olive_user_preferences.proactive_bridge_enabled, append a
+        // single bounded offer to set a date. ONE-shot, 5-min TTL.
+        // Brand promise: capture frictionless → offer once → confirm
+        // → execute. We REPLACE the random tip line with the offer so
+        // the confirmation isn't bloated.
+        let proactiveBridgeOffer: any = null;
+        if (
+          insertedNoteId &&
+          !processData.due_date &&
+          !processData.reminder_time &&
+          !duplicateWarning?.found
+        ) {
+          try {
+            const { data: prefRow } = await supabase
+              .from('olive_user_preferences')
+              .select('proactive_bridge_enabled')
+              .eq('user_id', userId)
+              .maybeSingle();
+            if (prefRow?.proactive_bridge_enabled) {
+              proactiveBridgeOffer = {
+                type: 'date_for_recent_task',
+                task_id: insertedNoteId,
+                task_summary: insertedNoteSummary,
+                timezone: profile.timezone || 'America/New_York',
+                offered_at: new Date().toISOString(),
+              };
+            }
+          } catch (prefErr) {
+            console.warn(
+              '[ProactiveBridge] preference lookup failed (non-fatal):',
+              prefErr instanceof Error ? prefErr.message : prefErr,
+            );
+          }
+        }
+
         if (duplicateWarning?.found) {
           confirmationMessage = [
             t('note_saved', userLang, { summary: insertedNoteSummary }) + itemsPreview,
@@ -10190,6 +10347,9 @@ FORMAT for WhatsApp (max 1500 chars):
           ].join('\n');
         } else {
           const sensitiveLabel = encryptionFields.is_sensitive ? '\n🔒 Encrypted at rest' : '';
+          const tailLine = proactiveBridgeOffer
+            ? t('proactive_date_offer', userLang)
+            : `💡 ${getRandomTip()}`;
           confirmationMessage = [
             t('note_saved', userLang, { summary: rawSummary }) + itemsPreview,
             t('note_added_to', userLang, { list: listName }),
@@ -10197,7 +10357,7 @@ FORMAT for WhatsApp (max 1500 chars):
             ``,
             t('note_manage', userLang),
             ``,
-            `💡 ${getRandomTip()}`
+            tailLine,
           ].filter(Boolean).join('\n');
         }
 
@@ -10207,6 +10367,36 @@ FORMAT for WhatsApp (max 1500 chars):
             { id: insertedNoteId, summary: insertedNoteSummary, list_id: insertedListId || undefined },
             confirmationMessage
           );
+        }
+
+        // Persist the proactive bridge offer in pending_offer (after
+        // saveReferencedEntity, which doesn't touch pending_offer).
+        // Single fire-and-forget write — non-fatal if it fails.
+        if (proactiveBridgeOffer && insertedNoteId) {
+          try {
+            const { data: currentSession } = await supabase
+              .from('user_sessions')
+              .select('context_data')
+              .eq('id', session.id)
+              .maybeSingle();
+            const currentCtx = (currentSession?.context_data || {}) as ConversationContext;
+            await supabase
+              .from('user_sessions')
+              .update({
+                context_data: { ...currentCtx, pending_offer: proactiveBridgeOffer },
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', session.id);
+            console.log(
+              '[ProactiveBridge] offered date_for_recent_task for note',
+              insertedNoteId,
+            );
+          } catch (offerErr) {
+            console.warn(
+              '[ProactiveBridge] offer persistence failed (non-fatal):',
+              offerErr instanceof Error ? offerErr.message : offerErr,
+            );
+          }
         }
 
         return reply(confirmationMessage);
