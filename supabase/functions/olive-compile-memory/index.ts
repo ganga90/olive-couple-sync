@@ -584,29 +584,27 @@ async function compileFile(
     return { fileType, status: "skipped_no_data", changed: false };
   }
 
-  // Generate compiled content via tracked LLM call.
-  // Use Flash-Lite as primary (cheaper, plenty of headroom for this task) and
-  // fall back through Flash → 2.0-Flash if Gemini's per-model RPM caps trip.
-  // The retry config inside llm-tracker also adds exponential backoff on 429s
-  // before falling back, which is what was making the 02:00 UTC batch burst.
+  // Multi-provider chain (Bucket 2): lite tier walks
+  // gemini-2.5-flash-lite → cerebras llama-3.3-70b → groq llama-3.3-70b-versatile.
+  // Same-provider retry with exponential backoff on 429/5xx; cross-provider
+  // fallback when retries exhaust or the provider is unconfigured/unsupported.
+  // Replaces the previous Gemini-only retry+fallback path from Bucket 1.
   const tracker = createLLMTracker(supabase, "olive-compile-memory", userId);
-  const trackerResponse = await tracker.generate(
+  const llmResponse = await tracker.generateWithChain(
+    "lite",
     {
-      model: "gemini-2.5-flash-lite",
-      contents: prompt,
-      config: { temperature: 0.2, maxOutputTokens: 2048 },
+      prompt,
+      temperature: 0.2,
+      maxOutputTokens: 2048,
     },
     {
       promptVersion: getCompilePromptVersion(fileType as any),
-      retry: {
-        maxAttempts: 3,
-        fallbackModels: ["gemini-2.5-flash", "gemini-2.0-flash"],
-      },
-    }
+      retry: { maxAttempts: 2 },
+    },
   );
-  const rawCompiled = trackerResponse?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+  const rawCompiled = llmResponse.text;
   if (!rawCompiled || rawCompiled.trim().length < 20) {
-    return { fileType, status: "gemini_failed", changed: false };
+    return { fileType, status: "llm_failed", changed: false };
   }
 
   // ─── Phase 4-A: Enforce per-artifact token budget ─────────────────

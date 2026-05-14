@@ -21,6 +21,14 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import type { ModelTier } from "./gemini.ts";
+import type {
+  LlmRequest,
+  LlmResponse,
+  ProviderName,
+} from "./llm-providers/types.ts";
+import { LlmError } from "./llm-providers/types.ts";
+import { getProviderChain } from "./llm-providers/index.ts";
 
 // ─── Model Pricing (USD per 1M tokens) ─────────────────────────
 // Updated for April 2026 pricing
@@ -34,6 +42,10 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   "gemini-2.0-pro":        { input: 1.25,  output: 5.00 },
   "gemini-1.5-pro":        { input: 1.25,  output: 5.00 },
   "gemini-embedding-001":  { input: 0.00,  output: 0.00 },
+  // free tier; update when paid tier introduced.
+  "llama-3.3-70b":           { input: 0,     output: 0    }, // Cerebras
+  // free tier; update when paid tier introduced.
+  "llama-3.3-70b-versatile": { input: 0,     output: 0    }, // Groq
 };
 
 function estimateCost(
@@ -82,6 +94,12 @@ export interface TrackerOptions {
   contextTotalTokens?: number;
   /** Slots that exceeded their budget */
   slotsOverBudget?: string[];
+  /**
+   * Which LLM provider produced the row. Defaults to "gemini" so existing
+   * callers of tracker.generate() keep logging with the historically-correct
+   * value. generateWithChain() always sets this explicitly per attempt.
+   */
+  provider?: ProviderName;
 }
 
 /**
@@ -121,6 +139,38 @@ export interface LLMTracker {
     },
     opts?: TrackerOptions & { retry?: RetryConfig }
   ): Promise<any>;
+
+  /**
+   * Provider-agnostic generation that walks an ordered provider chain for a
+   * tier (lite / standard / pro). Same-provider retries with exponential
+   * backoff on transient errors, then falls over to the next provider on
+   * retry exhaustion or fallback-eligible errors (missing API key,
+   * unsupported feature). Every attempt logs to olive_llm_calls.
+   *
+   * Throws when all providers in the chain are exhausted.
+   */
+  generateWithChain(
+    tier: ModelTier,
+    req: {
+      prompt: string;
+      temperature?: number;
+      maxOutputTokens?: number;
+      responseSchema?: unknown;
+    },
+    opts?: TrackerOptions & {
+      retry?: {
+        /** Max attempts PER PROVIDER. Default 2. */
+        maxAttempts?: number;
+        /**
+         * Backoff in ms for attempt N (0-indexed).
+         * Default: 1000 * 2^N + jitter, capped 8000.
+         */
+        backoffMs?: (attempt: number) => number;
+      };
+      /** AbortSignal forwarded to fetch. */
+      signal?: AbortSignal;
+    }
+  ): Promise<LlmResponse>;
 
   /**
    * Track a raw fetch-based Gemini call (for functions using direct HTTP).
@@ -174,6 +224,10 @@ export function createLLMTracker(
       user_id: userId || null,
       function_name: functionName,
       model,
+      // Provider column added in migration 20260514035226. Defaults to
+      // "gemini" so existing callers of tracker.generate() (which still
+      // target Gemini directly) keep producing accurate rows.
+      provider: opts?.provider ?? "gemini",
       prompt_version: opts?.promptVersion || null,
       tokens_in: tokensIn,
       tokens_out: tokensOut,
@@ -319,6 +373,106 @@ export function createLLMTracker(
 
       throw lastError ||
         new Error("[LLMTracker] All retries and fallback models exhausted");
+    },
+
+    async generateWithChain(tier, req, opts) {
+      const chain = getProviderChain(tier);
+      const maxAttempts = opts?.retry?.maxAttempts ?? 2;
+      const backoffMs =
+        opts?.retry?.backoffMs ??
+        ((n: number) =>
+          Math.min(1000 * Math.pow(2, n) + Math.random() * 500, 8000));
+
+      let lastError: unknown = null;
+
+      for (let providerIdx = 0; providerIdx < chain.length; providerIdx++) {
+        const entry = chain[providerIdx];
+        const llmReq: LlmRequest = {
+          model: entry.model,
+          prompt: req.prompt,
+          temperature: req.temperature,
+          maxOutputTokens: req.maxOutputTokens,
+          responseSchema: req.responseSchema,
+        };
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          const startTime = performance.now();
+          try {
+            const response = await entry.provider.generate(
+              llmReq,
+              opts?.signal,
+            );
+            const latencyMs = Math.round(performance.now() - startTime);
+            log(
+              response.model,
+              latencyMs,
+              response.tokensIn,
+              response.tokensOut,
+              "success",
+              {
+                ...opts,
+                provider: response.providerName,
+                metadata: {
+                  ...(opts?.metadata ?? {}),
+                  provider_chain_index: providerIdx,
+                  provider_attempt: attempt,
+                  tier,
+                },
+              },
+            );
+            return response;
+          } catch (err) {
+            const latencyMs = Math.round(performance.now() - startTime);
+            const isLlmError = err instanceof LlmError;
+            const status = isLlmError ? (err as LlmError).status : 0;
+            const retryable = isLlmError
+              ? (err as LlmError).retryable
+              : false;
+            const fallbackEligible = isLlmError
+              ? (err as LlmError).fallbackEligible
+              : true;
+            const msg = err instanceof Error ? err.message : String(err);
+
+            log(entry.model, latencyMs, 0, 0, "error", {
+              ...opts,
+              provider: entry.provider.name,
+              error: msg.slice(0, 500),
+              metadata: {
+                ...(opts?.metadata ?? {}),
+                provider_chain_index: providerIdx,
+                provider_attempt: attempt,
+                tier,
+                status,
+              },
+            });
+
+            lastError = err;
+
+            // Terminal error (e.g. 4xx auth) — propagate immediately.
+            if (isLlmError && !retryable && !fallbackEligible) throw err;
+
+            // Retryable on the same provider: backoff and try again.
+            if (retryable && attempt < maxAttempts - 1) {
+              await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+              continue;
+            }
+
+            // Either retries exhausted on this provider, or this error is
+            // fallback-only (missing API key, unsupported feature). Move on.
+            if (fallbackEligible) break;
+
+            // Not retryable AND not fallback-eligible — guarded above but
+            // defensive in case classification changes.
+            throw err;
+          }
+        }
+      }
+
+      throw new Error(
+        `[generateWithChain] All providers exhausted for tier=${tier}. Last error: ${
+          lastError instanceof Error ? lastError.message : String(lastError)
+        }`,
+      );
     },
 
     trackRawCall(model, startTime, response, opts) {

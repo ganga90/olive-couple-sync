@@ -20,6 +20,7 @@ import { createLLMTracker } from "./llm-tracker.ts";
 interface CapturedRow {
   model: string;
   status: string;
+  provider: string;
   tokens_in: number;
   tokens_out: number;
   metadata: Record<string, unknown>;
@@ -38,6 +39,7 @@ function fakeSupabase(): {
           rows.push({
             model: row.model,
             status: row.status,
+            provider: row.provider,
             tokens_in: row.tokens_in,
             tokens_out: row.tokens_out,
             metadata: row.metadata || {},
@@ -348,4 +350,242 @@ Deno.test("non-retryable status surfaces underlying error message", async () => 
 
   assertEquals(rows.length, 1);
   assert(rows[0].error_message?.includes("401"));
+});
+
+// ════════════════════════════════════════════════════════════════════
+// generateWithChain — multi-provider chain dispatch (Bucket 2)
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Provider-aware scripted fetch. Routes by URL pattern (Gemini REST vs
+ * OpenAI-compatible chat-completions) and pops queue entries keyed by
+ * provider name. Used for the chain tests below.
+ */
+function scriptedChainFetch(script: {
+  gemini?: Array<{ status: number; body: any }>;
+  cerebras?: Array<{ status: number; body: any }>;
+  groq?: Array<{ status: number; body: any }>;
+}): {
+  fetchFn: typeof fetch;
+  callLog: Array<{ provider: string; status: number; url: string }>;
+} {
+  const queues = {
+    gemini: [...(script.gemini ?? [])],
+    cerebras: [...(script.cerebras ?? [])],
+    groq: [...(script.groq ?? [])],
+  };
+  const callLog: Array<{ provider: string; status: number; url: string }> = [];
+
+  const fetchFn = (async (input: any) => {
+    const url = typeof input === "string" ? input : input.url;
+    let provider: keyof typeof queues;
+    if (url.includes("generativelanguage.googleapis.com")) {
+      provider = "gemini";
+    } else if (url.includes("api.cerebras.ai")) {
+      provider = "cerebras";
+    } else if (url.includes("api.groq.com")) {
+      provider = "groq";
+    } else {
+      throw new Error(`[scriptedChainFetch] unknown URL: ${url}`);
+    }
+    const queue = queues[provider];
+    if (!queue.length) {
+      throw new Error(
+        `[scriptedChainFetch] no more scripted responses for ${provider}`,
+      );
+    }
+    const next = queue.shift()!;
+    callLog.push({ provider, status: next.status, url });
+    return new Response(
+      typeof next.body === "string" ? next.body : JSON.stringify(next.body),
+      {
+        status: next.status,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  }) as unknown as typeof fetch;
+
+  return { fetchFn, callLog };
+}
+
+const GEMINI_OK = {
+  candidates: [{ content: { parts: [{ text: "gemini answer" }] } }],
+  usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
+};
+const CEREBRAS_OK = {
+  choices: [{ message: { content: "cerebras answer" } }],
+  usage: { prompt_tokens: 12, completion_tokens: 6 },
+};
+const GROQ_OK = {
+  choices: [{ message: { content: "groq answer" } }],
+  usage: { prompt_tokens: 8, completion_tokens: 4 },
+};
+
+Deno.test("generateWithChain — primary success, only primary logged", async () => {
+  Deno.env.set("GEMINI_API_KEY", "test");
+  Deno.env.set("CEREBRAS_API_KEY", "test");
+  Deno.env.set("GROQ_API_KEY", "test");
+  const { fetchFn, callLog } = scriptedChainFetch({
+    gemini: [{ status: 200, body: GEMINI_OK }],
+  });
+  const { client, rows } = fakeSupabase();
+
+  await withStubbedFetch(fetchFn, async () => {
+    const tracker = createLLMTracker(client, "test-fn", "u1");
+    const r = await tracker.generateWithChain("lite", { prompt: "hi" });
+    assertEquals(r.providerName, "gemini");
+    assertEquals(r.text, "gemini answer");
+  });
+
+  assertEquals(callLog.length, 1);
+  assertEquals(callLog[0].provider, "gemini");
+  assertEquals(rows.length, 1);
+  assertEquals(rows[0].status, "success");
+  assertEquals(rows[0].provider, "gemini");
+  assertEquals(rows[0].model, "gemini-2.5-flash-lite");
+  assertEquals(rows[0].metadata.provider_chain_index, 0);
+  assertEquals(rows[0].metadata.provider_attempt, 0);
+  assertEquals(rows[0].metadata.tier, "lite");
+});
+
+Deno.test("generateWithChain — Gemini 429×2 → Cerebras success; 3 rows (2 gemini errors + 1 cerebras success)", async () => {
+  Deno.env.set("GEMINI_API_KEY", "test");
+  Deno.env.set("CEREBRAS_API_KEY", "test");
+  Deno.env.set("GROQ_API_KEY", "test");
+  const { fetchFn, callLog } = scriptedChainFetch({
+    gemini: [
+      { status: 429, body: "rate" },
+      { status: 429, body: "rate" },
+    ],
+    cerebras: [{ status: 200, body: CEREBRAS_OK }],
+  });
+  const { client, rows } = fakeSupabase();
+
+  await withStubbedFetch(fetchFn, async () => {
+    const tracker = createLLMTracker(client, "test-fn", "u1");
+    const r = await tracker.generateWithChain(
+      "lite",
+      { prompt: "hi" },
+      { retry: { maxAttempts: 2, backoffMs: () => 0 } },
+    );
+    assertEquals(r.providerName, "cerebras");
+    assertEquals(r.text, "cerebras answer");
+  });
+
+  assertEquals(callLog.length, 3);
+  assertEquals(callLog[0].provider, "gemini");
+  assertEquals(callLog[1].provider, "gemini");
+  assertEquals(callLog[2].provider, "cerebras");
+
+  assertEquals(rows.length, 3);
+  assertEquals(rows[0].status, "error");
+  assertEquals(rows[0].provider, "gemini");
+  assertEquals(rows[0].metadata.provider_attempt, 0);
+  assertEquals(rows[0].metadata.status, 429);
+  assertEquals(rows[1].status, "error");
+  assertEquals(rows[1].provider, "gemini");
+  assertEquals(rows[1].metadata.provider_attempt, 1);
+  assertEquals(rows[2].status, "success");
+  assertEquals(rows[2].provider, "cerebras");
+  assertEquals(rows[2].metadata.provider_chain_index, 1);
+});
+
+Deno.test("generateWithChain — all providers fail, throws aggregate; row per provider attempt", async () => {
+  Deno.env.set("GEMINI_API_KEY", "test");
+  Deno.env.set("CEREBRAS_API_KEY", "test");
+  Deno.env.set("GROQ_API_KEY", "test");
+  const { fetchFn } = scriptedChainFetch({
+    gemini: [{ status: 429, body: "rate" }],
+    cerebras: [{ status: 429, body: "rate" }],
+    groq: [{ status: 429, body: "rate" }],
+  });
+  const { client, rows } = fakeSupabase();
+
+  await withStubbedFetch(fetchFn, async () => {
+    const tracker = createLLMTracker(client, "test-fn", "u1");
+    await assertRejects(
+      () =>
+        tracker.generateWithChain(
+          "lite",
+          { prompt: "hi" },
+          { retry: { maxAttempts: 1, backoffMs: () => 0 } },
+        ),
+      Error,
+      "All providers exhausted",
+    );
+  });
+
+  assertEquals(rows.length, 3);
+  assertEquals(rows.map((r) => r.provider).sort(), [
+    "cerebras",
+    "gemini",
+    "groq",
+  ]);
+  for (const r of rows) assertEquals(r.status, "error");
+});
+
+Deno.test("generateWithChain — Gemini 400 (non-retryable, non-fallback) throws immediately, no fallback attempted", async () => {
+  Deno.env.set("GEMINI_API_KEY", "test");
+  Deno.env.set("CEREBRAS_API_KEY", "test");
+  const { fetchFn, callLog } = scriptedChainFetch({
+    gemini: [{ status: 400, body: "bad request" }],
+    // Cerebras script intentionally empty: chain must NOT advance.
+    cerebras: [],
+  });
+  const { client, rows } = fakeSupabase();
+
+  await withStubbedFetch(fetchFn, async () => {
+    const tracker = createLLMTracker(client, "test-fn", "u1");
+    await assertRejects(
+      () =>
+        tracker.generateWithChain(
+          "lite",
+          { prompt: "hi" },
+          { retry: { maxAttempts: 2, backoffMs: () => 0 } },
+        ),
+      Error,
+    );
+  });
+
+  assertEquals(callLog.length, 1);
+  assertEquals(callLog[0].provider, "gemini");
+  assertEquals(rows.length, 1);
+  assertEquals(rows[0].provider, "gemini");
+  assertEquals(rows[0].status, "error");
+});
+
+Deno.test("generateWithChain — missing Gemini key falls back to Cerebras success", async () => {
+  Deno.env.delete("GEMINI_API");
+  Deno.env.delete("GEMINI_API_KEY");
+  Deno.env.delete("GOOGLE_AI_API_KEY");
+  Deno.env.set("CEREBRAS_API_KEY", "test");
+  Deno.env.set("GROQ_API_KEY", "test");
+  const { fetchFn, callLog } = scriptedChainFetch({
+    // Gemini queue empty — provider throws on missing-key BEFORE fetch.
+    gemini: [],
+    cerebras: [{ status: 200, body: CEREBRAS_OK }],
+  });
+  const { client, rows } = fakeSupabase();
+
+  await withStubbedFetch(fetchFn, async () => {
+    const tracker = createLLMTracker(client, "test-fn", "u1");
+    const r = await tracker.generateWithChain(
+      "lite",
+      { prompt: "hi" },
+      { retry: { maxAttempts: 1, backoffMs: () => 0 } },
+    );
+    assertEquals(r.providerName, "cerebras");
+  });
+
+  // One gemini error row (config error) + one cerebras success row
+  assertEquals(callLog.length, 1);
+  assertEquals(callLog[0].provider, "cerebras");
+  assertEquals(rows.length, 2);
+  assertEquals(rows[0].status, "error");
+  assertEquals(rows[0].provider, "gemini");
+  assertEquals(rows[1].status, "success");
+  assertEquals(rows[1].provider, "cerebras");
+
+  // Restore for any later tests that re-use the module's env
+  Deno.env.set("GEMINI_API_KEY", "test");
 });
