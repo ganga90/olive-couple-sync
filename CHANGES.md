@@ -1,5 +1,81 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-14 — Proactive bridge on brain-dump confirmation (opt-in, en/es/it)
+
+After a brain-dump CREATE saved a task with NO due_date AND NO
+reminder_time, Olive now appends a single bounded offer ("💡 Want me
+to set a date?") and waits for ONE turn. If the next message parses
+to a date, she applies it. If not, the offer expires (5-min TTL) and
+the message is processed normally — no compounding nudges, no walls
+of cross-sells. This is the Offer step of the Capture → Offer →
+Confirm → Execute loop for the case where the brain dump had no
+temporal hint.
+
+**Opt-in:** new boolean column `proactive_bridge_enabled` on
+`olive_user_preferences`, default `false`. Existing users see ZERO
+behavior change until they flip it on (via SQL or a future settings
+UI). New users follow the same default — the brand promise ("brain
+dump > automate") stays intact, dialogue happens only when invited.
+
+### Schema change
+
+`supabase/migrations/20260514023144_add_proactive_bridge_enabled.sql`:
+
+```sql
+ALTER TABLE public.olive_user_preferences
+  ADD COLUMN IF NOT EXISTS proactive_bridge_enabled boolean NOT NULL DEFAULT false;
+```
+
+Applied via Supabase MCP `apply_migration` (name=`add_proactive_bridge_enabled`).
+Additive; no existing query changes; rides on the same RLS policy.
+
+### How the loop works
+
+1. **Capture:** user sends "Call dentist about cleaning" → CREATE flow
+   saves the note. No date / reminder were inferred.
+2. **Offer (new):** if user opted in, the save-confirmation reply ends
+   with `proactive_date_offer` instead of the random tip. A
+   `pending_offer.type='date_for_recent_task'` is persisted in
+   `user_sessions.context_data` with the task_id, the user's timezone,
+   and `offered_at`.
+3. **Confirm:** user's next message hits new SafetyNet #1.4c in
+   `whatsapp-webhook/index.ts`:
+   - Denial (`no`/`skip`/`never mind` EN/ES/IT) → clear offer, reply
+     `proactive_date_skipped`.
+   - Matches `detectDateRefinement` (shared CONV-1 predicate) → write
+     `due_date` on the task, clear offer, reply `proactive_date_applied`
+     with the friendly date readable.
+   - Anything else → clear the one-shot offer + fall through to normal
+     classification. No nag, no re-offer.
+4. **Execute:** the date is written; conversation continues normally.
+
+### Files
+
+| File | Change |
+|---|---|
+| `supabase/migrations/20260514023144_add_proactive_bridge_enabled.sql` | **NEW** — migration |
+| `_shared/pending-offer.ts` | Added `DateForRecentTaskOffer` to the `PendingOffer` union |
+| `whatsapp-webhook/index.ts` | Pref lookup + offer construction in CREATE confirmation; tail-line swap (offer replaces random tip); SafetyNet #1.4c for the next-turn response; 3 new i18n keys (`proactive_date_offer`, `proactive_date_applied`, `proactive_date_skipped`) |
+| `whatsapp-webhook/responses-i18n.test.ts` | Added 3 keys to the i18n contract |
+
+### Tests
+
+- 1330 → 1336 (+6 from i18n contract on the 3 new keys × locale and placeholder checks)
+- Same pre-existing `timezone-calendar.test.ts` failure remains (not introduced here)
+
+### Acceptance criteria
+
+- [x] Migration applied via MCP with `name='add_proactive_bridge_enabled'`
+- [x] New column defaults to `false` — zero existing-user impact
+- [x] Bridge offer fires ONLY when (a) opted in (b) task has no due_date (c) task has no reminder_time (d) no duplicate-warning case
+- [x] One-shot: offer is cleared after the next turn regardless of outcome
+- [x] 5-min TTL on the offer (via `isPendingOfferFresh`)
+- [x] EN + ES + IT translations for all 3 new keys with consistent placeholders
+- [x] Denial keywords cover EN ("no", "skip", "never mind"), ES ("no", "no gracias"), IT ("no", "lascia", "non importa")
+- [x] No regressions: 1336 / 1336 non-pre-existing tests pass
+
+---
+
 ## 2026-05-14 — Chat parity: smart re-targeting in ask-olive-stream pending offers
 
 Mirrors the WhatsApp `AWAITING_CONFIRMATION` smart re-targeting (from
