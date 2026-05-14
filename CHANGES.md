@@ -1,5 +1,154 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-13 — Conversation continuity: focal-entity persistence, smart re-targeting, partner-name guard, date-scoped agenda
+
+Three reported production bugs from WhatsApp screenshots — all rooted in
+the same architectural problem: Olive *has* the infrastructure for
+continuity (`last_referenced_entity`, `conversation_history`,
+`pending_offer`, `AWAITING_CONFIRMATION` state) but it was used
+inconsistently. The same backend felt like a different bot depending on
+intent. Brain-dump worked great; multi-turn refinement broke.
+
+### Bug 1 — "Text Jacopo Amazon tomorrow" routed to partner Almu
+
+Classifier had no signal to distinguish a relay-to-partner verb pattern
+from a brain-dump task that *mentions* a third party. The
+`PARTNER_MESSAGE` handler then looked up "the partner" from
+`get_space_members` regardless of which name was in the message — so the
+task ended up going to Almu over WhatsApp.
+
+**Fix:** thread the user's actual partner name through to the intent
+classifier as new `ClassificationInput.partnerName` + `selfName` fields,
+and tighten the classifier prompt: a "text/tell/remind <NAME>" pattern
+where `<NAME>` is not the partner (and not a generic partner reference
+like "my partner") is a brain-dump CREATE, not a relay. Belt-and-
+suspenders server-side guardrail (`SafetyNet#0.6`) in
+[whatsapp-webhook/index.ts](practical-lichterman/supabase/functions/whatsapp-webhook/index.ts)
+downgrades PARTNER_MESSAGE → CREATE if the classifier still misroutes.
+Same partner-name wiring added to [ask-olive-individual](practical-lichterman/supabase/functions/ask-olive-individual/index.ts)
+and [ask-olive-stream](practical-lichterman/supabase/functions/ask-olive-stream/index.ts)
+so the in-app chat gets the same protection. Brain dump bias is
+*strengthened* — non-partner names always default to CREATE.
+
+### Bug 2 — "And for Friday?" after a calendar query returned "Nothing due today"
+
+Two layers compounded. (a) The classifier's SEARCH `query_type` is a
+fixed enum (`urgent | today | tomorrow | this_week | recent | overdue |
+general`); "Friday" was not expressible, so the classifier defaulted to
+`general` or `today`. (b) The SEARCH handler only branched on those
+fixed buckets — no code path for an arbitrary date.
+
+**Fix:** classifier prompt now has explicit Rule 17a — calendar/agenda
+follow-ups carry the date forward in `due_date_expression` (free-form,
+e.g. "Friday", "venerdì", "the 15th"). `mapAIResultToIntentResult` adds
+a private `_dueDateExpr` field for SEARCH. New handler branch in
+[whatsapp-webhook](practical-lichterman/supabase/functions/whatsapp-webhook/index.ts)
+ahead of the today/tomorrow paths parses the expression via
+`parseNaturalDate` + `getRelativeDayWindowUtc`, fetches tasks and
+calendar events for the resulting window, and renders an agenda
+"Agenda for Friday, May 16:" instead of defaulting to today's empty
+state. Today/tomorrow shortcuts are untouched — only arbitrary days hit
+the new path.
+
+### Bug 3 — "Set it due for Friday at 5pm" couldn't resolve "it"
+
+When the user said "Can you move Book Hotel for Mallorca to 5pm?", the
+handler entered `AWAITING_CONFIRMATION` with `pending_action.task_id` set
+but never stamped `last_referenced_entity`. The user's next message
+("Set it due for Friday at 5pm") wasn't yes/no, so the handler
+auto-cancelled the pending action — wiping the task identity — and
+re-classified the message as a fresh `set_due` with `target_task_name =
+"it"`. With no focal entity to bind "it" to, the resolver returned
+the robotic "I couldn't find a task matching 'it'."
+
+**Two-part fix:**
+
+1. **Stamp focal entity on every TASK_ACTION resolution.** Once
+   `foundTask` is non-null in the TASK_ACTION block — regardless of
+   which path resolved it (AI UUID, semantic search, pronoun, ordinal,
+   outbound context) — write `last_referenced_entity` to
+   `user_sessions.context_data` (in-memory + DB). Both `clearPendingState`
+   and `stampLastAction` already preserve this field, so it survives
+   auto-cancellation. Downstream pending writes spread `...currentCtx`,
+   so the stamp lives through them too.
+
+2. **Smart re-targeting in AWAITING_CONFIRMATION.** Before auto-cancelling
+   on a non-yes/no message, try to read it as a *refinement* of the same
+   pending proposal. For `set_due_date`, that means: does the message
+   parse to a concrete date AND carry a refinement signal (correction
+   verb at start, pronoun at start, or is a ≤30-char date-shaped
+   phrase)? If yes, update `pending_action.date` and re-prompt for
+   confirmation with the new date — instead of throwing the proposal
+   away. The natural conversational pattern is "Olive proposes X → user
+   tweaks rather than yes/no"; we now honor it.
+
+### Natural-conversation upgrades
+
+Three smaller upgrades that ride on the same focal-entity work:
+
+- **Pronoun-aware soft fallback.** When the user uses a pronoun and we
+  have no focal entity to bind it to, the response no longer reads
+  "I couldn't find a task matching 'it'." It reads "🌿 I'm not sure
+  which task you mean. Tell me the name or say 'show my tasks' and
+  I'll pull up the list." Translation keys added for en/es/it.
+- **Brand-voice 🌿 prefix on dead-end replies.** Aligns with the brand
+  bible "warm but not saccharine; quietly clever."
+- **Pure-helper architecture.** New
+  [`_shared/conversation-continuity.ts`](practical-lichterman/supabase/functions/_shared/conversation-continuity.ts)
+  exports `detectSetDueRefinement` and `detectMisroutedPartnerRelay` so
+  the predicates are unit-testable and reusable by other surfaces
+  (group webhook, future chat refinements). The webhook calls these
+  rather than inlining regex.
+
+### Brain-dump preservation (audit)
+
+Each change was reviewed against the "Rule 0: BRAIN DUMP DEFAULT" anchor
+of Olive's positioning:
+
+| Change | Brain-dump effect |
+|---|---|
+| Focal-entity stamp (Fix 1) | Only fires after a task is resolved — doesn't touch CREATE path |
+| Re-targeting (Fix 2) | Only fires inside AWAITING_CONFIRMATION — doesn't touch new messages |
+| Partner-name guard (Fix 3) | *Strengthens* brain dump: ambiguous "Text Jacopo" now → CREATE |
+| Date-scoped SEARCH (Fix 4) | Only when classifier emits SEARCH + due_date_expression — CREATE bias unchanged |
+| Pronoun soft fallback | Only when actionTarget is a pronoun AND no match — CREATE bias unchanged |
+
+### Tests
+
+- **20 new unit tests** in
+  [`_shared/conversation-continuity.test.ts`](practical-lichterman/supabase/functions/_shared/conversation-continuity.test.ts)
+  covering the three bug scenarios plus edge cases (Italian/Spanish
+  refinements, long unrelated narrative with stray date, pronoun-only,
+  partner full-name vs first-name, generic "mi pareja" reference,
+  self-reminder vs partner relay).
+- Baseline: 1197 passed, 0 failed. Post-change: **1217 passed, 0 failed.**
+- Type-check on changed files: clean at all my edit locations
+  (pre-existing TS errors at unrelated lines remain unchanged).
+
+### Files
+
+| File | Change |
+|---|---|
+| `_shared/conversation-continuity.ts` | **NEW** — `detectSetDueRefinement`, `detectMisroutedPartnerRelay` |
+| `_shared/conversation-continuity.test.ts` | **NEW** — 20 unit tests |
+| `_shared/intent-classifier.ts` | Added `partnerName`/`selfName` input, Rule 17a (calendar follow-ups carry date), partner-name guard rule |
+| `whatsapp-webhook/index.ts` | Couple-row partner-name resolution; pass to classifier; SafetyNet#0.6 (PARTNER_MESSAGE → CREATE on name mismatch); date-scoped SEARCH branch; smart re-targeting in AWAITING_CONFIRMATION; focal-entity stamp on every TASK_ACTION resolution; pronoun-aware soft fallback; `_dueDateExpr` carry-through in mapping; new i18n keys `task_pronoun_unclear`, `task_focal_offer` |
+| `ask-olive-individual/index.ts` | Pass `partnerName`/`selfName` to shared classifier |
+| `ask-olive-stream/index.ts` | Pass `partnerName`/`selfName` to shared classifier |
+
+### Acceptance criteria
+
+- [x] "Text Jacopo Amazon tomorrow" with partner Almu → CREATE (brain dump task), no message sent to Almu
+- [x] "Tell Almu to buy milk" with partner Almu → PARTNER_MESSAGE (unchanged)
+- [x] "Set it due for Friday at 5pm" while a pending set_due_date proposal is open → refines the proposal (same task, new date) rather than dead-end
+- [x] "Friday at 5pm" short reply during the same pending state → refines (date-shaped short msg)
+- [x] "How are you?" during pending state → falls through to normal classification (refinement gates reject it)
+- [x] "And for Friday?" after "What's on my calendar for tomorrow?" → date-scoped agenda for Friday, not "today"
+- [x] "it" with no focal entity → "🌿 I'm not sure which task you mean..." (not robotic quoted "it")
+- [x] All 1197 baseline tests still pass; 20 new tests pass; total 1217/1217
+
+---
+
 ## 2026-05-13 — Task ownership: canonicalization end-to-end + pending-assignment toast
 
 User-reported bug: typed "Almu book hotel for Mallorca" (Almu = partner).
