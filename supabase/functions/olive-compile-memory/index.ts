@@ -584,11 +584,25 @@ async function compileFile(
     return { fileType, status: "skipped_no_data", changed: false };
   }
 
-  // Generate compiled content via tracked LLM call
+  // Generate compiled content via tracked LLM call.
+  // Use Flash-Lite as primary (cheaper, plenty of headroom for this task) and
+  // fall back through Flash → 2.0-Flash if Gemini's per-model RPM caps trip.
+  // The retry config inside llm-tracker also adds exponential backoff on 429s
+  // before falling back, which is what was making the 02:00 UTC batch burst.
   const tracker = createLLMTracker(supabase, "olive-compile-memory", userId);
   const trackerResponse = await tracker.generate(
-    { model: "gemini-2.0-flash", contents: prompt, config: { temperature: 0.2, maxOutputTokens: 2048 } },
-    { promptVersion: getCompilePromptVersion(fileType as any) }
+    {
+      model: "gemini-2.5-flash-lite",
+      contents: prompt,
+      config: { temperature: 0.2, maxOutputTokens: 2048 },
+    },
+    {
+      promptVersion: getCompilePromptVersion(fileType as any),
+      retry: {
+        maxAttempts: 3,
+        fallbackModels: ["gemini-2.5-flash", "gemini-2.0-flash"],
+      },
+    }
   );
   const rawCompiled = trackerResponse?.candidates?.[0]?.content?.parts?.[0]?.text || null;
   if (!rawCompiled || rawCompiled.trim().length < 20) {
@@ -734,14 +748,18 @@ async function compileAllForUser(
   ];
   const results = [];
 
+  // Pacing: unconditional sleep after every iteration regardless of result
+  // status. Previously this only fired on `status === "compiled"`, so failed
+  // or skipped compiles let the loop burst forward and trip Gemini's per-model
+  // RPM caps at 02:00 UTC. Env-driven so we can tune without redeploying.
+  const compileBatchSleepMs = parseInt(
+    Deno.env.get("COMPILE_BATCH_SLEEP_MS") || "3000",
+    10
+  );
   for (const ft of fileTypes) {
     const result = await compileFile(supabase, userId, ft, raw, force);
     results.push(result);
-
-    // Small delay between calls to respect rate limits
-    if (result.status === "compiled") {
-      await new Promise((r) => setTimeout(r, 500));
-    }
+    await new Promise((r) => setTimeout(r, compileBatchSleepMs));
   }
 
   // Cross-user entity resolution for couples
@@ -1023,6 +1041,14 @@ serve(async (req) => {
           `[compile-memory] Compiling for ${userIds.length} users`
         );
 
+        // Inter-user pacing — same env-driven value as the per-file-type
+        // pacing inside `compileAllForUser`. Default 3000ms keeps the full
+        // 14-user batch well under Gemini's per-model RPM cap even when
+        // every compile succeeds back-to-back.
+        const interUserSleepMs = parseInt(
+          Deno.env.get("COMPILE_BATCH_SLEEP_MS") || "3000",
+          10
+        );
         const allResults = [];
         for (const uid of userIds) {
           try {
@@ -1039,8 +1065,7 @@ serve(async (req) => {
               error: String(err),
             });
           }
-          // Rate limit between users
-          await new Promise((r) => setTimeout(r, 1000));
+          await new Promise((r) => setTimeout(r, interUserSleepMs));
         }
 
         return new Response(
