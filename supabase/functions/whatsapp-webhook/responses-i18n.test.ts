@@ -84,6 +84,10 @@ const NEW_PR1_PR2_KEYS = [
   "list_not_found",
   "list_empty",
   "error_save_failed",
+  // CONV-5 (May 14) — proactive bridge (opt-in)
+  "proactive_date_offer",
+  "proactive_date_applied",
+  "proactive_date_skipped",
 ];
 
 const FILE_TEXT = await Deno.readTextFile(WEBHOOK_PATH);
