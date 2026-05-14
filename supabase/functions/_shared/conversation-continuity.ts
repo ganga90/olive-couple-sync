@@ -41,37 +41,32 @@ export interface RefinedSetDue {
 }
 
 /**
- * If `pending` is a set_due_date proposal and `message` is a refinement
- * of that same proposal (a new date/time tweak), return the updated
- * pending action with the new date. Otherwise return null and let the
- * normal cancel-and-process flow take over.
- *
- * Two gates so we don't accidentally re-target on unrelated chatter:
+ * Generic predicate — does the message look like a refinement of a
+ * pending reschedule-style proposal? Returns the parsed new date when
+ * yes, null otherwise. Pulled out from `detectSetDueRefinement` so the
+ * web-chat surface can reuse the *exact same* gates against its own
+ * pending-offer shape (`RescheduleTaskOffer` vs WhatsApp's
+ * `PendingSetDueAction`). Two gates so we don't re-target on unrelated
+ * chatter:
  *   (a) the message parses to a concrete date via parseNaturalDate
- *   (b) it carries a refinement signal — pronoun, correction verb,
- *       "due/for/to/at/on", or is a short (≤30 char) date-shaped
- *       message (EN + ES + IT covered).
+ *   (b) it carries a refinement signal — correction verb / pronoun at
+ *       the start, OR the whole message is a short (≤30 char) date-
+ *       shaped phrase (EN + ES + IT).
  */
-export function detectSetDueRefinement(
-  pending: unknown,
+export interface ParsedRefinement {
+  parsedReadable: string;
+  parsedDateIso: string;
+}
+
+export function detectDateRefinement(
   message: string | null | undefined,
   timezone: string,
   lang: string,
-): RefinedSetDue | null {
+): ParsedRefinement | null {
   if (!message) return null;
-  const p = pending as PendingSetDueAction | null;
-  if (!p || p.type !== "set_due_date") return null;
-
   const parsed = parseNaturalDate(message, timezone, lang);
   if (!parsed.date) return null;
 
-  // A refinement is one of three shapes — all tight, anchored to the
-  // *start* of the message so we don't catch stray dates inside long
-  // narratives ("I was thinking maybe Monday could work for that…"):
-  //
-  //   (a) starts with a correction verb (no/set/move/change/make/...)
-  //   (b) starts with a pronoun referring to the pending task
-  //   (c) the whole message is a short date-shaped phrase (≤30 chars)
   const trimmed = message.trim();
   const startsWithCorrectionVerb =
     /^(no|nope|nah|actually|wait|hmm|set|move|change|make|push|postpone|reschedule|update|put|reschedul|cambia|sposta|metti|sposto|posponer|mueve|cambiar|aspetta|impost|pon)\b/i
@@ -82,15 +77,85 @@ export function detectSetDueRefinement(
 
   if (!startsWithCorrectionVerb && !startsWithPronoun && !isShort) return null;
 
+  return { parsedReadable: parsed.readable, parsedDateIso: parsed.date };
+}
+
+/**
+ * If `pending` is a set_due_date proposal and `message` is a refinement
+ * of that same proposal (a new date/time tweak), return the updated
+ * pending action with the new date. Otherwise return null and let the
+ * normal cancel-and-process flow take over. WhatsApp-shape adapter
+ * around the generic `detectDateRefinement` predicate.
+ */
+export function detectSetDueRefinement(
+  pending: unknown,
+  message: string | null | undefined,
+  timezone: string,
+  lang: string,
+): RefinedSetDue | null {
+  const p = pending as PendingSetDueAction | null;
+  if (!p || p.type !== "set_due_date") return null;
+
+  const refined = detectDateRefinement(message, timezone, lang);
+  if (!refined) return null;
+
   return {
     updated: {
       ...p,
-      date: parsed.date,
-      readable: parsed.readable,
+      date: refined.parsedDateIso,
+      readable: refined.parsedReadable,
       timezone: p.timezone || timezone,
     },
-    parsedReadable: parsed.readable,
-    parsedDateIso: parsed.date,
+    parsedReadable: refined.parsedReadable,
+    parsedDateIso: refined.parsedDateIso,
+  };
+}
+
+/**
+ * Web-chat adapter — same predicate, applied to a `reschedule_task`
+ * PendingOffer (shape from `_shared/pending-offer.ts`). Returns the
+ * updated offer with `new_iso` and `readable` replaced, plus a flag
+ * indicating the parsed date carried a time component (so callers can
+ * keep / flip `has_time` correctly when offers store date-only). The
+ * input type is `unknown` so callers can pass `session.context_data.
+ * pending_action` without narrowing first.
+ */
+export interface RefinedReschedule {
+  // Shape-loose return — caller's RescheduleTaskOffer fields, but we
+  // keep it as a plain Record so this module doesn't have to import
+  // the pending-offer types and create a circular dep.
+  updated: Record<string, unknown> & {
+    type: "reschedule_task";
+    new_iso: string;
+    readable: string;
+    timezone: string;
+  };
+  parsedReadable: string;
+  parsedDateIso: string;
+}
+
+export function detectRescheduleRefinement(
+  pending: unknown,
+  message: string | null | undefined,
+  timezone: string,
+  lang: string,
+): RefinedReschedule | null {
+  const p = pending as ({ type?: string; timezone?: string } & Record<string, unknown>) | null;
+  if (!p || p.type !== "reschedule_task") return null;
+
+  const refined = detectDateRefinement(message, timezone, lang);
+  if (!refined) return null;
+
+  return {
+    updated: {
+      ...p,
+      type: "reschedule_task",
+      new_iso: refined.parsedDateIso,
+      readable: refined.parsedReadable,
+      timezone: (p.timezone as string | undefined) || timezone,
+    },
+    parsedReadable: refined.parsedReadable,
+    parsedDateIso: refined.parsedDateIso,
   };
 }
 

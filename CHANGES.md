@@ -1,5 +1,71 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-14 — Chat parity: smart re-targeting in ask-olive-stream pending offers
+
+Mirrors the WhatsApp `AWAITING_CONFIRMATION` smart re-targeting (from
+[CONV-1]) into the web chat surface. Previously: if the user, instead
+of replying "yes/no" to a pending `reschedule_task` offer, sent a date
+refinement ("Set it due for Friday at 5pm"), the chat would silently
+*clear* the pending offer and re-classify the message as a brand new
+request — losing the previously resolved task. Now the chat refines
+the same offer with the new date and re-prompts, matching WhatsApp.
+
+### Architecture — shared predicate, two adapters
+
+The original `detectSetDueRefinement` was WhatsApp-shape only
+(`PendingSetDueAction.date`). Web chat uses a different pending shape
+(`RescheduleTaskOffer.new_iso`, `field`, `has_time`, ...) defined in
+`_shared/pending-offer.ts`. Rather than duplicate the regex gates,
+the predicate is now factored out:
+
+```
+detectDateRefinement(message, timezone, lang)
+  → returns ParsedRefinement | null
+
+detectSetDueRefinement(pending, message, tz, lang)
+  → WhatsApp adapter — updates date/readable
+
+detectRescheduleRefinement(pending, message, tz, lang)
+  → chat adapter — updates new_iso/readable
+```
+
+Both adapters share the exact same gates (parses-to-date + starts-with-
+correction-verb / starts-with-pronoun / ≤30 chars), so behavior stays
+identical across surfaces.
+
+### Wiring in ask-olive-stream
+
+The pre-flow gate at the "neither yes nor no" branch now tries
+`detectRescheduleRefinement` against the pending offer before clearing.
+On match: persists the updated offer back to `user_sessions.context_data
+.pending_action` and streams a confirmation prompt using the new
+parsed-readable. On miss: falls through to the existing clear-and-
+process behavior — no regression.
+
+### Files
+
+| File | Change |
+|---|---|
+| `_shared/conversation-continuity.ts` | Factored out `detectDateRefinement` shared predicate; added `detectRescheduleRefinement` chat adapter |
+| `_shared/conversation-continuity.test.ts` | +8 tests for `detectRescheduleRefinement` (parity scenarios: EN refinement, short date-only, "How are you?", long narrative with stray date, wrong pending type, null pending, Italian refinement, task-identity preservation) |
+| `ask-olive-stream/index.ts` | Pre-flow gate calls `detectRescheduleRefinement` before clearing pending; on match, persists updated offer and re-prompts |
+
+### Tests
+
+- 1322 → 1330 (+8 chat-parity tests, all green)
+- Pre-existing `timezone-calendar.test.ts` still the single non-introduced failure (also fails on `main`)
+
+### Acceptance criteria
+
+- [x] Existing WhatsApp `detectSetDueRefinement` behavior unchanged (still uses same gates via shared predicate)
+- [x] Chat now refines `reschedule_task` offers on date corrections
+- [x] EN + ES + IT refinement signals covered in both adapters (shared regex)
+- [x] On match: chat persists updated offer + re-prompts (same UX as WhatsApp)
+- [x] On no match: chat falls through to clear-and-process (no regression)
+- [x] Wrong pending type → returns null (e.g., a `delete_task` offer is not touched)
+
+---
+
 ## 2026-05-14 — Brand-voice pass round 3: full hardcoded → i18n migration + rich-key warm-up
 
 Final pass on user-facing WhatsApp copy. Migrates the remaining 17
