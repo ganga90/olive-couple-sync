@@ -1,5 +1,63 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-14 — Proactive bridge parity: settings UI + web chat mirror + ask-olive-individual brand-voice audit
+
+Three follow-ups to CONV-5:
+
+1. **Settings UI toggle** for `proactive_bridge_enabled` — users no longer
+   need SQL to opt in. New switch in the Olive Proactive Settings panel
+   alongside Pattern Suggestions / Weekly Summary, gated by the
+   `proactive_enabled` master toggle. Defaults off (matches CONV-5
+   migration default).
+
+2. **Web chat mirror** of the proactive bridge — `ask-olive-stream` now
+   fires the same opt-in offer after a `task_created` with no due_date
+   and no reminder_time. Persists `pending_action.type='date_for_recent_task'`
+   in `user_sessions.context_data` (same shape as WhatsApp). Pre-flow
+   gate handles the next-turn response: date phrase → apply; deny →
+   ack; anything else → clear one-shot offer and fall through.
+
+3. **`ask-olive-individual` brand-voice audit** — surface is mostly
+   Gemini-driven (system prompt sets voice), so the audit found only
+   2 hardcoded error fallback strings (apology-spiral pattern from
+   pre-CONV-2 era). Warmed both to match `error_generic`. Also added
+   explicit 🌿 prefix instruction to the system prompt so Gemini's
+   outputs carry the brand signature consistently.
+
+### Files
+
+| File | Change |
+|---|---|
+| `src/integrations/supabase/types.ts` | Added `proactive_bridge_enabled` to `olive_user_preferences` Row/Insert/Update |
+| `src/components/settings/OliveProactivePreferences.tsx` | New toggle UI with Leaf icon; pref field + default; fetch + save wired |
+| `public/locales/{en,es-ES,it-IT}/profile.json` | New i18n keys `olivePreferences.proactiveBridge` + `.proactiveBridgeDesc` (3 locales) |
+| `supabase/functions/ask-olive-stream/index.ts` | After task_created, check pref + persist offer + append hint to Gemini prompt; pre-flow handler for `date_for_recent_task` (date apply / deny / one-shot clear) |
+| `supabase/functions/ask-olive-individual/index.ts` | 2 error-fallback strings warmed to match `error_generic`; system prompt gains explicit "🌿 prefix every response" + voice guidance |
+
+### Tests
+
+- All 1336 non-pre-existing Deno tests still pass (matches CONV-5 baseline; this PR adds no new tests because the helpers it reuses already have 28 tests from CONV-1/CONV-4 covering both `detectDateRefinement` adapters).
+- Pre-existing `timezone-calendar.test.ts` failure unchanged (also fails on `main`).
+- Frontend build verified via Vite dev server: types compile, OliveProactivePreferences renders.
+
+### Acceptance criteria
+
+- [x] Settings page exposes the toggle in all three locales (en/es/it)
+- [x] Toggle persists via the same upsert path as other prefs
+- [x] Toggle defaults to off — matches CONV-5 migration
+- [x] Web chat fires the bridge after qualifying CREATEs (same gates as WhatsApp)
+- [x] Web chat handler accepts date phrase / denial / falls through — parity with WhatsApp SafetyNet #1.4c
+- [x] `ask-olive-individual` error fallbacks use the warmed `error_generic` shape
+- [x] System prompt for `ask-olive-individual` instructs 🌿 prefix per brand bible
+- [x] No regressions: 1336 / 1336 non-pre-existing tests pass
+
+### What this PR does NOT do (deliberate scope limits)
+
+- **No localization on `ask-olive-individual` error fallbacks.** The catch blocks fire at the outer scope where `webUserLang` isn't bound; threading it through would require a structural refactor. Left as a follow-up — the frontend can intercept 500 responses and surface its own localized message via the existing `common.somethingWentWrong` key.
+- **No wholesale system-prompt rewrite for `ask-olive-individual`.** The personality section ("upbeat companion", "always positive") drifts from the brand bible's "warm but not saccharine", but a full prompt rewrite is high-risk without an A/B rollout. Added a bounded 🌿-prefix instruction instead — propagates voice without restructuring proven behavior.
+
+---
+
 ## 2026-05-14 — Proactive bridge on brain-dump confirmation (opt-in, en/es/it)
 
 After a brain-dump CREATE saved a task with NO due_date AND NO

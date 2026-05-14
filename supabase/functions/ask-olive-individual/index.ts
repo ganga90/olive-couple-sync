@@ -134,6 +134,8 @@ Guidelines:
 
 RESPONSE FORMATTING (CRITICAL):
 Always format your responses using proper Markdown for rich rendering:
+- **Start every response with the 🌿 leaf** — Olive's signature mark, per the brand bible. One leaf, at the very start. Do NOT add other decorative emoji (no 🎉, ✨, 💝, 💚, 💬) — semantic emoji (✅ for confirmation, 📋 for list, 🔥 for high-priority, 📅 for calendar, 🔗 for link) are fine where they earn their place.
+- **Voice:** warm but not saccharine. "Got it" beats "Got it! 🎉✨". Direct, not cute. Confident, not arrogant. Subtle wit beats wacky humor. Drop performative phrases like "Great job!", "All caught up!", "I'm here to help!".
 - Use **bold** for emphasis on key points
 - Use bullet points (- or *) for lists
 - Use numbered lists (1. 2. 3.) for sequential steps or rankings
@@ -2267,8 +2269,8 @@ User's Question: ${actualMessage}`;
     console.error('[Ask Olive Individual] Error:', error);
     return new Response(JSON.stringify({
       error: error?.message || 'Unknown error occurred',
-      reply: "I'm sorry, I'm having trouble processing your request right now. Please try again in a moment.",
-      response: "I'm sorry, I'm having trouble processing your request right now. Please try again in a moment."
+      reply: "🌿 Something went wrong on my end. Try again?",
+      response: "🌿 Something went wrong on my end. Try again?"
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -2442,8 +2444,8 @@ async function fallbackToGenerateContent(
     console.error('[Ask Olive Individual] Fallback error:', error);
     return new Response(JSON.stringify({
       error: error?.message || 'Unknown error occurred',
-      reply: "I'm sorry, I'm having trouble right now. Please try again in a moment.",
-      response: "I'm sorry, I'm having trouble right now. Please try again in a moment."
+      reply: "🌿 Something went wrong on my end. Try again?",
+      response: "🌿 Something went wrong on my end. Try again?"
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -490,6 +490,63 @@ async function handlePreFlowGate(args: {
       return await handleDisambiguationReply(supabase, session, pending, message, userTimezone, lang);
     }
 
+    // Proactive bridge response (parity with WhatsApp CONV-5
+    // SafetyNet#1.4c). After a task_created with no due_date / no
+    // reminder_time and the user opted in, we offered "Want me to set
+    // a date?" and the next message is one of:
+    //   - a date phrase → apply it to the task's due_date
+    //   - a denial ("no" / "skip" / "never mind" — en/es/it) → ack, clear
+    //   - anything else → clear (one-shot) + fall through to normal flow
+    if (pending.type === 'date_for_recent_task') {
+      const bridgeTz = (pending as any).timezone || userTimezone;
+      const denyReply = /^\s*(no|nope|nah|skip|never\s?mind|forget\s+it|no\s+gracias|no\s+thanks|non\s+importa|lascia)\s*[.!?]?\s*$/i
+        .test(message);
+      if (denyReply) {
+        await clearPendingAction(supabase, session);
+        return streamGeminiResponse(
+          `You are Olive. The user declined a tiny optional follow-up (you offered to add a date to a task they just saved). Acknowledge in 1 sentence, no apology. ${OLIVE_CHAT_PROMPT}`,
+          `User declined the date offer: "${message}". Use phrasing like "🌿 No worries — saved as is."`,
+          'lite',
+        );
+      }
+      try {
+        const { detectDateRefinement } = await import('../_shared/conversation-continuity.ts');
+        const parsed = detectDateRefinement(message, bridgeTz, lang);
+        if (parsed) {
+          const taskId = (pending as any).task_id;
+          const taskSummary = (pending as any).task_summary || 'your task';
+          await supabase
+            .from('clerk_notes')
+            .update({
+              due_date: parsed.parsedDateIso,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', taskId);
+          await clearPendingAction(supabase, session);
+          console.log(
+            '[chat/proactive-bridge] Applied date',
+            parsed.parsedReadable,
+            'to task',
+            taskId,
+          );
+          return streamGeminiResponse(
+            `You are Olive. You just applied a date the user gave you to a task they saved a moment ago. Confirm in 1 sentence using the exact phrasing in RESULT. ${OLIVE_CHAT_PROMPT}`,
+            `RESULT: 🌿 Set "${taskSummary}" for ${parsed.parsedReadable}.`,
+            'lite',
+          );
+        }
+      } catch (parseErr) {
+        console.warn(
+          '[chat/proactive-bridge] parse/apply failed (non-fatal):',
+          parseErr instanceof Error ? parseErr.message : parseErr,
+        );
+      }
+      // Anything else → one-shot offer, clear and fall through to
+      // normal classification (user moved on to a new request).
+      await clearPendingAction(supabase, session);
+      return null;
+    }
+
     const confirmation = classifyConfirmationReply(message);
     if (confirmation === 'affirm') {
       return await executeConfirmedOffer(supabase, session, pending as Exclude<PendingOffer, DisambiguationOffer | { type: 'save_artifact' }>, userTimezone, lang);
@@ -1463,8 +1520,53 @@ ${isHybrid ? 'Answer comprehensively using web knowledge, then naturally connect
         const calSync = (actionResult as any).calendar_sync as CalendarSyncReport | undefined;
         const calendarHint = calSync ? buildCalendarSyncHint(calSync) : '';
 
+        // Proactive bridge (opt-in, parity with WhatsApp CONV-5): when
+        // task_created lands without a due_date and without a reminder_time,
+        // and the user has flipped on proactive_bridge_enabled, append a
+        // single bounded offer ("Want me to set a date?") and persist a
+        // pending_action for the next turn to consume. ONE-shot, 5-min TTL.
+        let bridgeHint = '';
+        if (
+          actionResult.action === 'task_created' &&
+          !actionResult.due_date &&
+          !(actionResult as any).reminder_time
+        ) {
+          try {
+            const { data: prefRow } = await supabase
+              .from('olive_user_preferences')
+              .select('proactive_bridge_enabled')
+              .eq('user_id', user_id)
+              .maybeSingle();
+            if (prefRow?.proactive_bridge_enabled && actionResult.id) {
+              const bridgeOffer = {
+                type: 'date_for_recent_task' as const,
+                task_id: actionResult.id,
+                task_summary: actionResult.summary || message.substring(0, 80),
+                timezone: userTimezone,
+                offered_at: new Date().toISOString(),
+              };
+              const session = await getOrCreateSession(supabase, user_id);
+              await supabase
+                .from('user_sessions')
+                .update({
+                  conversation_state: 'AWAITING_CONFIRMATION',
+                  context_data: { ...session.context_data, pending_action: bridgeOffer },
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', session.id);
+              bridgeHint = '\n\nALSO ASK at the end (single sentence, no follow-up question after): "💡 Want me to set a date? Reply with one (e.g. tomorrow at 5pm)."';
+              console.log('[chat/proactive-bridge] Offered date_for_recent_task for note', actionResult.id);
+            }
+          } catch (bridgeErr) {
+            console.warn(
+              '[chat/proactive-bridge] offer persistence failed (non-fatal):',
+              bridgeErr instanceof Error ? bridgeErr.message : bridgeErr,
+            );
+          }
+        }
+
         const confirmPrompt = `You are Olive. You just performed an action for the user. Confirm what you did warmly and briefly. Include the specific details. ${calendarHint ? 'When mentioning the calendar, be truthful — use the calendar sync state below verbatim instead of assuming Google Calendar was updated. ' : ''}${OLIVE_CHAT_PROMPT}`;
-        const confirmContent = `ACTION PERFORMED:\n${JSON.stringify(actionResult)}\n\n${calendarHint}User's original request: ${message}\n\n${context?.user_name ? `User's name: ${context.user_name}` : ''}\n\nConfirm what you did in 1-2 sentences. Be specific about what was created/completed.`;
+        const confirmContent = `ACTION PERFORMED:\n${JSON.stringify(actionResult)}\n\n${calendarHint}User's original request: ${message}\n\n${context?.user_name ? `User's name: ${context.user_name}` : ''}\n\nConfirm what you did in 1-2 sentences. Be specific about what was created/completed.${bridgeHint}`;
         scheduleMemoryEvolution(user_id, message, `Action: ${actionResult.action} - ${actionResult.summary || ''}`);
         return streamGeminiResponse(confirmPrompt, confirmContent, 'lite');
       }
