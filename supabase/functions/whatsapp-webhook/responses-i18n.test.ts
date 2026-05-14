@@ -54,6 +54,13 @@ const NEW_PR1_PR2_KEYS = [
   // PR8 (inbound clustering)
   "cluster_brief_ack",
   "cluster_augmented_task",
+  // CONV-1 (May 13) — conversation continuity + brand-voice warm-up
+  "task_pronoun_unclear",
+  "task_focal_offer",
+  "empty_no_urgent",
+  "empty_no_today",
+  "empty_no_date",
+  "empty_no_recent",
 ];
 
 const FILE_TEXT = await Deno.readTextFile(WEBHOOK_PATH);
