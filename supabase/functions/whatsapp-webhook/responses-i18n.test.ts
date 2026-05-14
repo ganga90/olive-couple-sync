@@ -61,6 +61,29 @@ const NEW_PR1_PR2_KEYS = [
   "empty_no_today",
   "empty_no_date",
   "empty_no_recent",
+  // CONV-2 (May 13) — "Did you mean X?"
+  "task_did_you_mean",
+  // CONV-3 (May 14) — hardcoded → i18n migration for remaining strings
+  "error_message_too_long",
+  "error_invalid_location",
+  "error_too_many_attachments",
+  "error_voice_unavailable",
+  "error_image_processing",
+  "error_empty_input",
+  "location_shared",
+  "error_invalid_token",
+  "error_link_failed",
+  "web_search_unavailable",
+  "web_search_unavailable_hint",
+  "web_search_error",
+  "search_found_items",
+  "partner_reached_partial",
+  "partner_unreachable",
+  "list_no_name",
+  "list_already_exists",
+  "list_not_found",
+  "list_empty",
+  "error_save_failed",
 ];
 
 const FILE_TEXT = await Deno.readTextFile(WEBHOOK_PATH);
