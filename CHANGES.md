@@ -1,5 +1,94 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-14 — Brand-voice pass round 3: full hardcoded → i18n migration + rich-key warm-up
+
+Final pass on user-facing WhatsApp copy. Migrates the remaining 17
+hardcoded reply strings in `whatsapp-webhook/index.ts` to i18n with
+full en/es/it coverage, and warms 6 of the existing rich responses to
+match the trimmed brand voice from CONV-2.
+
+### Hardcoded → i18n migration (19 new keys)
+
+Per the non-negotiable rule: "All user-facing strings go through
+`t('namespace.key')` with three locales." These were holdovers that
+slipped past earlier passes.
+
+**Input / format errors:**
+- `error_message_too_long` (was inline at line 2205)
+- `error_invalid_location` (line 2221)
+- `error_too_many_attachments` (line 2231) — placeholders `{count}`, `{max}`
+- `error_voice_unavailable` (line 2394)
+- `error_image_processing` (line 2727)
+- `error_empty_input` (line 2841)
+- `location_shared` (line 2408) — placeholders `{lat}`, `{lon}`
+
+**Account / token:**
+- `error_invalid_token` (line 2860)
+- `error_link_failed` (line 2870)
+
+**Web search:**
+- `web_search_unavailable` (line 7469)
+- `web_search_unavailable_hint` (line 7601) — placeholder `{hint}`
+- `web_search_error` (line 7700)
+- `search_found_items` (line 7452) — placeholder `{results}`
+
+**Partner messaging edge cases:**
+- `partner_reached_partial` (line 9154) — placeholders `{task}`, `{partner}`, `{last4}`
+- `partner_unreachable` (line 9156) — placeholders `{partner}`, `{last4}`, `{detail}`
+
+**List management:**
+- `list_no_name` (line 9363)
+- `list_already_exists` (line 9392) — placeholders `{list}`, `{count}`, `{plural}`
+- `list_not_found` (line 9511) — placeholders `{query}`, `{lists}`
+- `list_empty` (line 9525) — placeholder `{list}`
+
+**Catch-all:**
+- `error_save_failed` (line 10111)
+
+Plus 2 sites where the existing `error_generic` key replaces inline
+"Sorry, something went wrong" / "Sorry, there was an error" strings.
+
+### Existing rich-key warm-up (6 keys)
+
+Brand voice: drop emoji decoration (💚, 💬, 😕, 🤔), drop performative
+"Done!", trim verbose multi-line success messages. The 🌿 leaf is the
+signature prefix.
+
+| Key | Before (en) | After (en) |
+|---|---|---|
+| `partner_message_sent` | `'✅ Done! I sent {partner} a message:\n\n"{message}"\n\nvia WhatsApp 💬'` | `'🌿 Sent to {partner}:\n\n"{message}"'` |
+| `partner_message_and_task` | `'✅ Done! I told {partner} and saved a task:\n\n📋 "{task}"\n📂 Assigned to: {partner}\n💬 Notified via WhatsApp'` | `'🌿 Told {partner} and saved:\n\n📋 "{task}"\n📂 Assigned to {partner}'` |
+| `partner_message_existing_task` | `'✅ Done! I reminded {partner} about an existing task:\n\n📋 "{task}"\n💬 Notified via WhatsApp\n\nℹ️ No duplicate created — task already tracked.'` | `'🌿 Reminded {partner} about an existing task:\n\n📋 "{task}"'` |
+| `partner_no_phone` | `'😕 I\'d love to message {partner}, but they haven\'t linked their WhatsApp yet.\n\nAsk them to open Olive → Profile → Link WhatsApp.'` | `'🌿 {partner} hasn\'t linked WhatsApp yet. Ask them to open Olive → Profile → Link WhatsApp.'` |
+| `partner_no_space` | `'I couldn\'t find your partner in the shared space. Make sure they\'ve accepted your invite!\n\nTo invite someone: open Olive → Profile → Invite Partner 💚'` | `'🌿 Looks like your partner hasn\'t accepted the invite yet. Open Olive → Profile → Invite Partner.'` |
+| `task_ambiguous` | `'🤔 I found multiple tasks matching "{query}":\n\n{options}\n\nWhich one did you mean? Reply with the number.'` | `'🌿 A few tasks match "{query}":\n\n{options}\n\nWhich one? Reply with the number.'` |
+
+`es` and `it` translations follow the same warming pattern (drop
+exclamations, drop "Done!" / "¡Hecho!" / "Fatto!" performatives, drop
+non-semantic emoji).
+
+### Files
+
+| File | Change |
+|---|---|
+| `whatsapp-webhook/index.ts` | +19 new RESPONSES keys; 6 rich-key rewrites; 19 call-site replacements (inline reply() strings → t()) |
+| `whatsapp-webhook/responses-i18n.test.ts` | Added 20 keys to the i18n contract (`task_did_you_mean` from CONV-2 plus all 19 new CONV-3 keys) |
+
+### Tests
+
+- 1322 / 1322 (skipping pre-existing timezone-calendar failure). +42 from CONV-2 baseline 1280 — the i18n contract test fires locale-completeness + placeholder-consistency checks for every key in `NEW_PR1_PR2_KEYS`, and 20 new keys × 2 checks = +40, plus +2 from misc.
+
+### Acceptance criteria
+
+- [x] All 19 new keys have `en`/`es`/`it` with consistent placeholders
+- [x] All 6 warmed keys retain their placeholder shape (no breaking changes for callers)
+- [x] All 17 previously hardcoded reply strings now route through `t()`
+- [x] No remaining `return reply('…')` literal-string sites left for user-facing copy
+- [x] Brand voice 🌿 prefix consistent across rewrites
+- [x] No regressions: 1322 / 1322 non-pre-existing tests pass
+
+---
+
 ## 2026-05-14 — Brand-voice warm-up on dead-end replies + "Did you mean X?" weak-candidate offer
 
 Follow-up to [CONV-1]. The previous PR landed the structural continuity
