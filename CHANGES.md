@@ -1,5 +1,104 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-14 — [MULTI-PROVIDER-LLM] Multi-provider LLM abstraction (Gemini → Cerebras → Groq)
+
+Bucket 2. Adds a provider-agnostic LLM call path so the system survives a
+Gemini outage instead of just retrying-then-failing. `olive-compile-memory`
+is the first (and only) caller migrated to the new chain in this PR —
+every other function keeps its existing `tracker.generate()` path,
+unchanged.
+
+### What changed
+
+1. **New `_shared/llm-providers/` package**
+   - `types.ts` — normalized `LlmRequest` / `LlmResponse` / `LlmError`
+     interfaces. `LlmError` classification (`retryable`, `fallbackEligible`)
+     is what the chain dispatcher reads to decide retry-vs-advance-vs-throw.
+   - `gemini.ts` — REST implementation, matches `llm-tracker.ts`'s existing
+     endpoint and auth shape, classifies 4xx terminal and 429/5xx
+     retryable-and-fallback-eligible.
+   - `openai-compatible.ts` — single class serving both Cerebras
+     (`api.cerebras.ai/v1`) and Groq (`api.groq.com/openai/v1`). Sends
+     Bearer auth, expects OpenAI chat-completions response shape.
+   - `index.ts` — `getProviderChain(tier)` returns the ordered chain.
+     `lite/standard` walk Gemini → Cerebras → Groq; `pro` skips Groq
+     (6K TPM cap is too tight for long Pro contexts).
+
+2. **`_shared/llm-tracker.ts` extensions**
+   - `TrackerOptions` gains `provider?: ProviderName`; every row written
+     to `olive_llm_calls` now carries the provider column (defaults to
+     `"gemini"` so historical callers stay correct).
+   - `MODEL_PRICING` gains `llama-3.3-70b` and `llama-3.3-70b-versatile`
+     at `$0` (free tier; update when paid tier introduced).
+   - New `generateWithChain(tier, req, opts)` walks the chain with
+     same-provider retry + cross-provider fallback. Every attempt logs.
+     Throws an aggregate error when all providers exhaust.
+
+3. **`olive-compile-memory/index.ts`** — migrated from
+   `tracker.generate({ model: "gemini-2.5-flash-lite", ..., retry: { ... } })`
+   to `tracker.generateWithChain("lite", { ... }, { retry: { maxAttempts: 2 } })`.
+   Pacing logic (env-driven `COMPILE_BATCH_SLEEP_MS`) from Bucket 1 is kept.
+
+4. **Migration `20260514035835_add_provider_to_llm_calls.sql`** — adds
+   `provider text NOT NULL DEFAULT 'gemini'` to `olive_llm_calls`,
+   indexes `(provider, created_at)`, recreates `olive_llm_analytics`
+   with `provider` appended (CREATE OR REPLACE VIEW does not allow
+   reordering existing columns, only appending). Applied via Supabase
+   MCP at ledger timestamp `20260514035835`.
+
+5. **Tests** — 11 provider unit tests + 5 chain-dispatch tests added
+   to `llm-tracker.test.ts`. Each test stubs `globalThis.fetch` to
+   avoid real network. Coverage: success/normalize, 429 retryable,
+   5xx retryable, 400 terminal, 401 terminal, missing-key fallback,
+   network error, primary success, retry-then-success, retry-exhaust-
+   then-fallback, fallback short-circuit on missing key, all-providers-
+   exhausted aggregate throw, non-retryable terminal throw.
+
+6. **`scripts/verify-chain-fallback.ts`** — integration soft-test
+   runner. Used in lieu of mutating the prod `GEMINI_API` secret
+   (Step 6.3) since there's no separate dev Supabase project. Exercises
+   the production chain dispatcher + provider classes + tracker
+   end-to-end with a stubbed HTTP boundary; 3/3 scenarios pass.
+
+### Files
+
+| File | Change |
+|---|---|
+| `supabase/functions/_shared/llm-providers/types.ts` | New — `LlmRequest`/`LlmResponse`/`LlmError`/`LlmProvider`/`Chain` interfaces |
+| `supabase/functions/_shared/llm-providers/gemini.ts` | New — Gemini REST provider |
+| `supabase/functions/_shared/llm-providers/openai-compatible.ts` | New — single class serving Cerebras + Groq |
+| `supabase/functions/_shared/llm-providers/index.ts` | New — chain registry per `ModelTier` |
+| `supabase/functions/_shared/llm-providers/llm-providers.test.ts` | New — 11 per-provider unit tests |
+| `supabase/functions/_shared/llm-tracker.ts` | Add `provider` column write + Llama pricing + `generateWithChain` |
+| `supabase/functions/_shared/llm-tracker.test.ts` | 5 new chain dispatch tests + capture provider in fake supabase |
+| `supabase/functions/olive-compile-memory/index.ts` | Migrate `tracker.generate()` → `tracker.generateWithChain("lite", ...)` |
+| `supabase/migrations/20260514035835_add_provider_to_llm_calls.sql` | New — adds provider column, indexes it, recreates analytics view |
+| `scripts/verify-chain-fallback.ts` | New — Step 6.3 soft-test runner |
+| `PROGRESS.md` | New — full Bucket 2 verification record |
+
+### Tests
+
+- `deno test supabase/functions/_shared/ --allow-net --allow-read --allow-env` → **1248 passed, 0 failed** (1232 baseline + 16 new).
+- `deno check` clean on every modified file.
+- `deno run scripts/verify-chain-fallback.ts` → 3/3 scenarios ✅.
+
+### Acceptance criteria
+
+- [x] **6.1** Migration applied; `provider text NOT NULL DEFAULT 'gemini'::text` confirmed via `information_schema.columns`.
+- [x] **6.2** Primary-path force-compile of `user_35qkEgvbMI0SzIpvEsDW35drgLu` → 4 rows, all `provider='gemini'`, `model='gemini-2.5-flash-lite'`, `status='success'`, with `metadata.tier="lite"`, `provider_chain_index=0`, `provider_attempt=0`.
+- [x] **6.3** Chain fallback verified via soft-test (3/3 scenarios pass). Spec's "invalidate prod key" rejected per user direction (would have broken other live functions).
+- [x] **6.4** i18n quality sanity: 6/6 ✅ on the available es-ES + it-IT user pool (the spec's "5 each" wasn't feasible — only 3 es-ES and 4 it-IT users in prod). All on Gemini primary path; Llama-on-Llama quality remains pending until natural fallback or local-key availability.
+- [ ] **6.5** 24h monitoring — pending by definition; next compile-memory cron is 02:00 UTC tomorrow.
+- [ ] **Step 7** SKILL.md / Section 18 / Section 21 — out of repo scope (skill lives in plugin directory, not version control). Documented in PROGRESS.md.
+
+### Out of scope (Section 9 of the prompt)
+
+- Migrating other functions (`process-note`, `ask-olive`, `whatsapp-webhook`, ...) to `generateWithChain`.
+- In-memory circuit breaker.
+- Multi-turn `messages[]` array.
+- Multimodal routing.
+- Cost-aware routing.
+
 ## 2026-05-13 — [COMPILE-BURST-1] Stop the bleeding on `olive-compile-memory` 02:00 UTC batch
 
 Bucket 1 of the compile-memory remediation plan. The daily compile-memory
