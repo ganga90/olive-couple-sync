@@ -244,6 +244,112 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'es': '🌿 ¿Te refieres a "{task}" — la que acabamos de hablar? Responde "sí" y la {action}.',
     'it': '🌿 Intendi "{task}" — quella di cui abbiamo appena parlato? Rispondi "sì" e la {action}.',
   },
+  // ── Input / format errors ──
+  error_message_too_long: {
+    en: '🌿 That message is too long. Keep it under 10,000 characters and send again.',
+    'es': '🌿 Ese mensaje es demasiado largo. Mantenlo bajo 10.000 caracteres e inténtalo de nuevo.',
+    'it': '🌿 Quel messaggio è troppo lungo. Mantienilo sotto i 10.000 caratteri e riprova.',
+  },
+  error_invalid_location: {
+    en: '🌿 I didn\'t catch your location. Try sharing it again.',
+    'es': '🌿 No capté tu ubicación. Compártela de nuevo.',
+    'it': '🌿 Non ho ricevuto la tua posizione. Riprova a condividerla.',
+  },
+  error_too_many_attachments: {
+    en: '🌿 That\'s a lot at once ({count}). Send up to {max} files at a time.',
+    'es': '🌿 Es mucho a la vez ({count}). Envía hasta {max} archivos por vez.',
+    'it': '🌿 Sono troppi insieme ({count}). Inviane fino a {max} alla volta.',
+  },
+  error_voice_unavailable: {
+    en: '🌿 Got your voice note, but my audio processor is down right now. Try again or type your message.',
+    'es': '🌿 Recibí tu nota de voz, pero mi procesador de audio está caído. Reintenta o escríbeme.',
+    'it': '🌿 Ho ricevuto il vocale, ma il mio audio è giù in questo momento. Riprova o scrivi il messaggio.',
+  },
+  error_image_processing: {
+    en: '🌿 I had trouble with that image. Try again or add a caption describing what to save.',
+    'es': '🌿 Tuve problemas con esa imagen. Reintenta o añade una descripción de qué guardar.',
+    'it': '🌿 Ho avuto problemi con l\'immagine. Riprova o aggiungi una didascalia con cosa salvare.',
+  },
+  error_empty_input: {
+    en: '🌿 Send me a message, share your location 📍, or attach media 📎.',
+    'es': '🌿 Envíame un mensaje, comparte tu ubicación 📍, o adjunta archivos 📎.',
+    'it': '🌿 Mandami un messaggio, condividi la tua posizione 📍, o allega un file 📎.',
+  },
+  location_shared: {
+    en: '🌿 Got your location ({lat}, {lon}). Send a message like "Buy groceries at this location" to save a task here.',
+    'es': '🌿 Recibí tu ubicación ({lat}, {lon}). Envía algo como "Comprar groceries en esta ubicación" para guardar una tarea aquí.',
+    'it': '🌿 Posizione ricevuta ({lat}, {lon}). Mandami qualcosa tipo "Comprare la spesa qui" per salvare un\'attività in questo posto.',
+  },
+  // ── Account linking / token ──
+  error_invalid_token: {
+    en: '🌿 That token is invalid or expired. Generate a new one in the Olive app.',
+    'es': '🌿 Ese token no es válido o expiró. Genera uno nuevo en la app de Olive.',
+    'it': '🌿 Quel token non è valido o è scaduto. Generane uno nuovo nell\'app Olive.',
+  },
+  error_link_failed: {
+    en: '🌿 I couldn\'t link your account. Try again.',
+    'es': '🌿 No pude vincular tu cuenta. Inténtalo de nuevo.',
+    'it': '🌿 Non sono riuscita a collegare il tuo account. Riprova.',
+  },
+  // ── Web search ──
+  web_search_unavailable: {
+    en: '🌿 Web search is offline right now. Try again in a bit.',
+    'es': '🌿 La búsqueda web está apagada por ahora. Reintenta en un rato.',
+    'it': '🌿 La ricerca web è offline al momento. Riprova tra un po\'.',
+  },
+  web_search_unavailable_hint: {
+    en: '🌿 Web search is offline. Want me to check your saved items for "{hint}"?',
+    'es': '🌿 La búsqueda web está apagada. ¿Reviso tus elementos guardados sobre "{hint}"?',
+    'it': '🌿 La ricerca web è offline. Vuoi che controlli i tuoi elementi salvati su "{hint}"?',
+  },
+  web_search_error: {
+    en: '🌿 Something went wrong searching the web. Try again?',
+    'es': '🌿 Algo salió mal al buscar en la web. ¿Intentamos de nuevo?',
+    'it': '🌿 Qualcosa è andato storto cercando sul web. Riproviamo?',
+  },
+  search_found_items: {
+    en: '📋 Found these:\n\n{results}\n\n🔗 Manage: https://witholive.app',
+    'es': '📋 Encontré esto:\n\n{results}\n\n🔗 Gestionar: https://witholive.app',
+    'it': '📋 Ho trovato questi:\n\n{results}\n\n🔗 Gestisci: https://witholive.app',
+  },
+  // ── Partner relay edge cases ──
+  partner_reached_partial: {
+    en: '🌿 Saved "{task}" and assigned it to {partner}, but I couldn\'t reach them on WhatsApp (phone ...{last4}). They\'ll see it in the app.',
+    'es': '🌿 Guardé "{task}" y se la asigné a {partner}, pero no pude contactarle por WhatsApp (teléfono ...{last4}). La verá en la app.',
+    'it': '🌿 Salvato "{task}" e assegnato a {partner}, ma non sono riuscita a contattarlo su WhatsApp (telefono ...{last4}). Lo vedrà nell\'app.',
+  },
+  partner_unreachable: {
+    en: '🌿 I couldn\'t reach {partner} on WhatsApp (phone ...{last4}). {detail}',
+    'es': '🌿 No pude contactar a {partner} por WhatsApp (teléfono ...{last4}). {detail}',
+    'it': '🌿 Non sono riuscita a contattare {partner} su WhatsApp (telefono ...{last4}). {detail}',
+  },
+  // ── List management ──
+  list_no_name: {
+    en: '🌿 What should I name the list? Try: "Create a list about [topic]".',
+    'es': '🌿 ¿Cómo llamamos la lista? Prueba: "Crea una lista sobre [tema]".',
+    'it': '🌿 Come la chiamiamo la lista? Prova: "Crea una lista su [argomento]".',
+  },
+  list_already_exists: {
+    en: '🌿 "{list}" already exists with {count} active item{plural}. Send items to add, or say "show my {list} list".',
+    'es': '🌿 "{list}" ya existe con {count} elemento{plural} activo{plural}. Envía elementos para añadir, o di "muestra mi lista {list}".',
+    'it': '🌿 "{list}" esiste già con {count} elemento{plural} attivo{plural}. Mandami elementi da aggiungere, o di\' "mostra la mia lista {list}".',
+  },
+  list_not_found: {
+    en: '🌿 I couldn\'t find a list matching "{query}".\n\nYour lists:\n{lists}\n\nTry: "recap my [list name]".',
+    'es': '🌿 No encontré una lista que coincida con "{query}".\n\nTus listas:\n{lists}\n\nPrueba: "resumen de mi [nombre de lista]".',
+    'it': '🌿 Non ho trovato una lista che corrisponda a "{query}".\n\nLe tue liste:\n{lists}\n\nProva: "riassumi la mia [nome lista]".',
+  },
+  list_empty: {
+    en: '🌿 "{list}" is empty. Send items to add, or say "create a list about [topic]" to start a new one.',
+    'es': '🌿 "{list}" está vacía. Envía elementos, o di "crea una lista sobre [tema]" para empezar una nueva.',
+    'it': '🌿 "{list}" è vuota. Mandami elementi, o di\' "crea una lista su [argomento]" per iniziarne una nuova.',
+  },
+  // ── Catch-all ──
+  error_save_failed: {
+    en: '🌿 I understood the task, but had trouble saving it. Try again?',
+    'es': '🌿 Entendí la tarea, pero tuve problemas al guardarla. ¿Probamos de nuevo?',
+    'it': '🌿 Ho capito l\'attività, ma ho avuto problemi a salvarla. Riproviamo?',
+  },
   context_completed: {
     en: '🌿 Done — "{task}" is complete (from your recent reminder).',
     'es': '🌿 Listo — "{task}" completada (de tu recordatorio reciente).',
@@ -290,34 +396,34 @@ const RESPONSES: Record<string, Record<string, string>> = {
     'it': '🌿 Qualcosa è andato storto da parte mia. Riproviamo?',
   },
   task_ambiguous: {
-    en: '🤔 I found multiple tasks matching "{query}":\n\n{options}\n\nWhich one did you mean? Reply with the number.',
-    'es': '🤔 Encontré varias tareas que coinciden con "{query}":\n\n{options}\n\n¿Cuál querías? Responde con el número.',
-    'it': '🤔 Ho trovato più attività corrispondenti a "{query}":\n\n{options}\n\nQuale intendevi? Rispondi con il numero.',
+    en: '🌿 A few tasks match "{query}":\n\n{options}\n\nWhich one? Reply with the number.',
+    'es': '🌿 Varias tareas coinciden con "{query}":\n\n{options}\n\n¿Cuál? Responde con el número.',
+    'it': '🌿 Più attività corrispondono a "{query}":\n\n{options}\n\nQuale? Rispondi con il numero.',
   },
   partner_message_sent: {
-    en: '✅ Done! I sent {partner} a message:\n\n"{message}"\n\nvia WhatsApp 💬',
-    'es': '✅ ¡Hecho! Le envié a {partner} un mensaje:\n\n"{message}"\n\nvía WhatsApp 💬',
-    'it': '✅ Fatto! Ho inviato a {partner} un messaggio:\n\n"{message}"\n\nvia WhatsApp 💬',
+    en: '🌿 Sent to {partner}:\n\n"{message}"',
+    'es': '🌿 Enviado a {partner}:\n\n"{message}"',
+    'it': '🌿 Inviato a {partner}:\n\n"{message}"',
   },
   partner_message_and_task: {
-    en: '✅ Done! I told {partner} and saved a task:\n\n📋 "{task}"\n📂 Assigned to: {partner}\n💬 Notified via WhatsApp',
-    'es': '✅ ¡Hecho! Le dije a {partner} y guardé una tarea:\n\n📋 "{task}"\n📂 Asignado a: {partner}\n💬 Notificado vía WhatsApp',
-    'it': '✅ Fatto! Ho detto a {partner} e salvato un\'attività:\n\n📋 "{task}"\n📂 Assegnato a: {partner}\n💬 Notificato via WhatsApp',
+    en: '🌿 Told {partner} and saved:\n\n📋 "{task}"\n📂 Assigned to {partner}',
+    'es': '🌿 Le dije a {partner} y guardé:\n\n📋 "{task}"\n📂 Asignado a {partner}',
+    'it': '🌿 Detto a {partner} e salvato:\n\n📋 "{task}"\n📂 Assegnato a {partner}',
   },
   partner_message_existing_task: {
-    en: '✅ Done! I reminded {partner} about an existing task:\n\n📋 "{task}"\n💬 Notified via WhatsApp\n\nℹ️ No duplicate created — task already tracked.',
-    'es': '✅ ¡Hecho! Le recordé a {partner} sobre una tarea existente:\n\n📋 "{task}"\n💬 Notificado vía WhatsApp\n\nℹ️ No se creó duplicado — tarea ya registrada.',
-    'it': '✅ Fatto! Ho ricordato a {partner} un\'attività esistente:\n\n📋 "{task}"\n💬 Notificato via WhatsApp\n\nℹ️ Nessun duplicato creato — attività già tracciata.',
+    en: '🌿 Reminded {partner} about an existing task:\n\n📋 "{task}"',
+    'es': '🌿 Le recordé a {partner} una tarea existente:\n\n📋 "{task}"',
+    'it': '🌿 Ricordato a {partner} un\'attività esistente:\n\n📋 "{task}"',
   },
   partner_no_phone: {
-    en: '😕 I\'d love to message {partner}, but they haven\'t linked their WhatsApp yet.\n\nAsk them to open Olive → Profile → Link WhatsApp.',
-    'es': '😕 Me encantaría enviarle un mensaje a {partner}, pero aún no ha vinculado su WhatsApp.\n\nPídele que abra Olive → Perfil → Vincular WhatsApp.',
-    'it': '😕 Vorrei mandare un messaggio a {partner}, ma non ha ancora collegato il suo WhatsApp.\n\nChiedigli di aprire Olive → Profilo → Collega WhatsApp.',
+    en: '🌿 {partner} hasn\'t linked WhatsApp yet. Ask them to open Olive → Profile → Link WhatsApp.',
+    'es': '🌿 {partner} aún no ha vinculado WhatsApp. Pídele que abra Olive → Perfil → Vincular WhatsApp.',
+    'it': '🌿 {partner} non ha ancora collegato WhatsApp. Chiedigli di aprire Olive → Profilo → Collega WhatsApp.',
   },
   partner_no_space: {
-    en: 'I couldn\'t find your partner in the shared space. Make sure they\'ve accepted your invite!\n\nTo invite someone: open Olive → Profile → Invite Partner 💚',
-    'es': 'No encontré a tu pareja en el espacio compartido. ¡Asegúrate de que haya aceptado tu invitación!\n\nPara invitar: abre Olive → Perfil → Invitar Pareja 💚',
-    'it': 'Non ho trovato il tuo partner nello spazio condiviso. Assicurati che abbia accettato il tuo invito!\n\nPer invitare qualcuno: apri Olive → Profilo → Invita Partner 💚',
+    en: '🌿 Looks like your partner hasn\'t accepted the invite yet. Open Olive → Profile → Invite Partner.',
+    'es': '🌿 Parece que tu pareja aún no ha aceptado la invitación. Abre Olive → Perfil → Invitar Pareja.',
+    'it': '🌿 Sembra che il tuo partner non abbia ancora accettato l\'invito. Apri Olive → Profilo → Invita Partner.',
   },
   // ── Note creation confirmation labels (localized) ──
   note_saved: {
@@ -2202,7 +2308,7 @@ serve(async (req) => {
     // Validate message length
     if (rawMessageBody && rawMessageBody.length > MAX_MESSAGE_LENGTH) {
       console.warn('[Validation] Message too long:', rawMessageBody.length, 'chars');
-      return reply('Your message is too long. Please keep messages under 10,000 characters.');
+      return reply(t('error_message_too_long', userLang));
     }
     
     let messageBody = rawMessageBody?.trim() || null;
@@ -2218,7 +2324,7 @@ serve(async (req) => {
     // Validate coordinates
     if (!isValidCoordinates(latitude, longitude)) {
       console.warn('[Validation] Invalid coordinates:', { latitude, longitude });
-      return reply('Invalid location data received. Please try sharing your location again.');
+      return reply(t('error_invalid_location', userLang));
     }
     
     // Download and upload media from Meta
@@ -2228,7 +2334,7 @@ serve(async (req) => {
     
     if (mediaItems.length > MAX_MEDIA_COUNT) {
       console.warn('[Validation] Too many media attachments:', mediaItems.length);
-      return reply(`Too many attachments (${mediaItems.length}). Please send up to ${MAX_MEDIA_COUNT} files at a time.`);
+      return reply(t('error_too_many_attachments', userLang, { count: String(mediaItems.length), max: String(MAX_MEDIA_COUNT) }));
     }
     
     for (const media of mediaItems) {
@@ -2391,7 +2497,7 @@ serve(async (req) => {
 
       } catch (sttError) {
         console.error('[STT] ❌ Transcription pipeline failed:', sttError);
-        return reply('I received your voice note, but my audio processor is temporarily down. Please try again or type your message.');
+        return reply(t('error_voice_unavailable', userLang));
       }
     }
 
@@ -2405,7 +2511,7 @@ serve(async (req) => {
 
     // Handle location sharing
     if (latitude && longitude && !messageBody && mediaUrls.length === 0) {
-      return reply(`📍 Thanks for sharing your location! (${latitude}, ${longitude})\n\nYou can add a task with this location by sending a message like:\n"Buy groceries at this location"`);
+      return reply(t('location_shared', userLang, { lat: String(latitude), lon: String(longitude) }));
     }
 
     // ========================================================================
@@ -2724,7 +2830,7 @@ serve(async (req) => {
 
       if (processError) {
         console.error('Error processing media note:', processError);
-        return reply('Sorry, I had trouble processing that image. Please try again or add a caption describing what you want to save.');
+        return reply(t('error_image_processing', userLang));
       }
 
       // ====================================================================
@@ -2838,7 +2944,7 @@ serve(async (req) => {
         );
       }
       
-      return reply('Please send a message, share your location 📍, or attach media 📎');
+      return reply(t('error_empty_input', userLang));
     }
 
     // Check for linking token
@@ -2857,7 +2963,7 @@ serve(async (req) => {
 
       if (tokenError || !tokenData) {
         console.error('Token lookup error:', tokenError);
-        return reply('Invalid or expired token. Please generate a new one from the Olive app.');
+        return reply(t('error_invalid_token', userLang));
       }
 
       const { error: updateError } = await supabase
@@ -2867,7 +2973,7 @@ serve(async (req) => {
 
       if (updateError) {
         console.error('Error linking WhatsApp:', updateError);
-        return reply('Failed to link your account. Please try again.');
+        return reply(t('error_link_failed', userLang));
       }
 
       await supabase
@@ -3014,7 +3120,7 @@ serve(async (req) => {
 
       if (sessionError) {
         console.error('Error creating session:', sessionError);
-        return reply('Sorry, there was an error. Please try again.');
+        return reply(t('error_generic', userLang));
       }
       session = newSession;
     }
@@ -7449,7 +7555,7 @@ Respond with helpful, specific information extracted from their saved data. Answ
 
         if (matchingTasks && matchingTasks.length > 0) {
           const results = matchingTasks.map(t => `• ${t.summary}`).join('\n');
-          return reply(`📋 Found these matching items:\n\n${results}\n\n🔗 Manage: https://witholive.app`);
+          return reply(t('search_found_items', userLang, { results }));
         }
 
         return reply('I couldn\'t find matching items in your lists. Try "show my tasks" to see everything.');
@@ -7466,7 +7572,7 @@ Respond with helpful, specific information extracted from their saved data. Answ
         const PERPLEXITY_KEY = Deno.env.get('OLIVE_PERPLEXITY');
         if (!PERPLEXITY_KEY) {
           console.error('[WebSearch] OLIVE_PERPLEXITY not configured');
-          return reply('🔍 Web search is not available right now. Please try again later.');
+          return reply(t('web_search_unavailable', userLang));
         }
 
         // ── Context-Aware Query Rewriter ────────────────────────────
@@ -7598,7 +7704,7 @@ Respond with exactly two lines starting with SEARCH_QUERY: and USER_QUESTION:`,
           const errText = await perplexityResponse.text();
           console.error('[WebSearch] Perplexity API error:', perplexityResponse.status, errText);
           // Fallback: try to answer from saved data
-          return reply(`🔍 Web search temporarily unavailable. Try asking "what do I have saved about ${searchQuery.split(' ').slice(0, 3).join(' ')}?" to check your saved items.`);
+          return reply(t('web_search_unavailable_hint', userLang, { hint: searchQuery.split(' ').slice(0, 3).join(' ') }));
         }
 
         const perplexityData = await perplexityResponse.json();
@@ -7697,7 +7803,7 @@ Answer the question thoroughly, then briefly mention any relevant personal conne
         return reply(formattedResponse.slice(0, 1500));
       } catch (webSearchErr) {
         console.error('[WebSearch] Unexpected error:', webSearchErr);
-        return reply('🔍 Sorry, I had trouble searching the web. Please try again.');
+        return reply(t('web_search_error', userLang));
       }
     }
 
@@ -9151,9 +9257,9 @@ If the user's message is long and conversational — asking for help with someth
       // 7. Respond to sender with confirmation or error
       if (!messageSent) {
         if (savedTask) {
-          return reply(`📋 I saved "${savedTask.summary}" and assigned it to ${partnerName}, but couldn't reach them on WhatsApp right now (phone ...${partnerPhoneLast4}).\n\nThey'll see it in the app!`);
+          return reply(t('partner_reached_partial', userLang, { task: savedTask.summary, partner: partnerName, last4: partnerPhoneLast4 }));
         }
-        return reply(`😕 I couldn't reach ${partnerName} on WhatsApp right now (phone ...${partnerPhoneLast4}). ${sendError ? 'Error: ' + sendError.substring(0, 100) : 'Please try again later.'}`);
+        return reply(t('partner_unreachable', userLang, { partner: partnerName, last4: partnerPhoneLast4, detail: sendError ? 'Error: ' + sendError.substring(0, 100) : 'Please try again later.' }));
       }
 
       if (savedTask) {
@@ -9360,7 +9466,7 @@ Return ONLY valid JSON, no markdown.`,
       console.log('[CREATE_LIST] Creating list:', listName, '| initial items:', initialItemsRaw?.substring(0, 80));
 
       if (!listName || listName.trim().length < 2) {
-        return reply('📋 What should I name the list? Try: "Create a list about [topic]"');
+        return reply(t('list_no_name', userLang));
       }
 
       // Check if a list with this name already exists with the SAME privacy scope
@@ -9389,7 +9495,7 @@ Return ONLY valid JSON, no markdown.`,
           .eq('completed', false);
 
         const count = existingItems?.length || 0;
-        return reply(`📋 A list named "${existingMatch.name}" already exists with ${count} active item${count !== 1 ? 's' : ''}.\n\nSend items to add to it, or say "show my ${existingMatch.name} list" to view it.`);
+        return reply(t('list_already_exists', userLang, { list: existingMatch.name, count: String(count), plural: count !== 1 ? 's' : '' }));
       }
 
       // Format list name to Title Case
@@ -9508,7 +9614,7 @@ Return ONLY valid JSON, no markdown.`,
       if (!matchedList) {
         // Suggest available lists
         const listNames = allLists.slice(0, 8).map(l => `• ${l.name}`).join('\n');
-        return reply(`📋 I couldn't find a list matching "${targetListName}".\n\nYour lists:\n${listNames}\n\nTry: "recap my [list name]"`);
+        return reply(t('list_not_found', userLang, { query: targetListName, lists: listNames }));
       }
 
       // Fetch ALL items in this list (including completed)
@@ -9522,7 +9628,7 @@ Return ONLY valid JSON, no markdown.`,
         .limit(50);
 
       if (!listItems || listItems.length === 0) {
-        return reply(`📋 *${matchedList.name}* is empty!\n\nSend items to add to it, or say "create a list about [topic]" to start a new one.`);
+        return reply(t('list_empty', userLang, { list: matchedList.name }));
       }
 
       const activeItems = listItems.filter(i => !i.completed);
@@ -9808,7 +9914,7 @@ FORMAT for WhatsApp (max 1500 chars):
 
     if (processError) {
       console.error('Error processing note:', processError);
-      return reply('Sorry, I had trouble processing that. Please try again.');
+      return reply(t('error_generic', userLang));
     }
 
     // Insert the processed note(s) into the database
@@ -10108,7 +10214,7 @@ FORMAT for WhatsApp (max 1500 chars):
     } catch (insertError) {
       console.error('Database insertion error:', JSON.stringify(insertError));
       console.error('Insert error details:', (insertError as any)?.message, (insertError as any)?.details, (insertError as any)?.hint);
-      return reply('I understood your task but had trouble saving it. Please try again.');
+      return reply(t('error_save_failed', userLang));
     }
 
   } catch (error) {
