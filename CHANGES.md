@@ -1,5 +1,76 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-13 — [COMPILE-BURST-1] Stop the bleeding on `olive-compile-memory` 02:00 UTC batch
+
+Bucket 1 of the compile-memory remediation plan. The daily compile-memory
+cron has been failing 51.7% of calls (60 / 116 over 14 days), with 100%
+of failures being HTTP 429 from Gemini concentrated at 02:00 UTC — a
+self-inflicted burst, not a Gemini outage. No new providers introduced
+in this PR; that's Bucket 2.
+
+### What changed
+
+1. **Retry + same-provider Gemini fallback in `llm-tracker.ts`.** The
+   `generate()` method now accepts an optional `retry: { maxAttempts,
+   backoffMs, fallbackModels, retryableStatus }` config. On retryable
+   status (default `[429, 500, 502, 503, 504]`) it backs off
+   exponentially with jitter (capped 8s) and retries on the same model
+   up to `maxAttempts`, then walks the `fallbackModels` list. Every
+   attempt — success or failure — still logs to `olive_llm_calls` so
+   observability is preserved. Fallback rows carry
+   `metadata.fallback_from: <originalModel>` and `metadata.attempt: N`.
+   When `retry` is omitted the behavior is unchanged (one attempt, no
+   fallback) — backwards-compat with existing callers.
+
+2. **`olive-compile-memory` now uses Flash-Lite as primary** with
+   Flash → 2.0-Flash as same-provider fallbacks. Flash-Lite has plenty
+   of headroom for this task and the new retry policy absorbs transient
+   429s before the fallback chain trips. Added `gemini-2.5-flash-lite`
+   to `MODEL_PRICING`.
+
+3. **Real pacing.** The old "sleep 500ms only if `status === 'compiled'`"
+   let failed/skipped iterations burst forward, which is how 14 users ×
+   4 file types stacked into a sub-second wall of requests at 02:00 UTC.
+   Both inner (per-file-type) and outer (per-user) loops now sleep
+   unconditionally at the end of every iteration. Sleep duration is
+   env-driven (`COMPILE_BATCH_SLEEP_MS`, default 3000ms) so we can tune
+   without redeploying. Worst-case batch wall-clock: ~3 min.
+
+4. **Backfill script** at `scripts/backfill-compile-memory.ts` that
+   re-runs `compile_user` with `force: true` for every user that had at
+   least one error since `--since` (default: 14 days). Prints a
+   before/after success/error count table per user.
+
+### Files
+
+| File | Change |
+|---|---|
+| `supabase/functions/_shared/llm-tracker.ts` | Add `RetryConfig` type + retry/fallback loop in `generate()`; log every attempt; tag rows with `metadata.attempt` and `metadata.fallback_from`; add `gemini-2.5-flash-lite` to `MODEL_PRICING` |
+| `supabase/functions/_shared/llm-tracker.test.ts` | New — 7 tests covering: first-try success, retry-then-success, fallback-after-retry-exhaustion, non-retryable status throws immediately, all-retries-exhausted throws, backwards-compat (no retry config = one attempt), error message surfaces |
+| `supabase/functions/olive-compile-memory/index.ts` | Switch model to `gemini-2.5-flash-lite` + retry config (`maxAttempts:3, fallbackModels: ['gemini-2.5-flash','gemini-2.0-flash']`); replace conditional `sleep(500)` with unconditional env-driven sleep; mirror pacing in `compile` action's per-user loop |
+| `scripts/backfill-compile-memory.ts` | New — one-shot remediation invoking `compile_user --force` for users with recent errors |
+
+### Tests
+
+- `deno test supabase/functions/_shared/ --allow-net --allow-read --allow-env` → **1232 passed, 0 failed** (1225 baseline + 7 new).
+- `deno check` clean on `olive-compile-memory/index.ts`, `_shared/llm-tracker.ts`, and `scripts/backfill-compile-memory.ts`.
+
+### Acceptance criteria
+
+- [x] `llm-tracker.test.ts` covers success-on-first-try, 429-then-success, 429-exhausts-then-fallback-succeeds, 400-throws-immediately, all-retries-exhausted-throws.
+- [x] Existing callers of `generate()` without `retry` see no behavior change (covered by backwards-compat test).
+- [x] Every LLM attempt continues to log to `olive_llm_calls` (Section 6 rule preserved).
+- [x] Did not touch `resilient-genai.ts` or introduce non-Gemini providers (Bucket 2 scope).
+- [ ] **Pending**: deploy + manual invoke of `compile_user` and `compile` to verify zero-error path in production.
+- [ ] **Pending**: tomorrow's 02:00 UTC cron run shows ≤5% error rate in `olive_llm_calls` for `function_name='olive-compile-memory'`.
+- [ ] **Pending**: run backfill script for last 14 days, confirm previously-failed users have current artifacts.
+
+### Out of scope (Bucket 2)
+
+- Multi-provider abstraction (Groq / Cerebras keys exist in Supabase
+  secrets but are not wired up here).
+- `resilient-genai.ts` changes.
+
 ## 2026-05-14 — Proactive bridge parity: settings UI + web chat mirror + ask-olive-individual brand-voice audit
 
 Three follow-ups to CONV-5:

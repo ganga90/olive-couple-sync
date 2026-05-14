@@ -26,6 +26,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 // Updated for April 2026 pricing
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   "gemini-2.5-flash":      { input: 0.15,  output: 0.60 },
+  "gemini-2.5-flash-lite": { input: 0.075, output: 0.30 },
   "gemini-2.0-flash":      { input: 0.10,  output: 0.40 },
   "gemini-2.0-flash-lite": { input: 0.075, output: 0.30 },
   "gemini-1.5-flash":      { input: 0.075, output: 0.30 },
@@ -83,6 +84,30 @@ export interface TrackerOptions {
   slotsOverBudget?: string[];
 }
 
+/**
+ * Retry + same-provider fallback policy for `generate`.
+ *
+ * Defaults (when `retry` is provided but a field is omitted):
+ *   - `maxAttempts`: 3 attempts per model
+ *   - `backoffMs`: 1000 * 2^attempt + jitter, capped at 8000
+ *   - `fallbackModels`: [] (no fallback)
+ *   - `retryableStatus`: [429, 500, 502, 503, 504]
+ *
+ * Behavior:
+ *   - When `retry` is undefined, behavior is unchanged (one attempt, no fallback).
+ *   - Every attempt (success OR failure) logs a row to `olive_llm_calls`.
+ *   - When a fallback model is used, the row's `metadata` includes
+ *     `fallback_from: <originalModel>` and `attempt: N`.
+ *   - Non-retryable status throws immediately (no further attempts/models).
+ *   - When all retries on all models exhaust, the last error is thrown.
+ */
+export interface RetryConfig {
+  maxAttempts?: number;
+  backoffMs?: (attempt: number) => number;
+  fallbackModels?: string[];
+  retryableStatus?: number[];
+}
+
 export interface LLMTracker {
   /**
    * Generate content with automatic tracking.
@@ -94,7 +119,7 @@ export interface LLMTracker {
       contents: any;
       config?: any;
     },
-    opts?: TrackerOptions
+    opts?: TrackerOptions & { retry?: RetryConfig }
   ): Promise<any>;
 
   /**
@@ -173,62 +198,127 @@ export function createLLMTracker(
 
   return {
     async generate(params, opts) {
-      const startTime = performance.now();
-      try {
-        // Import GoogleGenAI dynamically to avoid circular deps
-        const GEMINI_API_KEY =
-          Deno.env.get("GEMINI_API") ||
-          Deno.env.get("GEMINI_API_KEY") ||
-          Deno.env.get("GOOGLE_AI_API_KEY") ||
-          "";
+      const GEMINI_API_KEY =
+        Deno.env.get("GEMINI_API") ||
+        Deno.env.get("GEMINI_API_KEY") ||
+        Deno.env.get("GOOGLE_AI_API_KEY") ||
+        "";
 
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${params.model}:generateContent?key=${GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: Array.isArray(params.contents)
-                ? params.contents
-                : [{ parts: [{ text: params.contents }] }],
-              generationConfig: params.config
-                ? {
-                    temperature: params.config.temperature,
-                    maxOutputTokens: params.config.maxOutputTokens,
-                    responseMimeType: params.config.responseMimeType,
-                    responseSchema: params.config.responseSchema,
-                  }
-                : undefined,
-            }),
-          }
-        );
+      // Backwards-compat: when `retry` is undefined, single attempt, no fallback.
+      // When `retry` is provided (even as `{}`), apply the configured retry policy
+      // with defaults filled in.
+      const retryConfig = opts?.retry;
+      const retryEnabled = retryConfig !== undefined;
+      const maxAttempts = retryEnabled ? (retryConfig?.maxAttempts ?? 3) : 1;
+      const fallbackModels = retryEnabled
+        ? retryConfig?.fallbackModels ?? []
+        : [];
+      const retryableStatus =
+        retryConfig?.retryableStatus ?? [429, 500, 502, 503, 504];
+      const defaultBackoff = (attempt: number) =>
+        Math.min(1000 * Math.pow(2, attempt - 1) + Math.random() * 500, 8000);
+      const backoffMs = retryConfig?.backoffMs ?? defaultBackoff;
 
-        const latencyMs = Math.round(performance.now() - startTime);
+      const originalModel = params.model;
+      const modelsToTry: string[] = [originalModel, ...fallbackModels];
+      let lastError: Error | null = null;
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          log(params.model, latencyMs, 0, 0, "error", {
-            ...opts,
-            error: `${response.status}: ${errorText.substring(0, 200)}`,
-          });
-          throw new Error(
-            `Gemini API error ${response.status}: ${errorText.substring(0, 200)}`
-          );
-        }
-
-        const data = await response.json();
-        const { tokensIn, tokensOut } = extractTokenCounts(data);
-        log(params.model, latencyMs, tokensIn, tokensOut, "success", opts);
-
-        return data;
-      } catch (err: any) {
-        const latencyMs = Math.round(performance.now() - startTime);
-        log(params.model, latencyMs, 0, 0, "error", {
-          ...opts,
-          error: err?.message?.substring(0, 500),
+      const buildBody = () =>
+        JSON.stringify({
+          contents: Array.isArray(params.contents)
+            ? params.contents
+            : [{ parts: [{ text: params.contents }] }],
+          generationConfig: params.config
+            ? {
+                temperature: params.config.temperature,
+                maxOutputTokens: params.config.maxOutputTokens,
+                responseMimeType: params.config.responseMimeType,
+                responseSchema: params.config.responseSchema,
+              }
+            : undefined,
         });
-        throw err;
+
+      for (let modelIdx = 0; modelIdx < modelsToTry.length; modelIdx++) {
+        const currentModel = modelsToTry[modelIdx];
+        const isFallback = modelIdx > 0;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          const startTime = performance.now();
+          // When retry is enabled, always include `attempt` so analytics
+          // can answer "which attempt was this?" without joining rows.
+          // `fallback_from` only appears on rows from a fallback model.
+          const baseMeta: Record<string, unknown> = {
+            ...(opts?.metadata || {}),
+            ...(retryEnabled ? { attempt } : {}),
+            ...(isFallback ? { fallback_from: originalModel } : {}),
+          };
+
+          let response: Response;
+          try {
+            response = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${GEMINI_API_KEY}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: buildBody(),
+              }
+            );
+          } catch (networkErr: any) {
+            const latencyMs = Math.round(performance.now() - startTime);
+            log(currentModel, latencyMs, 0, 0, "error", {
+              ...opts,
+              error: networkErr?.message?.substring(0, 500),
+              metadata: { ...baseMeta, error_type: "network" },
+            });
+            lastError = networkErr;
+            // Network errors are treated as retryable
+            if (attempt < maxAttempts) {
+              await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+              continue;
+            }
+            // Exhausted on this model — fall through to next model if any
+            break;
+          }
+
+          const latencyMs = Math.round(performance.now() - startTime);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            const status = response.status;
+            const isRetryable = retryableStatus.includes(status);
+            const errMessage = `Gemini API error ${status}: ${errorText.substring(0, 200)}`;
+
+            log(currentModel, latencyMs, 0, 0, "error", {
+              ...opts,
+              error: `${status}: ${errorText.substring(0, 200)}`,
+              metadata: { ...baseMeta, status_code: status },
+            });
+
+            lastError = new Error(errMessage);
+
+            // Non-retryable: throw immediately, do not try fallback models.
+            if (!isRetryable) throw lastError;
+
+            if (attempt < maxAttempts) {
+              await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+              continue;
+            }
+            // Exhausted on this model — fall through to next model if any
+            break;
+          }
+
+          const data = await response.json();
+          const { tokensIn, tokensOut } = extractTokenCounts(data);
+          log(currentModel, latencyMs, tokensIn, tokensOut, "success", {
+            ...opts,
+            metadata: baseMeta,
+          });
+          return data;
+        }
       }
+
+      throw lastError ||
+        new Error("[LLMTracker] All retries and fallback models exhausted");
     },
 
     trackRawCall(model, startTime, response, opts) {
