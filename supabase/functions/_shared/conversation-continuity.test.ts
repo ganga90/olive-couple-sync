@@ -19,6 +19,7 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import {
   detectMisroutedPartnerRelay,
+  detectRescheduleRefinement,
   detectSetDueRefinement,
 } from "./conversation-continuity.ts";
 
@@ -224,4 +225,109 @@ Deno.test("detectSetDueRefinement: preserves task identity (focal entity unchang
   // Critical: the task being refined is the SAME task, just a new date.
   assertEquals(refined.updated.task_id, sampleSetDuePending.task_id);
   assertEquals(refined.updated.task_summary, sampleSetDuePending.task_summary);
+});
+
+// ─── detectRescheduleRefinement (chat surface: RescheduleTaskOffer) ────
+
+const sampleReschedulePending = {
+  type: "reschedule_task" as const,
+  task_id: "task-uuid-chat-456",
+  task_summary: "Book hotel for Mallorca",
+  field: "due_date" as const,
+  new_iso: "2026-05-14T17:00:00.000Z",
+  has_time: true,
+  prior_due_date: null,
+  prior_reminder_time: null,
+  readable: "tomorrow at 5:00 PM",
+  timezone: "America/New_York",
+  offered_at: new Date().toISOString(),
+};
+
+Deno.test("detectRescheduleRefinement: 'Set it due for Friday at 5pm' → refines (chat parity)", () => {
+  const refined = detectRescheduleRefinement(
+    sampleReschedulePending,
+    "Set it due for Friday at 5pm",
+    "America/New_York",
+    "en",
+  );
+  if (!refined) throw new Error("Expected refinement, got null");
+  assertEquals(refined.updated.type, "reschedule_task");
+  assertEquals((refined.updated as any).task_id, "task-uuid-chat-456");
+  assertEquals((refined.updated as any).task_summary, "Book hotel for Mallorca");
+  // new_iso must have changed from the original
+  if (refined.parsedDateIso === sampleReschedulePending.new_iso) {
+    throw new Error("Expected new parsed date, got original");
+  }
+});
+
+Deno.test("detectRescheduleRefinement: short 'Friday at 5pm' → refines", () => {
+  const refined = detectRescheduleRefinement(
+    sampleReschedulePending,
+    "Friday at 5pm",
+    "America/New_York",
+    "en",
+  );
+  if (!refined) throw new Error("Expected refinement for short date-shaped msg");
+});
+
+Deno.test("detectRescheduleRefinement: 'How are you?' → null (no date)", () => {
+  const refined = detectRescheduleRefinement(
+    sampleReschedulePending,
+    "How are you?",
+    "America/New_York",
+    "en",
+  );
+  assertEquals(refined, null);
+});
+
+Deno.test("detectRescheduleRefinement: long unrelated narrative with stray date → null", () => {
+  const refined = detectRescheduleRefinement(
+    sampleReschedulePending,
+    "I was thinking maybe Monday could work for that thing we discussed but I'm not sure yet",
+    "America/New_York",
+    "en",
+  );
+  assertEquals(refined, null);
+});
+
+Deno.test("detectRescheduleRefinement: pending is not reschedule_task → null", () => {
+  const refined = detectRescheduleRefinement(
+    { type: "delete_task", task_id: "x", task_summary: "x" },
+    "Friday at 5pm",
+    "America/New_York",
+    "en",
+  );
+  assertEquals(refined, null);
+});
+
+Deno.test("detectRescheduleRefinement: null pending → null", () => {
+  const refined = detectRescheduleRefinement(
+    null,
+    "Friday at 5pm",
+    "America/New_York",
+    "en",
+  );
+  assertEquals(refined, null);
+});
+
+Deno.test("detectRescheduleRefinement: Italian 'sposta a venerdì alle 17' → refines", () => {
+  const refined = detectRescheduleRefinement(
+    sampleReschedulePending,
+    "sposta a venerdì alle 17",
+    "Europe/Rome",
+    "it",
+  );
+  if (!refined) throw new Error("Expected refinement for Italian refinement msg");
+});
+
+Deno.test("detectRescheduleRefinement: preserves task identity + field", () => {
+  const refined = detectRescheduleRefinement(
+    sampleReschedulePending,
+    "Friday at 5pm",
+    "America/New_York",
+    "en",
+  );
+  if (!refined) throw new Error("Expected refinement");
+  assertEquals((refined.updated as any).task_id, sampleReschedulePending.task_id);
+  assertEquals((refined.updated as any).field, "due_date");
 });

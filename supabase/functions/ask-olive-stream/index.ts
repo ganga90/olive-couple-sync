@@ -502,9 +502,47 @@ async function handlePreFlowGate(args: {
         'lite',
       );
     }
-    // Neither yes nor no — clear pending and let normal classification
-    // run. The next turn's intent overrides any stale offer. WhatsApp
-    // does the same; consistency keeps surprises low.
+
+    // Cross-surface parity with WhatsApp's smart re-targeting: before
+    // discarding a pending reschedule proposal, try to interpret the
+    // message as a *refinement* of the same action (different date).
+    // If matched, replace the pending offer's new_iso/readable and
+    // re-prompt for confirmation instead of starting over.
+    if (pending.type === 'reschedule_task') {
+      try {
+        const { detectRescheduleRefinement } = await import('../_shared/conversation-continuity.ts');
+        const refined = detectRescheduleRefinement(pending, message, userTimezone, lang);
+        if (refined) {
+          await supabase
+            .from('user_sessions')
+            .update({
+              conversation_state: 'AWAITING_CONFIRMATION',
+              context_data: { ...session.context_data, pending_action: refined.updated },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', session.id);
+          console.log(
+            '[chat/pre-flow] Re-targeted pending reschedule_task →',
+            refined.parsedReadable,
+          );
+          return streamGeminiResponse(
+            `You are Olive. The user refined the date on a proposal you just made — confirm the NEW proposal in 1-2 sentences using the EXACT phrasing in RESULT, then ask them to reply "yes" to confirm. ${OLIVE_CHAT_PROMPT}`,
+            `RESULT: Move "${(refined.updated as any).task_summary}" to ${refined.parsedReadable}? Reply "yes" to confirm.`,
+            'lite',
+          );
+        }
+      } catch (refineErr) {
+        console.warn(
+          '[chat/pre-flow] Re-target attempt failed (non-fatal):',
+          refineErr instanceof Error ? refineErr.message : refineErr,
+        );
+      }
+    }
+
+    // Neither yes nor no, not a refinement — clear pending and let
+    // normal classification run. The next turn's intent overrides any
+    // stale offer. WhatsApp does the same; consistency keeps surprises
+    // low.
     await clearPendingAction(supabase, session);
     return null;
   }
