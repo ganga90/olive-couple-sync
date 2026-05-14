@@ -1,5 +1,77 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-14 — [SOURCE-ATTRIBUTION-FE] Frontend insert migration + NOT NULL on clerk_notes.source
+
+Follow-up to [SOURCE-ATTRIBUTION] (Bucket 3, PRs [#130](https://github.com/ganga90/olive-couple-sync/pull/130) / [#131](https://github.com/ganga90/olive-couple-sync/pull/131)). Closes the two frontend insert call sites and locks the source-attribution contract at the database layer.
+
+### What changed
+
+1. **New `src/lib/note-source.ts`** — frontend `NoteSource` enum + `defaultClientNoteSource()` (returns `'ios'` under Capacitor, `'web'` otherwise). Mirrors the canonical Deno copy in `_shared/note-insert.ts`; drift is caught by the new DB CHECK constraint.
+
+2. **`src/components/AskOliveChatGlobal.tsx:686`** — the "Save as note" insert now tags `source: 'olive-chat' satisfies NoteSource` + `source_ref: messageId`. Was already setting `'olive-chat'`; gained the type-safety guard and the chat-message reference id.
+
+3. **`src/hooks/useSupabaseNotes.ts:281`** — the generic `addNote` hook populates `insertData.source` via `defaultClientNoteSource()` (with caller-override via `noteData.source` if provided). Lists, Notes, onboarding, and other React surfaces that flow through this hook will now correctly attribute as `'web'` or `'ios'`.
+
+4. **Backfill extended** with Blocks 4 + 5 in `scripts/backfill-source-attribution.sql`:
+   - Block 4: NULL rows whose author has zero whatsapp-* LLM calls → `'web'` (**95 rows**, web-only users).
+   - Block 5: any remaining NULL → `'web'` (catch-all, **559 rows**). Required precondition for NOT NULL.
+
+5. **`supabase/migrations/20260514123914_clerk_notes_source_not_null.sql`** — applied via Supabase MCP. Two clauses:
+   - `ALTER TABLE clerk_notes ALTER COLUMN source SET NOT NULL`
+   - `ADD CONSTRAINT clerk_notes_source_known CHECK (source IN (...12 values...))`
+   Source attribution is now enforced end-to-end: TypeScript (helpers + frontend enum) → DB layer (NOT NULL + CHECK).
+
+### Source distribution — before / after this PR
+
+| source | Bucket 3 AFTER | THIS PR AFTER |
+|---|---|---|
+| `(null)` | 654 | **0** |
+| `web` | 0 | **654** |
+| `whatsapp` | 44 | 44 |
+| `email` | 13 | 13 |
+| `olive-chat` | 4 | 4 |
+| `partner-relay` | 2 | 2 |
+| **Total** | **717** | **717** |
+
+**100% attributed; column is now NOT NULL with a CHECK constraint.**
+
+### Files
+
+| File | Change |
+|---|---|
+| `src/lib/note-source.ts` | New — frontend enum + `defaultClientNoteSource()` |
+| `src/components/AskOliveChatGlobal.tsx` | "Save as note" tagged `olive-chat` + `source_ref: messageId` |
+| `src/hooks/useSupabaseNotes.ts` | `addNote` populates `source` from caller override or Capacitor default |
+| `scripts/backfill-source-attribution.sql` | Add Blocks 4 + 5 (web fallback + catch-all) |
+| `supabase/migrations/20260514123914_clerk_notes_source_not_null.sql` | New — NOT NULL + CHECK constraint, applied via MCP |
+
+### Tests
+
+- `npx tsc --noEmit -p tsconfig.app.json` → 0 errors.
+- `npm run build` → 5.16s, clean (only pre-existing chunk-size advisory).
+- Browser preview loads (Clerk-on-localhost auth errors are pre-existing — prod Clerk key only valid for witholive.app — unrelated to this PR).
+- `deno test supabase/functions/_shared/` → 1257/1257 (unchanged; Deno layer untouched).
+
+### Acceptance criteria
+
+- [x] Frontend Vite build clean; typecheck clean.
+- [x] Both frontend insert sites set `source`.
+- [x] Backfill driven to 0 NULL rows.
+- [x] `clerk_notes.source NOT NULL` applied.
+- [x] `clerk_notes_source_known` CHECK enforces the 12-value enum.
+- [ ] **Post-merge**: next user-created note from the web app lands with `source='web'`; verifiable via SQL.
+- [ ] **Post-merge**: any caller that forgets `source` is rejected at the DB layer (NOT NULL); typo'd `source` rejected by CHECK.
+
+### Caveats
+
+- **Block 5 catch-all is attribution by assumption.** 559 historical rows of unknown origin were tagged `'web'` so we could safely apply NOT NULL. Most likely correct; the small accuracy loss is the documented trade-off from Bucket 3 Step 4.5.
+- **Historical iOS rows collapsed into `'web'`** — the Capacitor flag isn't observable post-hoc. New iOS inserts attribute correctly going forward.
+
+### Out of scope
+
+- Per-source analytics or engagement metrics.
+- Migration of any future caller — re-run the grep periodically and use `insertNote()` (Deno) or `defaultClientNoteSource()` (React).
+
 ## 2026-05-14 — [SOURCE-ATTRIBUTION] Type-safe note-insert helper + source attribution backfill + error-rate monitoring
 
 Bucket 3. Fixes the "97% of clerk_notes rows have NULL source" bug by
