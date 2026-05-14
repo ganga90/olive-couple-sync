@@ -354,6 +354,8 @@
     "patternSuggestionsDesc": "Smart suggestions based on your habits",
     "weeklySummary": "Weekly Summary",
     "weeklySummaryDesc": "Get a weekly productivity report on Sundays",
+    "proactiveBridge": "Brain-dump Date Bridge",
+    "proactiveBridgeDesc": "When you save a task with no date, Olive offers to add one — single, bounded prompt.",
     "quietHours": "Quiet Hours",
     "quietHoursDesc": "No proactive messages during these hours",
     "from": "From",

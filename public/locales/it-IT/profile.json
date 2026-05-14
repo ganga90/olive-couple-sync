@@ -354,6 +354,8 @@
     "patternSuggestionsDesc": "Suggerimenti intelligenti basati sulle tue abitudini",
     "weeklySummary": "Riepilogo Settimanale",
     "weeklySummaryDesc": "Ricevi un report di produttività ogni domenica",
+    "proactiveBridge": "Ponte data per brain-dump",
+    "proactiveBridgeDesc": "Quando salvi un'attività senza data, Olive ti offre di aggiungerne una — un singolo prompt mirato.",
     "quietHours": "Ore di Silenzio",
     "quietHoursDesc": "Nessun messaggio proattivo durante queste ore",
     "from": "Da",
