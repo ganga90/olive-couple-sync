@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Send, Sparkles, BookmarkPlus, Check, Paperclip, X, Image, FileVideo, FileText } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
+import type { NoteSource } from "@/lib/note-source";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -687,6 +688,12 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
         .insert({
           author_id: user.id,
           couple_id: currentCouple?.id || null,
+          // Source attribution — see `src/lib/note-source.ts` for the canonical
+          // enum. This UI is the in-app "Save as note" action from the chat
+          // surface, so the channel is always `olive-chat` regardless of web
+          // vs iOS shell.
+          source: 'olive-chat' satisfies NoteSource,
+          source_ref: messageId,
           original_text: userRequest,
           summary: title,
           category,
@@ -694,7 +701,6 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
           tags,
           items: detailItems,
           completed: false,
-          source: 'olive-chat',
         });
 
       if (insertError) throw insertError;

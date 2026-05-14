@@ -3,6 +3,7 @@ import { useSafeUser as useUser } from "@/hooks/useSafeClerk";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import type { Note } from "@/types/note";
+import { defaultClientNoteSource, type NoteSource } from "@/lib/note-source";
 
 export type SupabaseNote = {
   id: string;
@@ -218,12 +219,19 @@ export const useSupabaseNotes = (coupleId?: string | null, spaceId?: string | nu
       // because there is no matching clerk_couples row.
       const providedSpaceId = (noteData as any).space_id;
       const resolvedCoupleId = noteData.couple_id !== undefined ? noteData.couple_id : (providedCoupleId !== undefined ? providedCoupleId : coupleId);
+      // Source attribution — see `src/lib/note-source.ts`. This hook serves
+      // direct user-initiated note inserts from React surfaces (Lists, Notes,
+      // onboarding, etc.), so the platform-default (`web` or `ios`) applies
+      // unless the caller explicitly sets `noteData.source`.
+      const resolvedSource: NoteSource =
+        (noteData as any).source as NoteSource | undefined ?? defaultClientNoteSource();
       const insertData: any = {
         original_text: noteData.original_text,
         summary: noteData.summary,
         category: noteData.category,
         completed: noteData.completed ?? false,
         author_id: user.id,
+        source: resolvedSource,
       };
       if (providedSpaceId !== undefined && providedSpaceId !== null) {
         insertData.space_id = providedSpaceId;

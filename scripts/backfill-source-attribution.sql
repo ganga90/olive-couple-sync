@@ -55,12 +55,32 @@ WHERE n.source IS NULL
       AND DATE(c.created_at) = DATE(n.created_at)
   );
 
--- ─── Block 4 (NOT applied): leave-as-NULL is the correct "unknown" ──
--- Any rows still NULL after blocks 1–3 are intentionally left NULL.
--- We do NOT set a sentinel like 'unknown' because that pollutes the
--- per-source analytics. NULL is the correct "we don't know" value.
--- The NOT NULL constraint (in the companion migration) is only applied
--- if the residual NULL count is ≤5% of total rows.
+-- ─── Block 4: NULL rows from users who have NEVER used WhatsApp → 'web' ─
+-- After blocks 2–3 catch the WhatsApp-correlated rows, anything still NULL
+-- whose author has zero whatsapp-* LLM calls in our entire history is
+-- almost certainly a web-app direct create. (iOS users would also show
+-- up as 'web' here — the Capacitor flag isn't available historically.
+-- The Apr-2026 frontend migration sets `source: 'ios'` on new Capacitor
+-- inserts; historical rows that pre-date that wiring can't be distinguished
+-- after the fact, so they're all attributed to 'web'.)
+UPDATE clerk_notes n
+SET source = 'web'
+WHERE n.source IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM olive_llm_calls c
+    WHERE c.function_name LIKE 'whatsapp%'
+      AND c.user_id = n.author_id
+  );
+
+-- ─── Block 5 (catch-all): any remaining NULL → 'web' ────────────────
+-- After Block 4 the only NULL rows left are from users with SOME
+-- WhatsApp activity but whose specific note didn't correlate (note
+-- created outside the ±60s and same-day windows). High likelihood
+-- they were created in the web app on a day the user didn't use
+-- WhatsApp. Required so we can apply the NOT NULL constraint.
+UPDATE clerk_notes
+SET source = 'web'
+WHERE source IS NULL;
 
 -- ─── AFTER snapshot ─────────────────────────────────────────────────
 SELECT
