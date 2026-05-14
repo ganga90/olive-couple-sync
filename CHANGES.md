@@ -1,5 +1,99 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-14 — [SOURCE-ATTRIBUTION] Type-safe note-insert helper + source attribution backfill + error-rate monitoring
+
+Bucket 3. Fixes the "97% of clerk_notes rows have NULL source" bug by
+introducing a type-safe insert wrapper that compile-enforces source
+attribution at every call site, then backfills as many historical NULL
+rows as conservative heuristics allow. Also documents the new daily
+error-rate monitoring routine that would have caught the compile-memory
+regression on day 1 instead of 11 days late.
+
+### What changed
+
+1. **New `_shared/note-insert.ts`** — `insertNote()`, `insertNotesBatch()`,
+   `NOTE_SOURCES` enum (12 values), and `whatsappSourceFromMessageType()`
+   helper. `source` is required at the TypeScript level; runtime guards
+   reject inserts missing it. Direct `.from("clerk_notes").insert(...)`
+   in any function modified by this PR is now zero (verified by audit).
+
+2. **`whatsapp-webhook` — 10 insert sites migrated**:
+   - Added `messageType` to `MetaMessageData` + return.
+   - At handler scope: `const wamid = messageId; const inboundNoteSource = whatsappSourceFromMessageType(messageType);`.
+   - Threaded `wamid` + `inboundNoteSource` into `createNoteFromCluster()` signature (the only helper function with an insert; other 9 sites are inside the main IIFE and see the destructured values directly).
+   - Sites 1, 3, 4, 5, 7 (CREATE_LIST items bulk), 9 (multi-note bulk), 10 (single CREATE): `source: inboundNoteSource`, `source_ref: wamid`.
+   - Site 2 (media note): `source: 'whatsapp-media'`, `source_ref: wamid`.
+   - Site 6 (PARTNER_MESSAGE): corrected from `source: 'whatsapp'` to `source: 'partner-relay'`; preserves existing `source_ref: partner_relay:${action}`.
+   - Site 7 (SAVE_ARTIFACT): corrected from `source: 'olive-chat'` to `source: inboundNoteSource` (the capture channel is WhatsApp; the artifact's content origin is incidental).
+   - **Step 1 correction**: Step 1 enumerated 9 sites but the file has 10 — line 4876 was missing. Surfaced via AskUserQuestion, treated as "#1.5 Attach-offer primary".
+
+3. **`olive-email-mcp` — 2 insert sites migrated**:
+   - Step 4.3 implied one site; there are two (lines 403 + 555). Surfaced and confirmed.
+   - Both keep existing `source: 'email'` + `source_ref: email.id` semantics; only the call shape changes to `insertNote()`.
+
+4. **`ask-olive-individual:1204` migrated** — partner_message relay mirror of whatsapp-webhook site 6. Tagged `source: 'partner-relay'`, `source_ref: partner_relay:${partnerAction}`.
+
+5. **`scripts/backfill-source-attribution.sql`** — three-block heuristic backfill (partner_relay correction, ±60s LLM-call correlation, same-day correlation) + before/after snapshot queries.
+
+6. **NOT NULL migration deferred** — backfill attributed only 8.8% of historical rows (44 newly + 19 pre-existing of 717 total), leaving 91.2% NULL. Way above the 5% threshold in Step 6.4. The `insertNote()` helper enforces `source` for all new inserts; the table-level NOT NULL is the follow-up PR after frontend sites migrate.
+
+7. **Error-rate monitoring routine** — query designed, dry-run verified. Routine itself is configured outside the repo in Claude Code Routines (see PROGRESS.md for the production query). Dry-run over last 14 days: 12 rows fire, all `olive-compile-memory`, multiple days at 100% — confirms the alert would have caught the compile-memory regression on day 1.
+
+### Source attribution: before / after
+
+| source | BEFORE | AFTER |
+|---|---|---|
+| (null) | 698 | 654 |
+| whatsapp | 2 | 44 |
+| email | 13 | 13 |
+| olive-chat | 4 | 4 |
+| partner-relay | 0 | 2 |
+| **Total** | **717** | **717** |
+
+Attribution: 2.6% → 8.8% (+44 rows). 91.2% still NULL — most are likely web/iOS direct creates from users who never used WhatsApp, so they have no whatsapp-* LLM calls to correlate against. Documented in `PROGRESS.md` for the follow-up frontend-migration PR.
+
+### Files
+
+| File | Change |
+|---|---|
+| `supabase/functions/_shared/note-insert.ts` | New helper + enum |
+| `supabase/functions/_shared/note-insert.test.ts` | New — 9 unit tests |
+| `supabase/functions/whatsapp-webhook/index.ts` | `messageType` added to `MetaMessageData`; 10 insert sites migrated; sites 5 + 6 source corrected |
+| `supabase/functions/olive-email-mcp/index.ts` | 2 insert sites migrated to `insertNote()` |
+| `supabase/functions/ask-olive-individual/index.ts` | partner_message relay insert migrated to `insertNote('partner-relay')` |
+| `scripts/backfill-source-attribution.sql` | New — applied to prod via Supabase MCP |
+| `PROGRESS.md` | Full Bucket 3 verification record |
+
+### Tests
+
+- `deno test supabase/functions/_shared/` → **1257 passed / 0 failed** (1248 baseline + 9 new from `note-insert.test.ts`).
+- `deno check supabase/functions/whatsapp-webhook/index.ts` → 18 errors, same as the dev baseline before this PR. Zero new errors introduced.
+- `deno check supabase/functions/{olive-email-mcp,ask-olive-individual,_shared/note-insert}.ts` → unchanged vs. baseline.
+
+### Frontend insert sites (out of scope per Step 10)
+
+| File | Line | Suggested source |
+|---|---|---|
+| `src/components/AskOliveChatGlobal.tsx` | 686–687 | `'web'` |
+| `src/hooks/useSupabaseNotes.ts` | 281–282 | `'web'` (or `'ios'` under Capacitor flag) |
+
+Follow-up PR: shared frontend `NoteSource` enum + migrate these two sites.
+
+### Acceptance criteria
+
+- [x] **Step 6.1**: whatsapp-webhook deployed; code path covered by tests (live capture verification pending an organic message).
+- [x] **Step 6.2**: olive-email-mcp + ask-olive-individual deployed; existing `source='email'` rows continue to land correctly.
+- [x] **Step 6.3**: backfill applied — 44 newly attributed; remaining NULL count documented (654 / 91.2%).
+- [x] **Step 6.4 decision**: NOT NULL migration deferred per spec rule (residual NULL > 5%).
+- [x] **Step 7 dry-run**: monitoring query confirmed it would have caught the compile-memory regression starting 2026-05-03.
+
+### Out of scope (Step 10)
+
+- Frontend insert path migration (separate PR).
+- Source-aware analytics queries.
+- `olive_engagement_events` schema changes.
+- Alerts for latency p95 / fallback-rate / daily cost.
+
 ## 2026-05-14 — [MULTI-PROVIDER-LLM] Multi-provider LLM abstraction (Gemini → Cerebras → Groq)
 
 Bucket 2. Adds a provider-agnostic LLM call path so the system survives a
