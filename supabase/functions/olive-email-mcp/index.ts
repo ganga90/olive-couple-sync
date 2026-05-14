@@ -19,6 +19,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.0.0";
+import { insertNote } from "../_shared/note-insert.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -383,24 +384,19 @@ Respond ONLY with a valid JSON array (no markdown, no code blocks). Keep each en
 
     // Insert task — original_text and summary are both required
     // Add 📧 prefix consistently (same as manual confirm flow)
-    const noteData: Record<string, unknown> = {
+    const { error: insertErr } = await insertNote(supabase, {
       author_id: userId,
       couple_id: coupleId,
+      source: "email",
+      source_ref: email.id,
       original_text: originalText,
       summary: `📧 ${cleanSummary}`,
       category: triage.category || "general",
       priority: triage.priority || "medium",
-      source: "email",
-      source_ref: email.id,
       tags: ["email"],
       completed: false,
-    };
-
-    if (triage.due_date) {
-      noteData.due_date = new Date(triage.due_date).toISOString();
-    }
-
-    const { error: insertErr } = await supabase.from("clerk_notes").insert(noteData);
+      ...(triage.due_date ? { due_date: new Date(triage.due_date).toISOString() } : {}),
+    });
 
     if (!insertErr) {
       tasksCreated++;
@@ -537,22 +533,19 @@ async function confirmTriageItems(
     if (existing && existing.length > 0) continue;
 
     const originalText = `[EMAIL] ${item.subject} — from ${item.from}`;
-    const noteData: Record<string, unknown> = {
+    const { error: insertErr } = await insertNote(supabase, {
       author_id: userId,
       couple_id: coupleId || null,
+      source: "email",
+      source_ref: item.email_id,
       original_text: originalText,
       summary: `📧 ${item.task_summary}`,
       category: item.category || "general",
       priority: item.priority || "medium",
-      source: "email",
-      source_ref: item.email_id,
       tags: ["email"],
       completed: false,
-    };
-
-    if (item.due_date) noteData.due_date = new Date(item.due_date).toISOString();
-
-    const { error: insertErr } = await supabase.from("clerk_notes").insert(noteData);
+      ...(item.due_date ? { due_date: new Date(item.due_date).toISOString() } : {}),
+    });
     if (!insertErr) {
       tasksCreated++;
       const dateStr = item.due_date ? ` (due ${item.due_date})` : "";
