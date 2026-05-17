@@ -56,12 +56,17 @@ export default defineConfig(({ mode }) => ({
             return "react-vendor";
           }
 
-          // Radix UI primitives — many packages, all related. Bundle
-          // them so the Set-Cookie of one Radix release doesn't
-          // invalidate ten files.
-          if (id.includes("/node_modules/@radix-ui/")) {
-            return "radix-vendor";
-          }
+          // Radix UI primitives intentionally fall through to
+          // misc-vendor. Splitting them into their own chunk created a
+          // circular dependency at module-eval time
+          // (misc-vendor ↔ radix-vendor): misc-vendor pulls in a few
+          // small libraries that use Radix Slot, so radix-vendor would
+          // re-enter the cycle and read React.forwardRef from a
+          // partially-initialised react-vendor binding, producing
+          // `TypeError: Cannot read properties of undefined (reading
+          // 'forwardRef')` and a blank /home in prod. Co-locating Radix
+          // with its consumers (misc) costs ~80 KB on the misc chunk
+          // but is the simplest cycle-safe fix.
 
           // Clerk auth SDK — large, bumps independently.
           if (id.includes("/node_modules/@clerk/")) {
