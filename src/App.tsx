@@ -1,4 +1,5 @@
 import { Suspense, lazy } from "react";
+import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -100,8 +101,24 @@ const AppRoutes = () => (
   </Suspense>
 );
 
+// Dark mode strategy: system-respect only (per user direction).
+//   - `attribute="class"` so Tailwind's class-based darkMode (set in
+//     tailwind.config.ts) reads the toggle off <html>.
+//   - `defaultTheme="system"` + `enableSystem` → follow the OS's
+//     prefers-color-scheme; no in-app toggle by design.
+//   - `disableTransitionOnChange` avoids Tailwind transition styles
+//     animating during the light→dark flip when the user changes their
+//     OS appearance setting mid-session.
+//   - The full set of `.dark { ... }` CSS variables already lives in
+//     src/index.css (line 136+); wiring this provider activates them.
 const App = () => (
   <ErrorBoundary>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+    >
     <QueryClientProvider client={queryClient}>
       <Toaster />
       <Sonner />
@@ -129,6 +146,7 @@ const App = () => (
         </SupabaseCoupleProvider>
       </AuthProvider>
     </QueryClientProvider>
+    </ThemeProvider>
   </ErrorBoundary>
 );
 
