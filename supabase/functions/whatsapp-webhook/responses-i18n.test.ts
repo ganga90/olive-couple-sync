@@ -13,11 +13,18 @@
 //
 // This is a static parser, not a runtime test — keeps the test file
 // independent from the 7,000-line webhook module's transitive imports.
+//
+// TASK-10X-Phase8a — RESPONSES + t() were extracted from
+// whatsapp-webhook/index.ts into _shared/whatsapp-localization.ts.
+// This test still parses source for the keys, but now reads from the
+// new location. The runtime contract (t() behaviour, langName(), key
+// existence) is also covered by the co-located test in
+// _shared/whatsapp-localization.test.ts.
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 const WEBHOOK_PATH =
-  new URL("./index.ts", import.meta.url).pathname;
+  new URL("../_shared/whatsapp-localization.ts", import.meta.url).pathname;
 
 const REQUIRED_LOCALES = ["en", "es", "it"] as const;
 
