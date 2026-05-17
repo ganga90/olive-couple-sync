@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { maskEmail } from "../_shared/redact.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -97,7 +98,7 @@ serve(async (req) => {
       const personalInfo = await personalInfoRes.json();
       ouraEmail = personalInfo.email || null;
       ouraUserId = personalInfo.id || null;
-      console.log('[oura-callback] Got personal info, email:', ouraEmail);
+      console.log('[oura-callback] Got personal info, email:', maskEmail(ouraEmail));
     } else {
       console.warn('[oura-callback] Could not fetch personal info, continuing without');
     }

@@ -39,6 +39,20 @@ Added a `/(.*)` header block applied to every route:
 
 No application changes — Vercel applies these on the response. The next preview deploy is the verification surface.
 
+### TASK-10X-1E — PII redaction in edge function logs
+
+The audit found raw phone numbers and email addresses being written to `console.log` in six places across five edge functions. Edge function stdout streams into Supabase's runtime logs (visible to anyone on the team), so this is a real compliance gap, not theoretical.
+
+- New shared module `supabase/functions/_shared/redact.ts` with three pure helpers: `maskPhone()` keeps last 4 digits (`+xxx*9123`), `maskEmail()` keeps domain + first local char (`g****@gmail.com`), `maskName()` keeps first char (`G********`). Null-safe, never throws, no I/O.
+- Co-located test file `redact.test.ts` covers null/empty/malformed paths for each helper (7 cases).
+- Patched six log sites:
+  - `send-reminders/index.ts:378` — phone + display name
+  - `olive-heartbeat/index.ts:1880` — phone lookup
+  - `email-oauth-callback/index.ts:105` — Gmail address after OAuth
+  - `oura-callback/index.ts:100` — Oura account email
+  - `calendar-callback/index.ts:94, 129` — Google account email (two spots)
+- Full `_shared/` test suite (`deno test`): **1264 passed, 0 failed** — no regressions.
+
 ## 2026-05-14 — [SOURCE-ATTRIBUTION-FE] Frontend insert migration + NOT NULL on clerk_notes.source
 
 Follow-up to [SOURCE-ATTRIBUTION] (Bucket 3, PRs [#130](https://github.com/ganga90/olive-couple-sync/pull/130) / [#131](https://github.com/ganga90/olive-couple-sync/pull/131)). Closes the two frontend insert call sites and locks the source-attribution contract at the database layer.
