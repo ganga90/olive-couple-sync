@@ -1,5 +1,56 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-17 — [REFACTOR-1.5] Extract CONTEXTUAL_ASK + WEB_SEARCH handlers
+
+Initiative 1.5 of [OLIVE_REFACTOR_PLAN.md](OLIVE_REFACTOR_PLAN.md). Continues the monolith decomposition started by 1.1 (Reply/HandlerContext contract), 1.2 (SAVE_ARTIFACT), 1.3 (CONFIRMATION dispatcher), and 1.4 (CHAT handler).
+
+Two intents in one PR because they share the same `pending_offer` artifact-freezing pattern: when an AI response contains a "save this" / "guardarlo" / "salvarlo" tail, the handler constructs a structured `save_artifact` PendingOffer that captures the artifact verbatim at offer time. Subsequent "yes" / "do it" confirmations resolve to the frozen artifact even if a CHAT turn intervenes — that's the moat the SAVE_ARTIFACT handler (1.2) was built to consume.
+
+### What moved
+
+| File | Action | Notes |
+|---|---|---|
+| `handlers/contextual-ask.ts` | NEW (~590 lines) | Owns CONTEXTUAL_ASK / WEB_RESEARCH / SCHEDULE_CALENDAR. Anchored-list matching, semantic retrieval via `find_similar_notes`, hybrid Perplexity augmentation for general-knowledge questions, Pro→Flash fallback. Two prompt variants (`wa-contextual-ask-v1.0` + `wa-hybrid-ask-v1.0`) — versions unchanged. |
+| `handlers/contextual-ask.test.ts` | NEW (~280 lines) | 9 tests: happy path, save-tail offer construction (en+es), 4000-char artifact freezing, matchingTask resolution, AI throw → deterministic keyword fallback, general-knowledge gate, two pure helpers (`isGeneralKnowledgeQuestion` + `responseOffersSave`). |
+| `handlers/web-search.ts` | NEW (~285 lines) | Owns WEB_SEARCH. Context-aware query rewriter (pronoun resolution from last 12 turns), Perplexity `sonar` model, formatter callAI with personal-memory blending. `perplexityFetch` is injectable for tests. |
+| `handlers/web-search.test.ts` | NEW (~280 lines) | 8 tests: missing OLIVE_PERPLEXITY, happy path, "save this" → pending_offer (artifact_kind='web_search'), 4000-char artifact freezing, Perplexity 500 fallback, empty result fallback, formatter throw → raw + first-citation fallback, uncaught exception → `web_search_error`. |
+| `whatsapp-webhook/index.ts` | REMOVED 786 net lines | Inline CONTEXTUAL_ASK block (577 lines) + inline WEB_SEARCH block (244 lines) replaced by two ~18-line dispatch cases mirroring the 1.4 pattern. |
+
+### Pure helpers exported for reuse
+
+`contextual-ask.ts` exports two pure functions both handlers + tests + future code can depend on:
+- `isGeneralKnowledgeQuestion(message: string): boolean` — the trigger for hybrid Perplexity augmentation (verbatim regex from monolith).
+- `responseOffersSave(response: string): boolean` — detects the "save this / guardarlo / salvarlo" tail. Used by both CONTEXTUAL_ASK and WEB_SEARCH after-reply logic, and by the test suite.
+
+### Webhook line-count delta
+
+| Before | After | Removed |
+|---|---|---|
+| 7,931 lines | **7,145 lines** | **−786** (vs 1.4's −1,133) |
+
+Cumulative reduction since 1.4 baseline: **9,052 → 7,145 (−1,907 lines)**.
+
+### Behavior preservation
+
+- Both prompt variants in CONTEXTUAL_ASK moved byte-identically. `WA_CONTEXTUAL_ASK_PROMPT_VERSION` and `WA_HYBRID_ASK_PROMPT_VERSION` unchanged — `olive_llm_analytics` history continuous.
+- `WA_REWRITER_PROMPT_VERSION` and `WA_WEB_SEARCH_FORMAT_PROMPT_VERSION` unchanged.
+- Pro→Flash fallback in CONTEXTUAL_ASK preserved (triggered when media is attached and `routeIntent` returns `pro`).
+- Both handlers preserve the existing two-write pattern verbatim: `saveReferencedEntity` (which writes `conversation_history` + optional `last_referenced_entity`) followed by a second `user_sessions.context_data` update with `last_assistant_*` + `pending_offer`. The known race between the two writes (the second overwrites the first's `conversation_history` update with the stale in-memory snapshot) is preserved as-is — a fix is a separate behavioral change worth its own PR.
+- `pending_offer.artifact_content` truncated at 4,000 chars verbatim; `pending_offer.artifact_request` at 500; reply text at 1,500.
+
+### Tests
+
+| Suite | Before | After |
+|---|---|---|
+| `_shared/` | 1,361 passed | 1,361 passed (no regressions) |
+| `whatsapp-webhook/handlers/` | 48 passed | **65 passed** (+17 new: 9 CTX + 8 WS) |
+
+### Followups (out of scope here)
+
+1. Collapse the two sequential `user_sessions.context_data` updates into a single atomic write. The second update currently overwrites the `conversation_history` set by `saveReferencedEntity` because it spreads the stale pre-call snapshot. Real bug, low impact (last turn drops from history), no user-visible failure mode yet.
+2. Move `responseOffersSave` to `_shared/pending-offer.ts` once a third caller emerges.
+3. Lift the cross-cutting save-artifact session-write pattern (4 fields: `last_assistant_output/at/request` + `pending_offer`) into a single helper to remove duplication between contextual-ask, web-search, and future intents.
+
 ## 2026-05-17 — [FIX-1.4-today] Resolve `today` ReferenceError in briefing helpers
 
 Followup to [REFACTOR-1.4](#2026-05-17--refactor-14-extract-chat-handler-from-whatsapp-webhook-monolith) — clears point #1 of that PR's "Followups (out of scope here)" list.
