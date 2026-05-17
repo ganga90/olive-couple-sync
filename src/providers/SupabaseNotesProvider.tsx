@@ -48,7 +48,9 @@ const buildMemberMap = (members: SpaceMember[]): Map<string, string> => {
 
 const convertSupabaseNoteToNote = (
   supabaseNote: SupabaseNote,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
   currentUser: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
   currentCouple: any,
   memberMap: Map<string, string>
 ): Note => {
@@ -141,9 +143,11 @@ const convertSupabaseNoteToNote = (
     task_owner_name: taskOwnerResolved.name,
     list_id: supabaseNote.list_id || undefined,
     media_urls: supabaseNote.media_urls || undefined,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     location: supabaseNote.location as any || undefined,
     // A note is "shared" if it belongs to any space (couple-type, via
     // couple_id, or non-couple type, via space_id only).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     isShared: supabaseNote.couple_id !== null || (supabaseNote as any).space_id != null,
     coupleId: supabaseNote.couple_id || undefined,
     is_sensitive: supabaseNote.is_sensitive || false,
@@ -216,6 +220,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
           .single();
 
         if (listResult.data) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
           resolvedSpaceId = (listResult.data as any).space_id ?? listResult.data.couple_id ?? null;
         } else {
           resolvedSpaceId = defaultPrivacy === "private" ? null : sharedSpaceId;
@@ -227,7 +232,9 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
       resolvedSpaceId = sharedSpaceId;
     } else if (noteData.isShared === false) {
       resolvedSpaceId = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     } else if ((noteData as any).spaceId !== undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
       resolvedSpaceId = (noteData as any).spaceId || null;
     } else if (noteData.coupleId !== undefined) {
       resolvedSpaceId = noteData.coupleId || null;
@@ -241,6 +248,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
       // couple-type spaces, and leaves it NULL for non-couple spaces.
       space_id: resolvedSpaceId,
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     const result = await addSupabaseNote(supabaseNoteData as any);
     if (result && user?.id) {
       // Auto-trigger insight analysis every 10 notes (fire-and-forget)
@@ -279,6 +287,7 @@ export const SupabaseNotesProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components -- TASK-10X-1C-FOLLOWUP: move hook to its own file
 export const useSupabaseNotesContext = () => {
   const ctx = useContext(SupabaseNotesContext);
   if (!ctx) throw new Error("useSupabaseNotesContext must be used within SupabaseNotesProvider");

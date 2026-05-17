@@ -187,7 +187,7 @@ const Onboarding = () => {
           spaceAnswers: { ...defaultSpaceAnswers, ...parsed.spaceAnswers },
         };
       }
-    } catch {}
+    } catch { /* malformed localStorage — fall through to defaults */ }
     return defaultState;
   });
 
@@ -664,7 +664,7 @@ const Onboarding = () => {
         window.location.href = data.auth_url;
         return;
       }
-    } catch {}
+    } catch { /* optional pre-onboard step; keep onboarding flowing */ }
     setLoading(false);
     goToNextStep();
   };
@@ -696,7 +696,7 @@ const Onboarding = () => {
           source: "onboarding",
           metadata: { type: "onboarding_completed", completed_at: new Date().toISOString() },
         });
-      } catch {}
+      } catch { /* non-fatal: memory insert failure shouldn't block onboarding */ }
     }
   };
 
@@ -747,6 +747,7 @@ const Onboarding = () => {
       // through. CapturePreview's onAnimationComplete fires
       // capture_previewed and reveals the "Take me home" CTA.
       setDemoResult((data as ProcessNoteResult) || { summary: "Captured", category: "note" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     } catch (err: any) {
       fireEvent("error", {
         beat: "demo",

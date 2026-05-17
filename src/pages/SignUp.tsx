@@ -53,6 +53,7 @@ const SignUpPage = () => {
     setStep("email");
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
   const completeSignUp = async (result: any) => {
     if (result.status === "complete") {
       if (result.createdSessionId && setActive) {
@@ -88,6 +89,7 @@ const SignUpPage = () => {
       
       setStep("verify");
       toast.success(t('signUp.codeSent', 'Verification code sent to your email!'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     } catch (err: any) {
       console.error('[SignUp] Error:', err);
       const clerkError = err?.errors?.[0];
@@ -122,6 +124,7 @@ const SignUpPage = () => {
       // This happens when Clerk considers sign-up done but hasn't created a session yet
       if (result.status === 'missing_requirements') {
         // Check if email is now verified — if so, the sign-up is essentially done
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
         const emailVerified = (result as any).verifications?.emailAddress?.status === 'verified';
         if (emailVerified && result.createdSessionId) {
           await setActive({ session: result.createdSessionId });
@@ -133,6 +136,7 @@ const SignUpPage = () => {
       }
 
       toast.error(t('signUp.verificationIncomplete', 'Verification incomplete. Please try again.'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     } catch (err: any) {
       console.error('[SignUp] Error verifying code:', err);
       const clerkError = err?.errors?.[0];
@@ -165,6 +169,7 @@ const SignUpPage = () => {
         strategy: "email_code",
       });
       toast.success(t('signUp.codeResent', 'New code sent!'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     } catch (err: any) {
       console.error('[SignUp] Error resending code:', err);
       const clerkError = err?.errors?.[0];

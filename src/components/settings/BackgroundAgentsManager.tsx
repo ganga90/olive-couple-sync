@@ -420,6 +420,7 @@ export function BackgroundAgentsManager() {
             key={agent.skill_id}
             agent={agent}
             onToggle={handleToggle}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
             onRunNow={runAgentNow as any}
             onWhatsAppToggle={handleWhatsAppToggle}
             onViewHistory={handleViewHistory}
