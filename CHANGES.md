@@ -15,6 +15,14 @@ The audit flagged this as the single highest-leverage fix in the repo: `clerk_no
 - Index built at 512 kB on 130 rows. `EXPLAIN ANALYZE` on the prod table shows seq-scan still preferred (correct: HNSW only outperforms once the table is large enough that the planner's cost model crosses the threshold — that's now an automatic upgrade rather than a manual one).
 - No application code changed. Read paths in `_shared/memory-retrieval.ts` already issue `ORDER BY embedding <=> $1 LIMIT k`, which is the HNSW pattern; the index is invisible to callers.
 
+### TASK-10X-3C — i18n key parity restored (es-ES, it-IT) + parity guard
+
+The audit flagged drift in `profile.agentDetail` (11 missing keys per locale). A deeper scan with `scripts/check-i18n-parity.mjs` found two more drifting namespaces: `home.partnerActivity` (2 keys) and `onboarding.demo` (4 keys). Total: 34 missing key-locale pairs silently falling back to English for Spanish and Italian users.
+
+- Translated 17 unique keys into both `es-ES` and `it-IT`, preserving Olive's voice rules (direct, no exclamation points, no emoji spam). Reused existing terminology already in the locale files (e.g. `Notificaciones de WhatsApp`, `Notifiche WhatsApp` were already canonical for related strings).
+- Added `scripts/check-i18n-parity.mjs` — a Node script that flattens every namespace in every non-EN locale and asserts key-set equality with `en/`. EN is the source of truth; missing keys and orphaned keys both fail the check.
+- The script becomes a CI gate in `TASK-10X-1B` (next commit). Drift recurring requires a deliberate `EXTRA_KEYS` or `MISSING_KEYS` PR — no more silent regressions.
+
 ## 2026-05-14 — [SOURCE-ATTRIBUTION-FE] Frontend insert migration + NOT NULL on clerk_notes.source
 
 Follow-up to [SOURCE-ATTRIBUTION] (Bucket 3, PRs [#130](https://github.com/ganga90/olive-couple-sync/pull/130) / [#131](https://github.com/ganga90/olive-couple-sync/pull/131)). Closes the two frontend insert call sites and locks the source-attribution contract at the database layer.

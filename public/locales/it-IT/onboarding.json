@@ -89,9 +89,13 @@
     "chip1": "Ricordami di chiamare mamma domani alle 17:00",
     "chip2": "Aggiungi latte, uova e pane alla lista della spesa",
     "chip3": "Cena con Sara venerdì prossimo alle 19:00",
+    "chip4": "Codice cancello 4821#",
     "processing": "Organizzando...",
     "submit": "Invia a Olive",
-    "skipToHome": "Salta e vai alla Home"
+    "skipToHome": "Salta e vai alla Home",
+    "previewHeader": "Fatto. È appena successo.",
+    "previewSubtext": "Questo è ciò che fa Olive: ogni idea grezza diventa struttura.",
+    "takeMeHome": "Portami alla home"
   },
   "quiz": {
     "step": "Passo {{current}} di {{total}}",

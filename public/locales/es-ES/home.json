@@ -126,6 +126,8 @@
     "assignedYou": "te asignó una tarea",
     "empty": "{{name}} está sospechosamente en silencio... 🤔",
     "emptyMulti": "Aún no hay actividad reciente de otros miembros.",
+    "recentCount": "{{count}} actualización reciente",
+    "recentCount_plural": "{{count}} actualizaciones recientes",
     "showingCount": "Mostrando {{count}}",
     "seeMore": "Ver {{count}} más",
     "showLess": "Mostrar menos"
