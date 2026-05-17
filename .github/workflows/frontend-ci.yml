@@ -149,5 +149,10 @@ jobs:
           # The repo's deno.lock is lockfile v5, which requires Deno >= 2.x.
           # Pinning to v2.x explicitly so future tag drift doesn't surprise CI.
           deno-version: 'v2.x'
+      - name: Install Deno deps (populates node_modules for npm-style imports)
+        # Deno 2 reads npm packages out of a real node_modules/ directory.
+        # Without `deno install` here, type-checking trips on @types/node
+        # (`Could not find "@types/node" in a node_modules folder`).
+        run: deno install --allow-scripts
       - name: Run _shared tests
         run: deno test supabase/functions/_shared/ --allow-net --allow-read --allow-env
