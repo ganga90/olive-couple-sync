@@ -53,6 +53,19 @@ The audit found raw phone numbers and email addresses being written to `console.
   - `calendar-callback/index.ts:94, 129` — Google account email (two spots)
 - Full `_shared/` test suite (`deno test`): **1264 passed, 0 failed** — no regressions.
 
+### TASK-10X-1B — Frontend CI gate
+
+The audit (P0-6) flagged that no GitHub Actions workflow ran ESLint, TypeScript, or the Vite build on PR. The existing workflows (`eval-harness`, `migration-lint`, `calendar-smoke`) gate other dimensions; the frontend itself was shipping on trust.
+
+Added `.github/workflows/frontend-ci.yml` with 4 jobs:
+
+1. **`i18n-parity`** — runs `scripts/check-i18n-parity.mjs` (from TASK-10X-3C) on every PR touching `public/locales/**`. Any missing or orphaned key vs `en/` fails the PR.
+2. **`typecheck-build`** — `npx tsc --noEmit -p tsconfig.app.json` then `npm run build`. Both currently clean; this locks them in.
+3. **`lint-changed`** — ESLint runs **only on TS/TSX/JS files changed in the PR**. Why not full-repo: the audit found 1,456 pre-existing lint errors. Gating the full repo would block the team until the backlog clears (TASK-10X-1C). Changed-files-only keeps the forward-facing bar high (`--max-warnings 0`) while letting the burn-down happen in parallel.
+4. **`deno-shared-tests`** — `deno test supabase/functions/_shared/` (1264 tests). Catches regressions in the redact helpers (TASK-10X-1E), reminder-dedup, timezone, etc.
+
+Path-filtered + concurrency-cancelled to match the convention of the existing workflows. The PR template in [.github/pull_request_template.md] is the human safety net for cases CI cannot reason about.
+
 ## 2026-05-14 — [SOURCE-ATTRIBUTION-FE] Frontend insert migration + NOT NULL on clerk_notes.source
 
 Follow-up to [SOURCE-ATTRIBUTION] (Bucket 3, PRs [#130](https://github.com/ganga90/olive-couple-sync/pull/130) / [#131](https://github.com/ganga90/olive-couple-sync/pull/131)). Closes the two frontend insert call sites and locks the source-attribution contract at the database layer.
