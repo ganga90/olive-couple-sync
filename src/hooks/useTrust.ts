@@ -96,8 +96,21 @@ export type EngagementData = {
 export const useTrust = () => {
   const { user } = useUser();
 
+  // Both edge functions below require a Clerk-authed JWT (their auth
+  // resolver returns 401 when called with the raw anon key). On the
+  // first render the Clerk → Supabase token bridge in supabaseClient.ts
+  // may not have wired up yet, so we'd otherwise fire a guaranteed-401
+  // request and log a misleading console error. Skip until Clerk has
+  // resolved a user; callers (TrustApprovalCard, TrustSettingsCard,
+  // EngagementScoreCard, ReflectionHistoryCard) treat the empty
+  // sentinel as "nothing pending" — no UI regression.
   const invokeTrustGate = useCallback(
     async (action: string, params: Record<string, any> = {}) => {
+      // Return an empty object — not null — so callers can keep their
+      // `result.matrix || []` / `result.actions || []` shape without
+      // adding null-checks. Empty-object semantics naturally map to
+      // "nothing pending" / "no trust matrix yet".
+      if (!user) return {};
       const supabase = getSupabase();
       const { data, error } = await supabase.functions.invoke("olive-trust-gate", {
         body: { action, ...params },
@@ -106,11 +119,12 @@ export const useTrust = () => {
       if (data?.error) throw new Error(data.error);
       return data;
     },
-    []
+    [user]
   );
 
   const invokeReflect = useCallback(
     async (action: string, params: Record<string, any> = {}) => {
+      if (!user) return {};
       const supabase = getSupabase();
       const { data, error } = await supabase.functions.invoke("olive-reflect", {
         body: { action, ...params },
@@ -119,7 +133,7 @@ export const useTrust = () => {
       if (data?.error) throw new Error(data.error);
       return data;
     },
-    []
+    [user]
   );
 
   // ─── Trust Matrix ───────────────────────────────────────────
