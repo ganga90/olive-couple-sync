@@ -285,25 +285,77 @@ export const useSupabaseNotes = (coupleId?: string | null, spaceId?: string | nu
       }
       
       
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("clerk_notes")
         .insert([insertData])
         .select()
         .single();
 
+      // Scope-fallback retry. When the user's couple/space record is in a
+      // half-migrated state — couple row exists but no matching olive_spaces
+      // row, or the user isn't yet in `olive_space_members` — the insert
+      // trips either the `clerk_notes_space_id_fkey` FK (23503) or the
+      // RLS policy (42501). Without this retry the user loses the entire
+      // note. Falling back to personal scope (couple_id=null, space_id=null)
+      // preserves their data; we surface a clear toast so they can re-share
+      // it from the web app once the scope is reachable.
       if (error) {
-        console.error('[useSupabaseNotes] Supabase insert error:', error);
-        
+        const code = (error as any).code;
+        const msg = error.message || '';
+        const isScopeFailure =
+          code === '23503' || // FK violation
+          code === '42501' || // RLS denial
+          /space_id_fkey|couple_id_fkey|row-level security/i.test(msg);
+
+        if (isScopeFailure && (insertData.space_id || insertData.couple_id)) {
+          console.warn('[useSupabaseNotes] Scope insert failed, retrying in personal scope:', JSON.stringify({
+            code, message: msg,
+            had_space_id: !!insertData.space_id,
+            had_couple_id: !!insertData.couple_id,
+          }));
+          const { space_id: _s, couple_id: _c, ...personalInsert } = insertData;
+          const retry = await supabase
+            .from('clerk_notes')
+            .insert([personalInsert])
+            .select()
+            .single();
+          if (!retry.error && retry.data) {
+            data = retry.data;
+            error = null;
+            toast.message('Saved to your personal items', {
+              description: 'The shared space was unreachable — open the web app to move this note into your shared list.',
+            });
+          } else if (retry.error) {
+            console.error('[useSupabaseNotes] Personal-scope retry also failed:', JSON.stringify({
+              code: (retry.error as any).code,
+              message: retry.error.message,
+              details: (retry.error as any).details,
+              hint: (retry.error as any).hint,
+            }));
+            error = retry.error;
+          }
+        }
+      }
+
+      if (error) {
+        console.error('[useSupabaseNotes] Supabase insert error:', JSON.stringify({
+          code: (error as any).code,
+          message: error.message,
+          details: (error as any).details,
+          hint: (error as any).hint,
+          payload_keys: Object.keys(insertData),
+        }));
+
         // If RLS policy violation, provide more helpful error
         if (error.message?.includes('row-level security policy')) {
           console.error('[useSupabaseNotes] RLS Policy violation - user may not have access to this couple');
           throw new Error('Authentication error - please try signing out and back in');
         }
-        
+
         throw error;
       }
-      
-      toast.success("Note added successfully");
+
+      if (data) toast.success("Note added successfully");
 
       // Link any auto-detected expenses that were created by process-note
       // (they have null note_id since the note didn't exist yet)

@@ -418,6 +418,24 @@ MEDIA EXTRACTION RULES - ALWAYS extract ALL details into items array:
    - Category: "books"
    - target_list: match to Books list if exists
 
+6. **Business cards / Contact cards / Photos of contact info**:
+   - SIGNAL: the image is dominated by a person's name + one or more of: job title, organization, phone number(s), email address, mailing address, website. Includes printed business cards, handwritten contact info on a napkin, screenshots of a "Contact" panel, and people-page screenshots from LinkedIn / Maps with phone+email visible.
+   - **HARD RULE: Return ONE single note (multiple:false). Never split a single card into multiple notes per field.**
+   - Summary: the person's full name as printed (e.g., "Francesco Serafini"). If only an organization is visible, use the org name. NEVER use a phone number, email, or job title as the summary.
+   - Category: "contacts" (lowercase, exact). target_list: "Contacts".
+   - Items: include EVERY visible field as a "Label: Value" pair, in this order, skipping any not present:
+     * "Role: [job title]"
+     * "Organization: [company / department]"
+     * "Cell: [mobile number]"
+     * "Office: [office number]"
+     * "Email: [email]"
+     * "Website: [url]"
+     * "Address: [full address]"
+     * "Notes: [anything handwritten on the card]"
+   - Tags: ["contact"] plus 1-2 more (the organization slug, or industry like "government", "real_estate", "engineering").
+   - Priority: "low" (contacts are reference data, not actionable).
+   - due_date / reminder_time: null.
+
 CRITICAL RULES — HOW CAPTION + MEDIA COMBINE:
 - The MEDIA is always the primary content source. The caption AUGMENTS the media — it never replaces what the image reveals.
 - If user text is vague ("save this", "remember", "this"), derive the ENTIRE summary from the media content.
@@ -937,6 +955,22 @@ FORMAT: Extract the ACTUAL content being shared, not "social media post"
 - Popular Dishes/Services (if shown)
 - Any special notes (e.g., "Temporarily closed", "By appointment only")
 
+**BUSINESS CARDS / CONTACT CARDS — CRITICAL:**
+- Start with "CONTACT:" prefix followed by the person's full name as the primary subject.
+- A business card has a PERSON'S NAME plus one or more of: title, organization, phone, email, address. Treat handwritten contact notes on napkins / Post-its the same way.
+- Extract EVERY field visible. Do NOT summarize the card as just a phone number or just a name; capture all of it:
+  * Full name (first + last, with middle initial if printed)
+  * Job title / role (e.g., "Estimates Specialist IV")
+  * Organization / department / agency (e.g., "FDOT — Forecasting and Performance Office")
+  * Cell phone (mobile/personal number — often labeled "Cell" or handwritten)
+  * Office phone (desk/landline, often labeled "Office", "Tel", or "Direct")
+  * Email address
+  * Website
+  * Full mailing address (street, suite, city, state, zip)
+  * Any handwritten notes added to the card
+- FORMAT: "CONTACT: [Full Name] — [Title], [Organization]. Cell: [num]. Office: [num]. Email: [email]. Website: [url]. Address: [addr]. Notes: [handwritten]."
+- NEVER classify a contact card as a generic "TASK" or "TEXT". It is a CONTACT.
+
 **BOOKS/MEDIA:**
 - Title, Author, ISBN, Publisher - format as "Book: [TITLE] by [AUTHOR]"
 
@@ -1040,6 +1074,7 @@ async function analyzeImageWithGeminiFromBase64(genai: GoogleGenAI, base64Image:
 - Format: Start with "HANDWRITTEN:" followed by the full transcribed content
 
 **BUSINESS/LOCATION PAGES**: Extract name, phone, website, address, hours, rating, reviews, price level, cuisine, amenities.
+**BUSINESS CARDS / CONTACT CARDS**: Start with "CONTACT:" followed by the person's full name. Extract title, organization, EVERY phone number (label as Cell/Office/Direct), email, website, full mailing address, and any handwritten notes. Format: "CONTACT: [Full Name] — [Title], [Organization]. Cell: [num]. Office: [num]. Email: [email]. Website: [url]. Address: [addr]. Notes: [handwritten]."
 **PRODUCTS**: Use exact brand + model name. NEVER prefix with "PRODUCTS:".
 **TRAVEL DOCUMENTS**: Start with "TRAVEL:" prefix. Extract carrier, flight number, route, dates, passenger.
 **RECEIPTS**: Store name, items, amounts, date.
@@ -1533,7 +1568,7 @@ serve(async (req) => {
       throw new Error('Supabase configuration is missing');
     }
 
-    const { text, user_id, couple_id, space_id, timezone, language, media, mediaTypes, style, partner_names, is_sensitive, source, list_id: explicit_list_id } = await req.json();
+    const { text, user_id, couple_id, space_id, timezone, language, media, mediaTypes, style, partner_names, is_sensitive, source, list_id: explicit_list_id, media_hint } = await req.json();
     // Spaces Phase 2-1: resolve canonical scope (prefer space_id; fall back to
     // couple_id for legacy callers). For couple-type spaces these are the same
     // UUID via the 1:1 bridge; for non-couple spaces (family / business / custom)
@@ -1938,10 +1973,42 @@ When the note text mentions any of these names, use the EXACT name for task_owne
 
     // Build user prompt with explicit media-first instruction when text is vague
     let userPrompt: string;
-    if (isVagueText && hasMedia) {
+    // CONTACT card hint — when the webhook pre-classifier flagged this image
+    // as a business / contact card, force ONE single note shaped as a
+    // structured contact (person name as summary, all fields as items, route
+    // to the user's Contacts list). Without this, Gemini was producing
+    // 2+ stub notes ("Cell Phone: 786 201 8616", "Francesco Serafini (FDOT)")
+    // in the generic Personal list — the bug the user reported.
+    if (hasMedia && media_hint === 'contact') {
       userPrompt = `${systemPrompt}${listsContext}
 
-CRITICAL: The user's text ("${safeText}") is vague/generic. You MUST derive the task summary and details ENTIRELY from the media content provided above. 
+CONTACT CARD MODE — RETURN EXACTLY ONE NOTE (do not split, do not return multiple:true):
+This image is a business card or contact card. Extract a single, structured contact:
+
+- summary: the person's full name as printed on the card. If only an organization is visible (no person), use the organization name. NEVER use a phone number or email as the summary.
+- category: "contacts" (lowercase, exact). The system maps this to the user's Contacts list automatically.
+- target_list: "Contacts" (the system will create this list if it does not already exist).
+- items: an exhaustive list of "Label: Value" pairs covering EVERY visible detail. Use these labels when applicable, in this order:
+   * "Role: <job title>"
+   * "Organization: <company / org / department>"
+   * "Cell: <mobile number>"
+   * "Office: <office number>"
+   * "Email: <email>"
+   * "Website: <url>"
+   * "Address: <street, city, state, zip>"
+   * "Notes: <anything else handwritten on the card>"
+  Skip a label entirely when the value is not present. Do not invent fields. Preserve exact numbers, emails, URLs verbatim.
+- tags: ["contact"] plus 1-2 more drawn from the card (e.g., the organization slug, or the industry such as "government", "real_estate", "engineering").
+- priority: "low" — contacts are reference data, not actionable.
+- due_date / reminder_time: null.
+- multiple: false. Return a single note, never an array.
+
+Process this contact card:
+"${enhancedText}"`;
+    } else if (isVagueText && hasMedia) {
+      userPrompt = `${systemPrompt}${listsContext}
+
+CRITICAL: The user's text ("${safeText}") is vague/generic. You MUST derive the task summary and details ENTIRELY from the media content provided above.
 Do NOT use the user's text as the summary. Create a meaningful, specific summary based on what was extracted from the media.
 
 Process this note:
@@ -2391,6 +2458,12 @@ Use this header as shared context across ALL items:
       'stocks': { displayName: 'Investments', aliases: ['stocks', 'stock', 'investing', 'portfolio', 'trading'] },
       'research': { displayName: 'Research', aliases: ['research', 'report', 'study', 'analysis', 'paper', 'whitepaper', 'documents'] },
       'education': { displayName: 'Education', aliases: ['education', 'learning', 'courses', 'school', 'university'] },
+      // Business cards / people-with-contact-details land here. Covers both
+      // personal contacts ("Sara's babysitter") and professional ones
+      // ("FDOT estimates specialist") — Olive doesn't fork the list on
+      // business-vs-personal because the moment of capture rarely has the
+      // signal to decide. The user can rename / split later from the web app.
+      'contacts': { displayName: 'Contacts', aliases: ['contacts', 'contact', 'people', 'business cards', 'business card', 'networking'] },
       // Novel categories from AI are auto-formatted: "real_estate" → "Real Estate"
     };
 
