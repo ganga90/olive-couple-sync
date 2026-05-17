@@ -98,7 +98,7 @@ export async function getRecentOutboundMessages(supabase: any, userId: string): 
     if (results.length === 0) {
       const { data: queueMsgs } = await supabase
         .from('olive_outbound_queue')
-        .select('message_type, content, message, sent_at')
+        .select('message_type, content, sent_at')
         .eq('user_id', userId)
         .eq('status', 'sent')
         .gte('sent_at', sixtyMinAgo)
@@ -110,7 +110,7 @@ export async function getRecentOutboundMessages(supabase: any, userId: string): 
         for (const msg of queueMsgs as any[]) {
           results.push({
             type: msg.message_type || 'unknown',
-            content: msg.content || msg.message || '',
+            content: msg.content || '',
             sent_at: msg.sent_at,
             source: 'queue',
           });

@@ -1214,6 +1214,11 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+    // Mutable refs declared OUTSIDE the try so the top-level catch can
+    // attribute the error to a user when authentication had already
+    // completed. The try body assigns these once we know who's calling.
+    let _authenticatedUserId: string | null = null;
+
   try {
     const { fromNumber: rawFromNumber, messageBody: rawMessageBody, mediaItems, latitude, longitude, phoneNumberId, messageId, messageType, quotedMessageId, receivedAtIso } = messageData;
     const fromNumber = standardizePhoneNumber(rawFromNumber);
@@ -1225,8 +1230,6 @@ serve(async (req) => {
     const wamid: string = messageId;
     const inboundNoteSource: NoteSource = whatsappSourceFromMessageType(messageType);
 
-    // Mutable ref for userId so reply() can access it after auth
-    let _authenticatedUserId: string | null = null;
     // Track the most recently referenced task for outbound context enrichment
     let _lastReferencedTaskId: string | null = null;
     let _lastReferencedTaskSummary: string | null = null;
@@ -8984,6 +8987,30 @@ FORMAT for WhatsApp (max 1500 chars):
 
   } catch (error) {
     console.error('[Meta Webhook] ❌ Background processing error:', error);
+
+    // Persist the error so we can pinpoint root cause without re-running
+    // the request. Service-role insert bypasses RLS; the table is gated
+    // for SELECT to the owning user only.
+    try {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const errStack = error instanceof Error ? error.stack ?? null : null;
+      await supabase.from('webhook_errors').insert({
+        function_name: 'whatsapp-webhook',
+        user_id: _authenticatedUserId,
+        phone_number: messageData?.fromNumber ?? null,
+        message_body: (messageData?.messageBody ?? '').substring(0, 2000) || null,
+        error_message: errMsg.substring(0, 2000),
+        error_stack: errStack ? errStack.substring(0, 8000) : null,
+        metadata: {
+          message_id: messageData?.messageId ?? null,
+          message_type: messageData?.messageType ?? null,
+          has_media: (messageData?.mediaItems?.length ?? 0) > 0,
+        },
+      });
+    } catch (logErr) {
+      console.error('[Meta Webhook] Failed to persist error to webhook_errors:', logErr);
+    }
+
     // Try to notify the user if we have enough context
     try {
       const { fromNumber: rawFromNumber, phoneNumberId } = messageData;
