@@ -122,12 +122,31 @@ Deno.test("parseNaturalDate en: garbage input → 'unknown'", () => {
 
 Deno.test("parseNaturalDate en: explicit lang='en' identical to default", () => {
   // Adding the lang argument must not perturb existing English output.
-  const inputs = ["tomorrow at 3pm", "in 30 minutes", "next Monday", "March 15", "zzz"];
-  for (const expr of inputs) {
+  //
+  // "in 30 minutes" is a moving target — each call reads `new Date()`
+  // internally, so two back-to-back calls can produce dates that differ
+  // by the few ms it took to make the second call. On a noisy CI runner
+  // that occasionally crosses a second-boundary and the strict-equal
+  // Date check trips intermittently (PR #139 / #140 saw this in the
+  // _shared test job). For relative-time inputs we compare `readable`
+  // only — that's the contract the test exists to enforce (the lang
+  // arg doesn't change English output). For absolute inputs we keep
+  // the strict date comparison.
+  const relative = ["in 30 minutes"];
+  const absolute = ["tomorrow at 3pm", "next Monday", "March 15", "zzz"];
+  for (const expr of absolute) {
     const noLang = parseNaturalDate(expr, "America/New_York");
     const withEn = parseNaturalDate(expr, "America/New_York", "en");
     assertEquals(withEn.readable, noLang.readable, `mismatch for "${expr}"`);
     assertEquals(withEn.date, noLang.date, `date mismatch for "${expr}"`);
+  }
+  for (const expr of relative) {
+    const noLang = parseNaturalDate(expr, "America/New_York");
+    const withEn = parseNaturalDate(expr, "America/New_York", "en");
+    assertEquals(withEn.readable, noLang.readable, `mismatch for "${expr}"`);
+    // For relative-time inputs the readable form is what we contract
+    // on; don't strict-compare dates because two `new Date()` calls
+    // separated by ms can diverge by a second on a busy CI runner.
   }
 });
 
