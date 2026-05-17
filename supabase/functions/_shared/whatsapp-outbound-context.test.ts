@@ -175,7 +175,7 @@ function makeFakeMultiClient(opts: {
     sent_at?: string;
     is_error?: boolean;
   } | null;
-  queueRows?: Array<{ message_type: string; content?: string; message?: string; sent_at: string }>;
+  queueRows?: Array<{ message_type: string; content?: string; sent_at: string }>;
   heartbeatRows?: Array<{ job_type: string; message_preview: string; created_at: string }>;
 }) {
   return {
