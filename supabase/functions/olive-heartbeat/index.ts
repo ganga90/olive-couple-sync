@@ -15,6 +15,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { dedupeReminders } from "../_shared/reminder-dedup.ts";
+import { maskPhone } from "../_shared/redact.ts";
 import {
   handleContradictionResolveJob,
   type ContradictionPayload,
@@ -1877,7 +1878,7 @@ serve(async (req) => {
         }
 
         const cleanPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
-        console.log('[Heartbeat] Test briefing — looking up phone:', cleanPhone);
+        console.log('[Heartbeat] Test briefing — looking up phone:', maskPhone(cleanPhone));
 
         const { data: profiles, error: profileErr } = await supabase
           .from('clerk_profiles')

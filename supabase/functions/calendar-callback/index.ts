@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { maskEmail } from "../_shared/redact.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -91,7 +92,7 @@ serve(async (req) => {
     }
 
     const userInfo = await userInfoResponse.json();
-    console.log('[calendar-callback] Got user info:', userInfo.email);
+    console.log('[calendar-callback] Got user info:', maskEmail(userInfo.email));
 
     // Resolve the primary calendar identifier.
     //
@@ -126,7 +127,7 @@ serve(async (req) => {
     // broken ones.
     const PRIMARY_CALENDAR_ID = "primary";
     const calendarDisplayName = userInfo.email || "Primary";
-    console.log('[calendar-callback] Using primary calendar alias for', userInfo.email);
+    console.log('[calendar-callback] Using primary calendar alias for', maskEmail(userInfo.email));
 
     // Check if Tasks scope was granted
     let tasksEnabled = false;

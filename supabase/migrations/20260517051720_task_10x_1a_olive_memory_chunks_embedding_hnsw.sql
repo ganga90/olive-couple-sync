@@ -1,0 +1,43 @@
+-- TASK-10X-1A: Add HNSW vector index to olive_memory_chunks.embedding
+--
+-- Background
+--   olive_memory_chunks stores vector-embedded memory segments and is the
+--   primary backing store for Olive's memory recall (hybrid search reads
+--   from here). clerk_notes.embedding has an ivfflat index (baseline
+--   migration 20260427000000 line 3451), but olive_memory_chunks does not.
+--   Every memory-search query has been doing a full sequential scan over
+--   768-dim vectors. Currently 126 rows; the bill comes due as chunks
+--   grow, silently degrading recall latency and quality.
+--
+-- Why HNSW (not IVFFLAT)
+--   * pgvector >= 0.5.0 (shipped by default on Supabase Postgres 17) ships
+--     HNSW. Better recall/latency trade-off than IVFFLAT in published
+--     benchmarks, and avoids the `lists` re-tuning that IVFFLAT needs as
+--     row count grows past the build-time estimate.
+--   * Chunks see updates (decay touches last_accessed_at; importance can
+--     change). HNSW handles incremental inserts/updates more gracefully
+--     than IVFFLAT, which requires periodic rebuilds for best recall.
+--   * Operator class matches clerk_notes: vector_cosine_ops. Embeddings
+--     are unit-normalized in the embedding generator, so cosine is the
+--     correct distance metric.
+--
+-- Why not partial (WHERE is_active = true)
+--   We keep this index full so any caller — including future maintenance
+--   scripts that scan inactive chunks — can use it. The existing partial
+--   btree idx_chunks_active already handles the (user_id, is_active)
+--   filter on the metadata side.
+--
+-- Why not CONCURRENTLY
+--   `apply_migration` runs inside a transaction; CONCURRENTLY cannot.
+--   126 rows builds in well under a second; locking writes for that
+--   window is acceptable. The CI smoke check (calendar-smoke.yml) runs
+--   daily at 09:17 UTC; this migration is applied well outside that
+--   window. If we ever need to rebuild this index on a 100k+ chunks
+--   table, we re-issue it CONCURRENTLY via execute_sql.
+--
+-- DOWN
+--   DROP INDEX IF EXISTS public.idx_chunks_embedding;
+
+CREATE INDEX IF NOT EXISTS idx_chunks_embedding
+  ON public.olive_memory_chunks
+  USING hnsw (embedding vector_cosine_ops);

@@ -544,5 +544,18 @@
     "weekly": "📆 Settimanale",
     "reminders": "⏰ Promemoria",
     "recent": "🕐 Recente"
+  },
+  "agentDetail": {
+    "back": "Indietro",
+    "notFound": "Agente non trovato",
+    "backToSettings": "Torna a Impostazioni",
+    "latestResult": "Ultimo risultato",
+    "settings": "Impostazioni",
+    "whatsappNotifications": "Notifiche WhatsApp",
+    "whatsappDesc": "Invia i risultati su WhatsApp quando questo agente viene eseguito",
+    "schedule": "Pianificazione",
+    "noSchedule": "Nessuna pianificazione configurata",
+    "connection": "Connessione richiesta",
+    "runHistory": "Cronologia esecuzioni"
   }
 }

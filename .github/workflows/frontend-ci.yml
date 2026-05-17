@@ -1,0 +1,158 @@
+name: Frontend CI
+
+# Gates every PR touching the frontend on the cheap, deterministic checks that
+# would otherwise only surface in Vercel preview or production:
+#   * TypeScript typecheck (zero tolerance)
+#   * Vite production build (must compile)
+#   * i18n locale parity (every locale matches en/ — see scripts/check-i18n-parity.mjs)
+#   * ESLint on PR-changed files (gates new code; pre-existing tech debt
+#     is not blocked because the repo has ~1456 baseline lint errors that
+#     we burn down separately in TASK-10X-1C and follow-ups)
+#   * Deno test suite for _shared edge-function utilities
+#
+# Scope discipline
+#   - Path-filtered so docs-only PRs don't trigger.
+#   - Concurrency-cancelled so a new commit on the same PR supersedes
+#     in-flight runs (matches eval-harness.yml convention).
+#
+# Why not gate full-repo lint
+#   The audit (OLIVE_10X_PLAN.md, P0-4) showed TypeScript was effectively off
+#   in tsconfig and ESLint accumulated 1456 errors. Gating the whole repo
+#   would block every PR until that backlog is cleared (TASK-10X-1C). The
+#   changed-files-only mode keeps the forward-facing standard high while
+#   the burn-down happens in parallel.
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'src/**'
+      - 'public/locales/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'bun.lock'
+      - 'tsconfig*.json'
+      - 'vite.config.ts'
+      - 'eslint.config.js'
+      - 'tailwind.config.ts'
+      - 'postcss.config.js'
+      - 'scripts/check-i18n-parity.mjs'
+      - 'supabase/functions/_shared/**'
+      - '.github/workflows/frontend-ci.yml'
+  push:
+    branches: [main, dev]
+    paths:
+      - 'src/**'
+      - 'public/locales/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig*.json'
+      - 'vite.config.ts'
+      - 'supabase/functions/_shared/**'
+      - '.github/workflows/frontend-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: frontend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # -----------------------------------------------------------
+  # Deterministic checks that don't need Node deps installed
+  # -----------------------------------------------------------
+  i18n-parity:
+    name: i18n locale parity (en is source of truth)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check every locale matches en/
+        run: node scripts/check-i18n-parity.mjs
+
+  # -----------------------------------------------------------
+  # Type + build gate. Single job because they share node_modules.
+  # -----------------------------------------------------------
+  typecheck-build:
+    name: TypeScript + Vite build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: TypeScript typecheck (no emit)
+        run: npx tsc --noEmit -p tsconfig.app.json
+      - name: Vitest (frontend unit tests)
+        run: npm run test:run
+      - name: Vite production build
+        run: npm run build
+
+  # -----------------------------------------------------------
+  # ESLint on changed files only. New code is gated; legacy
+  # is not blocked while TASK-10X-1C drives the backlog to zero.
+  # -----------------------------------------------------------
+  lint-changed:
+    name: ESLint (changed files only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Pulls only need this when there's a real PR to diff against.
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Lint changed TS/TSX/JS/MJS files only
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          # Filter changed files to lintables. Using a post-grep instead of
+          # git pathspec because pathspec ** semantics require :(glob)
+          # magic that's easy to get wrong silently.
+          FILES=$(git diff --name-only --diff-filter=AM "$BASE_SHA" HEAD \
+            | grep -E '^(src/|scripts/).*\.(ts|tsx|mjs|js)$' \
+            || true)
+          if [ -z "$FILES" ]; then
+            echo "No lintable changes in this PR."
+            exit 0
+          fi
+          echo "Linting:"
+          echo "$FILES"
+          # xargs handles argv splitting correctly; passing $FILES directly
+          # to eslint via shell expansion concatenates them into one path.
+          echo "$FILES" | xargs npx eslint --max-warnings 0
+
+  # -----------------------------------------------------------
+  # Deno test suite for _shared edge function utilities. Cheap
+  # (a few seconds) and catches regressions like the 1264-test
+  # baseline from TASK-10X-1E.
+  # -----------------------------------------------------------
+  deno-shared-tests:
+    name: Deno _shared tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          # The repo's deno.lock is lockfile v5, which requires Deno >= 2.x.
+          # Pinning to v2.x explicitly so future tag drift doesn't surprise CI.
+          deno-version: 'v2.x'
+      - name: Install Deno deps (populates node_modules for npm-style imports)
+        # Deno 2 reads npm packages out of a real node_modules/ directory.
+        # Without `deno install` here, type-checking trips on @types/node
+        # (`Could not find "@types/node" in a node_modules folder`).
+        run: deno install --allow-scripts
+      - name: Run _shared tests
+        run: deno test supabase/functions/_shared/ --allow-net --allow-read --allow-env
