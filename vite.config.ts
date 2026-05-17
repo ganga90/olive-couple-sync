@@ -108,13 +108,14 @@ export default defineConfig(({ mode }) => ({
             return "motion-vendor";
           }
 
-          // Recharts — heavy, only used in Admin/insights views.
-          if (
-            id.includes("/node_modules/recharts/") ||
-            id.includes("/node_modules/d3-")
-          ) {
-            return "charts-vendor";
-          }
+          // Recharts + d3 intentionally fall through to misc-vendor for
+          // the same reason as Radix above: splitting them creates a
+          // circular import (misc-vendor ↔ charts-vendor) because a
+          // few generic util libraries in misc-vendor pull d3 helpers
+          // at module-eval time. The cycle produces
+          // `ReferenceError: Cannot access 'A' before initialization`
+          // and a blank page. Co-locating them with misc keeps the
+          // tree-shaker happy and the page rendering.
 
           // Forms — used across multiple pages.
           if (
