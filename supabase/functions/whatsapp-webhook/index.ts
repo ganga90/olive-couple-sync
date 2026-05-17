@@ -74,6 +74,12 @@ import {
   isUndoReply,
   revertAttach,
 } from "../_shared/topical-followup.ts";
+// Initiative 1.2 of OLIVE_REFACTOR_PLAN.md — first handler extracted
+// from this monolith. SAVE_ARTIFACT now lives in handlers/save-artifact.ts
+// with co-located unit tests. The dispatch site below builds a
+// HandlerContext, calls the handler, applies the returned Reply.
+import { makeSaveArtifactHandler } from "./handlers/save-artifact.ts";
+import type { HandlerContext as SharedHandlerContext } from "../_shared/types.ts";
 // Phase 1 WhatsApp port: shared with web Ask Olive.
 import {
   buildWhatsAppCalendarSuffix,
@@ -9420,228 +9426,23 @@ If the user's message is long and conversational — asking for help with someth
       }
     }
 
-    // ========================================================================
-    // SAVE ARTIFACT HANDLER - Save Olive's assistant output as a note/task
-    // Triggered when user says "save this", "save it as a note", etc.
-    // after Olive produced content (email draft, plan, brainstorm, etc.)
-    // ========================================================================
+    // SAVE_ARTIFACT — handler in ./handlers/save-artifact.ts (Initiative 1.2).
     if (intent === 'SAVE_ARTIFACT') {
-      console.log('[SAVE_ARTIFACT] User wants to save assistant output as note');
-
-      const sessionCtxArtifact = (session.context_data || {}) as ConversationContext;
-      // Prefer the structured pending_offer (frozen at offer time, immune to CHAT clobber).
-      // Fall back to last_assistant_* for legacy / "save this" flows where no offer was set.
-      // Narrow on type — PendingOffer is now a union and only the
-      // save_artifact variant has artifact_content / artifact_request.
-      const rawOffer = isPendingOfferFresh(sessionCtxArtifact.pending_offer)
-        ? sessionCtxArtifact.pending_offer
-        : null;
-      const freshOffer = rawOffer && rawOffer.type === 'save_artifact' ? rawOffer : null;
-      const artifactContent = freshOffer?.artifact_content || sessionCtxArtifact.last_assistant_output;
-      const artifactRequest = freshOffer?.artifact_request || sessionCtxArtifact.last_assistant_request || '';
-
-      if (!artifactContent) {
-        return reply(t('artifact_none', userLang));
+      const r = await makeSaveArtifactHandler({
+        callAI, generateEmbedding, t, promptVersion: WA_CLASSIFICATION_PROMPT_VERSION,
+      })({
+        supabase, userId, userLang, userTimezone: profile.timezone || 'America/New_York',
+        profile: profile as any, coupleId, effectiveCoupleId, session: session as any,
+        messageBody, cleanMessage, effectiveMessage: cleanMessage, mediaUrls, mediaTypes,
+        wamid, inboundNoteSource, quotedMessageId: quotedMessageId ?? null,
+        receivedAtIso: receivedAtIso ?? new Date().toISOString(),
+        tracker, intentResult: intentResult as any, members: null,
+      } as SharedHandlerContext);
+      if (r.referenced_entity) {
+        await saveReferencedEntity({ id: r.referenced_entity.id, summary: r.referenced_entity.summary, list_id: r.referenced_entity.list_id }, r.text);
       }
-
-      // Title + category classification. Isolated try/catch so a Gemini
-      // timeout or malformed response can NEVER block the save itself —
-      // we fall back to deterministic extraction from the artifact.
-      // Pre-bug behavior cascaded any classifier error into a full
-      // "Sorry, I couldn't save that" reply, dropping the user's content.
-      let title = 'Saved draft';
-      let category = 'task';
-      let tags: string[] = ['olive-draft'];
-      try {
-        const classifyResult = await callAI(
-          `You classify saved content into a structured note. Return JSON with:
-- "title": A concise, descriptive title (max 8 words) that captures the TOPIC of the FULL ARTIFACT CONTENT. NEVER base the title on the original request when that request is a short confirmation (e.g. "yes", "yes please", "save it", "ok", "do it", "sì", "sì grazie", "sí", "vale", "claro"). NEVER use generic titles ("Save Note", "Saved Draft", "Clarification Request"). Instead describe what the CONTENT is about. Good examples: "Best Cities to Visit in Italy", "Megaformer Studios — What They Are", "Email Draft to Boss About Vacation", "Gift Ideas for Sara's Birthday".
-- "category": One of: task, work, personal, travel, finance, health, shopping, entertainment, recipes, general, contacts
-- "tags": Array of 1-3 relevant tags drawn from the CONTENT topic.
-
-Return ONLY valid JSON, no markdown.`,
-          `ORIGINAL USER REQUEST (context only — do NOT title from this if it looks like a confirmation): "${artifactRequest.substring(0, 500)}"\n\nFULL ARTIFACT CONTENT (title MUST describe this):\n${artifactContent.substring(0, 2000)}`,
-          0.1,
-          'lite',
-          tracker,
-          WA_CLASSIFICATION_PROMPT_VERSION,
-        );
-
-        try {
-          const parsed = JSON.parse(classifyResult.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
-          if (parsed.title && !isBadTitle(parsed.title)) title = parsed.title;
-          if (parsed.category && typeof parsed.category === 'string') category = parsed.category;
-          if (Array.isArray(parsed.tags)) tags = [...parsed.tags.filter((t: unknown) => typeof t === 'string'), 'olive-draft'];
-        } catch (parseErr) {
-          console.warn('[SAVE_ARTIFACT] Classifier JSON parse failed, using fallback:', parseErr);
-          const firstLine = artifactContent.split('\n')[0]?.replace(/[*#]/g, '').trim();
-          if (firstLine && firstLine.length < 80) title = firstLine;
-        }
-      } catch (aiErr) {
-        // Gemini failure is NON-FATAL. Deterministic fallback below.
-        console.warn('[SAVE_ARTIFACT] Classifier AI call failed, using deterministic fallback:', aiErr);
-      }
-
-      // Deterministic fallback: derive title from user request — but only if
-      // the request isn't itself a confirmation. Otherwise extract a topic
-      // line from the content body.
-      if (isBadTitle(title)) {
-        const requestIsConfirmation = looksLikeConfirmation(artifactRequest);
-        if (artifactRequest && !requestIsConfirmation) {
-          const requestTitle = artifactRequest.replace(/^(can you |please |help me |tell me |what are |what is |search (?:for|what is|what's) )/i, '').substring(0, 60).trim();
-          if (requestTitle.length > 5) title = requestTitle.charAt(0).toUpperCase() + requestTitle.slice(1);
-        } else {
-          const contentLine = artifactContent
-            .split('\n')
-            .map((l: string) => l.replace(/[*#>_`]/g, '').trim())
-            .find((l: string) => l.length >= 6 && l.length <= 80);
-          if (contentLine) title = contentLine;
-        }
-      }
-      // Final hard floor — `summary` is NOT NULL in clerk_notes.
-      if (!title || !title.trim()) title = 'Saved from Olive chat';
-
-      try {
-        // Build note data — artifact goes into items (details section) for easy copy/paste
-        // original_text keeps only the user's request for context
-        const artifactLines = artifactContent
-          .split('\n')
-          .map((l: string) => l.trim())
-          .filter((l: string) => l.length > 0);
-
-        const noteData: any = {
-          author_id: userId,
-          couple_id: effectiveCoupleId,
-          // Bucket 3: capture channel is WhatsApp (user typed "save this" via
-          // WhatsApp); the artifact's *content* came from Olive's chat reply,
-          // but that's incidental to source attribution.
-          source: inboundNoteSource,
-          source_ref: wamid,
-          original_text: (artifactRequest || 'Saved from Olive chat').substring(0, 2000),
-          summary: title,
-          category: (category || 'task').toLowerCase().replace(/\s+/g, '_'),
-          priority: 'medium',
-          tags: tags,
-          items: artifactLines.length > 0 ? artifactLines : [artifactContent.substring(0, 4000)],
-          completed: false,
-        };
-
-        // If user mentioned a specific list, try to find it (multi-word support)
-        const msgLower = (messageBody || '').toLowerCase();
-        const listMention = msgLower.match(/(?:in|to|on|nella|nella\s+lista|en\s+(?:mi\s+)?lista|alla\s+lista)\s+(?:my\s+)?[""""]?([^""""\n]{2,30})[""""]?\s*(?:list|lista)?/i);
-        if (listMention) {
-          const { data: matchedLists } = await supabase
-            .from('clerk_lists')
-            .select('id, name, couple_id')
-            .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
-
-          const targetName = listMention[1].toLowerCase().trim();
-          // Try exact match first, then partial
-          const matched = matchedLists?.find(l => l.name.toLowerCase() === targetName)
-            || matchedLists?.find(l => l.name.toLowerCase().includes(targetName))
-            || matchedLists?.find(l => targetName.includes(l.name.toLowerCase()));
-          if (matched) {
-            noteData.list_id = matched.id;
-            noteData.couple_id = matched.couple_id ?? effectiveCoupleId;
-          }
-        }
-
-        let { data: savedNote, error: saveError } = await insertNote(supabase, noteData);
-
-        // Retry once with a minimal payload if the full payload tripped a
-        // schema constraint (e.g., FK on couple_id/space_id desync, malformed
-        // category, oversized items[]). Saves the user's content even when
-        // optional fields are problematic.
-        if (saveError || !savedNote) {
-          console.error('[SAVE_ARTIFACT] Insert error (full payload):', JSON.stringify({
-            message: saveError?.message,
-            details: (saveError as any)?.details,
-            code: (saveError as any)?.code,
-            payload_keys: Object.keys(noteData),
-            summary_len: title.length,
-            items_count: noteData.items?.length ?? 0,
-            category: noteData.category,
-            couple_id_set: !!noteData.couple_id,
-            list_id_set: !!noteData.list_id,
-          }));
-
-          const minimalPayload: any = {
-            author_id: userId,
-            // Personal scope retry — drops couple_id/list_id which are the
-            // common FK-failure suspects. Always recoverable on web app.
-            couple_id: null,
-            source: inboundNoteSource,
-            source_ref: wamid,
-            original_text: (artifactRequest || 'Saved from Olive chat').substring(0, 2000),
-            summary: title,
-            category: 'personal',
-            priority: 'medium',
-            tags: ['olive-draft'],
-            items: [artifactContent.substring(0, 4000)],
-            completed: false,
-          };
-
-          const retry = await insertNote(supabase, minimalPayload);
-          if (retry.error || !retry.data) {
-            console.error('[SAVE_ARTIFACT] Insert error (minimal payload):', JSON.stringify({
-              message: retry.error?.message,
-              details: (retry.error as any)?.details,
-              code: (retry.error as any)?.code,
-            }));
-            return reply(t('artifact_save_error', userLang));
-          }
-          savedNote = retry.data;
-        }
-        
-        // Generate embedding for the saved note (non-blocking)
-        try {
-          const embedding = await generateEmbedding(title + ' ' + artifactContent.substring(0, 500));
-          if (embedding) {
-            await supabase
-              .from('clerk_notes')
-              .update({ embedding })
-              .eq('id', savedNote.id);
-          }
-        } catch {}
-        
-        // Clear the stored artifact AND the pending_offer from session — this
-        // closes the Capture → Offer → Confirm → Execute loop atomically.
-        try {
-          await supabase
-            .from('user_sessions')
-            .update({
-              context_data: {
-                ...sessionCtxArtifact,
-                last_assistant_output: null,
-                last_assistant_output_at: null,
-                last_assistant_request: null,
-                pending_offer: null,
-              },
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', session.id);
-        } catch {}
-        
-        // Get list name for confirmation
-        let listConfirm = '';
-        if (savedNote.list_id) {
-          const { data: listInfo } = await supabase
-            .from('clerk_lists')
-            .select('name')
-            .eq('id', savedNote.list_id)
-            .single();
-          if (listInfo) listConfirm = ` in your *${listInfo.name}* list`;
-        }
-        
-        const savedSummary = savedNote.summary ?? '';
-        const saveConfirm = t('artifact_saved', userLang, { title: savedSummary, list: listConfirm });
-        await saveReferencedEntity({ id: savedNote.id, summary: savedSummary, list_id: savedNote.list_id ?? undefined }, saveConfirm);
-        return reply(saveConfirm);
-        
-      } catch (artifactErr) {
-        console.error('[SAVE_ARTIFACT] Error:', artifactErr);
-        return reply(t('artifact_save_error', userLang));
-      }
+      r.after_reply?.forEach(cb => cb().catch(e => console.warn('[SAVE_ARTIFACT] after-reply:', e)));
+      return reply(r.text);
     }
 
     // ========================================================================
