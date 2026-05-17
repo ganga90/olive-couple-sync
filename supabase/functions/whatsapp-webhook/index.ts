@@ -58,7 +58,6 @@ import {
 import { assembleContextSoul } from "../_shared/context-soul/index.ts";
 import { resolveAddendum } from "../_shared/prompt-evolution/ab-router.ts";
 import {
-  classifyConfirmationReply,
   isBadTitle,
   isPendingOfferFresh,
   looksLikeConfirmation,
@@ -71,14 +70,17 @@ import {
 import {
   attachToParent,
   findFollowupParent,
-  isUndoReply,
-  revertAttach,
 } from "../_shared/topical-followup.ts";
 // Initiative 1.2 of OLIVE_REFACTOR_PLAN.md — first handler extracted
 // from this monolith. SAVE_ARTIFACT now lives in handlers/save-artifact.ts
 // with co-located unit tests. The dispatch site below builds a
 // HandlerContext, calls the handler, applies the returned Reply.
 import { makeSaveArtifactHandler } from "./handlers/save-artifact.ts";
+// Initiative 1.3 — the three pending-offer SafetyNets (#1.4, #1.4b,
+// #1.4c) collapsed into a single dispatcher in handlers/confirmation.ts.
+// Returns a `ConfirmationOutcome`; the call site applies the right
+// effect (override intent / send reply / pass through).
+import { makeConfirmationDispatcher } from "./handlers/confirmation.ts";
 import type { HandlerContext as SharedHandlerContext } from "../_shared/types.ts";
 // Phase 1 WhatsApp port: shared with web Ask Olive.
 import {
@@ -4701,293 +4703,31 @@ Description: "${parsedExpense.description}"`;
       }
     }
 
-    // ========================================================================
-    // POST-CLASSIFICATION SAFETY NET #1.4: Honor pending offers (Capture → Offer → Confirm → Execute)
-    // When Olive's previous turn ended with a save offer ("Want me to save this?"),
-    // a short affirm reply ("yes please", "sì", "do it") MUST resolve to that offer
-    // rather than fall through to CHAT and trigger a confused clarification turn.
-    // This is the structural fix for the brand contract: Olive proposes, user confirms,
-    // Olive executes — never a clarification round-trip on a clear yes/no.
-    // ========================================================================
-    if (messageBody) {
-      const sessionCtxOffer = (session.context_data || {}) as ConversationContext;
-      const offer = sessionCtxOffer.pending_offer;
-      if (isPendingOfferFresh(offer)) {
-        const confirmation = classifyConfirmationReply(messageBody);
-        if (confirmation === 'affirm' && offer.type === 'save_artifact') {
-          console.log(`[SafetyNet#1.4] Pending save_artifact offer + affirm reply ("${messageBody.substring(0, 40)}") → SAVE_ARTIFACT`);
-          intentResult = {
-            intent: 'SAVE_ARTIFACT' as any,
-            cleanMessage: messageBody,
-          } as any;
-        } else if (confirmation === 'deny' && offer.type === 'save_artifact') {
-          console.log(`[SafetyNet#1.4] Pending save_artifact offer + deny reply → declining offer`);
-          // Clear the offer so it can't be revived by accident, then send a brief ack.
-          try {
-            await supabase
-              .from('user_sessions')
-              .update({
-                context_data: { ...sessionCtxOffer, pending_offer: null },
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', session.id);
-          } catch (clearErr) {
-            console.warn('[SafetyNet#1.4] Failed to clear pending_offer on deny (non-critical):', clearErr);
-          }
-          return reply(t('artifact_offer_declined', userLang));
-        }
-        // No match → fall through. The offer stays alive until TTL or next save offer
-        // overwrites it; meanwhile the message is classified normally.
+    // Pending-offer confirmation dispatcher — Initiative 1.3.
+    // Handles the three pending_offer variants (save_artifact,
+    // date_for_recent_task, attached_to_parent). Unit tests live in
+    // handlers/confirmation.test.ts. Other variants pass through to
+    // the legacy AWAITING_CONFIRMATION state handler.
+    {
+      const _confirmCtx: SharedHandlerContext = {
+        supabase, userId, userLang, userTimezone: profile.timezone || 'America/New_York',
+        profile: profile as any, coupleId, effectiveCoupleId, session: session as any,
+        messageBody, cleanMessage, effectiveMessage: cleanMessage, mediaUrls, mediaTypes,
+        wamid, inboundNoteSource, quotedMessageId: quotedMessageId ?? null,
+        receivedAtIso: receivedAtIso ?? new Date().toISOString(),
+        tracker, intentResult: intentResult as any, members: null,
+      };
+      const _conf = await makeConfirmationDispatcher({
+        t,
+        invokeProcessNote: (body) => supabase.functions.invoke('process-note', { body }),
+      })(_confirmCtx);
+      if (_conf.kind === 'reply') return reply(_conf.reply.text);
+      if (_conf.kind === 'override-intent') {
+        intentResult = { intent: _conf.intent as any, cleanMessage: _conf.cleanMessage } as any;
       }
+      // pass-through → continue normal classification below.
     }
 
-    // ========================================================================
-    // POST-CLASSIFICATION SAFETY NET #1.4c: Proactive bridge — date_for_recent_task
-    //
-    // After a brain-dump CREATE saved a task with NO due_date / reminder_time,
-    // and the user has opted in (olive_user_preferences.proactive_bridge_enabled),
-    // we appended a single bounded offer ("Want me to set a date?") and saved
-    // a pending_offer.type='date_for_recent_task'. The user's NEXT message
-    // is either:
-    //   (a) a date phrase → apply it to that task's due_date
-    //   (b) a denial ("no" / "skip" / "never mind") → ack + clear
-    //   (c) anything else → clear the one-shot offer + fall through
-    //       to normal classification
-    // ========================================================================
-    if (messageBody) {
-      const sessionCtxBridge = (session.context_data || {}) as ConversationContext;
-      const bridgeOffer = sessionCtxBridge.pending_offer as any;
-      if (
-        isPendingOfferFresh(bridgeOffer) &&
-        bridgeOffer.type === 'date_for_recent_task'
-      ) {
-        const bridgeTz = bridgeOffer.timezone || profile.timezone || 'America/New_York';
-        const denyReply = /^\s*(no|nope|nah|skip|never\s?mind|forget\s+it|no\s+gracias|no\s+thanks|non\s+importa|lascia)\s*[.!?]?\s*$/i.test(messageBody);
-        if (denyReply) {
-          try {
-            await supabase
-              .from('user_sessions')
-              .update({
-                context_data: { ...sessionCtxBridge, pending_offer: null },
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', session.id);
-          } catch (clearErr) {
-            console.warn('[SafetyNet#1.4c] clear on deny failed (non-fatal):', clearErr);
-          }
-          console.log('[SafetyNet#1.4c] User declined proactive date offer');
-          return reply(t('proactive_date_skipped', userLang));
-        }
-        // Try to parse the message as a date refinement using the same
-        // gates as CONV-1's pending-action re-targeting (so unrelated
-        // chatter doesn't accidentally bind to the offer).
-        try {
-          const { detectDateRefinement } = await import('../_shared/conversation-continuity.ts');
-          const parsed = detectDateRefinement(messageBody, bridgeTz, userLang);
-          if (parsed) {
-            const { error: updateErr } = await supabase
-              .from('clerk_notes')
-              .update({
-                due_date: parsed.parsedDateIso,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', bridgeOffer.task_id);
-            if (updateErr) {
-              console.warn('[SafetyNet#1.4c] due_date update failed:', updateErr);
-            }
-            // Clear the offer so it can't be re-fired.
-            try {
-              await supabase
-                .from('user_sessions')
-                .update({
-                  context_data: { ...sessionCtxBridge, pending_offer: null },
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', session.id);
-            } catch (clearErr) {
-              console.warn('[SafetyNet#1.4c] clear after apply failed (non-fatal):', clearErr);
-            }
-            console.log(
-              '[SafetyNet#1.4c] Applied proactive date',
-              parsed.parsedReadable,
-              'to task',
-              bridgeOffer.task_id,
-            );
-            return reply(
-              t('proactive_date_applied', userLang, {
-                task: bridgeOffer.task_summary,
-                when: parsed.parsedReadable,
-              }),
-            );
-          }
-        } catch (parseErr) {
-          console.warn(
-            '[SafetyNet#1.4c] date parse / apply failed (non-fatal):',
-            parseErr instanceof Error ? parseErr.message : parseErr,
-          );
-        }
-        // Anything else → one-shot offer, clear it and fall through.
-        try {
-          await supabase
-            .from('user_sessions')
-            .update({
-              context_data: { ...sessionCtxBridge, pending_offer: null },
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', session.id);
-          console.log('[SafetyNet#1.4c] Non-matching reply, offer cleared (one-shot)');
-        } catch (clearErr) {
-          console.warn('[SafetyNet#1.4c] one-shot clear failed (non-fatal):', clearErr);
-        }
-      }
-    }
-
-    // ========================================================================
-    // POST-CLASSIFICATION SAFETY NET #1.4b: Undo a topical-followup attach.
-    //
-    // When the previous CREATE turn silently attached a sub-detail
-    // ("Email: foo@bar.com") to a recent parent note, the user can
-    // reply "undo" / "no" / "split" within the 10-min offer TTL to
-    // reverse it. We:
-    //   1. Restore the parent's items[] to the pre-attach snapshot.
-    //   2. Re-process the original message through process-note so the
-    //      standalone note gets a clean AI-derived summary, category,
-    //      and tags — same path the cluster CREATE flow uses.
-    //   3. Clear the offer so a subsequent "undo" can't double-revert.
-    //
-    // This handler short-circuits the rest of the message handling
-    // (no intent classification needed; this is a structured reversal).
-    // ========================================================================
-    if (messageBody) {
-      const sessionCtxAttach = (session.context_data || {}) as ConversationContext;
-      const attachOffer = sessionCtxAttach.pending_offer;
-      if (
-        isPendingOfferFresh(attachOffer) &&
-        attachOffer.type === 'attached_to_parent' &&
-        isUndoReply(messageBody)
-      ) {
-        console.log(
-          `[SafetyNet#1.4b] Topical attach offer + undo reply ("${messageBody.substring(0, 40)}") → reverting`,
-        );
-
-        // 1. Restore prior items on the parent. If this fails, the
-        //    attach stays — better than a half-undone state.
-        const reverted = await revertAttach(
-          supabase,
-          attachOffer.parent_note_id,
-          attachOffer.prior_items,
-        );
-        if (!reverted) {
-          console.warn('[SafetyNet#1.4b] revertAttach failed; bailing without creating standalone');
-          return reply(
-            userLang.startsWith('it')
-              ? "🌿 Non sono riuscita ad annullare. La nota è ancora collegata."
-              : userLang.startsWith('es')
-              ? "🌿 No pude deshacerlo. La nota sigue adjunta."
-              : "🌿 I couldn't undo that — the attach is still in place. Try again or edit it in the app.",
-          );
-        }
-
-        // 2. Re-process the original message via process-note + insert.
-        //    Same shape as the cluster CREATE path, minus media.
-        try {
-          const standalonePayload: Record<string, unknown> = {
-            text: attachOffer.original_message,
-            user_id: userId,
-            couple_id: effectiveCoupleId,
-            timezone: profile.timezone || 'America/New_York',
-            language: userLang,
-            source: 'whatsapp',
-          };
-          const { data: processData, error: processError } = await supabase.functions.invoke(
-            'process-note',
-            { body: standalonePayload },
-          );
-          let insertedSummary = '';
-          if (!processError && processData) {
-            const isMultiple = processData.multiple === true && Array.isArray(processData.notes);
-            const notesToInsert: any[] = isMultiple ? processData.notes : [processData];
-            for (const note of notesToInsert) {
-              const noteSummary = note?.summary || 'Saved note';
-              const { data: inserted, error: insertErr } = await insertNote(supabase, {
-                author_id: userId,
-                couple_id: effectiveCoupleId,
-                source: inboundNoteSource,
-                source_ref: wamid,
-                original_text: note?.original_text || attachOffer.original_message,
-                summary: noteSummary,
-                category: note?.category || 'task',
-                due_date: note?.due_date || null,
-                reminder_time: note?.reminder_time || null,
-                recurrence_frequency: note?.recurrence_frequency || null,
-                recurrence_interval: note?.recurrence_interval || null,
-                priority: note?.priority || 'medium',
-                tags: note?.tags || [],
-                items: note?.items || [],
-                task_owner: note?.task_owner || null,
-                list_id: note?.list_id || null,
-                completed: false,
-              });
-              if (!insertErr && inserted?.summary) insertedSummary = inserted.summary;
-            }
-          } else {
-            console.warn('[SafetyNet#1.4b] process-note for standalone failed, doing a minimal insert:', processError);
-            // Hard fallback: insert a minimal note so the user's data is preserved.
-            const fallbackSummary =
-              attachOffer.original_message.length > 80
-                ? attachOffer.original_message.substring(0, 77) + '...'
-                : attachOffer.original_message;
-            const { data: fb } = await insertNote(supabase, {
-              author_id: userId,
-              couple_id: effectiveCoupleId,
-              source: inboundNoteSource,
-              source_ref: wamid,
-              original_text: attachOffer.original_message,
-              summary: fallbackSummary,
-              category: 'task',
-              priority: 'medium',
-              tags: [],
-              items: [],
-              completed: false,
-            });
-            if (fb?.summary) insertedSummary = fb.summary;
-          }
-
-          // 3. Clear the offer (so a follow-up "undo" doesn't re-fire).
-          try {
-            await supabase
-              .from('user_sessions')
-              .update({
-                context_data: { ...sessionCtxAttach, pending_offer: null },
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', session.id);
-          } catch (clearErr) {
-            console.warn('[SafetyNet#1.4b] Failed to clear pending_offer after undo (non-critical):', clearErr);
-          }
-
-          const sl = (userLang || 'en').split('-')[0];
-          const undoneCopy: Record<string, string> = {
-            en: `🌿 Got it — saved separately${insertedSummary ? ` as "${insertedSummary}"` : ''}.`,
-            es: `🌿 Listo — guardado por separado${insertedSummary ? ` como "${insertedSummary}"` : ''}.`,
-            it: `🌿 Fatto — salvata separatamente${insertedSummary ? ` come "${insertedSummary}"` : ''}.`,
-          };
-          return reply(undoneCopy[sl] || undoneCopy.en);
-        } catch (undoErr) {
-          console.error('[SafetyNet#1.4b] Standalone creation after revert threw:', undoErr);
-          // The revert already succeeded; the user just doesn't get
-          // the standalone note. Surface what happened plainly so they
-          // can retry.
-          return reply(
-            userLang.startsWith('it')
-              ? "🌿 Ho annullato l'allegato, ma non sono riuscita a creare la nota separata. Rimandala?"
-              : userLang.startsWith('es')
-              ? "🌿 Deshice el adjunto, pero no pude crear la nota separada. ¿Lo reenvías?"
-              : "🌿 Undone — but I couldn't create the standalone note. Resend it?",
-          );
-        }
-      }
-    }
 
     // ========================================================================
     // POST-CLASSIFICATION SAFETY NET #1.5: "Save this" / "Save it as a note"
