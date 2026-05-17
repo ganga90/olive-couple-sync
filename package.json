@@ -36,9 +36,9 @@
       "gzip": true
     },
     {
-      "name": "Misc vendor chunk (gzip, now absorbs Radix UI)",
+      "name": "Misc vendor chunk (gzip, absorbs Radix UI + Recharts/d3)",
       "path": "dist/assets/misc-vendor-*.js",
-      "limit": "200 KB",
+      "limit": "320 KB",
       "gzip": true
     }
   ],
