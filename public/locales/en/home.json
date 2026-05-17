@@ -56,6 +56,10 @@
     "reminders": "⏰ Reminders",
     "recent": "🕐 Recent"
   },
+  "recent": {
+    "showMore": "Show more",
+    "showMoreAria": "Show {{count}} more recent tasks"
+  },
   "weekly": {
     "task": "task",
     "tasks": "tasks",
