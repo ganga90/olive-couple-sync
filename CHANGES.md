@@ -66,6 +66,22 @@ Added `.github/workflows/frontend-ci.yml` with 4 jobs:
 
 Path-filtered + concurrency-cancelled to match the convention of the existing workflows. The PR template in [.github/pull_request_template.md] is the human safety net for cases CI cannot reason about.
 
+### TASK-10X-1D — Vitest scaffold + first 20 frontend tests
+
+The audit (P0-5) flagged that the frontend had **zero tests** — no vitest, jest, or playwright config — and the whole React layer was shipping on trust. This commit lays the foundation.
+
+- New deps (devDependencies): `vitest@4.1.6`, `@vitest/ui`, `jsdom`, `@testing-library/react`, `@testing-library/dom`, `@testing-library/jest-dom`, `@testing-library/user-event`.
+- `vitest.config.ts` — mirrors `vite.config.ts` (same SWC plugin, same `@` alias) so a passing build implies tests at least compile. `jsdom` environment, globals on, `src/test-setup.ts` runs before each suite.
+- `src/test-setup.ts` — extends `expect` with `jest-dom` matchers and stubs the four browser globals that jsdom omits but Radix/Capacitor/i18next routinely reach for: `matchMedia`, `IntersectionObserver`, `ResizeObserver`, `Element.scrollIntoView`. Stubs are minimal and explicit.
+- npm scripts added: `test` (watch), `test:run` (single-shot for CI), `test:ui` (vitest UI), `i18n:check`.
+- First three test files / 20 tests / 1 documented todo:
+  - `src/lib/utils.test.ts` — `cn()` className merger (4 tests; covers tailwind dedup contract).
+  - `src/utils/dateUtils.test.ts` — `parseDateSafely`, `formatDateForStorage`, `dateStringToStorage`, `extractDateOnly`, `parseUserDateInput` (12 tests + 1 todo for the out-of-range bug surfaced by the test pass).
+  - `src/lib/note-source.test.ts` — `NOTE_SOURCES` enum shape (locks the 12 values that mirror the DB CHECK constraint) + `defaultClientNoteSource()` Capacitor-vs-web branch (4 tests).
+- Wired into `frontend-ci.yml`: `typecheck-build` job now runs `npm run test:run` between typecheck and build.
+
+Verification: `npm run test:run` → 3 files, 20 passed, 1 todo. Run-time: ~1 second total.
+
 ## 2026-05-14 — [SOURCE-ATTRIBUTION-FE] Frontend insert migration + NOT NULL on clerk_notes.source
 
 Follow-up to [SOURCE-ATTRIBUTION] (Bucket 3, PRs [#130](https://github.com/ganga90/olive-couple-sync/pull/130) / [#131](https://github.com/ganga90/olive-couple-sync/pull/131)). Closes the two frontend insert call sites and locks the source-attribution contract at the database layer.
