@@ -77,6 +77,15 @@ import {
 } from "../_shared/whatsapp-outbound-context.ts";
 import { assembleContextSoul } from "../_shared/context-soul/index.ts";
 import { resolveAddendum } from "../_shared/prompt-evolution/ab-router.ts";
+// TASK-10X-Phase8d — Meta webhook payload parser + coordinate guard
+// + size caps extracted from this file.
+import {
+  extractMetaMessage,
+  isValidCoordinates,
+  MAX_MESSAGE_LENGTH,
+  MAX_MEDIA_COUNT,
+  type MetaMessageData,
+} from "../_shared/whatsapp-meta-parser.ts";
 import {
   isBadTitle,
   isPendingOfferFresh,
@@ -1118,167 +1127,7 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
 
 // sendWhatsAppReply, downloadAndUploadMetaMedia → imported from _shared/whatsapp-messaging.ts
 
-// Constants for input validation
-const MAX_MESSAGE_LENGTH = 10000;
-const MAX_MEDIA_COUNT = 10;
-
-function isValidCoordinates(lat: string | null, lon: string | null): boolean {
-  if (!lat || !lon) return true;
-  const latitude = parseFloat(lat);
-  const longitude = parseFloat(lon);
-  return !isNaN(latitude) && !isNaN(longitude) && 
-         latitude >= -90 && latitude <= 90 && 
-         longitude >= -180 && longitude <= 180;
-}
-
-// ============================================================================
-// parseNaturalDate, isRelativeReference, resolveRelativeReference,
-// searchTaskByKeywords, computeMatchQuality, semanticTaskSearchMulti,
-// semanticTaskSearch, findSimilarNotes → imported from _shared modules
-// ============================================================================
-
-// ============================================================================
-// EXTRACT MESSAGE DATA FROM META WEBHOOK PAYLOAD
-// ============================================================================
-interface MetaMessageData {
-  fromNumber: string;
-  messageBody: string | null;
-  mediaItems: Array<{ id: string; mimeType: string }>;
-  latitude: string | null;
-  longitude: string | null;
-  phoneNumberId: string;
-  messageId: string;
-  /**
-   * Raw Meta `message.type` — used by callers to derive
-   * `inboundNoteSource` (whatsapp / whatsapp-voice / whatsapp-media)
-   * for clerk_notes inserts. Preserved as the raw type string so
-   * routing logic above this layer can switch on it; the helper
-   * `whatsappSourceFromMessageType` collapses it to a NoteSource.
-   */
-  messageType: string;
-  /**
-   * PR4 / Block C — WAMID of the message the user is "replying to" /
-   * quoting in WhatsApp's UI. Present only when `message.context.id` is
-   * delivered by Meta. Used to disambiguate which task the user means
-   * in follow-up corrections (resolves via `resolveQuotedTask`).
-   */
-  quotedMessageId: string | null;
-  /**
-   * PR8 / Phase 2 — Meta's own timestamp for the message, normalized
-   * to ISO string. Used by the inbound cluster buffer for ordering.
-   * Falls back to "now" if Meta didn't deliver one.
-   */
-  receivedAtIso: string;
-}
-
-function extractMetaMessage(body: any): MetaMessageData | null {
-  try {
-    const entry = body?.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const value = changes?.value;
-    
-    if (!value?.messages || value.messages.length === 0) {
-      console.log('[Meta] No messages in webhook (could be status update)');
-      return null;
-    }
-    
-    const message = value.messages[0];
-    const phoneNumberId = value.metadata?.phone_number_id;
-    const fromNumber = message.from; // Raw number like "15551234567"
-    const messageId = message.id;
-
-    // PR4 / Block C — quoted-message awareness.
-    //
-    // When the user "replies to" / "quotes" one of Olive's previous
-    // messages, Meta delivers `message.context.id` containing the WAMID
-    // of the quoted message. Olive uses this to disambiguate which
-    // memory/task the user is referring to in their follow-up — without
-    // it, we fall back to "most recently referenced" which races
-    // dangerously when text+image arrive within seconds.
-    //
-    // We also capture `context.from` for completeness/logging, though
-    // the WAMID alone is sufficient for resolution.
-    const quotedMessageId: string | null = message.context?.id ?? null;
-    if (quotedMessageId) {
-      console.log("[Meta] Inbound quotes WAMID:", quotedMessageId);
-    }
-
-    // PR8 / Phase 2 — Capture Meta's own timestamp for the message.
-    // Meta delivers `message.timestamp` as a Unix-seconds string.
-    // The clustering buffer uses this for ordering — trusting Meta's
-    // clock prevents per-server drift from mis-ordering events that
-    // arrive in concurrent webhooks. Falls back to "now" if missing.
-    const metaTimestampSec = message.timestamp ? parseInt(String(message.timestamp), 10) : NaN;
-    const receivedAtIso: string = Number.isFinite(metaTimestampSec)
-      ? new Date(metaTimestampSec * 1000).toISOString()
-      : new Date().toISOString();
-
-    let messageBody: string | null = null;
-    let latitude: string | null = null;
-    let longitude: string | null = null;
-    const mediaItems: Array<{ id: string; mimeType: string }> = [];
-    
-    switch (message.type) {
-      case 'text':
-        messageBody = message.text?.body || null;
-        break;
-      case 'image':
-        if (message.image) {
-          mediaItems.push({ id: message.image.id, mimeType: message.image.mime_type || 'image/jpeg' });
-          messageBody = message.image.caption || null;
-        }
-        break;
-      case 'video':
-        if (message.video) {
-          mediaItems.push({ id: message.video.id, mimeType: message.video.mime_type || 'video/mp4' });
-          messageBody = message.video.caption || null;
-        }
-        break;
-      case 'audio':
-        if (message.audio) {
-          mediaItems.push({ id: message.audio.id, mimeType: message.audio.mime_type || 'audio/ogg' });
-        }
-        break;
-      case 'document':
-        if (message.document) {
-          mediaItems.push({ id: message.document.id, mimeType: message.document.mime_type || 'application/pdf' });
-          messageBody = message.document.caption || message.document.filename || null;
-        }
-        break;
-      case 'location':
-        latitude = String(message.location?.latitude || '');
-        longitude = String(message.location?.longitude || '');
-        messageBody = message.location?.name || message.location?.address || null;
-        break;
-      case 'contacts':
-        messageBody = `Shared contact: ${message.contacts?.[0]?.name?.formatted_name || 'Unknown'}`;
-        break;
-      case 'interactive':
-        // Handle button/list replies
-        messageBody = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || null;
-        break;
-      default:
-        console.log('[Meta] Unhandled message type:', message.type);
-        messageBody = null;
-    }
-    
-    return {
-      fromNumber: fromNumber || '',
-      messageBody,
-      mediaItems,
-      latitude: latitude || null,
-      longitude: longitude || null,
-      phoneNumberId: phoneNumberId || '',
-      messageId: messageId || '',
-      messageType: message.type || 'text',
-      quotedMessageId,
-      receivedAtIso,
-    };
-  } catch (error) {
-    console.error('[Meta] Error extracting message:', error);
-    return null;
-  }
-}
+// _shared/whatsapp-meta-parser.ts owns the Meta webhook parser, MetaMessageData, isValidCoordinates, MAX_MESSAGE_LENGTH, MAX_MEDIA_COUNT (Phase 8d).
 
 // ============================================================================
 // MAIN WEBHOOK HANDLER
