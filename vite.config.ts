@@ -5,24 +5,30 @@ import { componentTagger } from "lovable-tagger";
 
 // Vite config.
 //
-// Why the manualChunks block exists
-//   Pre-TASK-10X-Phase2 the build produced a single 2.6 MB / 742 kB-gz
-//   index.js. That dominates first-paint on mobile. Manual chunks split
-//   the third-party vendors into separate, cache-friendly files keyed
-//   on the libraries that change infrequently. Combined with the
-//   React.lazy() route splits in src/App.tsx, initial-paint payload
-//   drops materially.
+// Why there is no manualChunks block here
+//   Phase 2 introduced a heuristic name-based manualChunks function
+//   that split vendors into ~14 named chunks for caching. The Phase 2
+//   recap reported a ~80% initial-JS reduction, but the bulk of that
+//   win came from the React.lazy() route splits in src/App.tsx, not
+//   from the manual chunk split.
 //
-//   The chunk names are stable; bumping a vendor (e.g. Radix minor)
-//   invalidates only that file, leaving every other vendor + the app
-//   shell hot in the user's HTTP cache.
+//   The manualChunks function turned out to be fragile: it produced
+//   circular imports between sibling chunks. The catch-all
+//   misc-vendor bucket pulled in small helpers that depend on
+//   @radix-ui, recharts/d3, etc. Splitting those into their own
+//   chunks created cycles like misc-vendor ↔ radix-vendor and
+//   misc-vendor ↔ charts-vendor. At module-eval time, one side would
+//   re-enter the cycle and read a still-uninitialised React export,
+//   throwing things like:
+//     TypeError: Cannot read properties of undefined (reading 'forwardRef')
+//     ReferenceError: Cannot access 'A' before initialization
+//     TypeError: Cannot read properties of undefined (reading 'createContext')
+//   Each of those produces a blank page in prod.
 //
-// Why a function (not an object)
-//   Rollup invokes the function once per resolved module ID. Returning
-//   a chunk name routes the module into that file; returning undefined
-//   leaves it on Rollup's default heuristics (which mostly puts it in
-//   the app shell). This is more robust than the object form, which
-//   requires listing every transitive entry by hand.
+//   The route lazy-loading is what matters for first-paint; the named
+//   vendor chunks were only a caching micro-optimisation. Letting
+//   Rollup compute the chunk graph from actual usage is safer and
+//   cycle-free.
 
 export default defineConfig(({ mode }) => ({
   server: {
@@ -41,126 +47,11 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (!id.includes("node_modules")) return undefined;
-
-          // React + routing + state plumbing — the framework. Almost
-          // never changes between releases; keep it big and stable.
-          if (
-            id.includes("/node_modules/react/") ||
-            id.includes("/node_modules/react-dom/") ||
-            id.includes("/node_modules/react-router") ||
-            id.includes("/node_modules/scheduler/")
-          ) {
-            return "react-vendor";
-          }
-
-          // Radix UI primitives intentionally fall through to
-          // misc-vendor. Splitting them into their own chunk created a
-          // circular dependency at module-eval time
-          // (misc-vendor ↔ radix-vendor): misc-vendor pulls in a few
-          // small libraries that use Radix Slot, so radix-vendor would
-          // re-enter the cycle and read React.forwardRef from a
-          // partially-initialised react-vendor binding, producing
-          // `TypeError: Cannot read properties of undefined (reading
-          // 'forwardRef')` and a blank /home in prod. Co-locating Radix
-          // with its consumers (misc) costs ~80 KB on the misc chunk
-          // but is the simplest cycle-safe fix.
-
-          // Clerk auth SDK — large, bumps independently.
-          if (id.includes("/node_modules/@clerk/")) {
-            return "clerk-vendor";
-          }
-
-          // Supabase client + its WebSocket/fetch helpers.
-          if (
-            id.includes("/node_modules/@supabase/") ||
-            id.includes("/node_modules/@supabase-")
-          ) {
-            return "supabase-vendor";
-          }
-
-          // TanStack Query — used everywhere; benefits from its own
-          // long-lived cache file.
-          if (id.includes("/node_modules/@tanstack/")) {
-            return "tanstack-vendor";
-          }
-
-          // i18next + plugins.
-          if (
-            id.includes("/node_modules/i18next") ||
-            id.includes("/node_modules/react-i18next/")
-          ) {
-            return "i18n-vendor";
-          }
-
-          // Date helpers — date-fns is sizeable when not tree-shaken.
-          if (
-            id.includes("/node_modules/date-fns/") ||
-            id.includes("/node_modules/react-day-picker/")
-          ) {
-            return "date-vendor";
-          }
-
-          // Framer Motion — only loaded by pages with animation.
-          if (id.includes("/node_modules/framer-motion/")) {
-            return "motion-vendor";
-          }
-
-          // Recharts + d3 intentionally fall through to misc-vendor for
-          // the same reason as Radix above: splitting them creates a
-          // circular import (misc-vendor ↔ charts-vendor) because a
-          // few generic util libraries in misc-vendor pull d3 helpers
-          // at module-eval time. The cycle produces
-          // `ReferenceError: Cannot access 'A' before initialization`
-          // and a blank page. Co-locating them with misc keeps the
-          // tree-shaker happy and the page rendering.
-
-          // Forms — used across multiple pages.
-          if (
-            id.includes("/node_modules/react-hook-form/") ||
-            id.includes("/node_modules/@hookform/") ||
-            id.includes("/node_modules/zod/")
-          ) {
-            return "forms-vendor";
-          }
-
-          // Markdown renderer — only on a few pages.
-          if (
-            id.includes("/node_modules/react-markdown/") ||
-            id.includes("/node_modules/remark-") ||
-            id.includes("/node_modules/rehype-") ||
-            id.includes("/node_modules/micromark") ||
-            id.includes("/node_modules/mdast-")
-          ) {
-            return "markdown-vendor";
-          }
-
-          // Carousel — landing page.
-          if (id.includes("/node_modules/embla-carousel")) {
-            return "carousel-vendor";
-          }
-
-          // Voice / streaming — only loaded on note input flows.
-          if (id.includes("/node_modules/@deepgram/")) {
-            return "voice-vendor";
-          }
-
-          // Capacitor — iOS shell glue.
-          if (id.includes("/node_modules/@capacitor/")) {
-            return "capacitor-vendor";
-          }
-
-          // Everything else from node_modules drops into a single
-          // misc-vendor bucket so we still get a meaningful split
-          // from app code.
-          return "misc-vendor";
-        },
-      },
+      // No manualChunks — see header comment.
+      output: {},
     },
     // Tighten the warning threshold a notch so future regressions
     // surface in the build output rather than silently growing.
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 1000,
   },
 }));
