@@ -766,10 +766,6 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
                           key={i}
                           src={url}
                           alt="Attached media"
-                          width={64}
-                          height={64}
-                          loading="lazy"
-                          decoding="async"
                           className="h-16 w-16 rounded object-cover"
                         />
                       ) : (
@@ -861,9 +857,6 @@ const AskOliveChatGlobal: React.FC<AskOliveChatGlobalProps> = ({ onClose }) => {
                 <img
                   src={mediaPreviews[index]}
                   alt={file.name}
-                  width={56}
-                  height={56}
-                  decoding="async"
                   className="h-14 w-14 rounded-lg object-cover border"
                 />
               ) : (
