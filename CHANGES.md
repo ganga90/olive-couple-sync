@@ -1,5 +1,20 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-17 — [10X] Phase 1 quick wins (in progress)
+
+Follow-up to the deep audit captured in [OLIVE_10X_PLAN.md](OLIVE_10X_PLAN.md). Phase 1 is a batch of small, additive, safety-first changes that pay back forever.
+
+### TASK-10X-1A — HNSW vector index on `olive_memory_chunks.embedding`
+
+The audit flagged this as the single highest-leverage fix in the repo: `clerk_notes.embedding` had `ivfflat` since the post-Lovable baseline (line 3451 of `20260427000000_baseline_post_lovable_reconciliation.sql`), but `olive_memory_chunks` — the primary backing store for Olive's memory recall — never got one. Every memory-search query was doing a full sequential scan over 768-dim vectors. Today the table is 130 rows, so latency is fine; the bill comes due silently as memory grows.
+
+- New migration: `supabase/migrations/20260517051720_task_10x_1a_olive_memory_chunks_embedding_hnsw.sql`
+- Applied via Supabase MCP (`apply_migration`); filename renamed to match the ledger version per the doctrine.
+- Type: HNSW (not IVFFLAT) — pgvector ≥ 0.5.0 ships HNSW on Supabase Postgres 17; HNSW handles incremental inserts/updates better than IVFFLAT (chunks see decay touches), and avoids the periodic re-tuning IVFFLAT needs as row count grows past the build-time `lists` estimate.
+- Operator class: `vector_cosine_ops` — matches `clerk_notes.embedding` and the unit-normalized embeddings produced by the embedding generator.
+- Index built at 512 kB on 130 rows. `EXPLAIN ANALYZE` on the prod table shows seq-scan still preferred (correct: HNSW only outperforms once the table is large enough that the planner's cost model crosses the threshold — that's now an automatic upgrade rather than a manual one).
+- No application code changed. Read paths in `_shared/memory-retrieval.ts` already issue `ORDER BY embedding <=> $1 LIMIT k`, which is the HNSW pattern; the index is invisible to callers.
+
 ## 2026-05-14 — [SOURCE-ATTRIBUTION-FE] Frontend insert migration + NOT NULL on clerk_notes.source
 
 Follow-up to [SOURCE-ATTRIBUTION] (Bucket 3, PRs [#130](https://github.com/ganga90/olive-couple-sync/pull/130) / [#131](https://github.com/ganga90/olive-couple-sync/pull/131)). Closes the two frontend insert call sites and locks the source-attribution contract at the database layer.
