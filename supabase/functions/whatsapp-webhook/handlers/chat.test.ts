@@ -394,6 +394,114 @@ Deno.test("after_reply: session write + daily log RPC fire, isolated from failur
   assertEquals(dailyLogRpc.args.p_source, 'chat');
 });
 
+Deno.test("briefing: Oura health block populates the system prompt", async () => {
+  // Regression coverage for the `today`-was-undefined latent bug that was
+  // preserved verbatim through Initiative 1.4 and fixed in this follow-up.
+  // Before the fix, `assembleHealthContext` threw on `today.toISOString()`,
+  // the surrounding try/catch swallowed it, and the briefing prompt never
+  // contained the Health & Wellness section even when the user had an
+  // active Oura connection with recent data.
+  const todayStr = new Date().toISOString().split('T')[0];
+  const { stub } = buildSupabaseStub({
+    selectData: {
+      oura_connections: {
+        data: {
+          id: 'conn-1',
+          last_sync_time: new Date().toISOString(),
+          share_wellness_with_partner: false,
+        },
+        error: null,
+      },
+      oura_daily_data: {
+        data: [
+          {
+            day: todayStr,
+            sleep_score: 82,
+            sleep_duration_seconds: 27000,
+            readiness_score: 78,
+            activity_score: 71,
+            steps: 8421,
+            stress_day_summary: null,
+            stress_high_minutes: null,
+            resilience_level: 'solid',
+          },
+        ],
+        error: null,
+      },
+    },
+  });
+  const callAI = scripted({ returns: '🌅 Morning briefing.' });
+  const handler = makeChatHandler({ callAI: callAI.fn, t: fakeT });
+
+  await handler(buildCtx({
+    // deno-lint-ignore no-explicit-any
+    supabase: stub as any,
+    intentResult: { intent: 'CHAT', chatType: 'briefing' },
+    effectiveMessage: 'morning briefing',
+  }));
+
+  assertEquals(callAI.calls.length, 1);
+  const systemPrompt = callAI.calls[0].systemPrompt;
+  assert(
+    systemPrompt.includes('Health & Wellness (Oura Ring'),
+    'briefing system prompt should include the Oura health block when daily data is present',
+  );
+  assert(systemPrompt.includes('Sleep: 82/100'), 'should render sleep score');
+  assert(systemPrompt.includes('Readiness: 78/100'), 'should render readiness score');
+});
+
+Deno.test("briefing: partner-wellness signal populates the system prompt", async () => {
+  // Companion regression for the same `today`-undefined latent bug, this
+  // time exercising `assemblePartnerWellness`. With a couple set up and
+  // the partner's readiness below the 65 threshold, the briefing prompt
+  // should now include the "rough night" empathy note.
+  const todayStr = new Date().toISOString().split('T')[0];
+  const { stub } = buildSupabaseStub({
+    selectData: {
+      clerk_couple_members: {
+        data: { user_id: 'partner-1' },
+        error: null,
+      },
+      oura_connections: {
+        data: { share_wellness_with_partner: true },
+        error: null,
+      },
+      oura_daily_data: {
+        data: { day: todayStr, readiness_score: 52, sleep_score: 60 },
+        error: null,
+      },
+    },
+    rpcData: {
+      get_space_members: {
+        data: [
+          { user_id: 'user-1', display_name: 'Me' },
+          { user_id: 'partner-1', display_name: 'Sam' },
+        ],
+        error: null,
+      },
+    },
+  });
+  const callAI = scripted({ returns: '🌅 Morning briefing.' });
+  const handler = makeChatHandler({ callAI: callAI.fn, t: fakeT });
+
+  await handler(buildCtx({
+    // deno-lint-ignore no-explicit-any
+    supabase: stub as any,
+    coupleId: 'couple-1',
+    effectiveCoupleId: 'couple-1',
+    intentResult: { intent: 'CHAT', chatType: 'briefing' },
+    effectiveMessage: 'morning briefing',
+  }));
+
+  assertEquals(callAI.calls.length, 1);
+  const systemPrompt = callAI.calls[0].systemPrompt;
+  assert(
+    systemPrompt.includes('may appreciate some extra help today'),
+    'briefing should include partner-wellness empathy note when partner readiness is low',
+  );
+  assert(systemPrompt.includes('Sam'), 'note should mention the partner by name');
+});
+
 Deno.test("AI throws on standard tier (no Pro): renders deterministic fallback", async () => {
   const { stub } = buildSupabaseStub();
   const callAI = scripted({ throwsAlways: true });
