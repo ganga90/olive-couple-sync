@@ -144,8 +144,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v1
+      - uses: denoland/setup-deno@v2
         with:
-          deno-version: 'v1.x'
+          # The repo's deno.lock is lockfile v5, which requires Deno >= 2.x.
+          # Pinning to v2.x explicitly so future tag drift doesn't surprise CI.
+          deno-version: 'v2.x'
       - name: Run _shared tests
         run: deno test supabase/functions/_shared/ --allow-net --allow-read --allow-env
