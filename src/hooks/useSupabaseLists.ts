@@ -143,11 +143,49 @@ export const useSupabaseLists = (coupleId?: string | null, spaceId?: string | nu
         insertData.space_id = resolvedSpaceId;
       }
       
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("clerk_lists")
         .insert([insertData])
         .select()
         .single();
+
+      // Scope-fallback retry (mirrors useSupabaseNotes). When the user's
+      // couple/space mapping is mid-migration — couple row exists but no
+      // olive_spaces row, or no olive_space_members membership — the
+      // BEFORE INSERT trigger's `space_id := couple_id` trips the
+      // `clerk_lists_space_id_fkey` FK (23503) or RLS denies (42501).
+      // The root-cause fix is migration `20260517045446_backfill_orphan_*`
+      // which guarantees both rows exist for every couple; this retry is
+      // belt-and-suspenders for any future couple that slips through.
+      if (error && resolvedSpaceId) {
+        const code = (error as any).code;
+        const msg = error.message || '';
+        const isScopeFailure =
+          code === '23503' ||
+          code === '42501' ||
+          /space_id_fkey|couple_id_fkey|row-level security/i.test(msg);
+
+        if (isScopeFailure) {
+          console.warn('[Lists] Scope insert failed, retrying in personal scope:', JSON.stringify({
+            code, message: msg, had_space_id: !!insertData.space_id,
+          }));
+          const { space_id: _s, ...personalInsert } = insertData;
+          const retry = await supabase
+            .from('clerk_lists')
+            .insert([personalInsert])
+            .select()
+            .single();
+          if (!retry.error && retry.data) {
+            data = retry.data;
+            error = null;
+            toast.message('Created as a personal list', {
+              description: 'The shared space was unreachable — you can switch this list to shared from its settings.',
+            });
+          } else if (retry.error) {
+            error = retry.error;
+          }
+        }
+      }
 
       if (error) {
         // Handle unique constraint violation gracefully
@@ -158,7 +196,7 @@ export const useSupabaseLists = (coupleId?: string | null, spaceId?: string | nu
         }
         throw error;
       }
-      
+
       toast.success("List created successfully");
       return data;
     } catch (error: any) {
