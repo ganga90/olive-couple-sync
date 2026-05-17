@@ -18,6 +18,7 @@ export type DGConnection = {
 async function getSampleRate(): Promise<number> {
   // Get the input device sample rate (fallback to 48000)
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const rate = ctx.sampleRate || 48000;
     await ctx.close();
@@ -142,14 +143,21 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
 
         rec.start(250); // ~4 chunks/sec
         
-        // Store cleanup function
-        (window as any).__dg_stop = () => { 
-          try { rec.stop(); } catch {} 
-          ws.close(); 
-          stream.getTracks().forEach(t => t.stop()); 
+        // Store cleanup function (ws and stream are non-null at this
+        // point of the lexical scope — they were assigned above before
+        // entering this branch). TS strictNullChecks still asks for an
+        // explicit narrow; assert via local consts.
+        const wsLocal = ws;
+        const streamLocal = stream;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
+        (window as any).__dg_stop = () => {
+          try { rec.stop(); } catch { /* swallow stop-after-stop */ }
+          wsLocal?.close();
+          streamLocal?.getTracks().forEach(t => t.stop());
         };
       } else {
         // PCM path (Safari)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
         const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext);
         const audioCtx = new AudioCtx({ sampleRate: 48000 });
         const src = audioCtx.createMediaStreamSource(stream);
@@ -161,7 +169,7 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
           const buf = new ArrayBuffer(input.length * 2);
           const view = new DataView(buf);
           for (let i = 0; i < input.length; i++) {
-            let s = Math.max(-1, Math.min(1, input[i]));
+            const s = Math.max(-1, Math.min(1, input[i]));
             view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
           }
           ws.send(buf);
@@ -170,13 +178,16 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
         src.connect(proc);
         proc.connect(audioCtx.destination);
         
-        // Store cleanup function
-        (window as any).__dg_stop = () => { 
-          proc.disconnect(); 
-          src.disconnect(); 
-          audioCtx.close(); 
-          ws.close(); 
-          stream.getTracks().forEach(t => t.stop()); 
+        // Store cleanup function (see comment in the other branch).
+        const wsLocal = ws;
+        const streamLocal = stream;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
+        (window as any).__dg_stop = () => {
+          proc.disconnect();
+          src.disconnect();
+          audioCtx.close();
+          wsLocal?.close();
+          streamLocal?.getTracks().forEach(t => t.stop());
         };
       }
     };
@@ -213,7 +224,7 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
 
   const cleanup = () => {
     if (rec && rec.state !== 'inactive') {
-      try { rec.stop(); } catch {}
+      try { rec.stop(); } catch { /* swallow stop-after-stop */ }
     }
     rec = null;
 
@@ -223,10 +234,10 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
     }
 
     if (ws && ws.readyState === WebSocket.OPEN) {
-      try { ws.send(JSON.stringify({ type: 'CloseStream' })); } catch {}
+      try { ws.send(JSON.stringify({ type: 'CloseStream' })); } catch { /* socket may be closed */ }
     }
     if (ws && ws.readyState !== WebSocket.CLOSED) {
-      try { ws.close(); } catch {}
+      try { ws.close(); } catch { /* socket may be closed */ }
     }
     ws = null;
   };

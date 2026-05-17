@@ -120,7 +120,8 @@ export const InviteFlow = ({ you, partner, onComplete }: InviteFlowProps) => {
       
     } catch (error) {
       console.error("Failed to create invite:", error);
-      toast.error(`Failed to create invite: ${error.message || error}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to create invite: ${msg}`);
     } finally {
       setLoading(false);
     }

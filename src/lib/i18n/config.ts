@@ -47,9 +47,12 @@ import itLegal from '../../../public/locales/it-IT/legal.json';
 import itExpenses from '../../../public/locales/it-IT/expenses.json';
 
 // Custom path detector for URL-based locale detection
+// CustomDetector expects lookup() to return string | string[] | undefined
+// (not null). `as const` keeps the literal return types so i18next can
+// validate at the call site.
 const PathDetector = {
   name: 'path',
-  lookup() {
+  lookup(): string | undefined {
     const path = window.location.pathname;
     // Check for /es-es/ or /it-it/ at the start of path
     const match = path.match(/^\/(es-es|it-it)(\/|$)/i);
@@ -59,7 +62,7 @@ const PathDetector = {
       if (pathLang === 'es-es') return 'es-ES';
       if (pathLang === 'it-it') return 'it-IT';
     }
-    return null;
+    return undefined;
   },
   cacheUserLanguage() {
     // We don't cache from path, let the provider handle persistence

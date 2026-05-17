@@ -187,7 +187,7 @@ const Onboarding = () => {
           spaceAnswers: { ...defaultSpaceAnswers, ...parsed.spaceAnswers },
         };
       }
-    } catch {}
+    } catch { /* malformed localStorage — fall through to defaults */ }
     return defaultState;
   });
 
@@ -664,7 +664,7 @@ const Onboarding = () => {
         window.location.href = data.auth_url;
         return;
       }
-    } catch {}
+    } catch { /* optional pre-onboard step; keep onboarding flowing */ }
     setLoading(false);
     goToNextStep();
   };
@@ -696,7 +696,7 @@ const Onboarding = () => {
           source: "onboarding",
           metadata: { type: "onboarding_completed", completed_at: new Date().toISOString() },
         });
-      } catch {}
+      } catch { /* non-fatal: memory insert failure shouldn't block onboarding */ }
     }
   };
 
@@ -747,6 +747,7 @@ const Onboarding = () => {
       // through. CapturePreview's onAnimationComplete fires
       // capture_previewed and reveals the "Take me home" CTA.
       setDemoResult((data as ProcessNoteResult) || { summary: "Captured", category: "note" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     } catch (err: any) {
       fireEvent("error", {
         beat: "demo",
@@ -1005,7 +1006,7 @@ const Onboarding = () => {
               onInviteGenerated={(token) => {
                 fireEvent("invite_generated", {
                   beat: "shareSpace",
-                  space_type: state.spaceAnswers.spaceType,
+                  space_type: state.spaceAnswers.spaceType ?? undefined,
                   // Token recorded so we can correlate accept-rate
                   // post-onboarding without re-querying olive_space_invites.
                   token_prefix: token.slice(0, 8),
@@ -1014,7 +1015,7 @@ const Onboarding = () => {
               onContinue={() => {
                 fireEvent("invite_shared", {
                   beat: "shareSpace",
-                  space_type: state.spaceAnswers.spaceType,
+                  space_type: state.spaceAnswers.spaceType ?? undefined,
                 });
                 goToNextStep();
               }}

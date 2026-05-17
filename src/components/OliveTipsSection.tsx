@@ -140,7 +140,7 @@ function PlaceTipCard({ tip }: { tip: OliveTip }) {
                 size="sm"
                 variant="default"
                 className="gap-1.5"
-                onClick={() => window.open(`tel:${tip.metadata.phone}`, '_self')}
+                onClick={() => window.open(`tel:${tip.metadata?.phone ?? ''}`, '_self')}
               >
                 <Phone className="h-4 w-4" />
                 Call Now

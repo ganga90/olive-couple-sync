@@ -49,9 +49,12 @@ export const NotePrivacyToggle: React.FC<NotePrivacyToggleProps> = ({
       // provider prefers. spaceId/coupleId for couple-type spaces are
       // the same UUID via the 1:1 bridge.
       const scopeId = currentSpace?.id || currentCouple?.id;
+      // The Partial<Note> shape expects `string | undefined`, not `null`,
+      // for the optional foreign keys. Collapse both paths to undefined
+      // when we want "no association".
       const updates = {
-        spaceId: makeShared ? scopeId : null,
-        coupleId: makeShared ? currentCouple?.id : null,
+        spaceId: makeShared ? (scopeId ?? undefined) : undefined,
+        coupleId: makeShared ? (currentCouple?.id ?? undefined) : undefined,
         isShared: makeShared,
       };
 
