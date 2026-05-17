@@ -100,6 +100,7 @@ export const useSupabaseLists = (coupleId?: string | null, spaceId?: string | nu
     return () => {
       supabase.removeChannel(channel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- TASK-10X-1C-FOLLOWUP: review channel re-subscription on user change
   }, [fetchLists]);
 
   const createList = useCallback(async (listData: { name: string; description?: string; is_manual?: boolean; isShared?: boolean }) => {
@@ -158,6 +159,7 @@ export const useSupabaseLists = (coupleId?: string | null, spaceId?: string | nu
       // which guarantees both rows exist for every couple; this retry is
       // belt-and-suspenders for any future couple that slips through.
       if (error && resolvedSpaceId) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
         const code = (error as any).code;
         const msg = error.message || '';
         const isScopeFailure =
@@ -199,6 +201,7 @@ export const useSupabaseLists = (coupleId?: string | null, spaceId?: string | nu
 
       toast.success("List created successfully");
       return data;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     } catch (error: any) {
       console.error("[Lists] Error creating list:", error);
       toast.error(`Failed to create list: ${error.message}`);
@@ -262,7 +265,8 @@ export const useSupabaseLists = (coupleId?: string | null, spaceId?: string | nu
       return data;
     } catch (error) {
       console.error("[Lists] Error updating list:", error);
-      toast.error(`Failed to update list: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to update list: ${msg}`);
       return null;
     }
   }, [user?.id]);
@@ -302,7 +306,8 @@ export const useSupabaseLists = (coupleId?: string | null, spaceId?: string | nu
       return true;
     } catch (error) {
       console.error("[Lists] Error deleting list:", error);
-      toast.error(`Failed to delete list: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to delete list: ${msg}`);
       return false;
     }
   }, [user?.id]);

@@ -61,6 +61,7 @@ const SignInPage = () => {
   }, [isSignedIn, isNativeRequest, navigate, redirectUrl, showPasskeyPrompt, pendingRedirect]);
 
   const handleSuccessfulSignIn = useCallback(async (sessionId: string, redirectTo: string) => {
+    if (!setActive) return;
     await setActive({ session: sessionId });
     // Wait a tick for user object to populate
     setTimeout(() => {
@@ -95,6 +96,7 @@ const SignInPage = () => {
 
       setPendingVerification(true);
       toast.success(t('signIn.codeSent', 'Verification code sent to your email!'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     } catch (err: any) {
       console.error('[SignIn] Error sending code:', err);
       const errorMessage = err?.errors?.[0]?.longMessage || err?.message || t('signIn.errorSendingCode', 'Failed to send verification code');
@@ -169,10 +171,13 @@ const SignInPage = () => {
       // password-level error to the user.
       console.error('[SignIn] Password sign-in returned unexpected status', {
         status: result.status,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
         supportedFirstFactors: (result as any).supportedFirstFactors,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
         supportedSecondFactors: (result as any).supportedSecondFactors,
       });
       toast.error(t('signIn.errorPassword', 'Invalid email or password'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     } catch (err: any) {
       console.error('[SignIn] Error signing in with password:', err);
       const errorMessage = err?.errors?.[0]?.longMessage || err?.message || t('signIn.errorPassword', 'Invalid email or password');
@@ -211,9 +216,11 @@ const SignInPage = () => {
 
       console.error('[SignIn] Code verification returned unexpected status', {
         status: result.status,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
         supportedSecondFactors: (result as any).supportedSecondFactors,
       });
       toast.error(t('signIn.invalidCode', 'Invalid verification code'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     } catch (err: any) {
       console.error('[SignIn] Error verifying code:', err);
       const errorMessage = err?.errors?.[0]?.longMessage || err?.message || t('signIn.invalidCode', 'Invalid verification code');
@@ -246,6 +253,7 @@ const SignInPage = () => {
         identifier: email,
       });
       toast.success(t('signIn.codeResent', 'New code sent!'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     } catch (err: any) {
       console.error('[SignIn] Error resending code:', err);
       toast.error(t('signIn.errorResendingCode', 'Failed to resend code'));
@@ -276,13 +284,16 @@ const SignInPage = () => {
         origin: typeof window !== 'undefined' ? window.location.origin : 'n/a',
         hasCredentialsAPI:
           typeof window !== 'undefined' &&
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
           typeof (window.navigator as any)?.credentials?.get === 'function',
         hasPublicKeyCredential:
           typeof window !== 'undefined' &&
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
           typeof (window as any).PublicKeyCredential !== 'undefined',
         isNative,
       });
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
       const result = await (signIn as any).authenticateWithPasskey({ flow: 'discoverable' });
 
       if (result.status === 'complete') {
@@ -292,6 +303,7 @@ const SignInPage = () => {
       } else {
         toast.error(t('signIn.verificationIncomplete', 'Verification incomplete. Please try again.'));
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C-FOLLOWUP: replace any with proper types
     } catch (err: any) {
       // Structured logging — every field we can pull out of the thrown
       // object. Clerk wraps WebAuthn SecurityError / NotAllowedError but
