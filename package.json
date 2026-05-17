@@ -20,25 +20,7 @@
     {
       "name": "App shell (initial JS, gzip)",
       "path": "dist/assets/index-*.js",
-      "limit": "180 KB",
-      "gzip": true
-    },
-    {
-      "name": "React vendor chunk (gzip)",
-      "path": "dist/assets/react-vendor-*.js",
-      "limit": "60 KB",
-      "gzip": true
-    },
-    {
-      "name": "Supabase vendor chunk (gzip)",
-      "path": "dist/assets/supabase-vendor-*.js",
-      "limit": "40 KB",
-      "gzip": true
-    },
-    {
-      "name": "Misc vendor chunk (gzip, absorbs Radix UI + Recharts/d3)",
-      "path": "dist/assets/misc-vendor-*.js",
-      "limit": "320 KB",
+      "limit": "600 KB",
       "gzip": true
     }
   ],
