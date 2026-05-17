@@ -93,6 +93,13 @@ jobs:
         run: npm run test:run
       - name: Vite production build
         run: npm run build
+      - name: Bundle size budget (size-limit)
+        # Locks in the Phase 2 / 10X-2 bundle-split win. Limits are tuned
+        # with 9-17% headroom over the post-Phase-5 baseline so genuine
+        # regressions trip the check without false alarms from routine
+        # vendor bumps. To see what grew on a failure, run locally:
+        #   npm run build && npm run size:why
+        run: npm run size
 
   # -----------------------------------------------------------
   # ESLint on changed files only. New code is gated; legacy
