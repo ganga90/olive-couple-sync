@@ -758,7 +758,7 @@ const Home = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => {
-                              haptics.light();
+                              haptics.impactLight();
                               setRecentLimit((n) => n + RECENT_PAGE_SIZE);
                             }}
                             className="text-sm md:text-base text-primary hover:text-primary/80"
