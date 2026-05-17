@@ -26,9 +26,13 @@ export const NewFooterCTA = () => {
             viewport={{ once: true }}
             transition={{ type: "spring", delay: 0.2 }}
           >
-            <img 
-              src={oliveLogoFull} 
-              alt="Olive — Your AI-powered second brain" 
+            <img
+              src={oliveLogoFull}
+              alt="Olive — Your AI-powered second brain"
+              width={576}
+              height={144}
+              loading="lazy"
+              decoding="async"
               className="h-28 md:h-36 mx-auto object-contain"
             />
           </motion.div>

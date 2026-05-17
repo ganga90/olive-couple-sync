@@ -56,9 +56,13 @@ function BookTipCard({ tip }: { tip: OliveTip }) {
       <div className="flex gap-4">
         {tip.metadata?.image && (
           <div className="flex-shrink-0">
-            <img 
-              src={tip.metadata.image} 
+            <img
+              src={tip.metadata.image}
               alt={tip.title}
+              width={80}
+              height={112}
+              loading="lazy"
+              decoding="async"
               className="w-20 h-28 object-cover rounded-md shadow-sm"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';

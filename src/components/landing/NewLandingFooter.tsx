@@ -25,9 +25,13 @@ export const NewLandingFooter = () => {
         <div className="flex flex-col md:flex-row items-center justify-between gap-8">
           {/* Logo */}
           <div className="flex items-center gap-2.5">
-            <img 
-              src={oliveIcon} 
-              alt="Olive" 
+            <img
+              src={oliveIcon}
+              alt="Olive"
+              width={32}
+              height={32}
+              loading="lazy"
+              decoding="async"
               className="w-8 h-8 rounded-lg object-contain"
             />
             <span className="text-xl font-bold">Olive</span>
