@@ -55,7 +55,7 @@ const SignUpPage = () => {
 
   const completeSignUp = async (result: any) => {
     if (result.status === "complete") {
-      if (result.createdSessionId) {
+      if (result.createdSessionId && setActive) {
         await setActive({ session: result.createdSessionId });
       }
       toast.success(t('signUp.accountCreated', 'Account created successfully!'));

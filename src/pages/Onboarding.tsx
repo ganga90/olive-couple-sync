@@ -1005,7 +1005,7 @@ const Onboarding = () => {
               onInviteGenerated={(token) => {
                 fireEvent("invite_generated", {
                   beat: "shareSpace",
-                  space_type: state.spaceAnswers.spaceType,
+                  space_type: state.spaceAnswers.spaceType ?? undefined,
                   // Token recorded so we can correlate accept-rate
                   // post-onboarding without re-querying olive_space_invites.
                   token_prefix: token.slice(0, 8),
@@ -1014,7 +1014,7 @@ const Onboarding = () => {
               onContinue={() => {
                 fireEvent("invite_shared", {
                   beat: "shareSpace",
-                  space_type: state.spaceAnswers.spaceType,
+                  space_type: state.spaceAnswers.spaceType ?? undefined,
                 });
                 goToNextStep();
               }}

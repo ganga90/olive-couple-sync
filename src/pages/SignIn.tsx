@@ -61,6 +61,7 @@ const SignInPage = () => {
   }, [isSignedIn, isNativeRequest, navigate, redirectUrl, showPasskeyPrompt, pendingRedirect]);
 
   const handleSuccessfulSignIn = useCallback(async (sessionId: string, redirectTo: string) => {
+    if (!setActive) return;
     await setActive({ session: sessionId });
     // Wait a tick for user object to populate
     setTimeout(() => {

@@ -447,8 +447,11 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C: edited-note shape from NoteRecap
   const handleNoteUpdated = (updatedNote: any) => {
-    // Update the local state with edited values, merging both formats
-    setProcessedNote(prev => {
+    // Update the local state with edited values, merging both formats.
+    // `prev` is `any` to mirror the state's typing (TASK-10X-1C: proper
+    // discriminated union to follow).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setProcessedNote((prev: any) => {
       if (!prev) return null;
       return {
         ...prev,

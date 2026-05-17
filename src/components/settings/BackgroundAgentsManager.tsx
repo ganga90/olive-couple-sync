@@ -328,7 +328,7 @@ function AgentCard({
               <Switch
                 checked={agent.isEnabled}
                 onCheckedChange={(checked) => onToggle(agent.skill_id, checked)}
-                disabled={needsConnection}
+                disabled={Boolean(needsConnection)}
               />
             )}
           </div>

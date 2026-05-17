@@ -115,7 +115,7 @@ const convertSupabaseNoteToNote = (
     return { id: null, name: undefined };
   };
 
-  const taskOwnerResolved = resolveTaskOwner(supabaseNote.task_owner);
+  const taskOwnerResolved = resolveTaskOwner(supabaseNote.task_owner ?? null);
 
   return {
     id: supabaseNote.id,

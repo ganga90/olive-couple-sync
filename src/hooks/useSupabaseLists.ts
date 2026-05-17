@@ -262,7 +262,8 @@ export const useSupabaseLists = (coupleId?: string | null, spaceId?: string | nu
       return data;
     } catch (error) {
       console.error("[Lists] Error updating list:", error);
-      toast.error(`Failed to update list: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to update list: ${msg}`);
       return null;
     }
   }, [user?.id]);
@@ -302,7 +303,8 @@ export const useSupabaseLists = (coupleId?: string | null, spaceId?: string | nu
       return true;
     } catch (error) {
       console.error("[Lists] Error deleting list:", error);
-      toast.error(`Failed to delete list: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to delete list: ${msg}`);
       return false;
     }
   }, [user?.id]);

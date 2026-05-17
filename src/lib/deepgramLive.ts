@@ -142,11 +142,16 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
 
         rec.start(250); // ~4 chunks/sec
         
-        // Store cleanup function
-        (window as any).__dg_stop = () => { 
-          try { rec.stop(); } catch {} 
-          ws.close(); 
-          stream.getTracks().forEach(t => t.stop()); 
+        // Store cleanup function (ws and stream are non-null at this
+        // point of the lexical scope — they were assigned above before
+        // entering this branch). TS strictNullChecks still asks for an
+        // explicit narrow; assert via local consts.
+        const wsLocal = ws;
+        const streamLocal = stream;
+        (window as any).__dg_stop = () => {
+          try { rec.stop(); } catch {}
+          wsLocal?.close();
+          streamLocal?.getTracks().forEach(t => t.stop());
         };
       } else {
         // PCM path (Safari)
@@ -170,13 +175,15 @@ export function createDeepgramLive(opts: DGHandlers = {}): DGConnection {
         src.connect(proc);
         proc.connect(audioCtx.destination);
         
-        // Store cleanup function
-        (window as any).__dg_stop = () => { 
-          proc.disconnect(); 
-          src.disconnect(); 
-          audioCtx.close(); 
-          ws.close(); 
-          stream.getTracks().forEach(t => t.stop()); 
+        // Store cleanup function (see comment in the other branch).
+        const wsLocal = ws;
+        const streamLocal = stream;
+        (window as any).__dg_stop = () => {
+          proc.disconnect();
+          src.disconnect();
+          audioCtx.close();
+          wsLocal?.close();
+          streamLocal?.getTracks().forEach(t => t.stop());
         };
       }
     };
