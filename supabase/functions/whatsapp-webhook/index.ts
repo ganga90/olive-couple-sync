@@ -3684,10 +3684,15 @@ Description: "${parsedExpense.description}"`;
     // handlers/confirmation.test.ts. Other variants pass through to
     // the legacy AWAITING_CONFIRMATION state handler.
     {
+      // Read cleanMessage off intentResult directly. The destructured
+      // `let cleanMessage` lives ~100 lines below this block; referencing
+      // the bare name here trips the JS Temporal Dead Zone and throws
+      // `Cannot access 'cleanMessage' before initialization` at runtime.
+      const _ctxCleanMessage = (intentResult as { cleanMessage?: string }).cleanMessage ?? '';
       const _confirmCtx: SharedHandlerContext = {
         supabase, userId, userLang, userTimezone: profile.timezone || 'America/New_York',
         profile: profile as any, coupleId, effectiveCoupleId, session: session as any,
-        messageBody, cleanMessage, effectiveMessage: cleanMessage, mediaUrls, mediaTypes,
+        messageBody, cleanMessage: _ctxCleanMessage, effectiveMessage: _ctxCleanMessage, mediaUrls, mediaTypes,
         wamid, inboundNoteSource, quotedMessageId: quotedMessageId ?? null,
         receivedAtIso: receivedAtIso ?? new Date().toISOString(),
         tracker, intentResult: intentResult as any, members: null,
