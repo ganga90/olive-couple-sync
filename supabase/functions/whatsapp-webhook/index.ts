@@ -2753,7 +2753,7 @@ serve(async (req) => {
       // to the existing fast path. Zero added latency.
     }
 
-    let mediaRoutingHint: 'receipt' | 'task' | 'text' | 'other' | null = null;
+    let mediaRoutingHint: 'receipt' | 'task' | 'text' | 'contact' | 'other' | null = null;
     if (mediaUrls.length > 0 && !messageBody) {
       try {
         const { downloadMediaToBase64, getMediaType } = await import("../_shared/media-utils.ts");
@@ -2768,7 +2768,7 @@ serve(async (req) => {
             const descResponse = await genaiVision.models.generateContent({
               model: "gemini-2.5-flash",
               contents: [{ role: "user", parts: [
-                { text: "Classify this media into ONE word ONLY. Reply with exactly one of: RECEIPT (if it's a receipt/invoice/bill), TASK (if it shows a to-do, reminder, or actionable item like an event), TEXT (if it's a screenshot of text/document), or OTHER. No explanation, just the single label." },
+                { text: "Classify this media into ONE word ONLY. Reply with exactly one of: RECEIPT (a receipt/invoice/bill), CONTACT (a business card, contact card, or photo of someone's name + phone/email/title/organization), TASK (a to-do, reminder, or actionable item), TEXT (a screenshot of text/document), or OTHER. No explanation, just the single label." },
                 { inlineData: { mimeType: media.mimeType, data: media.base64 } }
               ]}],
               config: { temperature: 0, maxOutputTokens: 10 }
@@ -2776,6 +2776,7 @@ serve(async (req) => {
 
             const label = (descResponse.text || '').trim().toUpperCase();
             if (label.startsWith('RECEIPT')) mediaRoutingHint = 'receipt';
+            else if (label.startsWith('CONTACT')) mediaRoutingHint = 'contact';
             else if (label.startsWith('TASK')) mediaRoutingHint = 'task';
             else if (label.startsWith('TEXT')) mediaRoutingHint = 'text';
             else mediaRoutingHint = 'other';
@@ -2869,6 +2870,10 @@ serve(async (req) => {
         language: mediaProfile.language_preference || 'en',
         media: mediaUrls,
         mediaTypes: mediaTypes,
+        // Pre-classification hint from the cheap vision check above. Lets
+        // process-note bias toward the right shape (a business card becomes
+        // ONE contact note with all sub-details, never multiple stub notes).
+        media_hint: mediaRoutingHint ?? undefined,
       };
 
       console.log('[WhatsApp] Sending media-only to process-note:', mediaUrls.length, 'files, types:', mediaTypes);
@@ -9439,16 +9444,19 @@ If the user's message is long and conversational — asking for help with someth
         return reply(t('artifact_none', userLang));
       }
 
+      // Title + category classification. Isolated try/catch so a Gemini
+      // timeout or malformed response can NEVER block the save itself —
+      // we fall back to deterministic extraction from the artifact.
+      // Pre-bug behavior cascaded any classifier error into a full
+      // "Sorry, I couldn't save that" reply, dropping the user's content.
+      let title = 'Saved draft';
+      let category = 'task';
+      let tags: string[] = ['olive-draft'];
       try {
-        // Use AI to generate a proper title and category for the artifact.
-        // Critical: the title must describe the CONTENT, not paraphrase the user's
-        // confirmation message ("yes please", "save it"). The original_request is
-        // supplementary context only — useful when the content is open-ended, but it
-        // must NEVER become the title when it's a short confirmation.
         const classifyResult = await callAI(
           `You classify saved content into a structured note. Return JSON with:
 - "title": A concise, descriptive title (max 8 words) that captures the TOPIC of the FULL ARTIFACT CONTENT. NEVER base the title on the original request when that request is a short confirmation (e.g. "yes", "yes please", "save it", "ok", "do it", "sì", "sì grazie", "sí", "vale", "claro"). NEVER use generic titles ("Save Note", "Saved Draft", "Clarification Request"). Instead describe what the CONTENT is about. Good examples: "Best Cities to Visit in Italy", "Megaformer Studios — What They Are", "Email Draft to Boss About Vacation", "Gift Ideas for Sara's Birthday".
-- "category": One of: task, work, personal, travel, finance, health, shopping, entertainment, recipes, general
+- "category": One of: task, work, personal, travel, finance, health, shopping, entertainment, recipes, general, contacts
 - "tags": Array of 1-3 relevant tags drawn from the CONTENT topic.
 
 Return ONLY valid JSON, no markdown.`,
@@ -9458,48 +9466,49 @@ Return ONLY valid JSON, no markdown.`,
           tracker,
           WA_CLASSIFICATION_PROMPT_VERSION,
         );
-        
-        let title = 'Saved draft';
-        let category = 'task';
-        let tags: string[] = ['olive-draft'];
 
         try {
           const parsed = JSON.parse(classifyResult.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
           if (parsed.title && !isBadTitle(parsed.title)) title = parsed.title;
-          category = parsed.category || category;
-          tags = [...(parsed.tags || []), 'olive-draft'];
-        } catch {
-          // Fallback: extract first line of the CONTENT as title (never the user request,
-          // which might be a confirmation phrase).
+          if (parsed.category && typeof parsed.category === 'string') category = parsed.category;
+          if (Array.isArray(parsed.tags)) tags = [...parsed.tags.filter((t: unknown) => typeof t === 'string'), 'olive-draft'];
+        } catch (parseErr) {
+          console.warn('[SAVE_ARTIFACT] Classifier JSON parse failed, using fallback:', parseErr);
           const firstLine = artifactContent.split('\n')[0]?.replace(/[*#]/g, '').trim();
           if (firstLine && firstLine.length < 80) title = firstLine;
         }
+      } catch (aiErr) {
+        // Gemini failure is NON-FATAL. Deterministic fallback below.
+        console.warn('[SAVE_ARTIFACT] Classifier AI call failed, using deterministic fallback:', aiErr);
+      }
 
-        // Final fallback: derive title from user request — but ONLY if the request
-        // doesn't itself look like a confirmation. Otherwise extract a topic line
-        // from the content body.
-        if (isBadTitle(title)) {
-          const requestIsConfirmation = looksLikeConfirmation(artifactRequest);
-          if (artifactRequest && !requestIsConfirmation) {
-            const requestTitle = artifactRequest.replace(/^(can you |please |help me |tell me |what are |what is |search (?:for|what is|what's) )/i, '').substring(0, 60).trim();
-            if (requestTitle.length > 5) title = requestTitle.charAt(0).toUpperCase() + requestTitle.slice(1);
-          } else {
-            // Pull the first substantive line from the content itself.
-            const contentLine = artifactContent
-              .split('\n')
-              .map((l: string) => l.replace(/[*#>_`]/g, '').trim())
-              .find((l: string) => l.length >= 6 && l.length <= 80);
-            if (contentLine) title = contentLine;
-          }
+      // Deterministic fallback: derive title from user request — but only if
+      // the request isn't itself a confirmation. Otherwise extract a topic
+      // line from the content body.
+      if (isBadTitle(title)) {
+        const requestIsConfirmation = looksLikeConfirmation(artifactRequest);
+        if (artifactRequest && !requestIsConfirmation) {
+          const requestTitle = artifactRequest.replace(/^(can you |please |help me |tell me |what are |what is |search (?:for|what is|what's) )/i, '').substring(0, 60).trim();
+          if (requestTitle.length > 5) title = requestTitle.charAt(0).toUpperCase() + requestTitle.slice(1);
+        } else {
+          const contentLine = artifactContent
+            .split('\n')
+            .map((l: string) => l.replace(/[*#>_`]/g, '').trim())
+            .find((l: string) => l.length >= 6 && l.length <= 80);
+          if (contentLine) title = contentLine;
         }
-        
+      }
+      // Final hard floor — `summary` is NOT NULL in clerk_notes.
+      if (!title || !title.trim()) title = 'Saved from Olive chat';
+
+      try {
         // Build note data — artifact goes into items (details section) for easy copy/paste
         // original_text keeps only the user's request for context
         const artifactLines = artifactContent
           .split('\n')
           .map((l: string) => l.trim())
           .filter((l: string) => l.length > 0);
-        
+
         const noteData: any = {
           author_id: userId,
           couple_id: effectiveCoupleId,
@@ -9510,13 +9519,13 @@ Return ONLY valid JSON, no markdown.`,
           source_ref: wamid,
           original_text: (artifactRequest || 'Saved from Olive chat').substring(0, 2000),
           summary: title,
-          category: category.toLowerCase().replace(/\s+/g, '_'),
+          category: (category || 'task').toLowerCase().replace(/\s+/g, '_'),
           priority: 'medium',
           tags: tags,
           items: artifactLines.length > 0 ? artifactLines : [artifactContent.substring(0, 4000)],
           completed: false,
         };
-        
+
         // If user mentioned a specific list, try to find it (multi-word support)
         const msgLower = (messageBody || '').toLowerCase();
         const listMention = msgLower.match(/(?:in|to|on|nella|nella\s+lista|en\s+(?:mi\s+)?lista|alla\s+lista)\s+(?:my\s+)?[""""]?([^""""\n]{2,30})[""""]?\s*(?:list|lista)?/i);
@@ -9525,7 +9534,7 @@ Return ONLY valid JSON, no markdown.`,
             .from('clerk_lists')
             .select('id, name, couple_id')
             .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
-          
+
           const targetName = listMention[1].toLowerCase().trim();
           // Try exact match first, then partial
           const matched = matchedLists?.find(l => l.name.toLowerCase() === targetName)
@@ -9536,12 +9545,52 @@ Return ONLY valid JSON, no markdown.`,
             noteData.couple_id = matched.couple_id ?? effectiveCoupleId;
           }
         }
-        
-        const { data: savedNote, error: saveError } = await insertNote(supabase, noteData);
 
+        let { data: savedNote, error: saveError } = await insertNote(supabase, noteData);
+
+        // Retry once with a minimal payload if the full payload tripped a
+        // schema constraint (e.g., FK on couple_id/space_id desync, malformed
+        // category, oversized items[]). Saves the user's content even when
+        // optional fields are problematic.
         if (saveError || !savedNote) {
-          console.error('[SAVE_ARTIFACT] Insert error:', saveError);
-          return reply(t('artifact_save_error', userLang));
+          console.error('[SAVE_ARTIFACT] Insert error (full payload):', JSON.stringify({
+            message: saveError?.message,
+            details: (saveError as any)?.details,
+            code: (saveError as any)?.code,
+            payload_keys: Object.keys(noteData),
+            summary_len: title.length,
+            items_count: noteData.items?.length ?? 0,
+            category: noteData.category,
+            couple_id_set: !!noteData.couple_id,
+            list_id_set: !!noteData.list_id,
+          }));
+
+          const minimalPayload: any = {
+            author_id: userId,
+            // Personal scope retry — drops couple_id/list_id which are the
+            // common FK-failure suspects. Always recoverable on web app.
+            couple_id: null,
+            source: inboundNoteSource,
+            source_ref: wamid,
+            original_text: (artifactRequest || 'Saved from Olive chat').substring(0, 2000),
+            summary: title,
+            category: 'personal',
+            priority: 'medium',
+            tags: ['olive-draft'],
+            items: [artifactContent.substring(0, 4000)],
+            completed: false,
+          };
+
+          const retry = await insertNote(supabase, minimalPayload);
+          if (retry.error || !retry.data) {
+            console.error('[SAVE_ARTIFACT] Insert error (minimal payload):', JSON.stringify({
+              message: retry.error?.message,
+              details: (retry.error as any)?.details,
+              code: (retry.error as any)?.code,
+            }));
+            return reply(t('artifact_save_error', userLang));
+          }
+          savedNote = retry.data;
         }
         
         // Generate embedding for the saved note (non-blocking)

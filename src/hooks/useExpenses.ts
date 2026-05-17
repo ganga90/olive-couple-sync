@@ -336,11 +336,53 @@ export function useExpenses() {
   const addExpense = useCallback(async (expense: Omit<Expense, 'id' | 'created_at' | 'updated_at'>) => {
     if (!userId) return null;
     try {
-      const { data, error } = await supabase
+      const insertPayload: Record<string, unknown> = { ...expense, user_id: userId };
+      let { data, error } = await supabase
         .from('expenses')
-        .insert({ ...expense, user_id: userId })
+        .insert(insertPayload)
         .select()
         .single();
+
+      // Scope-fallback retry (mirrors useSupabaseNotes / useSupabaseLists).
+      // For users whose couple is missing its olive_spaces or
+      // olive_space_members row, the BEFORE INSERT trigger's
+      // `space_id := couple_id` trips the `expenses_space_id_fkey` FK
+      // (23503) or RLS denies (42501). The root-cause fix is migration
+      // `20260517045446_backfill_orphan_*` which guarantees both rows
+      // exist; this retry is belt-and-suspenders.
+      if (error && ((expense as any).space_id || (expense as any).couple_id)) {
+        const code = (error as any).code;
+        const msg = error.message || '';
+        const isScopeFailure =
+          code === '23503' ||
+          code === '42501' ||
+          /space_id_fkey|couple_id_fkey|row-level security/i.test(msg);
+
+        if (isScopeFailure) {
+          console.warn('[useExpenses] Scope insert failed, retrying in personal scope:', JSON.stringify({
+            code, message: msg,
+          }));
+          const { space_id: _s, couple_id: _c, ...personalPayload } = insertPayload as any;
+          const retry = await supabase
+            .from('expenses')
+            .insert(personalPayload)
+            .select()
+            .single();
+          if (!retry.error && retry.data) {
+            data = retry.data;
+            error = null;
+            toast.message(t('toast.savedAsPersonal', 'Logged as a personal expense'), {
+              description: t(
+                'toast.savedAsPersonalDesc',
+                'The shared space was unreachable — you can mark it shared later from the expense list.',
+              ),
+            });
+          } else if (retry.error) {
+            error = retry.error;
+          }
+        }
+      }
+
       if (error) throw error;
       setExpenses(prev => [data as Expense, ...prev]);
 
