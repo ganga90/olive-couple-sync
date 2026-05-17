@@ -204,7 +204,7 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
             />
             {receiptPreview ? (
               <div className="relative mt-1">
-                <img src={receiptPreview} alt="Receipt" className="h-24 rounded-lg object-cover w-full bg-muted" />
+                <img src={receiptPreview} alt="Receipt" loading="lazy" decoding="async" className="h-24 rounded-lg object-cover w-full bg-muted" />
                 <Button
                   variant="ghost"
                   size="sm"
@@ -626,7 +626,7 @@ const ExpenseDetailsDialog: React.FC<ExpenseDetailsProps> = ({
           {expense.receipt_url && (
             <div>
               <span className="text-muted-foreground text-sm">{t('details.receipt', 'Receipt')}</span>
-              <img src={expense.receipt_url} alt="Receipt" className="mt-2 rounded-xl max-h-48 object-contain w-full bg-muted/30" />
+              <img src={expense.receipt_url} alt="Receipt" loading="lazy" decoding="async" className="mt-2 rounded-xl max-h-48 object-contain w-full bg-muted/30" />
             </div>
           )}
         </div>

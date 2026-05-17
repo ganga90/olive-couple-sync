@@ -734,6 +734,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                       <img
                         src={preview}
                         alt={`Attached ${index + 1}`}
+                        width={64}
+                        height={64}
+                        decoding="async"
                         className="w-16 h-16 object-cover rounded-xl"
                       />
                     )}
@@ -843,6 +846,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                     <img
                       src={preview}
                       alt={`Attached ${index + 1}`}
+                      width={64}
+                      height={64}
+                      decoding="async"
                       className="w-16 h-16 object-cover rounded-xl"
                     />
                   )}

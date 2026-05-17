@@ -263,6 +263,9 @@ const NativeWelcome = () => {
         <img
           src={oliveLogoFullImage}
           alt="Olive"
+          width={256}
+          height={144}
+          decoding="async"
           // Sized for the square brand-mark asset (icon stacked above
           // wordmark). h-32 mobile / h-36 sm+ gives the 3D mark presence
           // without crowding the headline below. Capped via max-w so a
