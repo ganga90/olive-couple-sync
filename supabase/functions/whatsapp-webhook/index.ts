@@ -68,6 +68,13 @@ import {
 } from "../_shared/whatsapp-localization.ts";
 // TASK-10X-Phase8b — touchGatewaySession extracted from this file.
 import { touchGatewaySession } from "../_shared/whatsapp-session.ts";
+// TASK-10X-Phase8c — outbound-context helpers extracted from this file.
+import {
+  getRecentOutboundMessages,
+  extractTaskFromOutbound,
+  getOutboundContextWithTaskId,
+  type RecentOutbound,
+} from "../_shared/whatsapp-outbound-context.ts";
 import { assembleContextSoul } from "../_shared/context-soul/index.ts";
 import { resolveAddendum } from "../_shared/prompt-evolution/ab-router.ts";
 import {
@@ -175,15 +182,8 @@ const corsHeaders = {
 
 type IntentResult = { intent: 'SEARCH' | 'MERGE' | 'CREATE' | 'CHAT' | 'CONTEXTUAL_ASK' | 'WEB_SEARCH' | 'WEB_RESEARCH' | 'SCHEDULE_CALENDAR' | 'TASK_ACTION' | 'EXPENSE' | 'PARTNER_MESSAGE' | 'CREATE_LIST' | 'LIST_RECAP' | 'SAVE_ARTIFACT' | 'SAVE_MEMORY'; isUrgent?: boolean; cleanMessage?: string };
 
-// ============================================================================
-// RECENT OUTBOUND MESSAGE CONTEXT
-// ============================================================================
-interface RecentOutbound {
-  type: string;        // 'reminder' | 'morning_briefing' | 'proactive_nudge' | etc.
-  content: string;     // The message content sent to the user
-  sent_at: string;     // ISO timestamp
-  source: 'queue' | 'heartbeat';
-}
+// `RecentOutbound` interface moved to _shared/whatsapp-outbound-context.ts
+// (TASK-10X-Phase8c); re-imported above.
 
 // ============================================================================
 // WHATSAPP SHORTCUT VOCABULARY (prefix-based power user commands)
@@ -198,166 +198,7 @@ const SHORTCUTS: Record<string, { intent: string; options?: Record<string, any>;
 };
 
 
-// ============================================================================
-// RECENT OUTBOUND CONTEXT HELPERS
-// ============================================================================
-
-/**
- * Fetch recent outbound messages sent to this user (last 60 min)
- * Combines olive_outbound_queue + olive_heartbeat_log for full picture
- */
-async function getRecentOutboundMessages(supabase: any, userId: string): Promise<RecentOutbound[]> {
-  const sixtyMinAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const results: RecentOutbound[] = [];
-
-  try {
-    // PRIMARY SOURCE: Read last_outbound_context from clerk_profiles
-    // This is the most reliable source — stored directly by the gateway after sending
-    const { data: profile, error: profileErr } = await supabase
-      .from('clerk_profiles')
-      .select('last_outbound_context')
-      .eq('id', userId)
-      .single();
-
-    if (profileErr) {
-      console.log('[Context] Profile query error:', profileErr.message);
-    }
-
-    if (profile?.last_outbound_context) {
-      const ctx = profile.last_outbound_context;
-      const sentAt = ctx.sent_at || '';
-      // Skip error replies — they carry no useful conversational context
-      // and would confuse the AI in the next turn (e.g., "Sorry, I had trouble...")
-      if (ctx.is_error || ctx.message_type === 'error') {
-        console.log('[Context] Skipping error reply from outbound context');
-      } else if (sentAt && new Date(sentAt).getTime() > Date.now() - 60 * 60 * 1000) {
-        console.log('[Context] Found outbound context in profile:', ctx.message_type, ctx.content?.substring(0, 80));
-        results.push({
-          type: ctx.message_type || 'unknown',
-          content: ctx.content || '',
-          sent_at: sentAt,
-          source: 'queue',
-        });
-      } else {
-        console.log('[Context] Profile outbound context is stale (>60min)');
-      }
-    } else {
-      console.log('[Context] No last_outbound_context in profile');
-    }
-
-    // SECONDARY: Also check olive_outbound_queue and olive_heartbeat_log (may be empty)
-    if (results.length === 0) {
-      const { data: queueMsgs } = await supabase
-        .from('olive_outbound_queue')
-        .select('message_type, content, message, sent_at')
-        .eq('user_id', userId)
-        .eq('status', 'sent')
-        .gte('sent_at', sixtyMinAgo)
-        .order('sent_at', { ascending: false })
-        .limit(3);
-
-      if (queueMsgs) {
-        for (const msg of queueMsgs) {
-          results.push({
-            type: msg.message_type || 'unknown',
-            content: msg.content || msg.message || '',
-            sent_at: msg.sent_at,
-            source: 'queue',
-          });
-        }
-      }
-
-      const { data: heartbeatMsgs } = await supabase
-        .from('olive_heartbeat_log')
-        .select('job_type, message_preview, created_at')
-        .eq('user_id', userId)
-        .eq('status', 'sent')
-        .gte('created_at', sixtyMinAgo)
-        .order('created_at', { ascending: false })
-        .limit(3);
-
-      if (heartbeatMsgs) {
-        for (const msg of heartbeatMsgs) {
-          results.push({
-            type: msg.job_type || 'unknown',
-            content: msg.message_preview || '',
-            sent_at: msg.created_at,
-            source: 'heartbeat',
-          });
-        }
-      }
-    }
-  } catch (e) {
-    console.log('[Context] Could not fetch recent outbound:', e);
-  }
-
-  // Sort by most recent first
-  results.sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
-  return results.slice(0, 5);
-}
-
-/**
- * Extract task summary/name from a recent outbound message
- * Parses reminder, briefing, and nudge formats
- */
-function extractTaskFromOutbound(message: RecentOutbound): string | null {
-  const content = message.content;
-  if (!content) return null;
-
-  // Reminder: "⏰ Reminder: "Answer email from CHAI" is due in 24 hours"
-  const reminderMatch = content.match(/Reminder:\s*"?([^"""\n]+)"?/i);
-  if (reminderMatch) return reminderMatch[1].trim();
-
-  // Reminder alt: "⏰ Reminder: Answer email from CHAI"
-  const reminderAlt = content.match(/^⏰\s*Reminder:\s*(.+?)(?:\n|$)/i);
-  if (reminderAlt) return reminderAlt[1].replace(/is due.*$/i, '').replace(/["""]/g, '').trim();
-
-  // Nudge: "• Buy Christmas gifts\n"
-  const nudgeMatch = content.match(/•\s*(.+?)(?:\n|$)/);
-  if (nudgeMatch) return nudgeMatch[1].trim();
-
-  // Briefing numbered: "1. Buy groceries 🔥"
-  const briefingMatch = content.match(/\d+\.\s*(.+?)(?:\s*🔥)?\s*(?:\n|$)/);
-  if (briefingMatch) return briefingMatch[1].trim();
-
-  return null;
-}
-
-/**
- * Get outbound context with task_id (stored by send-reminders)
- * This is the most reliable way to resolve bare replies to reminders
- */
-async function getOutboundContextWithTaskId(
-  supabase: any,
-  userId: string
-): Promise<{ task_id: string; task_summary: string; all_task_ids?: Array<{ id: string; summary: string }> } | null> {
-  try {
-    const { data: profile } = await supabase
-      .from('clerk_profiles')
-      .select('last_outbound_context')
-      .eq('id', userId)
-      .single();
-
-    const ctx = profile?.last_outbound_context;
-    if (!ctx?.task_id) return null;
-
-    // Only use if sent within last 60 minutes
-    const sentAt = ctx.sent_at || '';
-    if (sentAt && new Date(sentAt).getTime() < Date.now() - 60 * 60 * 1000) {
-      console.log('[Context] Outbound context with task_id is stale (>60min)');
-      return null;
-    }
-
-    return {
-      task_id: ctx.task_id,
-      task_summary: ctx.task_summary || '',
-      all_task_ids: ctx.all_task_ids || undefined,
-    };
-  } catch (e) {
-    console.error('[Context] Error reading outbound context task_id:', e);
-    return null;
-  }
-}
+// _shared/whatsapp-outbound-context.ts owns the helpers above (Phase 8c)
 
 // PR4 / Block C — `resolveQuotedTask` lives in
 // `_shared/quoted-message.ts` so its logic is unit-testable in
