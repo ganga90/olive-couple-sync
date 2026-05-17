@@ -1234,6 +1234,13 @@ serve(async (req) => {
     let _lastReferencedTaskId: string | null = null;
     let _lastReferencedTaskSummary: string | null = null;
 
+    // Hoisted so pre-auth early-return paths (validation failures, media
+    // limits, voice unavailability, image-processing errors, token/link
+    // failures) can render localized error replies. Reassigned below once
+    // we've loaded the user's profile and can prefer their saved preference
+    // or auto-detect from the message body.
+    let userLang: string = 'en';
+
     // Helper to send reply via Meta Cloud API
     // NOTE: In async-ack mode, reply() just sends the WhatsApp message —
     // the HTTP response (200) was already returned to Meta above.
@@ -2077,7 +2084,7 @@ serve(async (req) => {
     // Phase 6F: Create LLM tracker for observability on all AI calls in this request
     const tracker = createLLMTracker(supabase, "whatsapp-webhook", userId);
     // Detect language: prefer profile setting, then auto-detect from message content
-    let userLang = profile.language_preference || '';
+    userLang = profile.language_preference || '';
     if (!userLang || userLang === 'en') {
       // Auto-detect language from message content for users who haven't set preference
       const msgLower = (messageBody || '').toLowerCase();
