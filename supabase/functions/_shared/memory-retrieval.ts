@@ -167,6 +167,30 @@ export interface MemoryDB {
     limit: number,
     minImportance: number
   ): Promise<MemoryChunk[]>;
+
+  /**
+   * TASK-10X-Phase7a — RRF-fused vector + BM25 hybrid search.
+   *
+   * Currently DEFINED BUT NOT WIRED. The DB function exists in prod
+   * (migration 20260517154453); the read path still calls
+   * `searchMemoryChunks` (vector-only). Phase 7c will switch the
+   * orchestrator after we have observed recall behaviour on real
+   * traffic. Keeping the adapter here makes the switch a one-line
+   * change in `fetchMemoryChunks`.
+   *
+   * Returns the same MemoryChunk shape as searchMemoryChunks; the
+   * BM25 score and hybrid score are diagnostic and not currently
+   * surfaced (callers don't need them).
+   */
+  searchMemoryChunksHybrid?(
+    userId: string,
+    queryEmbedding: number[],
+    queryText: string,
+    limit: number,
+    minImportance: number,
+    vectorWeight?: number,
+    bm25Weight?: number
+  ): Promise<MemoryChunk[]>;
 }
 
 /**
@@ -216,6 +240,40 @@ export function createSupabaseMemoryDB(supabase: any): MemoryDB {
         importance: row.importance,
         source: row.source,
         decay_factor: row.decay_factor,
+        created_at: row.created_at,
+      }));
+    },
+
+    // TASK-10X-Phase7a — hybrid (vector + BM25, RRF-fused). Defined
+    // but not yet called by fetchMemoryChunks; see the interface
+    // comment for the rollout plan.
+    async searchMemoryChunksHybrid(
+      userId: string,
+      queryEmbedding: number[],
+      queryText: string,
+      limit: number,
+      minImportance: number,
+      vectorWeight: number = 0.7,
+      bm25Weight: number = 0.3
+    ): Promise<MemoryChunk[]> {
+      const { data, error } = await supabase.rpc("search_memory_chunks_hybrid", {
+        p_user_id: userId,
+        p_query_embedding: JSON.stringify(queryEmbedding),
+        p_query_text: queryText,
+        p_limit: limit,
+        p_min_importance: minImportance,
+        p_vector_weight: vectorWeight,
+        p_bm25_weight: bm25Weight,
+      });
+      if (error) throw new Error(`search_memory_chunks_hybrid: ${error.message}`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        content: row.content,
+        chunk_type: row.chunk_type,
+        importance: row.importance,
+        similarity: row.similarity,
+        source: row.source,
         created_at: row.created_at,
       }));
     },
