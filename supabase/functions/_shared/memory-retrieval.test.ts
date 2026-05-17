@@ -50,8 +50,11 @@ function makeMockDB(opts: {
   importanceChunks?: MemoryChunk[];
   semanticError?: Error;
   importanceError?: Error;
+  hybridChunks?: MemoryChunk[];
+  hybridError?: Error;
+  includeHybrid?: boolean;
 }): MemoryDB {
-  return {
+  const db: MemoryDB = {
     async searchMemoryChunks(_userId, _embedding, _limit, _minImportance) {
       if (opts.semanticError) throw opts.semanticError;
       return opts.semanticChunks || [];
@@ -61,6 +64,19 @@ function makeMockDB(opts: {
       return opts.importanceChunks || [];
     },
   };
+  if (opts.includeHybrid) {
+    db.searchMemoryChunksHybrid = async (
+      _userId,
+      _embedding,
+      _queryText,
+      _limit,
+      _minImportance
+    ) => {
+      if (opts.hybridError) throw opts.hybridError;
+      return opts.hybridChunks || [];
+    };
+  }
+  return db;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -560,4 +576,92 @@ Deno.test("full pipeline: semantic search broken → still get memories via impo
   assertEquals(result.strategy, "importance_only");
   assertEquals(result.totalCount, 1);
   assertStringIncludes(result.promptBlock, "User has dog named Max");
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// 5. fetchMemoryChunks — Phase 7c hybrid (BM25 + vector RRF)
+// ═══════════════════════════════════════════════════════════════════
+
+Deno.test("fetchMemoryChunks Phase 7c: hybrid available → uses hybrid, not vector-only", async () => {
+  let hybridCalled = false;
+  let vectorCalled = false;
+  const db: MemoryDB = {
+    async searchMemoryChunks() { vectorCalled = true; return []; },
+    async fetchTopMemoryChunks() { return []; },
+    async searchMemoryChunksHybrid() {
+      hybridCalled = true;
+      return [makeChunk({ id: "h1", similarity: 0.85 })];
+    },
+  };
+
+  const result = await fetchMemoryChunks(db, "user1", [0.1, 0.2], "gate code 4821#");
+  assertEquals(hybridCalled, true);
+  assertEquals(vectorCalled, false);
+  assertEquals(result.semanticCount, 1);
+});
+
+Deno.test("fetchMemoryChunks Phase 7c: no hybrid method → falls back to vector-only (backward compat)", async () => {
+  let vectorCalled = false;
+  const db: MemoryDB = {
+    async searchMemoryChunks() {
+      vectorCalled = true;
+      return [makeChunk({ id: "s1", similarity: 0.9 })];
+    },
+    async fetchTopMemoryChunks() { return []; },
+    // intentionally NO searchMemoryChunksHybrid
+  };
+
+  const result = await fetchMemoryChunks(db, "user1", [0.1, 0.2], "remind me to call mom");
+  assertEquals(vectorCalled, true);
+  assertEquals(result.semanticCount, 1);
+});
+
+Deno.test("fetchMemoryChunks Phase 7c: hybrid throws → falls back to vector-only", async () => {
+  let vectorCalled = false;
+  const db: MemoryDB = {
+    async searchMemoryChunks() {
+      vectorCalled = true;
+      return [makeChunk({ id: "s1", similarity: 0.7 })];
+    },
+    async fetchTopMemoryChunks() { return []; },
+    async searchMemoryChunksHybrid() {
+      throw new Error("hybrid RPC unavailable");
+    },
+  };
+
+  const result = await fetchMemoryChunks(db, "user1", [0.1, 0.2], "long enough query");
+  assertEquals(vectorCalled, true);
+  assertEquals(result.semanticCount, 1);
+  assertEquals(result.strategy, "semantic");
+});
+
+Deno.test("fetchMemoryChunks Phase 7c: empty queryText with hybrid available → uses vector-only (no BM25 signal)", async () => {
+  let hybridCalled = false;
+  let vectorCalled = false;
+  const db: MemoryDB = {
+    async searchMemoryChunks() { vectorCalled = true; return []; },
+    async fetchTopMemoryChunks() { return []; },
+    async searchMemoryChunksHybrid() { hybridCalled = true; return []; },
+  };
+
+  // shouldAttemptSemanticSearch already requires len >= 3; this asserts
+  // that even when the gate passes, an effectively-empty trimmed query
+  // doesn't waste a BM25 call.
+  await fetchMemoryChunks(db, "user1", [0.1, 0.2], "    ");
+  // Short message gate fires before either is called — both stay false.
+  assertEquals(hybridCalled, false);
+  assertEquals(vectorCalled, false);
+});
+
+Deno.test("fetchMemoryChunks Phase 7c: hybrid returns empty + importance baseline → importance_only strategy", async () => {
+  const db = makeMockDB({
+    includeHybrid: true,
+    hybridChunks: [],
+    importanceChunks: [makeChunk({ id: "i1" })],
+  });
+
+  const result = await fetchMemoryChunks(db, "user1", [0.1, 0.2], "anything you have");
+  assertEquals(result.strategy, "importance_only");
+  assertEquals(result.semanticCount, 0);
+  assertEquals(result.importanceCount, 1);
 });
