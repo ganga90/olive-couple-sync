@@ -66,6 +66,8 @@ import {
   RESPONSES,
   LANG_NAMES,
 } from "../_shared/whatsapp-localization.ts";
+// TASK-10X-Phase8b — touchGatewaySession extracted from this file.
+import { touchGatewaySession } from "../_shared/whatsapp-session.ts";
 import { assembleContextSoul } from "../_shared/context-soul/index.ts";
 import { resolveAddendum } from "../_shared/prompt-evolution/ab-router.ts";
 import {
@@ -204,74 +206,6 @@ const SHORTCUTS: Record<string, { intent: string; options?: Record<string, any>;
  * Fetch recent outbound messages sent to this user (last 60 min)
  * Combines olive_outbound_queue + olive_heartbeat_log for full picture
  */
-/**
- * Phase 1-D — WhatsApp thread instrumentation
- * Increment per-thread and lifetime message counters for the user's gateway
- * session. Creates the gateway session row if it doesn't exist (for users
- * that message Olive for the first time via WhatsApp).
- *
- * Returns the new counters so downstream logic can decide when to compact.
- * Fire-and-forget — failures are logged and swallowed so a telemetry problem
- * never blocks the actual message-handling flow.
- */
-async function touchGatewaySession(
-  supabase: any,
-  userId: string
-): Promise<{ messageCount: number; totalMessagesEver: number } | null> {
-  try {
-    // Step 1: Ensure a session row exists. Use select+insert rather than
-    // upsert because there's no unique constraint on (user_id, channel).
-    const { data: existing } = await supabase
-      .from('olive_gateway_sessions')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('channel', 'whatsapp')
-      .eq('is_active', true)
-      .order('last_activity', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    let sessionId: string | null = existing?.id ?? null;
-
-    if (!sessionId) {
-      const { data: created, error: insertErr } = await supabase
-        .from('olive_gateway_sessions')
-        .insert({
-          user_id: userId,
-          channel: 'whatsapp',
-          is_active: true,
-          conversation_context: {},
-        })
-        .select('id')
-        .single();
-      if (insertErr) {
-        console.warn('[GatewaySession] Insert failed (non-blocking):', insertErr.message);
-        return null;
-      }
-      sessionId = created.id;
-    }
-
-    // Step 2: Atomic increment via RPC (avoids TOCTOU races).
-    const { data: incRows, error: rpcErr } = await supabase.rpc(
-      'increment_gateway_session_message',
-      { p_session_id: sessionId }
-    );
-    if (rpcErr || !incRows || incRows.length === 0) {
-      if (rpcErr) console.warn('[GatewaySession] RPC failed (non-blocking):', rpcErr.message);
-      return null;
-    }
-
-    const row = incRows[0];
-    return {
-      messageCount: row.message_count,
-      totalMessagesEver: row.total_messages_ever,
-    };
-  } catch (err: any) {
-    console.warn('[GatewaySession] touchGatewaySession error (non-blocking):', err?.message);
-    return null;
-  }
-}
-
 async function getRecentOutboundMessages(supabase: any, userId: string): Promise<RecentOutbound[]> {
   const sixtyMinAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const results: RecentOutbound[] = [];
