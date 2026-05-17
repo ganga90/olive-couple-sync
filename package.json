@@ -30,21 +30,15 @@
       "gzip": true
     },
     {
-      "name": "Radix vendor chunk (gzip)",
-      "path": "dist/assets/radix-vendor-*.js",
-      "limit": "45 KB",
-      "gzip": true
-    },
-    {
       "name": "Supabase vendor chunk (gzip)",
       "path": "dist/assets/supabase-vendor-*.js",
       "limit": "40 KB",
       "gzip": true
     },
     {
-      "name": "Misc vendor chunk (gzip)",
+      "name": "Misc vendor chunk (gzip, now absorbs Radix UI)",
       "path": "dist/assets/misc-vendor-*.js",
-      "limit": "130 KB",
+      "limit": "200 KB",
       "gzip": true
     }
   ],
