@@ -23,6 +23,22 @@ The audit flagged drift in `profile.agentDetail` (11 missing keys per locale). A
 - Added `scripts/check-i18n-parity.mjs` — a Node script that flattens every namespace in every non-EN locale and asserts key-set equality with `en/`. EN is the source of truth; missing keys and orphaned keys both fail the check.
 - The script becomes a CI gate in `TASK-10X-1B` (next commit). Drift recurring requires a deliberate `EXTRA_KEYS` or `MISSING_KEYS` PR — no more silent regressions.
 
+### TASK-10X-1F — Security headers in `vercel.json`
+
+The audit flagged that `vercel.json` had only one header block (for `.well-known/apple-app-site-association`) and no CSP, HSTS, X-Frame-Options, or X-Content-Type-Options on the rest of the app. Vercel's defaults are reasonable but should be made explicit.
+
+Added a `/(.*)` header block applied to every route:
+
+- `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` — 2-year HSTS with preload eligibility. Standard.
+- `X-Content-Type-Options: nosniff` — blocks MIME-sniffing.
+- `X-Frame-Options: SAMEORIGIN` — clickjacking protection. Not DENY, because Clerk uses some self-origin iframes; CSP `frame-ancestors 'self'` enforces the same constraint for modern browsers.
+- `Referrer-Policy: strict-origin-when-cross-origin` — protects path info on cross-origin nav while keeping referrer working for analytics.
+- `Permissions-Policy` — allow camera/microphone/geolocation only on `self` (Capacitor camera, Deepgram voice, future location features); block `interest-cohort`, `browsing-topics`, `payment`, `usb`, and motion sensors entirely.
+- `Cross-Origin-Opener-Policy: same-origin-allow-popups` — required for OAuth popup flows (Google Calendar) and Clerk's hosted sign-in pages.
+- `Content-Security-Policy-Report-Only` — CSP launched in **Report-Only mode** so violations surface in the browser console without breaking auth or media flows during the rollout window. The policy allows: Supabase (REST + realtime websocket), Clerk (production custom domain `clerk.witholive.app`, plus `*.clerk.accounts.dev` for preview deploys), Cloudflare Turnstile (Clerk CAPTCHA), Deepgram (HTTPS + WSS), and Google Fonts. Promotion to enforcing mode is a follow-up task once the preview deploy has accumulated zero violations across a full QA pass.
+
+No application changes — Vercel applies these on the response. The next preview deploy is the verification surface.
+
 ## 2026-05-14 — [SOURCE-ATTRIBUTION-FE] Frontend insert migration + NOT NULL on clerk_notes.source
 
 Follow-up to [SOURCE-ATTRIBUTION] (Bucket 3, PRs [#130](https://github.com/ganga90/olive-couple-sync/pull/130) / [#131](https://github.com/ganga90/olive-couple-sync/pull/131)). Closes the two frontend insert call sites and locks the source-attribution contract at the database layer.
