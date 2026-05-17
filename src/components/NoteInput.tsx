@@ -27,7 +27,12 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const [text, setText] = useState("");
   const [interim, setInterim] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  // AI-response shape is semi-structured (varies per intent). TASK-10X-1C
+  // will replace these with proper discriminated unions once TS strict
+  // mode is on for src/. Until then, `any` here is intentional.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [processedNote, setProcessedNote] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [multipleNotes, setMultipleNotes] = useState<any>(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
@@ -43,8 +48,88 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
   const { addNote, refetch: refetchNotes } = useSupabaseNotesContext();
   const { style: noteStyle } = useNoteStyle();
 
+  // HOOKS MUST RUN ON EVERY RENDER — the early return below for the
+  // `loading` state used to sit before these four useCallback calls,
+  // which triggered "Rendered fewer/more hooks than during the
+  // previous render" when `loading` flipped (PR #142 ESLint surfaced
+  // this as four react-hooks/rules-of-hooks errors). Drag handlers
+  // live up here so the hook order is invariant across renders;
+  // they're harmless to define even on the loading-screen render
+  // because that render's JSX never wires them up.
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer?.types.includes('Files')) {
+      setIsDragging(true);
+    }
+  }, []);
 
-  // Don't allow note submission while loading or if not authenticated
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragging to false if we're leaving the drop zone entirely
+    if (dropZoneRef.current && !dropZoneRef.current.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer?.files;
+    if (!files) return;
+
+    const newFiles: File[] = [];
+    const newPreviews: string[] = [];
+
+    // Supported file types: images, audio, video, PDFs
+    const supportedTypes = ['image/', 'audio/', 'video/', 'application/pdf'];
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
+
+    for (let i = 0; i < files.length && mediaFiles.length + newFiles.length < 5; i++) {
+      const file = files[i];
+      const isSupported = supportedTypes.some(type => file.type.startsWith(type));
+
+      if (!isSupported) continue;
+
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(t('brainDump.fileTooLarge') || `File "${file.name}" exceeds 50MB limit`);
+        continue;
+      }
+
+      newFiles.push(file);
+      if (file.type.startsWith('image/')) {
+        newPreviews.push(URL.createObjectURL(file));
+      } else if (file.type === 'application/pdf') {
+        newPreviews.push('pdf');
+      } else if (file.type.startsWith('video/')) {
+        newPreviews.push('video');
+      } else {
+        newPreviews.push('audio');
+      }
+    }
+
+    if (newFiles.length > 0) {
+      setMediaFiles(prev => [...prev, ...newFiles]);
+      setMediaPreviews(prev => [...prev, ...newPreviews]);
+      toast.success(
+        newFiles.length === 1
+          ? t('brainDump.fileAdded') || 'File added'
+          : t('brainDump.filesAdded', { count: newFiles.length }) || `${newFiles.length} files added`
+      );
+    }
+  }, [mediaFiles.length, t]);
+
+  // Don't allow note submission while loading or if not authenticated.
+  // This early return is AFTER all hooks (above) so the hook count is
+  // invariant on every render.
   if (loading) {
     return (
       <Card className="overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm shadow-soft">
@@ -131,77 +216,8 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     }
   };
 
-  // Drag and drop handlers
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.dataTransfer?.types.includes('Files')) {
-      setIsDragging(true);
-    }
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Only set dragging to false if we're leaving the drop zone entirely
-    if (dropZoneRef.current && !dropZoneRef.current.contains(e.relatedTarget as Node)) {
-      setIsDragging(false);
-    }
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    const files = e.dataTransfer?.files;
-    if (!files) return;
-
-    const newFiles: File[] = [];
-    const newPreviews: string[] = [];
-
-    // Supported file types: images, audio, video, PDFs
-    const supportedTypes = ['image/', 'audio/', 'video/', 'application/pdf'];
-    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
-
-    for (let i = 0; i < files.length && mediaFiles.length + newFiles.length < 5; i++) {
-      const file = files[i];
-      const isSupported = supportedTypes.some(type => file.type.startsWith(type));
-
-      if (!isSupported) continue;
-
-      if (file.size > MAX_FILE_SIZE) {
-        toast.error(t('brainDump.fileTooLarge') || `File "${file.name}" exceeds 50MB limit`);
-        continue;
-      }
-
-      newFiles.push(file);
-      if (file.type.startsWith('image/')) {
-        newPreviews.push(URL.createObjectURL(file));
-      } else if (file.type === 'application/pdf') {
-        newPreviews.push('pdf');
-      } else if (file.type.startsWith('video/')) {
-        newPreviews.push('video');
-      } else {
-        newPreviews.push('audio');
-      }
-    }
-
-    if (newFiles.length > 0) {
-      setMediaFiles(prev => [...prev, ...newFiles]);
-      setMediaPreviews(prev => [...prev, ...newPreviews]);
-      toast.success(
-        newFiles.length === 1
-          ? t('brainDump.fileAdded') || 'File added'
-          : t('brainDump.filesAdded', { count: newFiles.length }) || `${newFiles.length} files added`
-      );
-    }
-  }, [mediaFiles.length, t]);
+  // (Drag handlers hoisted above the early `if (loading)` return; see
+  // the block right after useNoteStyle().)
 
   const removeMedia = (index: number) => {
     setMediaFiles(prev => prev.filter((_, i) => i !== index));
@@ -330,6 +346,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
       // confirm" loop.
       const pending: { intended_owner_name?: string | null } | null =
         aiProcessedNote.pending_assignment
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C: AI-response shape
         || aiProcessedNote.notes?.find((n: any) => n.pending_assignment)?.pending_assignment
         || null;
       if (pending?.intended_owner_name) {
@@ -349,6 +366,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
         // is the resolved display name we pass through to the Recap
         // UI so the chip reads "Almu", not "user_xxx".
         setMultipleNotes({
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C: AI-response shape
           notes: aiProcessedNote.notes.map((note: any) => ({
             summary: note.summary,
             category: note.category,
@@ -427,6 +445,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     setMultipleNotes(null);
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C: edited-note shape from NoteRecap
   const handleNoteUpdated = (updatedNote: any) => {
     // Update the local state with edited values, merging both formats
     setProcessedNote(prev => {
@@ -451,6 +470,7 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
     try {
 
       // Prepare note data in the correct format for SupabaseNotesProvider (Note shape)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TASK-10X-1C: Note insert payload
       const noteData: any = {
         originalText: processedNote.originalText,
         summary: processedNote.summary,
@@ -734,6 +754,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                       <img
                         src={preview}
                         alt={`Attached ${index + 1}`}
+                        width={64}
+                        height={64}
+                        decoding="async"
                         className="w-16 h-16 object-cover rounded-xl"
                       />
                     )}
@@ -843,6 +866,9 @@ export const NoteInput: React.FC<NoteInputProps> = ({ onNoteAdded, listId }) => 
                     <img
                       src={preview}
                       alt={`Attached ${index + 1}`}
+                      width={64}
+                      height={64}
+                      decoding="async"
                       className="w-16 h-16 object-cover rounded-xl"
                     />
                   )}
