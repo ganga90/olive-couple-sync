@@ -56,6 +56,10 @@
     "reminders": "⏰ Recordatorios",
     "recent": "🕐 Reciente"
   },
+  "recent": {
+    "showMore": "Ver más",
+    "showMoreAria": "Mostrar {{count}} tareas recientes más"
+  },
   "weekly": {
     "task": "tarea",
     "tasks": "tareas",

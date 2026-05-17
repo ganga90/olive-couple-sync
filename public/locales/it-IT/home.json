@@ -56,6 +56,10 @@
     "reminders": "⏰ Promemoria",
     "recent": "🕐 Recente"
   },
+  "recent": {
+    "showMore": "Mostra altri",
+    "showMoreAria": "Mostra altre {{count}} attività recenti"
+  },
   "weekly": {
     "task": "attività",
     "tasks": "attività",

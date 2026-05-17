@@ -50,6 +50,10 @@ import {
   CommandList,
 } from "@/components/ui/command";
 
+// How many recent tasks to add per "Show more" click. Five matches the
+// initial page so users see the same rhythm of growth each click.
+const RECENT_PAGE_SIZE = 5;
+
 const Home = () => {
   const { t } = useTranslation(['home', 'common']);
   const { getLocalizedPath } = useLanguage();
@@ -68,6 +72,11 @@ const Home = () => {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [defaultHomeTab] = useState(() => localStorage.getItem('olive_default_home_tab') || 'weekly');
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
+  // Paginated "Recent" tab — start with 5, bump by 5 on each "Show more"
+  // click. Reset to 5 whenever the filter set that feeds this tab
+  // changes (category, owner, privacy) so the next render doesn't show a
+  // stale, oversized window into a now-smaller list.
+  const [recentLimit, setRecentLimit] = useState<number>(RECENT_PAGE_SIZE);
   const { privacyFilter, setPrivacyFilter } = useDefaultPrivacyFilter();
   const { connection: calendarConnection } = useCalendarEvents();
   const [emailTriageOpen, setEmailTriageOpen] = useState(false);
@@ -157,13 +166,29 @@ const Home = () => {
       .slice(0, 5);
   }, [filteredNotes]);
 
-  // Get recent tasks (last 5 added)
-  const recentTasks = useMemo(() => {
+  // Get the full ordered set of recent (incomplete) tasks once, then
+  // window into it with `recentLimit` for the visible slice. Keeping
+  // both lets the "Show more" button know when to disappear without
+  // recomputing the sort on every page bump.
+  const recentAll = useMemo(() => {
     return filteredNotes
       .filter(note => !note.completed)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 5);
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [filteredNotes]);
+  const recentTasks = useMemo(
+    () => recentAll.slice(0, recentLimit),
+    [recentAll, recentLimit],
+  );
+  const hasMoreRecent = recentAll.length > recentTasks.length;
+
+  // Reset the "Show more" window whenever the filter inputs that feed
+  // the Recent list change. Without this, a user who scrolled to 20
+  // recents under one category and then switches to a smaller category
+  // would briefly see an empty list (the slice exceeds the new set) and
+  // a useless "Show more" button.
+  useEffect(() => {
+    setRecentLimit(RECENT_PAGE_SIZE);
+  }, [categoryFilter, ownerFilter, privacyFilter]);
 
   // Get upcoming reminders (tasks with reminder_time in the future, sorted soonest first)
   const upcomingReminders = useMemo(() => {
@@ -709,22 +734,43 @@ const Home = () => {
               <TabsContent value="recent" className="mt-0">
                 <div className="p-4 md:p-8 space-y-4 md:space-y-5">
                   {recentTasks.length > 0 ? (
-                    recentTasks.map((task, index) => (
-                      <div key={task.id} className={`animate-fade-up stagger-${Math.min(index + 1, 5)}`}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <Clock className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground" />
-                          <span className="text-sm md:text-base text-muted-foreground">
-                            {formatDistanceToNow(new Date(task.createdAt), { addSuffix: true, locale: dateLocale })}
-                          </span>
+                    <>
+                      {recentTasks.map((task, index) => (
+                        <div key={task.id} className={`animate-fade-up stagger-${Math.min(index + 1, 5)}`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Clock className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground" />
+                            <span className="text-sm md:text-base text-muted-foreground">
+                              {formatDistanceToNow(new Date(task.createdAt), { addSuffix: true, locale: dateLocale })}
+                            </span>
+                          </div>
+                          <TaskItem
+                            task={task}
+                            onToggleComplete={handleToggleComplete}
+                            onTaskClick={handleTaskClick}
+                            authorName={getAuthorName(task)}
+                          />
                         </div>
-                        <TaskItem
-                          task={task}
-                          onToggleComplete={handleToggleComplete}
-                          onTaskClick={handleTaskClick}
-                          authorName={getAuthorName(task)}
-                        />
-                      </div>
-                    ))
+                      ))}
+                      {hasMoreRecent && (
+                        <div className="pt-2 flex justify-center">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              haptics.light();
+                              setRecentLimit((n) => n + RECENT_PAGE_SIZE);
+                            }}
+                            className="text-sm md:text-base text-primary hover:text-primary/80"
+                            aria-label={t('home:recent.showMoreAria', {
+                              count: Math.min(RECENT_PAGE_SIZE, recentAll.length - recentTasks.length),
+                            })}
+                          >
+                            {t('home:recent.showMore')}
+                          </Button>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="text-center py-12 md:py-16 text-muted-foreground">
                       <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
