@@ -10,6 +10,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { maskEmail } from "../_shared/redact.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -102,7 +103,7 @@ serve(async (req) => {
     if (userInfoRes.ok) {
       const userInfo = await userInfoRes.json();
       emailAddress = userInfo.email || null;
-      console.log('[email-callback] Got user info, email:', emailAddress);
+      console.log('[email-callback] Got user info, email:', maskEmail(emailAddress));
     } else {
       console.warn('[email-callback] Could not fetch user info, continuing without');
     }

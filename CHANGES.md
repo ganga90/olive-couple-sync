@@ -1,5 +1,87 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-17 — [10X] Phase 1 quick wins (in progress)
+
+Follow-up to the deep audit captured in [OLIVE_10X_PLAN.md](OLIVE_10X_PLAN.md). Phase 1 is a batch of small, additive, safety-first changes that pay back forever.
+
+### TASK-10X-1A — HNSW vector index on `olive_memory_chunks.embedding`
+
+The audit flagged this as the single highest-leverage fix in the repo: `clerk_notes.embedding` had `ivfflat` since the post-Lovable baseline (line 3451 of `20260427000000_baseline_post_lovable_reconciliation.sql`), but `olive_memory_chunks` — the primary backing store for Olive's memory recall — never got one. Every memory-search query was doing a full sequential scan over 768-dim vectors. Today the table is 130 rows, so latency is fine; the bill comes due silently as memory grows.
+
+- New migration: `supabase/migrations/20260517051720_task_10x_1a_olive_memory_chunks_embedding_hnsw.sql`
+- Applied via Supabase MCP (`apply_migration`); filename renamed to match the ledger version per the doctrine.
+- Type: HNSW (not IVFFLAT) — pgvector ≥ 0.5.0 ships HNSW on Supabase Postgres 17; HNSW handles incremental inserts/updates better than IVFFLAT (chunks see decay touches), and avoids the periodic re-tuning IVFFLAT needs as row count grows past the build-time `lists` estimate.
+- Operator class: `vector_cosine_ops` — matches `clerk_notes.embedding` and the unit-normalized embeddings produced by the embedding generator.
+- Index built at 512 kB on 130 rows. `EXPLAIN ANALYZE` on the prod table shows seq-scan still preferred (correct: HNSW only outperforms once the table is large enough that the planner's cost model crosses the threshold — that's now an automatic upgrade rather than a manual one).
+- No application code changed. Read paths in `_shared/memory-retrieval.ts` already issue `ORDER BY embedding <=> $1 LIMIT k`, which is the HNSW pattern; the index is invisible to callers.
+
+### TASK-10X-3C — i18n key parity restored (es-ES, it-IT) + parity guard
+
+The audit flagged drift in `profile.agentDetail` (11 missing keys per locale). A deeper scan with `scripts/check-i18n-parity.mjs` found two more drifting namespaces: `home.partnerActivity` (2 keys) and `onboarding.demo` (4 keys). Total: 34 missing key-locale pairs silently falling back to English for Spanish and Italian users.
+
+- Translated 17 unique keys into both `es-ES` and `it-IT`, preserving Olive's voice rules (direct, no exclamation points, no emoji spam). Reused existing terminology already in the locale files (e.g. `Notificaciones de WhatsApp`, `Notifiche WhatsApp` were already canonical for related strings).
+- Added `scripts/check-i18n-parity.mjs` — a Node script that flattens every namespace in every non-EN locale and asserts key-set equality with `en/`. EN is the source of truth; missing keys and orphaned keys both fail the check.
+- The script becomes a CI gate in `TASK-10X-1B` (next commit). Drift recurring requires a deliberate `EXTRA_KEYS` or `MISSING_KEYS` PR — no more silent regressions.
+
+### TASK-10X-1F — Security headers in `vercel.json`
+
+The audit flagged that `vercel.json` had only one header block (for `.well-known/apple-app-site-association`) and no CSP, HSTS, X-Frame-Options, or X-Content-Type-Options on the rest of the app. Vercel's defaults are reasonable but should be made explicit.
+
+Added a `/(.*)` header block applied to every route:
+
+- `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` — 2-year HSTS with preload eligibility. Standard.
+- `X-Content-Type-Options: nosniff` — blocks MIME-sniffing.
+- `X-Frame-Options: SAMEORIGIN` — clickjacking protection. Not DENY, because Clerk uses some self-origin iframes; CSP `frame-ancestors 'self'` enforces the same constraint for modern browsers.
+- `Referrer-Policy: strict-origin-when-cross-origin` — protects path info on cross-origin nav while keeping referrer working for analytics.
+- `Permissions-Policy` — allow camera/microphone/geolocation only on `self` (Capacitor camera, Deepgram voice, future location features); block `interest-cohort`, `browsing-topics`, `payment`, `usb`, and motion sensors entirely.
+- `Cross-Origin-Opener-Policy: same-origin-allow-popups` — required for OAuth popup flows (Google Calendar) and Clerk's hosted sign-in pages.
+- `Content-Security-Policy-Report-Only` — CSP launched in **Report-Only mode** so violations surface in the browser console without breaking auth or media flows during the rollout window. The policy allows: Supabase (REST + realtime websocket), Clerk (production custom domain `clerk.witholive.app`, plus `*.clerk.accounts.dev` for preview deploys), Cloudflare Turnstile (Clerk CAPTCHA), Deepgram (HTTPS + WSS), and Google Fonts. Promotion to enforcing mode is a follow-up task once the preview deploy has accumulated zero violations across a full QA pass.
+
+No application changes — Vercel applies these on the response. The next preview deploy is the verification surface.
+
+### TASK-10X-1E — PII redaction in edge function logs
+
+The audit found raw phone numbers and email addresses being written to `console.log` in six places across five edge functions. Edge function stdout streams into Supabase's runtime logs (visible to anyone on the team), so this is a real compliance gap, not theoretical.
+
+- New shared module `supabase/functions/_shared/redact.ts` with three pure helpers: `maskPhone()` keeps last 4 digits (`+xxx*9123`), `maskEmail()` keeps domain + first local char (`g****@gmail.com`), `maskName()` keeps first char (`G********`). Null-safe, never throws, no I/O.
+- Co-located test file `redact.test.ts` covers null/empty/malformed paths for each helper (7 cases).
+- Patched six log sites:
+  - `send-reminders/index.ts:378` — phone + display name
+  - `olive-heartbeat/index.ts:1880` — phone lookup
+  - `email-oauth-callback/index.ts:105` — Gmail address after OAuth
+  - `oura-callback/index.ts:100` — Oura account email
+  - `calendar-callback/index.ts:94, 129` — Google account email (two spots)
+- Full `_shared/` test suite (`deno test`): **1264 passed, 0 failed** — no regressions.
+
+### TASK-10X-1B — Frontend CI gate
+
+The audit (P0-6) flagged that no GitHub Actions workflow ran ESLint, TypeScript, or the Vite build on PR. The existing workflows (`eval-harness`, `migration-lint`, `calendar-smoke`) gate other dimensions; the frontend itself was shipping on trust.
+
+Added `.github/workflows/frontend-ci.yml` with 4 jobs:
+
+1. **`i18n-parity`** — runs `scripts/check-i18n-parity.mjs` (from TASK-10X-3C) on every PR touching `public/locales/**`. Any missing or orphaned key vs `en/` fails the PR.
+2. **`typecheck-build`** — `npx tsc --noEmit -p tsconfig.app.json` then `npm run build`. Both currently clean; this locks them in.
+3. **`lint-changed`** — ESLint runs **only on TS/TSX/JS files changed in the PR**. Why not full-repo: the audit found 1,456 pre-existing lint errors. Gating the full repo would block the team until the backlog clears (TASK-10X-1C). Changed-files-only keeps the forward-facing bar high (`--max-warnings 0`) while letting the burn-down happen in parallel.
+4. **`deno-shared-tests`** — `deno test supabase/functions/_shared/` (1264 tests). Catches regressions in the redact helpers (TASK-10X-1E), reminder-dedup, timezone, etc.
+
+Path-filtered + concurrency-cancelled to match the convention of the existing workflows. The PR template in [.github/pull_request_template.md] is the human safety net for cases CI cannot reason about.
+
+### TASK-10X-1D — Vitest scaffold + first 20 frontend tests
+
+The audit (P0-5) flagged that the frontend had **zero tests** — no vitest, jest, or playwright config — and the whole React layer was shipping on trust. This commit lays the foundation.
+
+- New deps (devDependencies): `vitest@4.1.6`, `@vitest/ui`, `jsdom`, `@testing-library/react`, `@testing-library/dom`, `@testing-library/jest-dom`, `@testing-library/user-event`.
+- `vitest.config.ts` — mirrors `vite.config.ts` (same SWC plugin, same `@` alias) so a passing build implies tests at least compile. `jsdom` environment, globals on, `src/test-setup.ts` runs before each suite.
+- `src/test-setup.ts` — extends `expect` with `jest-dom` matchers and stubs the four browser globals that jsdom omits but Radix/Capacitor/i18next routinely reach for: `matchMedia`, `IntersectionObserver`, `ResizeObserver`, `Element.scrollIntoView`. Stubs are minimal and explicit.
+- npm scripts added: `test` (watch), `test:run` (single-shot for CI), `test:ui` (vitest UI), `i18n:check`.
+- First three test files / 20 tests / 1 documented todo:
+  - `src/lib/utils.test.ts` — `cn()` className merger (4 tests; covers tailwind dedup contract).
+  - `src/utils/dateUtils.test.ts` — `parseDateSafely`, `formatDateForStorage`, `dateStringToStorage`, `extractDateOnly`, `parseUserDateInput` (12 tests + 1 todo for the out-of-range bug surfaced by the test pass).
+  - `src/lib/note-source.test.ts` — `NOTE_SOURCES` enum shape (locks the 12 values that mirror the DB CHECK constraint) + `defaultClientNoteSource()` Capacitor-vs-web branch (4 tests).
+- Wired into `frontend-ci.yml`: `typecheck-build` job now runs `npm run test:run` between typecheck and build.
+
+Verification: `npm run test:run` → 3 files, 20 passed, 1 todo. Run-time: ~1 second total.
+
 ## 2026-05-14 — [SOURCE-ATTRIBUTION-FE] Frontend insert migration + NOT NULL on clerk_notes.source
 
 Follow-up to [SOURCE-ATTRIBUTION] (Bucket 3, PRs [#130](https://github.com/ganga90/olive-couple-sync/pull/130) / [#131](https://github.com/ganga90/olive-couple-sync/pull/131)). Closes the two frontend insert call sites and locks the source-attribution contract at the database layer.

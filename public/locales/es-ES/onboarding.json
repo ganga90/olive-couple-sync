@@ -89,9 +89,13 @@
     "chip1": "Recuérdame llamar a mamá mañana a las 17:00",
     "chip2": "Añadir leche, huevos y pan a la lista de la compra",
     "chip3": "Cena con Sara el próximo viernes a las 19:00",
+    "chip4": "Código de portal 4821#",
     "processing": "Organizando...",
     "submit": "Enviar a Olive",
-    "skipToHome": "Saltar e ir al inicio"
+    "skipToHome": "Saltar e ir al inicio",
+    "previewHeader": "Listo. Acaba de pasar.",
+    "previewSubtext": "Esto es lo que hace Olive: cada idea suelta se convierte en estructura.",
+    "takeMeHome": "Llévame a inicio"
   },
   "quiz": {
     "step": "Paso {{current}} de {{total}}",
