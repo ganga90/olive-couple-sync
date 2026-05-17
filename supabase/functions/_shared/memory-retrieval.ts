@@ -299,20 +299,56 @@ export async function fetchMemoryChunks(
   let semanticChunks: MemoryChunk[] = [];
   let importanceChunks: MemoryChunk[] = [];
 
-  // Step 1: Try semantic search if we have an embedding
+  // Step 1: Try semantic search if we have an embedding.
+  //
+  // Phase 7c — prefer the BM25+vector RRF-fused hybrid when both
+  // a query embedding AND a non-empty user message are present, AND
+  // the adapter implements the optional searchMemoryChunksHybrid
+  // method. The hybrid widens recall: paraphrase-sensitive vector
+  // queries still get vector hits, but keyword queries ("gate code
+  // 4821") also get exact-match BM25 hits the embedding might miss.
+  //
+  // Fallback paths preserved:
+  //   * If the hybrid call throws -> retry with vector-only.
+  //   * If the adapter doesn't implement hybrid (test mocks) ->
+  //     vector-only directly.
+  //   * If both fail -> empty semanticChunks, importance-only
+  //     baseline handles the rest.
   if (shouldAttemptSemanticSearch(queryEmbedding, userMessage)) {
-    try {
-      semanticChunks = await db.searchMemoryChunks(
-        userId,
-        queryEmbedding!,
-        config.semanticLimit,
-        config.semanticMinImportance
-      );
-    } catch (err) {
-      console.warn(
-        `[MemoryRetrieval] Semantic search failed (falling back to importance):`,
-        err instanceof Error ? err.message : err
-      );
+    const trimmedQuery = (userMessage ?? "").trim();
+    const hybridAvailable = typeof db.searchMemoryChunksHybrid === "function";
+    let hybridSucceeded = false;
+    if (hybridAvailable && trimmedQuery.length > 0) {
+      try {
+        semanticChunks = await db.searchMemoryChunksHybrid!(
+          userId,
+          queryEmbedding!,
+          trimmedQuery,
+          config.semanticLimit,
+          config.semanticMinImportance
+        );
+        hybridSucceeded = true;
+      } catch (err) {
+        console.warn(
+          `[MemoryRetrieval] Hybrid search failed (falling back to vector-only):`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+    if (!hybridSucceeded) {
+      try {
+        semanticChunks = await db.searchMemoryChunks(
+          userId,
+          queryEmbedding!,
+          config.semanticLimit,
+          config.semanticMinImportance
+        );
+      } catch (err) {
+        console.warn(
+          `[MemoryRetrieval] Semantic search failed (falling back to importance):`,
+          err instanceof Error ? err.message : err
+        );
+      }
     }
   }
 
