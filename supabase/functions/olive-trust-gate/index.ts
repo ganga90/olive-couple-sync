@@ -342,8 +342,17 @@ async function rejectAction(supabase: any, userId: string, params: any) {
 async function listPending(supabase: any, userId: string, params: any) {
   const { limit = 10 } = params;
 
-  // First expire old actions
-  await supabase.rpc("expire_old_trust_actions").catch(() => {});
+  // First expire old actions. supabase-js v2 .rpc() returns a
+  // PostgrestBuilder (thenable, not a real Promise), so .catch() is not
+  // a function — the old `.rpc(...).catch(() => {})` form threw a
+  // TypeError that bubbled up as HTTP 500 and surfaced to the client
+  // as `[useTrust] listPending error: FunctionsHttpError`. Use a
+  // try/await instead to honestly swallow the error.
+  try {
+    await supabase.rpc("expire_old_trust_actions");
+  } catch {
+    // best-effort expiry; ignore RPC failures
+  }
 
   const { data, error } = await supabase
     .from("olive_trust_actions")
