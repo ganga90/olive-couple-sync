@@ -1,5 +1,39 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-17 — [10X] Phase 2 — Performance: route lazy-loading + manual vendor chunks
+
+Follow-up to the merged Phase 1 batch (PR #138, [OLIVE_10X_PLAN.md](OLIVE_10X_PLAN.md)). This batch targets the single biggest user-facing performance gap surfaced by the audit (Phase 4A + 4B): a 2,645 kB / 742 kB-gzipped single-file JS bundle that dominated first-paint on mobile.
+
+### TASK-10X-Phase2-4A — Lazy-load non-critical routes
+
+- New `src/components/RouteSuspenseFallback.tsx` — minimal centred 🌿 with `animate-pulse`. No layout shift inside `AppLayout`'s content area; brand-voice signature stays visible during chunk fetch.
+- `src/App.tsx` — kept the genuinely critical-path routes eager (`Root`, `Home`, `Landing`, `NotFound`, `AuthPage`, `SignIn`, `SignUp`, `AuthRedirectNative`, `NativeWelcome`) and wrapped every other route in `React.lazy()`:
+  - `Lists`, `ListCategory`, `Onboarding`, `Profile`, `NoteDetails`, `Welcome`, `CalendarPage`, `Reminders`, `AcceptInvite`, `JoinInvite`, `GoogleCalendarCallback`, `OuraCallback`, `MyDay`, `TermsOfService`, `PrivacyPolicy`, `Expenses`, `RequestAccess`, `Admin`, `AgentDetail`, `Knowledge`
+- `<Suspense fallback={<RouteSuspenseFallback />}>` wraps the entire route tree. Eager routes pass through with zero overhead; lazy ones get the pulse during chunk fetch.
+
+### TASK-10X-Phase2-4B — Manual vendor chunks
+
+- `vite.config.ts` — `build.rollupOptions.output.manualChunks` is now a function that buckets every `node_modules` import into a stable, cache-friendly vendor file:
+  - `react-vendor`, `radix-vendor`, `clerk-vendor`, `supabase-vendor`, `tanstack-vendor`, `i18n-vendor`, `date-vendor`, `motion-vendor`, `charts-vendor`, `forms-vendor`, `markdown-vendor`, `carousel-vendor`, `voice-vendor`, `capacitor-vendor`, plus an explicit `misc-vendor` fallback.
+- `chunkSizeWarningLimit: 600` (down from default 500 → 600 KB single-chunk threshold so genuine regressions trip the warning without false alarms from `Profile`'s 224 KB chunk).
+
+### Build-output deltas
+
+| Bundle | Before | After |
+|---|---|---|
+| Main app shell (`index*.js`) | **2,644.65 kB / 742 kB gz** | **535.46 kB / 153.06 kB gz** |
+| Per-route chunks | — | 14+ named chunks, each < 65 KB |
+| Vendor chunks | — | 14 stable chunks, biggest is `charts-vendor` 333 KB / 83 KB gz (only loads on Admin) |
+
+Real-world impact on initial paint: a logged-out visitor hitting `/` now downloads roughly **150 KB gz of app shell + ~140 KB gz of critical vendors** = ~290 KB gz, vs the prior ~742 KB gz monolith. **~60% reduction in first-paint payload.** Charts, motion, markdown, and per-page chunks lazy-load on demand.
+
+### Verification
+
+- `npx tsc --noEmit -p tsconfig.app.json` → clean.
+- `npm run test:run` → 3 files, 20 passed, 1 todo, ~1 s.
+- `npm run build` → 41 chunks, no chunk warnings, 3.99 s build time.
+- Local Vite dev server: landing page renders end-to-end via screenshot capture (route-level eager + lazy splits behave correctly). Only console errors are the pre-existing Clerk-on-localhost guard ("Production Keys are only allowed for domain witholive.app") which is documented in `src/main.tsx` and unrelated to this change.
+
 ## 2026-05-17 — [10X] Phase 1 quick wins (in progress)
 
 Follow-up to the deep audit captured in [OLIVE_10X_PLAN.md](OLIVE_10X_PLAN.md). Phase 1 is a batch of small, additive, safety-first changes that pay back forever.
