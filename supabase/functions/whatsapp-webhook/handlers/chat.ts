@@ -21,10 +21,11 @@
 //   6. If the AI throws on the chosen tier (and no Pro→Flash retry applied),
 //      render a per-chatType deterministic fallback message.
 //
-// Latent bug preserved verbatim from the monolith: `today` was referenced
-// but never assigned in the partner-wellness + Oura blocks. JS throws
-// ReferenceError → caught by the surrounding try/catch → those branches
-// silently no-op for briefing. Fix is a follow-up; this PR is move-only.
+// Fixed (follow-up to Initiative 1.4): the monolith's partner-wellness +
+// Oura blocks referenced a bare `today` that was never assigned, so they
+// silently no-op'd under the surrounding try/catch. Both helpers now take
+// `now: Date` from the handler scope, so briefing replies actually include
+// the Oura health block and the partner-wellness signal when applicable.
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
@@ -300,9 +301,7 @@ ${myAssignments.length > 0 ? `- You assigned to them: ${myAssignments.join(', ')
   }
 }
 
-/** Originally `index.ts:6789–6834`. Briefing-only. Latent ReferenceError on
- *  `today` preserved verbatim — the try/catch swallows it so this branch
- *  silently no-ops in production. Follow-up will fix `today` resolution. */
+/** Originally `index.ts:6789–6834`. Briefing-only. */
 async function assemblePartnerWellness(
   // deno-lint-ignore no-explicit-any
   supabase: SupabaseClient<any>,
@@ -310,6 +309,7 @@ async function assemblePartnerWellness(
   coupleId: string | null,
   partnerName: string,
   chatType: string,
+  now: Date,
 ): Promise<string> {
   if (!coupleId || chatType !== 'briefing') return '';
   try {
@@ -332,11 +332,8 @@ async function assemblePartnerWellness(
 
     if (!partnerOuraConn?.share_wellness_with_partner) return '';
 
-    // Verbatim from monolith — `today` is undefined in scope (latent bug).
-    // deno-lint-ignore no-explicit-any
-    const todayRef = (today as unknown) as Date;
-    const todayStr = todayRef.toISOString().split('T')[0];
-    const yesterdayStr = new Date(todayRef.getTime() - 86400000).toISOString().split('T')[0];
+    const todayStr = now.toISOString().split('T')[0];
+    const yesterdayStr = new Date(now.getTime() - 86400000).toISOString().split('T')[0];
 
     const { data: partnerHealth } = await supabase
       .from('oura_daily_data')
@@ -357,12 +354,6 @@ async function assemblePartnerWellness(
     return '';
   }
 }
-// `today` is referenced inside assemblePartnerWellness verbatim from the
-// monolith where it was also undefined. Declared here at module scope so
-// TS strict mode compiles; runtime access still throws (TypeError), still
-// caught by the function's try/catch — behavior identical to the monolith
-// in production. Fix tracked as a follow-up.
-declare const today: Date;
 
 /** Originally `index.ts:6839–6903`. Briefing-only. */
 async function assembleCalendarContext(
@@ -443,13 +434,13 @@ async function assembleCalendarContext(
   }
 }
 
-/** Originally `index.ts:6908–7001`. Briefing-only. Latent `today` bug
- *  preserved (see note on assemblePartnerWellness). */
+/** Originally `index.ts:6908–7001`. Briefing-only. */
 async function assembleHealthContext(
   // deno-lint-ignore no-explicit-any
   supabase: SupabaseClient<any>,
   userId: string,
   chatType: string,
+  now: Date,
 ): Promise<string> {
   if (chatType !== 'briefing') return '';
   try {
@@ -475,12 +466,9 @@ async function assembleHealthContext(
       }
     }
 
-    // Verbatim — `today` is undefined; access throws below, caught at outer catch.
-    // deno-lint-ignore no-explicit-any
-    const todayRef = (today as unknown) as Date;
-    const todayStr = todayRef.toISOString().split('T')[0];
-    const yesterdayStr = new Date(todayRef.getTime() - 86400000).toISOString().split('T')[0];
-    const sevenDaysAgoStr = new Date(todayRef.getTime() - 7 * 86400000).toISOString().split('T')[0];
+    const todayStr = now.toISOString().split('T')[0];
+    const yesterdayStr = new Date(now.getTime() - 86400000).toISOString().split('T')[0];
+    const sevenDaysAgoStr = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0];
 
     const { data: ouraWeek } = await supabase
       .from('oura_daily_data')
@@ -869,7 +857,7 @@ export function makeChatHandler(deps: ChatDeps): Handler {
 
     // ── Partner wellness (briefing only).
     const partnerWellnessContext = await assemblePartnerWellness(
-      ctx.supabase, ctx.userId, ctx.coupleId, partnerName, rawChatType,
+      ctx.supabase, ctx.userId, ctx.coupleId, partnerName, rawChatType, now,
     );
 
     // ── Calendar (briefing only).
@@ -880,7 +868,7 @@ export function makeChatHandler(deps: ChatDeps): Handler {
     );
 
     // ── Oura (briefing only).
-    const ouraContext = await assembleHealthContext(ctx.supabase, ctx.userId, rawChatType);
+    const ouraContext = await assembleHealthContext(ctx.supabase, ctx.userId, rawChatType, now);
 
     // ── Task analytics.
     const {

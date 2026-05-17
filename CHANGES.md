@@ -1,5 +1,25 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-17 — [FIX-1.4-today] Resolve `today` ReferenceError in briefing helpers
+
+Followup to [REFACTOR-1.4](#2026-05-17--refactor-14-extract-chat-handler-from-whatsapp-webhook-monolith) — clears point #1 of that PR's "Followups (out of scope here)" list.
+
+`assemblePartnerWellness` and `assembleHealthContext` (both briefing-only) referenced a bare `today` identifier that was never assigned. In the monolith this threw `ReferenceError`; in the extracted module the `declare const today: Date` at module scope made it compile but the runtime access threw `TypeError`. Either way the surrounding try/catch swallowed the throw, so the briefing reply silently omitted both the partner-wellness empathy note and the entire Health & Wellness (Oura) block — likely for as long as the briefing flow has existed.
+
+### What changed
+- Both helpers now take `now: Date` (passed verbatim from the handler scope, where `const now = new Date()` already existed) and use it to compute `todayStr` / `yesterdayStr` / `sevenDaysAgoStr`.
+- Removed the `declare const today: Date` shim at module scope.
+- File header comment + per-helper doc comments updated to reflect that these paths now actually populate.
+- Added two regression tests:
+  - `briefing: Oura health block populates the system prompt` — stubs `oura_connections` + `oura_daily_data`, asserts the system prompt contains `Health & Wellness (Oura Ring`.
+  - `briefing: partner-wellness signal populates the system prompt` — stubs `get_space_members` RPC + `clerk_couple_members` + `oura_connections` + `oura_daily_data`, asserts the partner-low-readiness empathy note appears in the prompt with the partner's name.
+- `deno test supabase/functions/whatsapp-webhook/handlers/chat.test.ts --allow-net --allow-read --allow-env` → **13 passed / 0 failed** (11 baseline + 2 new).
+
+### Expected production impact
+- Briefing replies for users with an active Oura connection now include the Oura health block (~400 chars added to the system prompt → visible in `olive_llm_analytics` for `wa-chat-briefing-v1.0`).
+- Briefing replies for couples where the partner has `share_wellness_with_partner=true` and last-night readiness <65 now include the empathy note.
+- No other behavior change; PR is strictly the `today` fix + comment cleanups + tests.
+
 ## 2026-05-17 — [REFACTOR-1.4] Extract CHAT handler from whatsapp-webhook monolith
 
 Initiative 1.4 of [OLIVE_REFACTOR_PLAN.md](OLIVE_REFACTOR_PLAN.md). Follows 1.1 (SAVE_ARTIFACT), 1.2 (`Reply`/`HandlerContext` contract), and 1.3 (CONFIRMATION dispatcher).
@@ -33,7 +53,7 @@ Well under the Initiative 1.12 hard budget of 1,200 (target: ≤1,000 lines of p
 | `whatsapp-webhook/handlers/` | 35 passed | 46 passed (+11 new) |
 
 ### Followups (out of scope here)
-1. Fix the `today` ReferenceError in `assemblePartnerWellness` / `assembleHealthContext` — currently the Oura briefing path silently doesn't run.
+1. ~~Fix the `today` ReferenceError in `assemblePartnerWellness` / `assembleHealthContext` — currently the Oura briefing path silently doesn't run.~~ — done, see [FIX-1.4-today](#2026-05-17--fix-14-today-resolve-today-referenceerror-in-briefing-helpers) above.
 2. Lift `matchUserSkills` to `_shared/whatsapp-skills.ts` if a second intent needs it.
 3. Per-prompt file split (`_shared/prompts/whatsapp-chat/<type>.ts`) once the prompt eval harness (O.3) lands.
 
