@@ -1,5 +1,42 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-17 — [REFACTOR-1.4] Extract CHAT handler from whatsapp-webhook monolith
+
+Initiative 1.4 of [OLIVE_REFACTOR_PLAN.md](OLIVE_REFACTOR_PLAN.md). Follows 1.1 (SAVE_ARTIFACT), 1.2 (`Reply`/`HandlerContext` contract), and 1.3 (CONFIRMATION dispatcher).
+
+CHAT was the **largest single intent block** remaining inline — 1,022 lines covering 11 chat types, partner/calendar/health context assembly, 11 inline system prompts, AI call with Pro→Flash fallback, and 3 fire-and-forget side-effects. Now lives in a single co-located, unit-tested module.
+
+### What moved
+- **`supabase/functions/whatsapp-webhook/handlers/chat.ts`** (new) — `makeChatHandler(deps): Handler` factory + DI; 11-case exhaustive switch on `ChatType`; 6 private context-assembly helpers (partner, partner-wellness, calendar, Oura, dynamic, compact summary); skill-match + skill-context loader; deterministic per-chatType error fallback; 3 `after_reply` callbacks (session write, memory evolution, daily log append).
+- **`supabase/functions/whatsapp-webhook/handlers/chat.test.ts`** (new) — 11 tests covering all 6 acceptance-criteria chat types (briefing/daily_focus/weekly_summary/motivation/general/assistant) + Pro→Flash fallback + help early-exit + after_reply effects + AI error fallback. Hand-rolled Supabase stub via Proxy-based chainable mock.
+- **`supabase/functions/_shared/prompts/whatsapp-chat-prompts.ts`** (new) — `getChatSystemPrompt(type, ctx)` registry. All 11 prompts moved verbatim from the monolith; version strings unchanged (re-uses `WA_CHAT_PROMPT_VERSIONS` from `whatsapp-prompts.ts`).
+- **`supabase/functions/whatsapp-webhook/index.ts`** — removed the 1,022-line CHAT block (lines 6680–7701) + the now-dead `detectChatType` (8 lines), `SkillMatch` interface, and `matchUserSkills` function (105 lines combined). Added a ~15-line dispatch case mirroring SAVE_ARTIFACT's pattern. Imports `ChatType` and `makeChatHandler` from `./handlers/chat.ts`.
+
+### Webhook line-count delta
+| Before | After | Removed |
+|---|---|---|
+| 9,052 lines (post-Phase-8d) | 7,919 lines | **−1,133** |
+
+Well under the Initiative 1.12 hard budget of 1,200 (target: ≤1,000 lines of pure routing after all 1.x extractions land).
+
+### Behavior preservation
+- All 11 chat-type system prompts moved byte-identically; `WA_CHAT_PROMPT_VERSIONS` strings unchanged so `olive_llm_analytics` history is continuous.
+- Pro tier fallback preserved verbatim: `weekly_summary` + `planning` route to Pro via `routeIntent`; on Pro throw, single retry on standard (Flash). Anthropic fallback not added (matches monolith).
+- The 3 side-effects (user_sessions context_data write, `evolveProfileFromConversation`, `append_to_daily_log` RPC) now run as `after_reply` callbacks — same order, same wrapping `try/catch`, same fire-and-forget semantics.
+- `assistant`-type max_length=2000 preserved; all others 1500.
+- Latent bug preserved: `today` references inside partner-wellness + Oura blocks (briefing only) still throw at runtime and get swallowed by the surrounding try/catch — those branches silently no-op in production. Tagged in the new module with comments referencing this CHANGES entry; fix tracked as a follow-up to keep this PR strictly move-only.
+
+### Tests
+| Suite | Before | After |
+|---|---|---|
+| `_shared/` | 1,361 passed | 1,361 passed (no regressions) |
+| `whatsapp-webhook/handlers/` | 35 passed | 46 passed (+11 new) |
+
+### Followups (out of scope here)
+1. Fix the `today` ReferenceError in `assemblePartnerWellness` / `assembleHealthContext` — currently the Oura briefing path silently doesn't run.
+2. Lift `matchUserSkills` to `_shared/whatsapp-skills.ts` if a second intent needs it.
+3. Per-prompt file split (`_shared/prompts/whatsapp-chat/<type>.ts`) once the prompt eval harness (O.3) lands.
+
 ## 2026-05-17 — [10X] Phase 2 — Performance: route lazy-loading + manual vendor chunks
 
 Follow-up to the merged Phase 1 batch (PR #138, [OLIVE_10X_PLAN.md](OLIVE_10X_PLAN.md)). This batch targets the single biggest user-facing performance gap surfaced by the audit (Phase 4A + 4B): a 2,645 kB / 742 kB-gzipped single-file JS bundle that dominated first-paint on mobile.
