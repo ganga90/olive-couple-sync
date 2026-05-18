@@ -389,6 +389,22 @@ $ Spesa: $45 pranzo da Chipotle
     'es': '✅ ¡Guardado! "{title}"{list}\n\n📝 Puedes encontrarlo en tus notas en la app.\n\n🔗 witholive.app',
     'it': '✅ Salvato! "{title}"{list}\n\n📝 Puoi trovarlo nelle tue note nell\'app.\n\n🔗 witholive.app',
   },
+  // ── Smart-save routing (Apr 2026): used when SAVE_ARTIFACT auto-creates
+  // a brand-new list. `{list}` is the new list's display name.
+  artifact_saved_new_list: {
+    en: '✅ Saved! "{title}" to a new list *{list}*\n\n📝 Find it in your notes on the app.\n\n🔗 witholive.app',
+    'es': '✅ ¡Guardado! "{title}" en una nueva lista *{list}*\n\n📝 Encuéntralo en tus notas en la app.\n\n🔗 witholive.app',
+    'it': '✅ Salvato! "{title}" in una nuova lista *{list}*\n\n📝 Trovalo nelle tue note nell\'app.\n\n🔗 witholive.app',
+  },
+  // ── Smart-save routing: used when no list was matched and no new list
+  // was created (resolver returned null OR feature flag off + no explicit
+  // list mention). No interpolation of `{list}` to avoid an empty slot
+  // mid-sentence.
+  artifact_saved_no_list: {
+    en: '✅ Saved! "{title}"\n\n📝 You can find it in your notes on the app.\n\n🔗 witholive.app',
+    'es': '✅ ¡Guardado! "{title}"\n\n📝 Puedes encontrarlo en tus notas en la app.\n\n🔗 witholive.app',
+    'it': '✅ Salvato! "{title}"\n\n📝 Puoi trovarlo nelle tue note nell\'app.\n\n🔗 witholive.app',
+  },
   artifact_none: {
     en: "I don't have a recent draft or output to save. Ask me to help you with something first, then say \"save it\" 🫒",
     'es': 'No tengo un borrador reciente para guardar. Pídeme ayuda con algo primero y luego di "guárdalo" 🫒',

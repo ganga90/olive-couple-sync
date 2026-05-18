@@ -229,7 +229,7 @@ Deno.test("happy path: rewriter + Perplexity + formatter, 2 after_reply queued",
   // In this test it isn't, so only the formatter callAI fires.
   assertEquals(callAI.calls.length, 1);
   assertEquals(callAI.calls[0].tier, 'lite');
-  assertEquals(callAI.calls[0].promptVersion, 'wa-web-search-v1.0');
+  assertEquals(callAI.calls[0].promptVersion, 'wa-web-search-v2.0');
   assertEquals(fetchStub.calls.length, 1);
   assertEquals(fetchStub.calls[0].url, 'https://api.perplexity.ai/chat/completions');
   assert(reply.text.includes('Joe'));
@@ -368,6 +368,103 @@ Deno.test("formatter throws → raw Perplexity result + first citation fallback"
   assert(reply.text.includes('https://example.com/source'));
   // After-reply still queued — the raw fallback is a valid response.
   assertExists(reply.after_reply);
+});
+
+// ─── Citation guard tests (v2.0) ───────────────────────────────────────
+//
+// The handler's citation guard (added with prompt v2.0) is a deterministic
+// safety net: if Gemini's formatted output contains no http(s):// substring
+// AND Perplexity returned citations, the top citation is appended on its
+// own line as "🔗 <url>". WhatsApp `preview_url: true` then linkifies it.
+
+Deno.test("citation guard: AI omits URL but citations exist → top source appended", async () => {
+  Deno.env.set('OLIVE_PERPLEXITY', 'test-key');
+  const { stub } = buildSupabaseStub();
+  // Formatter returns prose without ANY URL — the bug we're fixing.
+  const callAI = scriptedAI({
+    formatterReturns: '🌿 The Calatrava Hotel is a luxury boutique hotel in Palma de Mallorca.',
+  });
+  const saveEntity = recordingSaveEntity();
+  const fetchStub = scriptedFetch({
+    ok: true,
+    body: {
+      choices: [{ message: { content: 'Calatrava details...' } }],
+      citations: ['https://www.boutiquehotelcalatrava.com', 'https://example.com/other'],
+    },
+  });
+
+  const handler = makeWebSearchHandler({
+    callAI: callAI.fn, t: fakeT, saveReferencedEntity: saveEntity.fn, perplexityFetch: fetchStub.fn,
+  });
+  const reply = await handler(buildCtx({
+    // deno-lint-ignore no-explicit-any
+    supabase: stub as any,
+  }));
+
+  // Guard fired: top citation appended on its own line.
+  assert(
+    reply.text.includes('🔗 https://www.boutiquehotelcalatrava.com'),
+    `Expected top citation in reply, got: ${reply.text}`,
+  );
+  // Only the top citation, not all of them.
+  assert(!reply.text.includes('https://example.com/other'));
+});
+
+Deno.test("citation guard: AI already included a URL → no append (no duplication)", async () => {
+  Deno.env.set('OLIVE_PERPLEXITY', 'test-key');
+  const { stub } = buildSupabaseStub();
+  // Formatter complied with v2.0 prompt and included the URL itself.
+  const callAI = scriptedAI({
+    formatterReturns: '🌿 Calatrava Hotel — boutique in Palma.\n\n🔗 https://www.boutiquehotelcalatrava.com',
+  });
+  const saveEntity = recordingSaveEntity();
+  const fetchStub = scriptedFetch({
+    ok: true,
+    body: {
+      choices: [{ message: { content: 'x' } }],
+      citations: ['https://www.boutiquehotelcalatrava.com'],
+    },
+  });
+
+  const handler = makeWebSearchHandler({
+    callAI: callAI.fn, t: fakeT, saveReferencedEntity: saveEntity.fn, perplexityFetch: fetchStub.fn,
+  });
+  const reply = await handler(buildCtx({
+    // deno-lint-ignore no-explicit-any
+    supabase: stub as any,
+  }));
+
+  // Exactly one occurrence — guard did NOT re-append.
+  const occurrences = reply.text.split('https://www.boutiquehotelcalatrava.com').length - 1;
+  assertEquals(occurrences, 1);
+});
+
+Deno.test("citation guard: no citations returned → guard does nothing", async () => {
+  Deno.env.set('OLIVE_PERPLEXITY', 'test-key');
+  const { stub } = buildSupabaseStub();
+  const callAI = scriptedAI({
+    formatterReturns: '🌿 No URL in this answer.',
+  });
+  const saveEntity = recordingSaveEntity();
+  const fetchStub = scriptedFetch({
+    ok: true,
+    body: {
+      choices: [{ message: { content: 'no sources' } }],
+      citations: [],
+    },
+  });
+
+  const handler = makeWebSearchHandler({
+    callAI: callAI.fn, t: fakeT, saveReferencedEntity: saveEntity.fn, perplexityFetch: fetchStub.fn,
+  });
+  const reply = await handler(buildCtx({
+    // deno-lint-ignore no-explicit-any
+    supabase: stub as any,
+  }));
+
+  // No citations + no URL in response → guard skipped, no 🔗 line.
+  assert(!reply.text.includes('🔗'));
+  assert(!/https?:\/\//.test(reply.text));
 });
 
 Deno.test("uncaught exception in flow → web_search_error", async () => {

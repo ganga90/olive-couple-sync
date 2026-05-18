@@ -224,6 +224,117 @@ Deno.test("classifyArtifact: empty content + empty request → safe sentinel tit
   assertEquals(result.title, "Saved from Olive chat");
 });
 
+// ─── v2.0 list-routing fields ──────────────────────────────────────────
+
+Deno.test("classifyArtifact v2.0: existing list match → target_list_name + is_new_list=false", async () => {
+  const callAI = async () => JSON.stringify({
+    title: "Calatrava Hotel",
+    category: "travel",
+    tags: ["hotel", "mallorca"],
+    target_list_name: "Mallorca Trip",
+    is_new_list: false,
+    confidence: "high",
+  });
+
+  const result = await classifyArtifact({
+    artifactContent: "Calatrava is a boutique adults-only hotel in Palma de Mallorca...",
+    artifactRequest: "save this",
+    callAI,
+    promptVersion: "test-v2",
+    existingLists: [{ name: "Mallorca Trip" }, { name: "Restaurants" }],
+  });
+
+  assertEquals(result.target_list_name, "Mallorca Trip");
+  assertEquals(result.is_new_list, false);
+  assertEquals(result.confidence, "high");
+});
+
+Deno.test("classifyArtifact v2.0: AI proposes new list → is_new_list=true", async () => {
+  const callAI = async () => JSON.stringify({
+    title: "Best Sushi Spots in Tokyo",
+    category: "travel",
+    tags: ["sushi", "tokyo"],
+    target_list_name: "Tokyo Trip",
+    is_new_list: true,
+    confidence: "high",
+  });
+
+  const result = await classifyArtifact({
+    artifactContent: "1. Sukiyabashi Jiro 2. Sushi Saito 3. ...",
+    artifactRequest: "save this",
+    callAI,
+    promptVersion: "test-v2",
+    existingLists: [{ name: "Mallorca Trip" }],   // no Tokyo list yet
+  });
+
+  assertEquals(result.target_list_name, "Tokyo Trip");
+  assertEquals(result.is_new_list, true);
+  assertEquals(result.confidence, "high");
+});
+
+Deno.test("classifyArtifact v2.0: missing/omitted routing fields default safely", async () => {
+  // v1.0-shaped response (no routing fields) — must still parse without error.
+  const callAI = async () => JSON.stringify({
+    title: "Generic Note",
+    category: "general",
+    tags: ["x"],
+  });
+
+  const result = await classifyArtifact({
+    artifactContent: "...",
+    artifactRequest: "save it",
+    callAI,
+    promptVersion: "test-v2",
+  });
+
+  assertEquals(result.target_list_name, null);
+  assertEquals(result.is_new_list, false);
+  assertEquals(result.confidence, "low");
+});
+
+Deno.test("classifyArtifact v2.0: AI returns target_list_name=null + confidence=low", async () => {
+  const callAI = async () => JSON.stringify({
+    title: "Random Funny Quote",
+    category: "general",
+    tags: ["quote"],
+    target_list_name: null,
+    is_new_list: false,
+    confidence: "low",
+  });
+
+  const result = await classifyArtifact({
+    artifactContent: "Some funny one-off content",
+    artifactRequest: "save this",
+    callAI,
+    promptVersion: "test-v2",
+    existingLists: [{ name: "Travel" }, { name: "Recipes" }],
+  });
+
+  assertEquals(result.target_list_name, null);
+  assertEquals(result.confidence, "low");
+});
+
+Deno.test("classifyArtifact v2.0: invalid confidence value falls back to 'low'", async () => {
+  const callAI = async () => JSON.stringify({
+    title: "X",
+    category: "task",
+    tags: [],
+    target_list_name: "Y",
+    is_new_list: true,
+    confidence: "very-high",   // not in enum
+  });
+
+  const result = await classifyArtifact({
+    artifactContent: "x",
+    artifactRequest: "y",
+    callAI,
+    promptVersion: "test-v2",
+  });
+
+  // Invalid value rejected — default 'low' preserved.
+  assertEquals(result.confidence, "low");
+});
+
 Deno.test("classifyArtifact: passes correct prompt version + tier to callAI", async () => {
   let capturedTier: string | undefined;
   let capturedVersion: string | undefined;

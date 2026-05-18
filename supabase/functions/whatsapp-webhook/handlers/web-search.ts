@@ -30,6 +30,7 @@
 //      - Anything thrown → `web_search_error`
 
 import {
+  buildWaWebSearchFormatPrompt,
   WA_REWRITER_PROMPT_VERSION,
   WA_WEB_SEARCH_FORMAT_PROMPT_VERSION,
 } from "../../_shared/prompts/whatsapp-prompts.ts";
@@ -282,17 +283,14 @@ export function makeWebSearchHandler(deps: WebSearchDeps): Handler {
       let formattedResponse: string;
       try {
         formattedResponse = await deps.callAI(
-          `You are Olive, a world-class AI assistant — like a brilliant friend who knows the world AND the user's life. The user asked a question. Answer it comprehensively using the search results, and if any personal context is relevant, weave it in naturally. Format for WhatsApp (max 1200 chars). Be warm, specific, and genuinely helpful. Use emojis sparingly 🫒${ctxLangName !== 'English' ? `\n\nIMPORTANT: Respond entirely in ${ctxLangName}.` : ''}
-
-USER'S QUESTION: ${userQuestion}
-${savedItemContext}
-${personalContext}
-WEB SEARCH RESULTS:
-${searchResult}
-
-${citations.length > 0 ? 'SOURCES:\n' + citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join('\n') : ''}
-
-Answer the question thoroughly, then briefly mention any relevant personal connections. End with "Want me to save this?" if the response contains useful recommendations.`,
+          buildWaWebSearchFormatPrompt({
+            langName: ctxLangName,
+            userQuestion,
+            savedItemContext,
+            personalContext,
+            searchResult,
+            citations,
+          }),
           searchResult,
           0.5,
           'lite',
@@ -305,6 +303,17 @@ Answer the question thoroughly, then briefly mention any relevant personal conne
         if (citations.length > 0) {
           formattedResponse += `\n\n🔗 ${citations[0]}`;
         }
+      }
+
+      // ── Citation guard: generalized form of the formatErr-fallback
+      // append. Even with v2.0's strengthened prompt, Gemini sometimes
+      // produces a warm prose answer with no URL. If Perplexity gave us
+      // citations and the formatted text contains no http(s) link,
+      // append the top source. WhatsApp `preview_url: true` linkifies
+      // bare URLs (see _shared/whatsapp-messaging.ts).
+      if (citations.length > 0 && !/https?:\/\//i.test(formattedResponse)) {
+        formattedResponse = `${formattedResponse.trim()}\n\n🔗 ${citations[0]}`;
+        console.log('[WebSearch] Citation guard fired — appended top source');
       }
 
       // ── Build pending_offer (artifact freezing).

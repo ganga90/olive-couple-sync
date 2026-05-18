@@ -29,12 +29,28 @@ import {
   classifyArtifact,
   type ArtifactClassifierCall,
 } from "../../_shared/ai/classify-artifact.ts";
+import {
+  resolveSaveTargetList,
+  type UserList,
+} from "../../_shared/list-matcher.ts";
 import type {
   ConversationContext,
   Handler,
   HandlerContext,
   Reply,
 } from "../../_shared/types.ts";
+
+/** Feature flag — when truthy, SAVE_ARTIFACT enriches the classifier with
+ *  the user's existing lists and routes the saved note into the matched
+ *  (or newly-created) list. When falsy/unset, behavior is identical to
+ *  pre-Apr-2026 (only explicit "in my X list" mentions get a list_id).
+ *  Flip via Supabase Studio → Edge Functions → Secrets. */
+const SMART_SAVE_ROUTING_FLAG = 'OLIVE_SMART_SAVE_ROUTING';
+
+function smartSaveRoutingEnabled(): boolean {
+  const v = Deno.env.get(SMART_SAVE_ROUTING_FLAG);
+  return v === '1' || v === 'true' || v === 'on';
+}
 
 /** Dependencies the handler closes over. The factory injects these once;
  *  individual invocations re-use them. Tests pass stubs. */
@@ -101,22 +117,32 @@ function buildNotePayload(
 }
 
 /** Look up an explicit "in <list>" mention against the user's existing
- *  lists. Returns the matched list (id + couple_id) or null. */
+ *  lists. Returns the matched list (id + couple_id) or null.
+ *
+ *  Always runs FIRST — an explicit user mention beats any AI-suggested
+ *  routing. `lists` may be passed pre-fetched when smart routing already
+ *  loaded them; we only re-query if the caller didn't.
+ */
 async function resolveListMention(
   // deno-lint-ignore no-explicit-any
   supabase: SupabaseClient<any>,
   userId: string,
   coupleId: string | null,
   messageBody: string | null,
-): Promise<{ id: string; couple_id: string | null } | null> {
+  preFetched?: Array<{ id: string; name: string; couple_id: string | null }>,
+): Promise<{ id: string; couple_id: string | null; name: string } | null> {
   if (!messageBody) return null;
   const match = messageBody.toLowerCase().match(LIST_MENTION_RE);
   if (!match) return null;
 
-  const { data: lists } = await supabase
-    .from('clerk_lists')
-    .select('id, name, couple_id')
-    .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
+  let lists = preFetched;
+  if (!lists) {
+    const { data } = await supabase
+      .from('clerk_lists')
+      .select('id, name, couple_id')
+      .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
+    lists = data ?? undefined;
+  }
 
   if (!lists || lists.length === 0) return null;
   const target = match[1].toLowerCase().trim();
@@ -124,7 +150,29 @@ async function resolveListMention(
     lists.find((l) => l.name.toLowerCase() === target) ||
     lists.find((l) => l.name.toLowerCase().includes(target)) ||
     lists.find((l) => target.includes(l.name.toLowerCase()));
-  return found ? { id: found.id, couple_id: found.couple_id } : null;
+  return found ? { id: found.id, couple_id: found.couple_id, name: found.name } : null;
+}
+
+/** Fetch the user's most recently touched lists for smart routing.
+ *  Bounded by 30 to keep the classifier prompt under budget. RLS scopes
+ *  to the user/couple. */
+async function fetchExistingListsForRouting(
+  // deno-lint-ignore no-explicit-any
+  supabase: SupabaseClient<any>,
+  userId: string,
+  coupleId: string | null,
+): Promise<Array<{ id: string; name: string; couple_id: string | null }>> {
+  const { data, error } = await supabase
+    .from('clerk_lists')
+    .select('id, name, couple_id')
+    .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
+    .order('updated_at', { ascending: false })
+    .limit(30);
+  if (error) {
+    console.warn('[SAVE_ARTIFACT] Failed to fetch existing lists:', error);
+    return [];
+  }
+  return data ?? [];
 }
 
 /**
@@ -142,25 +190,88 @@ export function makeSaveArtifactHandler(deps: SaveArtifactDeps): Handler {
       return { text: deps.t('artifact_none', ctx.userLang) };
     }
 
+    // Smart-save routing (Apr 2026): fetch the user's existing lists ONCE
+    // and reuse them for (a) explicit "in my X list" matching, (b)
+    // classifier prompt enrichment, (c) resolver equivalence checks.
+    // When the feature flag is off, we skip the fetch + classifier enrichment
+    // and behavior is identical to the pre-flag path (only explicit mentions
+    // populate list_id).
+    const smartRouting = smartSaveRoutingEnabled();
+    let existingLists: Array<{ id: string; name: string; couple_id: string | null }> = [];
+    if (smartRouting) {
+      existingLists = await fetchExistingListsForRouting(
+        ctx.supabase,
+        ctx.userId,
+        ctx.coupleId,
+      );
+    }
+
     const classification = await classifyArtifact({
       artifactContent: artifact.content,
       artifactRequest: artifact.request,
       callAI: deps.callAI,
       tracker: ctx.tracker,
       promptVersion: deps.promptVersion,
+      existingLists: smartRouting
+        ? existingLists.map((l) => ({ name: l.name }))
+        : undefined,
     });
 
     const notePayload = buildNotePayload(ctx, artifact, classification);
 
-    const matchedList = await resolveListMention(
+    // STEP 1 — explicit "in my X list" mention ALWAYS wins (preserves the
+    // pre-Apr-2026 contract for power users who hand-route their saves).
+    const explicitMention = await resolveListMention(
       ctx.supabase,
       ctx.userId,
       ctx.coupleId,
       ctx.messageBody,
+      existingLists.length > 0 ? existingLists : undefined,
     );
-    if (matchedList) {
-      notePayload.list_id = matchedList.id;
-      notePayload.couple_id = matchedList.couple_id ?? ctx.effectiveCoupleId;
+    let routedListName: string | null = null;
+    let routedCreated = false;
+    if (explicitMention) {
+      notePayload.list_id = explicitMention.id;
+      notePayload.couple_id = explicitMention.couple_id ?? ctx.effectiveCoupleId;
+      routedListName = explicitMention.name;
+    } else if (smartRouting && existingLists.length >= 0) {
+      // STEP 2 — smart resolver. Pass the AI's nomination + existing lists.
+      const userLists: UserList[] = existingLists.map((l) => ({
+        id: l.id,
+        name: l.name,
+      }));
+      const resolved = await resolveSaveTargetList({
+        supabase: ctx.supabase,
+        userId: ctx.userId,
+        coupleId: ctx.coupleId,
+        // Personal scope for saved chat replies — couple/space contexts are
+        // not currently surfaced via the session. A future migration can
+        // thread a space_id through HandlerContext if shared SAVE_ARTIFACT
+        // routing into couple spaces becomes a requirement.
+        spaceId: null,
+        existingLists: userLists,
+        aiSuggestion: {
+          name: classification.target_list_name,
+          isNew: classification.is_new_list,
+          confidence: classification.confidence,
+        },
+        classification: {
+          category: classification.category,
+          tags: classification.tags,
+          title: classification.title,
+        },
+      });
+      if (resolved) {
+        notePayload.list_id = resolved.listId;
+        // Couple-scope inheritance: if the matched list belongs to a couple,
+        // carry that scope onto the note so RLS lets both members see it.
+        const matched = existingLists.find((l) => l.id === resolved.listId);
+        if (matched) {
+          notePayload.couple_id = matched.couple_id ?? ctx.effectiveCoupleId;
+        }
+        routedListName = resolved.listName;
+        routedCreated = resolved.created;
+      }
     }
 
     let { data: savedNote, error: saveError } =
@@ -215,22 +326,38 @@ export function makeSaveArtifactHandler(deps: SaveArtifactDeps): Handler {
     const savedId = final.id;
     const savedSummary = final.summary ?? '';
 
-    // Fetch list name for the confirmation copy (cheap query, blocks
-    // the reply because the localized string needs it inline).
-    let listConfirm = '';
-    if (savedListId) {
+    // Resolve the list name for the confirmation copy. Prefer the in-scope
+    // name from smart routing / explicit mention so we don't re-query.
+    let listNameForCopy = routedListName;
+    if (!listNameForCopy && savedListId) {
       const { data: listInfo } = await ctx.supabase
         .from('clerk_lists')
         .select('name')
         .eq('id', savedListId)
         .single();
-      if (listInfo) listConfirm = ` in your *${(listInfo as { name: string }).name}* list`;
+      if (listInfo) listNameForCopy = (listInfo as { name: string }).name;
     }
 
-    const replyText = deps.t('artifact_saved', ctx.userLang, {
-      title: savedSummary,
-      list: listConfirm,
-    });
+    // Pick the right copy variant:
+    //  - new list auto-created (routedCreated=true) → "to a new list *X*"
+    //  - matched an existing list / explicit mention → "in your *X* list"
+    //  - no list at all → leave the list slot out entirely
+    let replyText: string;
+    if (routedCreated && listNameForCopy) {
+      replyText = deps.t('artifact_saved_new_list', ctx.userLang, {
+        title: savedSummary,
+        list: listNameForCopy,
+      });
+    } else if (listNameForCopy) {
+      replyText = deps.t('artifact_saved', ctx.userLang, {
+        title: savedSummary,
+        list: ` in your *${listNameForCopy}* list`,
+      });
+    } else {
+      replyText = deps.t('artifact_saved_no_list', ctx.userLang, {
+        title: savedSummary,
+      });
+    }
 
     // After-reply side-effects — fire-and-forget. Embedding generation
     // and session-state cleanup never block the outbound reply.

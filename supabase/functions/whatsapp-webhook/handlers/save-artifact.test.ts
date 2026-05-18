@@ -240,8 +240,10 @@ Deno.test("happy path: AI succeeds, insert succeeds → reply + entity + after-r
   // deno-lint-ignore no-explicit-any
   const reply = await handler(buildCtx({ supabase: stub as any }));
 
-  // Reply text comes from t() with vars filled in.
-  assert(reply.text.startsWith('artifact_saved|title=Email Draft About Dinner'));
+  // Reply text comes from t() with vars filled in. Smart routing flag is off
+  // here AND no list was resolved → handler uses the dedicated `artifact_saved_no_list`
+  // copy (cleaner than `artifact_saved` with an empty `{list}` slot).
+  assert(reply.text.startsWith('artifact_saved_no_list|title=Email Draft About Dinner'));
   // referenced_entity points at the inserted note for the router to persist.
   assert(reply.referenced_entity?.id?.startsWith('note-'));
   assertEquals(reply.referenced_entity?.summary, 'Email Draft About Dinner');
@@ -487,4 +489,234 @@ Deno.test("after-reply: session clear resets last_assistant_* + pending_offer", 
 
   const sessionClear = calls.find((c) => c.kind === 'update-session-clear');
   assertEquals(sessionClear?.id, 'sess-1');
+});
+
+// ─── Smart-save routing (OLIVE_SMART_SAVE_ROUTING flag) ───────────────
+//
+// When the flag is on, the handler fetches the user's existing lists,
+// passes them to the classifier, and uses the AI-suggested target list
+// via the shared `resolveSaveTargetList` resolver. When the flag is off,
+// behavior is identical to the pre-flag path. These tests verify both
+// modes and the three confirmation-copy branches.
+
+interface SmartStubOptions {
+  /** Lists returned by the smart-routing fetch (clerk_lists order/limit). */
+  existingLists?: Array<{ id: string; name: string; couple_id: string | null }>;
+  /** Response when the resolver INSERTs a new list. */
+  newListInsertResponse?: { data: { id: string; name: string } | null; error: unknown };
+  /** Note insert response. */
+  noteInsertResponse?: {
+    data: { id: string; summary: string | null; list_id: string | null } | null;
+    error: { message: string; code?: string } | null;
+  };
+}
+
+function buildSmartStub(opts: SmartStubOptions = {}) {
+  const calls: Array<{ kind: string; payload?: unknown }> = [];
+
+  // deno-lint-ignore no-explicit-any
+  const stub: any = {
+    from(table: string) {
+      return {
+        insert(rows: Array<Record<string, unknown>> | Record<string, unknown>) {
+          const row = Array.isArray(rows) ? rows[0] : rows;
+          if (table === 'clerk_notes') {
+            calls.push({ kind: 'insert-note', payload: row });
+            return {
+              select: () => ({
+                single: async () =>
+                  opts.noteInsertResponse ?? {
+                    data: {
+                      id: 'note-smart-1',
+                      summary: (row as { summary?: string }).summary ?? null,
+                      list_id: (row as { list_id?: string | null }).list_id ?? null,
+                    },
+                    error: null,
+                  },
+              }),
+            };
+          }
+          if (table === 'clerk_lists') {
+            calls.push({ kind: 'insert-list', payload: row });
+            return {
+              select: () => ({
+                single: async () =>
+                  opts.newListInsertResponse ?? {
+                    data: { id: 'new-list-99', name: (row as { name: string }).name },
+                    error: null,
+                  },
+              }),
+            };
+          }
+          return { select: () => ({ single: async () => ({ data: null, error: null }) }) };
+        },
+
+        select(_cols: string) {
+          const chain: Record<string, unknown> = {
+            // Smart-routing fetch goes .select().or().order().limit() and awaits.
+            or() { return chain; },
+            order() { return chain; },
+            limit() { return chain; },
+            ilike() { return chain; },
+            eq() {
+              return {
+                single: async () => ({ data: null, error: null }),
+              };
+            },
+            // The await on the chain itself.
+            then(resolve: (v: unknown) => void) {
+              if (table === 'clerk_lists') {
+                calls.push({ kind: 'fetch-lists' });
+                resolve({ data: opts.existingLists ?? [], error: null });
+              } else {
+                resolve({ data: null, error: null });
+              }
+            },
+            single: async () => ({ data: null, error: null }),
+          };
+          return chain;
+        },
+
+        update(patch: Record<string, unknown>) {
+          return {
+            eq: async (_field: string, value: string) => {
+              if (table === 'user_sessions' && 'context_data' in patch) {
+                calls.push({ kind: 'update-session-clear', payload: value });
+              }
+              return { data: null, error: null };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  return { stub, calls };
+}
+
+Deno.test("smart routing OFF: behavior identical to pre-flag (no lists fetched, no_list copy)", async () => {
+  Deno.env.delete('OLIVE_SMART_SAVE_ROUTING');
+  const { stub, calls } = buildSmartStub({
+    existingLists: [{ id: 'l1', name: 'Travel', couple_id: null }],
+  });
+
+  const handler = makeSaveArtifactHandler({
+    callAI: okCallAI,
+    generateEmbedding: okEmbedding,
+    t: fakeT,
+    promptVersion: 'wa-test',
+  });
+
+  // deno-lint-ignore no-explicit-any
+  const reply = await handler(buildCtx({ supabase: stub as any }));
+
+  // No fetch-lists call when flag is off.
+  assertEquals(calls.filter((c) => c.kind === 'fetch-lists').length, 0);
+  // Default copy when no list resolved.
+  assert(reply.text.startsWith('artifact_saved_no_list'));
+});
+
+Deno.test("smart routing ON + AI matches existing list → artifact_saved copy with list interpolated", async () => {
+  Deno.env.set('OLIVE_SMART_SAVE_ROUTING', '1');
+  const { stub, calls } = buildSmartStub({
+    existingLists: [{ id: 'l-mallorca', name: 'Mallorca Trip', couple_id: 'couple-1' }],
+  });
+
+  const handler = makeSaveArtifactHandler({
+    callAI: async () => JSON.stringify({
+      title: 'Calatrava Hotel',
+      category: 'travel',
+      tags: ['hotel'],
+      target_list_name: 'Mallorca Trip',
+      is_new_list: false,
+      confidence: 'high',
+    }),
+    generateEmbedding: okEmbedding,
+    t: fakeT,
+    promptVersion: 'wa-test',
+  });
+
+  // deno-lint-ignore no-explicit-any
+  const reply = await handler(buildCtx({ supabase: stub as any }));
+
+  // Smart routing fetched lists.
+  assert(calls.some((c) => c.kind === 'fetch-lists'));
+  // Note inserted with the matched list_id.
+  const insertCall = calls.find((c) => c.kind === 'insert-note');
+  assertEquals((insertCall!.payload as { list_id: string }).list_id, 'l-mallorca');
+  // No new list created.
+  assert(!calls.some((c) => c.kind === 'insert-list'));
+  // Copy uses the existing-list variant ("in your *X* list").
+  assert(reply.text.startsWith('artifact_saved|'));
+  assert(reply.text.includes('Mallorca Trip'));
+});
+
+Deno.test("smart routing ON + AI proposes new list (high conf) → INSERT clerk_lists + artifact_saved_new_list copy", async () => {
+  Deno.env.set('OLIVE_SMART_SAVE_ROUTING', '1');
+  const { stub, calls } = buildSmartStub({
+    existingLists: [],   // No existing lists.
+  });
+
+  const handler = makeSaveArtifactHandler({
+    callAI: async () => JSON.stringify({
+      title: 'Best Sushi in Tokyo',
+      category: 'travel',
+      tags: ['sushi'],
+      target_list_name: 'Tokyo Trip',
+      is_new_list: true,
+      confidence: 'high',
+    }),
+    generateEmbedding: okEmbedding,
+    t: fakeT,
+    promptVersion: 'wa-test',
+  });
+
+  // deno-lint-ignore no-explicit-any
+  const reply = await handler(buildCtx({ supabase: stub as any }));
+
+  // New list was inserted via the resolver.
+  const listInsert = calls.find((c) => c.kind === 'insert-list');
+  assert(listInsert);
+  assertEquals((listInsert!.payload as { name: string }).name, 'Tokyo Trip');
+  assertEquals((listInsert!.payload as { is_manual: boolean }).is_manual, false);
+  // Note inserted with the new list_id.
+  const noteInsert = calls.find((c) => c.kind === 'insert-note');
+  assertEquals((noteInsert!.payload as { list_id: string }).list_id, 'new-list-99');
+  // Copy uses the new-list variant.
+  assert(reply.text.startsWith('artifact_saved_new_list|'));
+  assert(reply.text.includes('Tokyo Trip'));
+});
+
+Deno.test("smart routing ON + AI confidence=low → resolver returns null → no_list copy", async () => {
+  Deno.env.set('OLIVE_SMART_SAVE_ROUTING', '1');
+  const { stub, calls } = buildSmartStub({
+    existingLists: [{ id: 'l-books', name: 'Books', couple_id: null }],
+  });
+
+  const handler = makeSaveArtifactHandler({
+    callAI: async () => JSON.stringify({
+      title: 'Random Quote',
+      category: 'general',
+      tags: ['quote'],
+      target_list_name: null,
+      is_new_list: false,
+      confidence: 'low',
+    }),
+    generateEmbedding: okEmbedding,
+    t: fakeT,
+    promptVersion: 'wa-test',
+  });
+
+  // deno-lint-ignore no-explicit-any
+  const reply = await handler(buildCtx({ supabase: stub as any }));
+
+  // No new list created.
+  assert(!calls.some((c) => c.kind === 'insert-list'));
+  // Note inserted with null list_id.
+  const noteInsert = calls.find((c) => c.kind === 'insert-note');
+  assertEquals((noteInsert!.payload as { list_id: string | null }).list_id, undefined);
+  // No-list copy.
+  assert(reply.text.startsWith('artifact_saved_no_list'));
+  // Cleanup so subsequent tests don't inherit the flag.
+  Deno.env.delete('OLIVE_SMART_SAVE_ROUTING');
 });

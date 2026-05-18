@@ -1,5 +1,50 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-18 — [FEAT] Clickable web-search links + smart save-list routing
+
+Two adjacent UX fixes shipped together because they share the WEB_SEARCH → "Want me to save this?" → SAVE_ARTIFACT pipeline.
+
+### Problem 1 — Web search replies don't surface clickable links
+The Perplexity-fed Gemini formatter ignored the soft "Include relevant links" instruction; users got prose without a tappable URL. Fix:
+- **Prompt v2.0** (`wa-web-search-v2.0`) — mandates a trailing `🔗 <bare https URL>` line; explicitly forbids markdown `[text](url)` since WhatsApp doesn't render it. Lifted out of the inline blob in `web-search.ts` into a versioned `buildWaWebSearchFormatPrompt()` in `_shared/prompts/whatsapp-prompts.ts` (CLAUDE.md rule #6).
+- **Citation guard** (deterministic safety net) — if the AI still drops the URL and citations exist, the handler appends `🔗 <top citation>` automatically. Mirrors the existing `formatErr` fallback pattern.
+
+### Problem 2 — "Save this" lands in generic Tasks instead of a relevant list
+Saved web-search artifacts had `list_id = null` unless the user explicitly typed "save it in my X list". Fix (gated behind `OLIVE_SMART_SAVE_ROUTING` env var, default OFF for 48h internal QA):
+- **`classify-artifact.ts` v2.0** — accepts the user's existing lists, returns `target_list_name` + `is_new_list` + `confidence`. Prompt forbids close-but-not-equal names ("Travels" when "Travel" exists). Versioned `CLASSIFY_ARTIFACT_PROMPT_VERSION = "classify-artifact-v2.0"`.
+- **`resolveSaveTargetList()`** in `_shared/list-matcher.ts` — three-step cascade: AI-matches-existing → AI-proposes-new-with-equivalence-guard-and-create → category-canonical-fallback. Race-condition-safe via `23505` catch + refetch (same pattern as `process-note/findOrCreateList`). Ported a subset of process-note's `canonicalListNames`; full cascade extraction left for a follow-up.
+- **`save-artifact.ts`** — fetches user's top 30 lists once, threads through classifier + resolver. Explicit "in my X list" mention still wins first. New `routedListName` / `routedCreated` in scope drive a 3-way confirmation copy branch.
+- **i18n keys** — `artifact_saved_new_list` ("Saved … to a new list *X*") and `artifact_saved_no_list` (drops the `{list}` slot cleanly) added in en/es-ES/it-IT. Old `artifact_saved` keeps the existing-list-match path.
+
+### What changed
+
+| File | Action |
+|---|---|
+| `_shared/prompts/whatsapp-prompts.ts` | Version bump to v2.0; added `buildWaWebSearchFormatPrompt()` template. |
+| `_shared/ai/classify-artifact.ts` | Exported `CLASSIFY_ARTIFACT_PROMPT_VERSION` + `CLASSIFY_ARTIFACT_SYSTEM_PROMPT`. Added `existingLists` input + `target_list_name` / `is_new_list` / `confidence` outputs. |
+| `_shared/list-matcher.ts` | New `resolveSaveTargetList()` + helpers (`areNamesEquivalent`, `findEquivalentList`, `titleCaseCategory`) + canonical name map. |
+| `_shared/list-matcher.test.ts` | New — 18 tests covering matching, equivalence guard, canonical fallback, 23505 race, confidence floor, generic-name suppression. |
+| `_shared/whatsapp-localization.ts` | Added `artifact_saved_new_list` + `artifact_saved_no_list` (en/es/it). |
+| `_shared/ai/classify-artifact.test.ts` | +5 tests for v2.0 routing fields (existing match / new list / null / invalid confidence / defaults). |
+| `whatsapp-webhook/handlers/web-search.ts` | Inline prompt → template call. Citation guard inserted after format. |
+| `whatsapp-webhook/handlers/web-search.test.ts` | +3 citation-guard tests; updated existing happy-path assertion to v2.0 version string. |
+| `whatsapp-webhook/handlers/save-artifact.ts` | Feature flag + list fetch + resolver wiring + 3-way reply copy. Explicit-mention path preserved (still runs first). |
+| `whatsapp-webhook/handlers/save-artifact.test.ts` | +4 smart-routing tests (flag off, existing match, new-list create, low-conf no-list). Updated default happy-path assertion to `artifact_saved_no_list`. |
+| `whatsapp-webhook/index.ts` | Pass `CLASSIFY_ARTIFACT_PROMPT_VERSION` (was `WA_CLASSIFICATION_PROMPT_VERSION` — analytics tag was incorrect). |
+
+### Test results
+
+`deno test supabase/functions/_shared/ supabase/functions/whatsapp-webhook/handlers/` → **1503 passed, 0 failed** (added 30 new tests). One pre-existing failure in `timezone-calendar.test.ts` (date-sensitive, unrelated module — fails on baseline `f6fd110` too).
+
+### Migrations
+None. `clerk_lists` already has every column needed (`name`, `description`, `is_manual`, `author_id`, `space_id`; `couple_id` derived by BEFORE INSERT trigger).
+
+### Rollout
+- Problem 1 ships immediately on edge function deploy — no flag.
+- Problem 2 ships dark behind `OLIVE_SMART_SAVE_ROUTING=1`. Internal QA ~48h, then flip on for all users.
+
+---
+
 ## 2026-05-17 — [REFACTOR-1.7b] Extract TASK_ACTION handler
 
 The last big intent block in `whatsapp-webhook/index.ts`. Lifts ~1,191 lines (the entire `if (intent === 'TASK_ACTION')` body, lines 4332–5522) into a new `handlers/task-action.ts` module that follows the same factory + DI pattern as 1.4 CHAT, 1.5 CONTEXTUAL_ASK / WEB_SEARCH, 1.6 CREATE, and 1.7a EXPENSE / PARTNER_MESSAGE.

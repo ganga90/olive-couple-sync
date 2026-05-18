@@ -105,6 +105,7 @@ import {
 // with co-located unit tests. The dispatch site below builds a
 // HandlerContext, calls the handler, applies the returned Reply.
 import { makeSaveArtifactHandler } from "./handlers/save-artifact.ts";
+import { CLASSIFY_ARTIFACT_PROMPT_VERSION } from "../_shared/ai/classify-artifact.ts";
 // Initiative 1.3 — the three pending-offer SafetyNets (#1.4, #1.4b,
 // #1.4c) collapsed into a single dispatcher in handlers/confirmation.ts.
 // Returns a `ConfirmationOutcome`; the call site applies the right
@@ -4435,7 +4436,7 @@ Description: "${parsedExpense.description}"`;
     // SAVE_ARTIFACT — handler in ./handlers/save-artifact.ts (Initiative 1.2).
     if (intent === 'SAVE_ARTIFACT') {
       const r = await makeSaveArtifactHandler({
-        callAI, generateEmbedding, t, promptVersion: WA_CLASSIFICATION_PROMPT_VERSION,
+        callAI, generateEmbedding, t, promptVersion: CLASSIFY_ARTIFACT_PROMPT_VERSION,
       })({
         supabase, userId, userLang, userTimezone: profile.timezone || 'America/New_York',
         profile: profile as any, coupleId, effectiveCoupleId, session: session as any,

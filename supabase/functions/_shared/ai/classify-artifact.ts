@@ -52,29 +52,75 @@ export interface ClassifyArtifactInput {
    *  current registered prompt version, but kept overridable so an
    *  experiment can A/B different versions. */
   promptVersion: string;
+  /** The user's current lists, surfaced to the AI so it can route the
+   *  artifact into an existing one (or propose a new one). The caller
+   *  should pass the most recently-touched lists; we cap at 30 in the
+   *  prompt to stay within the flash-lite budget. Optional — when
+   *  omitted (e.g. flag off), the AI returns target_list_name=null and
+   *  the handler falls back to its prior list_id=null behavior. */
+  existingLists?: Array<{
+    name: string;
+    recent_item_titles?: string[];
+  }>;
 }
 
 export interface ClassifyArtifactResult {
   title: string;
   category: string;
   tags: string[];
+  /** Target list the classifier recommends. NULL when the AI declined
+   *  to nominate one (low confidence, generic content, or feature off). */
+  target_list_name: string | null;
+  /** True iff target_list_name is a PROPOSAL not present in existingLists. */
+  is_new_list: boolean;
+  /** Classifier's certainty about target_list_name. The resolver uses
+   *  this against a configurable floor before auto-creating a new list. */
+  confidence: 'high' | 'medium' | 'low';
 }
 
 /** Sentinel title used when nothing else parses out. Always passes
  *  `isBadTitle`, which is the trigger for fallback paths. */
 const SENTINEL_TITLE = "Saved draft";
 
-/** System prompt for the classifier. Constant so versioning is
- *  external (`promptVersion`). Edits require bumping the version. */
-const SYSTEM_PROMPT = `You classify saved content into a structured note. Return JSON with:
+/** Versioned prompt identifier — bump when SYSTEM_PROMPT body changes
+ *  so `olive_llm_analytics` can attribute regressions. v2.0 adds the
+ *  list-routing fields (target_list_name, is_new_list, confidence). */
+export const CLASSIFY_ARTIFACT_PROMPT_VERSION = "classify-artifact-v2.0";
+
+/** System prompt for the classifier. v2.0 adds list-routing instructions
+ *  so the same call that picks a title/category also nominates a target
+ *  list (existing or new). Edits require bumping the version above. */
+export const CLASSIFY_ARTIFACT_SYSTEM_PROMPT = `You classify saved content into a structured note. Return JSON with:
 - "title": A concise, descriptive title (max 8 words) that captures the TOPIC of the FULL ARTIFACT CONTENT. NEVER base the title on the original request when that request is a short confirmation (e.g. "yes", "yes please", "save it", "ok", "do it", "sì", "sì grazie", "sí", "vale", "claro"). NEVER use generic titles ("Save Note", "Saved Draft", "Clarification Request"). Instead describe what the CONTENT is about. Good examples: "Best Cities to Visit in Italy", "Megaformer Studios — What They Are", "Email Draft to Boss About Vacation", "Gift Ideas for Sara's Birthday".
 - "category": One of: task, work, personal, travel, finance, health, shopping, entertainment, recipes, general, contacts
 - "tags": Array of 1-3 relevant tags drawn from the CONTENT topic.
+- "target_list_name": The list this should be saved to. RULES (in order):
+    1. If EXISTING LISTS are provided and one CLEARLY belongs here, return its EXACT name verbatim. Set is_new_list=false, confidence="high".
+    2. If no existing list fits AND the content is specific enough to merit its own list (e.g. a trip, a recurring domain), propose a SHORT title-cased NEW list name like "Mallorca Trip", "Restaurants", "Gift Ideas". Set is_new_list=true, confidence="high".
+    3. If the content is one-off / generic / unclear, return null. Set is_new_list=false, confidence="low".
+    NEVER invent a name close-but-not-equal to an existing list (e.g. "Travels" when "Travel" exists). If any existing list is ≥70% related, USE its exact name.
+- "is_new_list": boolean — true ONLY when target_list_name is a proposal that is NOT in EXISTING LISTS.
+- "confidence": "high" | "medium" | "low" — your certainty that target_list_name is the right home.
 
 Return ONLY valid JSON, no markdown.`;
 
-function buildUserPrompt(content: string, request: string): string {
-  return `ORIGINAL USER REQUEST (context only — do NOT title from this if it looks like a confirmation): "${request.substring(0, 500)}"\n\nFULL ARTIFACT CONTENT (title MUST describe this):\n${content.substring(0, 2000)}`;
+function buildUserPrompt(
+  content: string,
+  request: string,
+  existingLists?: Array<{ name: string; recent_item_titles?: string[] }>,
+): string {
+  const listsBlock = existingLists && existingLists.length > 0
+    ? `\n\nEXISTING LISTS (the user's current lists — prefer one of these over a new name):\n${existingLists
+        .slice(0, 30)
+        .map((l) => {
+          const items = (l.recent_item_titles ?? []).slice(0, 3).filter(Boolean);
+          return items.length > 0
+            ? `- "${l.name}" — recent items: ${items.map((i) => `"${i}"`).join(', ')}`
+            : `- "${l.name}"`;
+        })
+        .join('\n')}`
+    : `\n\nEXISTING LISTS: (none — propose a new list if the content warrants one)`;
+  return `ORIGINAL USER REQUEST (context only — do NOT title from this if it looks like a confirmation): "${request.substring(0, 500)}"${listsBlock}\n\nFULL ARTIFACT CONTENT (title MUST describe this):\n${content.substring(0, 2000)}`;
 }
 
 /**
@@ -136,12 +182,15 @@ export async function classifyArtifact(
   let title = SENTINEL_TITLE;
   let category = 'task';
   let tags: string[] = ['olive-draft'];
+  let target_list_name: string | null = null;
+  let is_new_list = false;
+  let confidence: 'high' | 'medium' | 'low' = 'low';
 
   if (input.callAI) {
     try {
       const raw = await input.callAI(
-        SYSTEM_PROMPT,
-        buildUserPrompt(input.artifactContent, input.artifactRequest),
+        CLASSIFY_ARTIFACT_SYSTEM_PROMPT,
+        buildUserPrompt(input.artifactContent, input.artifactRequest, input.existingLists),
         0.1,
         'lite',
         input.tracker ?? null,
@@ -158,6 +207,16 @@ export async function classifyArtifact(
             ...parsed.tags.filter((t: unknown) => typeof t === 'string'),
             'olive-draft',
           ];
+        }
+        // v2.0 list-routing fields — all optional; defaults are safe.
+        if (typeof parsed.target_list_name === 'string' && parsed.target_list_name.trim()) {
+          target_list_name = parsed.target_list_name.trim();
+        }
+        if (typeof parsed.is_new_list === 'boolean') {
+          is_new_list = parsed.is_new_list;
+        }
+        if (parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low') {
+          confidence = parsed.confidence;
         }
       } catch (parseErr) {
         console.warn('[classifyArtifact] JSON parse failed, using fallback:', parseErr);
@@ -180,5 +239,5 @@ export async function classifyArtifact(
   // empty + request is empty; cover that.
   if (!title || !title.trim()) title = 'Saved from Olive chat';
 
-  return { title, category, tags };
+  return { title, category, tags, target_list_name, is_new_list, confidence };
 }

@@ -44,7 +44,55 @@ export const WA_REWRITER_PROMPT_VERSION = "wa-rewriter-v1.0";
 export const WA_STT_PROMPT_VERSION = "wa-stt-gemini-v1.0";
 
 // ─── Web Search Format ───────────────────────────────────────
-export const WA_WEB_SEARCH_FORMAT_PROMPT_VERSION = "wa-web-search-v1.0";
+//
+// v2.0 — mandates a "Sources:" tail with bare https:// URLs so WhatsApp's
+// preview_url=true linkifier can render them as taps. Gemini consistently
+// dropped URLs under v1.0's "Include relevant links" guidance.
+export const WA_WEB_SEARCH_FORMAT_PROMPT_VERSION = "wa-web-search-v2.0";
+
+/**
+ * Build the system prompt that re-formats a Perplexity result for
+ * WhatsApp delivery. Lifted out of `handlers/web-search.ts` per the
+ * "no inline prompts" rule. Caller passes the user's resolved
+ * question, optional saved-item / personal context, the raw Perplexity
+ * text, and Perplexity's citation URLs.
+ *
+ * If `citations` is non-empty, the prompt MANDATES a trailing sources
+ * block using bare URLs (markdown link syntax `[text](url)` would render
+ * as raw text in WhatsApp — never use it here). A deterministic guard
+ * in the handler appends the top citation as a safety net if the model
+ * still omits it.
+ */
+export function buildWaWebSearchFormatPrompt(opts: {
+  langName: string;
+  userQuestion: string;
+  savedItemContext: string;
+  personalContext: string;
+  searchResult: string;
+  citations: string[];
+}): string {
+  const { langName, userQuestion, savedItemContext, personalContext, searchResult, citations } = opts;
+  const langDirective = langName !== 'English' ? `\n\nIMPORTANT: Respond entirely in ${langName}.` : '';
+  const sourcesBlock = citations.length > 0
+    ? `\n\nSOURCES (cite by surfacing the URL — see formatting rules above):\n${citations.map((c, i) => `[${i + 1}] ${c}`).join('\n')}`
+    : '';
+
+  return `You are Olive, a world-class AI assistant — like a brilliant friend who knows the world AND the user's life. The user asked a question. Answer it comprehensively using the search results, and if any personal context is relevant, weave it in naturally. Format for WhatsApp (max 1200 chars). Be warm, specific, and genuinely helpful. Use emojis sparingly 🫒${langDirective}
+
+LINK FORMATTING — CRITICAL FOR WHATSAPP:
+${citations.length > 0 ? `- You MUST end your answer with a single "🔗 <bare URL>" line surfacing the MOST authoritative source from SOURCES below.
+- WhatsApp auto-linkifies bare \`https://\` URLs. Do NOT use markdown \`[text](url)\` — it renders as raw text on WhatsApp and is unusable.
+- Use ONE source, on its own line, after a blank line. Never invent URLs not in the SOURCES list.` : `- No sources were retrieved for this query. Do not invent URLs.`}
+
+USER'S QUESTION: ${userQuestion}
+${savedItemContext}
+${personalContext}
+WEB SEARCH RESULTS:
+${searchResult}
+${sourcesBlock}
+
+Answer the question thoroughly, then briefly mention any relevant personal connections.${citations.length > 0 ? ' Then add a blank line and the "🔗 <url>" line.' : ''} End with "Want me to save this?" if the response contains useful recommendations.`;
+}
 
 // ─── List Recap ──────────────────────────────────────────────
 export const WA_LIST_RECAP_PROMPT_VERSION = "wa-list-recap-v1.0";
