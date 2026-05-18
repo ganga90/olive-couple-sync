@@ -1,5 +1,236 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-17 — [REFACTOR-1.7b] Extract TASK_ACTION handler
+
+The last big intent block in `whatsapp-webhook/index.ts`. Lifts ~1,191 lines (the entire `if (intent === 'TASK_ACTION')` body, lines 4332–5522) into a new `handlers/task-action.ts` module that follows the same factory + DI pattern as 1.4 CHAT, 1.5 CONTEXTUAL_ASK / WEB_SEARCH, 1.6 CREATE, and 1.7a EXPENSE / PARTNER_MESSAGE.
+
+### What changed
+
+| File | Action |
+|---|---|
+| `_shared/types.ts` | Added `quotedTaskCtx?` to `HandlerContext` (carries pre-resolved task from a WhatsApp quoted-reply across handlers). |
+| `whatsapp-webhook/handlers/task-action.ts` | New — 1,236 lines, `makeTaskActionHandler({ t, generateEmbedding, saveReferencedEntity })`. |
+| `whatsapp-webhook/handlers/task-action.test.ts` | New — 731 lines, 18 tests (task-resolution paths + per-action happy paths + edge cases). |
+| `whatsapp-webhook/index.ts` | 1,191-line inline block → 18-line dispatch + 1 import. Dead imports removed (`findConflicts`, `ConflictSummary`, `findMatchingPatterns`, `MatchedPattern`, `buildWhatsAppConflictSuffix`, `buildWhatsAppPatternSuffix`, `resolveWeekdayCandidates`, `shiftToWeekday`, `extractTimeOnly`). Webhook drops 6,007 → 4,833 lines (−1,174). |
+
+### What's covered
+
+Resolution chain (priority order): quoted-message ctx → relative reference → ordinal from displayed_list (with outbound-context fallback) → AI UUID w/ `computeMatchQuality` post-verification → semantic search with ambiguity detection → session `last_referenced_entity` → recent outbound context → compound CREATE+REMIND when remind intent has no existing task.
+
+Action switch (11 cases): `complete`, `set_priority`, `set_due` (parseNaturalDate + extractTimeOnly + findConflicts + findMatchingPatterns + pending_action), `assign` (partner lookup), `edit_title` / `edit_location` / `edit_description` / `edit_duration`, `delete` (snapshot + pending_action), `move` (exact → starts-with → contains list lookup, create-new fallback), `remind` (smart defaults: 30min / 2h-before / morning-of / tomorrow-9am based on due_date), `bulk_reschedule_weekday`, default → `task_action_unknown`.
+
+### Tests
+
+| Suite | Count |
+|---|---|
+| `handlers/task-action.test.ts` | 18 (parseOrdinalIndex pure, quoted ctx, relative ref, ordinal, AI UUID rejection, semantic ambiguity, complete, set_priority, set_due, assign, delete, move, remind w/ time, remind smart default, task_not_found, weak candidate "Did you mean", bulk_reschedule_weekday, unknown action). |
+| `handlers/` (all) | 108 passing (was 90). |
+| `_shared/` | 1,361 passing (unchanged). |
+
+### Notes
+
+- Single-file extraction (matches 1.4 CHAT precedent). Sub-handler per-action decomposition is a separate cleanup PR.
+- `bulkDayName` / `tasksWord` locale helpers are duplicated in the handler (still used in `index.ts` for confirmation-handling outside TASK_ACTION). Lifting them to `_shared/whatsapp-localization.ts` is follow-up work.
+- 3 pre-existing TS2345 errors in `index.ts` remain (no NEW type errors introduced).
+
+## 2026-05-17 — [REFACTOR-1.6.1] Lift `+` shortcut create path into makeCreateNoteHandler
+
+Followup to [REFACTOR-1.6](#2026-05-17--refactor-16-extract-create-brain-dump-handler) addressing followup #1 in that PR's "Out of scope" list. The WhatsApp `+` shortcut now flows through the same `makeCreateNoteHandler` factory as the AI-classified brain-dump path.
+
+### What changed
+
+| File | Action |
+|---|---|
+| `whatsapp-webhook/index.ts` | 141-line inline shortcut CREATE block (lines 3056–3196) → 33-line dispatch via `makeCreateNoteHandler`. |
+
+### Behavior shift (intentional)
+
+Before this PR, the shortcut path was a thinner pipeline — it called `process-note` and inserted the returned note, but **bypassed**:
+
+- Topical-followup detection + attach + `attached_to_parent` undo offer
+- Field-level encryption when `isSensitive` is set (AES-256-GCM)
+- Multi-note splitting (the response was always treated as a single note)
+- Post-insert duplicate detection via `find_similar_notes` RPC
+- Proactive bridge `date_for_recent_task` offer when no due_date + opted-in
+- Sub-items preview in the confirmation
+- List-id → couple-id inheritance for shared lists
+
+After this PR, all of those apply to shortcut captures too. **This is a feature unlock, not a regression** — shortcut users now get the same protections and affordances as brain-dump users. The user-visible delta on a typical "+ buy milk" capture is unchanged.
+
+### Side effect: session-state unification (partial)
+
+The shortcut path's `olive_gateway_sessions.conversation_context` write is dropped. The unified handler writes to `user_sessions.context_data` (the canonical table). The gateway already writes outbound context on every reply via the standard outbound path, so no functional loss.
+
+This addresses the first half of the "session-state unification" followup from PR #190. Remaining `olive_gateway_sessions.conversation_context` writes elsewhere in the webhook still need migration — separate PR.
+
+### Webhook line-count delta
+
+| Before | After | Removed |
+|---|---|---|
+| 6,108 lines | **6,007 lines** | **−101** |
+
+Cumulative since 1.4 baseline: **9,052 → 6,007 (−3,045 lines, −33.6%)**.
+
+### Tests
+
+| Suite | Result |
+|---|---|
+| `_shared/` | 1,361 passed (no regressions) |
+| `whatsapp-webhook/handlers/` | 90 passed (no regressions; existing create-note tests already cover the lifted pipeline) |
+
+### Followups (out of scope)
+
+1. Remaining `olive_gateway_sessions.conversation_context` writes elsewhere in the webhook — finish the session-state unification.
+2. The shortcut `note_priority_high` localized label is no longer rendered (the unified handler doesn't append it). If users miss it, lift the label-build logic into the handler under an opt-in flag.
+3. The shortcut's larger 15-item tip pool is replaced by the handler's 10-item pool (5 fewer tip variations). Minor; can re-merge pools in a future cleanup.
+
+## 2026-05-17 — [REFACTOR-1.7a] Extract EXPENSE + PARTNER_MESSAGE handlers
+
+Partial Initiative 1.7 of [OLIVE_REFACTOR_PLAN.md](OLIVE_REFACTOR_PLAN.md). The ledger groups TASK_ACTION + EXPENSE + PARTNER_MESSAGE, but TASK_ACTION's 1,191-line block (9+ action subroutines + elaborate task-resolution) needs its own sub-handler decomposition. Splitting into **1.7a (this PR: EXPENSE + PARTNER_MESSAGE)** and **1.7b (TASK_ACTION alone, next PR)** to keep diff sizes reviewable.
+
+### What moved
+
+| File | Action | Notes |
+|---|---|---|
+| `handlers/expense.ts` | NEW (~180 lines) | AI-classified expense capture. Media → `process-receipt` invoke; text → `parseExpenseText` + AI categorization (lite tier) + `expenses` insert + budget status RPC check. Localized over-limit / warning suffix. |
+| `handlers/expense.test.ts` | NEW (~190 lines) | 5 tests: happy path, no-amount edge, AI categorization throws → regex fallback, media → process-receipt path, over_limit budget warning. |
+| `handlers/partner-message.ts` | NEW (~430 lines) | Couple resolution via `get_space_members` RPC; two-layer duplicate detection (vector 0.80 + textSearch keyword 0.40); task creation via process-note + insertNote + embedding; trust gate; direct Meta send (free-form first, template fallback on 131047 outside-window error); outbound queue log; saveReferencedEntity via after_reply. |
+| `handlers/partner-message.test.ts` | NEW (~370 lines) | 6 tests: isTaskLikeRelay pure helper, no_space, no_phone, happy path (resolve + send + create + after_reply), 131047 → template fallback (2 Meta calls), duplicate task → skip creation. |
+| `whatsapp-webhook/index.ts` | REMOVED 543 net lines | 134-line EXPENSE → ~13-line dispatch; 445-line PARTNER_MESSAGE → ~16-line dispatch. |
+
+### Pure helpers exported for reuse
+
+- `isTaskLikeRelay(action, content): boolean` — gates whether a partner relay also creates a task. `remind`/`notify` always do; `tell`/`ask` only when content matches the EN/ES/IT action-verb regex.
+
+### Webhook line-count delta
+
+| Before | After | Removed |
+|---|---|---|
+| 6,651 lines | **6,108 lines** | **−543** |
+
+Cumulative since 1.4 baseline: **9,052 → 6,108 (−2,944 lines, −32.5%)**.
+
+### Behavior preservation
+
+- All localized i18n keys unchanged: `expense_logged`, `expense_need_amount`, `expense_over_budget`, `expense_budget_warning`, `partner_no_space`, `partner_no_phone`, `partner_unreachable`, `partner_reached_partial`, `partner_message_sent`, `partner_message_and_task`, `partner_message_existing_task`.
+- `WA_EXPENSE_CATEGORIZATION_PROMPT_VERSION` unchanged.
+- Meta direct-send flow preserved verbatim, including the 131047 → template fallback.
+- Trust gate `send_whatsapp_to_partner` check + fail-open semantics preserved.
+- Outbound queue logging preserved (`olive_outbound_queue.status` = 'sent'|'failed').
+- Two-layer partner-task duplicate detection (vector 0.80 → keyword 0.40) preserved verbatim.
+
+### Tests
+
+| Suite | Before | After |
+|---|---|---|
+| `_shared/` | 1,361 passed | 1,361 passed (no regressions) |
+| `whatsapp-webhook/handlers/` | 79 passed | **90 passed** (+11 new: 5 EXPENSE + 6 PARTNER_MESSAGE) |
+
+### Followups (out of scope here)
+
+1. **1.7b — TASK_ACTION extraction.** The 1,191-line block has 9+ action subtypes (complete, delete, set_due, remind, archive, move, set_priority, assign, bulk_reschedule_weekday) and elaborate task-resolution priority (quoted-message → relative-reference → ordinal → AI UUID → semantic search). Belongs in its own PR with sub-handler decomposition to hit the ≤300-lines-per-handler target.
+2. **1.6.1** — Lift the WhatsApp `+` shortcut create path into `makeCreateNoteHandler` (currently bypasses topical-followup, encryption, multi-note splitting, dup detection, proactive bridge).
+3. **Session-state unification** — `olive_gateway_sessions.conversation_context` vs `user_sessions.context_data` drift; pick one (probably user_sessions) and migrate writes.
+
+## 2026-05-17 — [REFACTOR-1.6] Extract CREATE (brain-dump) handler
+
+Initiative 1.6 of [OLIVE_REFACTOR_PLAN.md](OLIVE_REFACTOR_PLAN.md). Continues the monolith decomposition started by 1.1 (Reply/HandlerContext) and continued through 1.2–1.5. CREATE is the **default fall-through handler** — anything the classifier doesn't route elsewhere becomes a saved note here. After this extraction every behavior path in the brain-dump pipeline is unit-tested.
+
+### What moved
+
+| File | Action | Notes |
+|---|---|---|
+| `handlers/create-note.ts` | NEW (~480 lines) | Pronoun-only resolution; topical-followup attach with `attached_to_parent` PendingOffer; process-note invoke; multi-note (`insertNotesBatch`) and single-note (`insertNote`) paths; AES-256-GCM encryption via `encryptNoteFields` when `isSensitive`; list_id → couple_id inheritance (shared list → shared note); post-insert duplicate detection via `find_similar_notes` RPC; proactive bridge `date_for_recent_task` offer when no due_date + opted-in; sub-items preview; localized confirmation with random tip / encryption label. |
+| `handlers/create-note.test.ts` | NEW (~430 lines) | 14 tests: 5 pure helpers + 9 handler scenarios (single-note, multi-note, encryption, list inheritance, sub-items, topical-followup, pronoun-only, process-note error, proactive bridge). |
+| `whatsapp-webhook/index.ts` | REMOVED 494 net lines | 527-line CREATE block (lines 6570–7096) → 26-line dispatch case. Kept as fall-through (no `if (intent === 'CREATE')` guard) to preserve byte-identical behavior for any intent that didn't return earlier. |
+| `_shared/types.ts` | MODIFIED (+12 lines) | Extended `HandlerContext` with optional `latitude`/`longitude`/`isSensitive` fields (message-level extras the CREATE handler reads; other handlers ignore them). |
+
+### Pure helpers exported for reuse
+
+- `isPronounOnlyCreate(message: string): boolean` — regex test for "schedule it / save that / lo / questo" patterns.
+- `resolvePronounOnlyMessage(message, sessionCtx): string` — substitutes `session.last_user_message` when fresh (10-min TTL).
+- `buildItemsPreview(items, lang): string` — sub-items preview with localized overflow tail (en/es/it).
+
+### Webhook line-count delta
+
+| Before | After | Removed |
+|---|---|---|
+| 7,145 lines | **6,651 lines** | **−494** |
+
+Cumulative since 1.4 baseline: **9,052 → 6,651 (−2,401 lines, −26.5%)**.
+
+### Behavior preservation
+
+- All four insertion paths preserved verbatim: multi-note encryption per row, single-note encryption, list_id→couple_id inheritance for both, location/media field propagation.
+- Topical-followup attach + undo-offer pattern preserved (uses `attachToParent` + `findFollowupParent` from `_shared/topical-followup.ts` unchanged).
+- Post-insert duplicate detection via `find_similar_notes` RPC unchanged.
+- Proactive bridge `date_for_recent_task` offer condition unchanged (no due_date AND no reminder_time AND no duplicate AND opted-in).
+- Localized confirmation copy unchanged (note_saved / note_added_to / note_manage / note_multi_saved / note_similar_found / proactive_date_offer keys, sub-items preview format).
+- Encryption-at-rest label `🔒 Encrypted at rest` and random tip pool unchanged.
+
+### Tests
+
+| Suite | Before | After |
+|---|---|---|
+| `_shared/` | 1,361 passed | 1,361 passed (no regressions) |
+| `whatsapp-webhook/handlers/` | 65 passed | **79 passed** (+14 new) |
+
+### Followups (out of scope here)
+
+1. The WhatsApp `+` shortcut path (`index.ts:3044–3184`) still has its own inline CREATE logic that bypasses topical-followup, encryption, multi-note splitting, duplicate detection, and the proactive bridge offer. Worth lifting into the same handler in a 1.6.1 PR.
+2. The shortcut path writes session state to `olive_gateway_sessions.conversation_context` while every other path writes to `user_sessions.context_data`. The two tables drift; a cleanup PR should unify on `user_sessions`.
+
+## 2026-05-17 — [REFACTOR-1.5] Extract CONTEXTUAL_ASK + WEB_SEARCH handlers
+
+Initiative 1.5 of [OLIVE_REFACTOR_PLAN.md](OLIVE_REFACTOR_PLAN.md). Continues the monolith decomposition started by 1.1 (Reply/HandlerContext contract), 1.2 (SAVE_ARTIFACT), 1.3 (CONFIRMATION dispatcher), and 1.4 (CHAT handler).
+
+Two intents in one PR because they share the same `pending_offer` artifact-freezing pattern: when an AI response contains a "save this" / "guardarlo" / "salvarlo" tail, the handler constructs a structured `save_artifact` PendingOffer that captures the artifact verbatim at offer time. Subsequent "yes" / "do it" confirmations resolve to the frozen artifact even if a CHAT turn intervenes — that's the moat the SAVE_ARTIFACT handler (1.2) was built to consume.
+
+### What moved
+
+| File | Action | Notes |
+|---|---|---|
+| `handlers/contextual-ask.ts` | NEW (~590 lines) | Owns CONTEXTUAL_ASK / WEB_RESEARCH / SCHEDULE_CALENDAR. Anchored-list matching, semantic retrieval via `find_similar_notes`, hybrid Perplexity augmentation for general-knowledge questions, Pro→Flash fallback. Two prompt variants (`wa-contextual-ask-v1.0` + `wa-hybrid-ask-v1.0`) — versions unchanged. |
+| `handlers/contextual-ask.test.ts` | NEW (~280 lines) | 9 tests: happy path, save-tail offer construction (en+es), 4000-char artifact freezing, matchingTask resolution, AI throw → deterministic keyword fallback, general-knowledge gate, two pure helpers (`isGeneralKnowledgeQuestion` + `responseOffersSave`). |
+| `handlers/web-search.ts` | NEW (~285 lines) | Owns WEB_SEARCH. Context-aware query rewriter (pronoun resolution from last 12 turns), Perplexity `sonar` model, formatter callAI with personal-memory blending. `perplexityFetch` is injectable for tests. |
+| `handlers/web-search.test.ts` | NEW (~280 lines) | 8 tests: missing OLIVE_PERPLEXITY, happy path, "save this" → pending_offer (artifact_kind='web_search'), 4000-char artifact freezing, Perplexity 500 fallback, empty result fallback, formatter throw → raw + first-citation fallback, uncaught exception → `web_search_error`. |
+| `whatsapp-webhook/index.ts` | REMOVED 786 net lines | Inline CONTEXTUAL_ASK block (577 lines) + inline WEB_SEARCH block (244 lines) replaced by two ~18-line dispatch cases mirroring the 1.4 pattern. |
+
+### Pure helpers exported for reuse
+
+`contextual-ask.ts` exports two pure functions both handlers + tests + future code can depend on:
+- `isGeneralKnowledgeQuestion(message: string): boolean` — the trigger for hybrid Perplexity augmentation (verbatim regex from monolith).
+- `responseOffersSave(response: string): boolean` — detects the "save this / guardarlo / salvarlo" tail. Used by both CONTEXTUAL_ASK and WEB_SEARCH after-reply logic, and by the test suite.
+
+### Webhook line-count delta
+
+| Before | After | Removed |
+|---|---|---|
+| 7,931 lines | **7,145 lines** | **−786** (vs 1.4's −1,133) |
+
+Cumulative reduction since 1.4 baseline: **9,052 → 7,145 (−1,907 lines)**.
+
+### Behavior preservation
+
+- Both prompt variants in CONTEXTUAL_ASK moved byte-identically. `WA_CONTEXTUAL_ASK_PROMPT_VERSION` and `WA_HYBRID_ASK_PROMPT_VERSION` unchanged — `olive_llm_analytics` history continuous.
+- `WA_REWRITER_PROMPT_VERSION` and `WA_WEB_SEARCH_FORMAT_PROMPT_VERSION` unchanged.
+- Pro→Flash fallback in CONTEXTUAL_ASK preserved (triggered when media is attached and `routeIntent` returns `pro`).
+- Both handlers preserve the existing two-write pattern verbatim: `saveReferencedEntity` (which writes `conversation_history` + optional `last_referenced_entity`) followed by a second `user_sessions.context_data` update with `last_assistant_*` + `pending_offer`. The known race between the two writes (the second overwrites the first's `conversation_history` update with the stale in-memory snapshot) is preserved as-is — a fix is a separate behavioral change worth its own PR.
+- `pending_offer.artifact_content` truncated at 4,000 chars verbatim; `pending_offer.artifact_request` at 500; reply text at 1,500.
+
+### Tests
+
+| Suite | Before | After |
+|---|---|---|
+| `_shared/` | 1,361 passed | 1,361 passed (no regressions) |
+| `whatsapp-webhook/handlers/` | 48 passed | **65 passed** (+17 new: 9 CTX + 8 WS) |
+
+### Followups (out of scope here)
+
+1. Collapse the two sequential `user_sessions.context_data` updates into a single atomic write. The second update currently overwrites the `conversation_history` set by `saveReferencedEntity` because it spreads the stale pre-call snapshot. Real bug, low impact (last turn drops from history), no user-visible failure mode yet.
+2. Move `responseOffersSave` to `_shared/pending-offer.ts` once a third caller emerges.
+3. Lift the cross-cutting save-artifact session-write pattern (4 fields: `last_assistant_output/at/request` + `pending_offer`) into a single helper to remove duplication between contextual-ask, web-search, and future intents.
+
 ## 2026-05-17 — [FIX-1.4-today] Resolve `today` ReferenceError in briefing helpers
 
 Followup to [REFACTOR-1.4](#2026-05-17--refactor-14-extract-chat-handler-from-whatsapp-webhook-monolith) — clears point #1 of that PR's "Followups (out of scope here)" list.
