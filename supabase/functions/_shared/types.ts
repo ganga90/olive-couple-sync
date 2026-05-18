@@ -303,6 +303,18 @@ export interface Reply {
    * Failures here are non-blocking — the reply still ships.
    */
   after_reply?: Array<() => Promise<void>>;
+
+  /**
+   * Optional intent escalation signal. When set, the dispatch site
+   * mutates the routing `intent` to this value and falls through to
+   * the next matching handler INSTEAD of sending an outbound message.
+   *
+   * Added by Initiative 1.8 (SEARCH extraction). Mirrors the monolith's
+   * inline `intent = 'CONTEXTUAL_ASK' as any` escalation when SEARCH
+   * detects a content question it can't satisfy from the dashboard
+   * query slots. `text` is ignored when this is set.
+   */
+  escalate_to?: WhatsAppIntent;
 }
 
 /**
