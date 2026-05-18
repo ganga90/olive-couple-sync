@@ -1,5 +1,38 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-17 — [REFACTOR-1.7b] Extract TASK_ACTION handler
+
+The last big intent block in `whatsapp-webhook/index.ts`. Lifts ~1,191 lines (the entire `if (intent === 'TASK_ACTION')` body, lines 4332–5522) into a new `handlers/task-action.ts` module that follows the same factory + DI pattern as 1.4 CHAT, 1.5 CONTEXTUAL_ASK / WEB_SEARCH, 1.6 CREATE, and 1.7a EXPENSE / PARTNER_MESSAGE.
+
+### What changed
+
+| File | Action |
+|---|---|
+| `_shared/types.ts` | Added `quotedTaskCtx?` to `HandlerContext` (carries pre-resolved task from a WhatsApp quoted-reply across handlers). |
+| `whatsapp-webhook/handlers/task-action.ts` | New — 1,236 lines, `makeTaskActionHandler({ t, generateEmbedding, saveReferencedEntity })`. |
+| `whatsapp-webhook/handlers/task-action.test.ts` | New — 731 lines, 18 tests (task-resolution paths + per-action happy paths + edge cases). |
+| `whatsapp-webhook/index.ts` | 1,191-line inline block → 18-line dispatch + 1 import. Dead imports removed (`findConflicts`, `ConflictSummary`, `findMatchingPatterns`, `MatchedPattern`, `buildWhatsAppConflictSuffix`, `buildWhatsAppPatternSuffix`, `resolveWeekdayCandidates`, `shiftToWeekday`, `extractTimeOnly`). Webhook drops 6,007 → 4,833 lines (−1,174). |
+
+### What's covered
+
+Resolution chain (priority order): quoted-message ctx → relative reference → ordinal from displayed_list (with outbound-context fallback) → AI UUID w/ `computeMatchQuality` post-verification → semantic search with ambiguity detection → session `last_referenced_entity` → recent outbound context → compound CREATE+REMIND when remind intent has no existing task.
+
+Action switch (11 cases): `complete`, `set_priority`, `set_due` (parseNaturalDate + extractTimeOnly + findConflicts + findMatchingPatterns + pending_action), `assign` (partner lookup), `edit_title` / `edit_location` / `edit_description` / `edit_duration`, `delete` (snapshot + pending_action), `move` (exact → starts-with → contains list lookup, create-new fallback), `remind` (smart defaults: 30min / 2h-before / morning-of / tomorrow-9am based on due_date), `bulk_reschedule_weekday`, default → `task_action_unknown`.
+
+### Tests
+
+| Suite | Count |
+|---|---|
+| `handlers/task-action.test.ts` | 18 (parseOrdinalIndex pure, quoted ctx, relative ref, ordinal, AI UUID rejection, semantic ambiguity, complete, set_priority, set_due, assign, delete, move, remind w/ time, remind smart default, task_not_found, weak candidate "Did you mean", bulk_reschedule_weekday, unknown action). |
+| `handlers/` (all) | 108 passing (was 90). |
+| `_shared/` | 1,361 passing (unchanged). |
+
+### Notes
+
+- Single-file extraction (matches 1.4 CHAT precedent). Sub-handler per-action decomposition is a separate cleanup PR.
+- `bulkDayName` / `tasksWord` locale helpers are duplicated in the handler (still used in `index.ts` for confirmation-handling outside TASK_ACTION). Lifting them to `_shared/whatsapp-localization.ts` is follow-up work.
+- 3 pre-existing TS2345 errors in `index.ts` remain (no NEW type errors introduced).
+
 ## 2026-05-17 — [REFACTOR-1.6.1] Lift `+` shortcut create path into makeCreateNoteHandler
 
 Followup to [REFACTOR-1.6](#2026-05-17--refactor-16-extract-create-brain-dump-handler) addressing followup #1 in that PR's "Out of scope" list. The WhatsApp `+` shortcut now flows through the same `makeCreateNoteHandler` factory as the AI-classified brain-dump path.
