@@ -217,6 +217,30 @@ export interface HandlerContext {
   /** Resolved member list for the current scope (couple or space).
    *  Null = personal context, no other members. */
   members?: MemberInfo[] | null;
+
+  // ── Optional message-level extras ─────────────────────────────────
+  // Added by Initiative 1.6 (CREATE handler). Most handlers ignore
+  // these; CREATE writes `location` into note rows and applies
+  // is_sensitive encryption from `isSensitive`.
+  /** Latitude from a WhatsApp location share, when present. */
+  latitude?: number | null;
+  /** Longitude from a WhatsApp location share, when present. */
+  longitude?: number | null;
+  /** True if the user prefixed the message with `private:` or similar
+   *  sensitivity marker. CREATE encrypts the note's original_text and
+   *  summary at rest when this is set. */
+  isSensitive?: boolean;
+
+  /**
+   * Pre-resolved task from a WhatsApp quoted-reply context. When the
+   * user replies to one of Olive's earlier messages, the webhook looks
+   * up the WAMID and resolves it to the underlying task here so
+   * TASK_ACTION can use it as a high-priority candidate (strictly more
+   * reliable than semantic search). Null when the inbound is not a
+   * quoted reply or the quote points at a non-task message.
+   * Added by Initiative 1.7b (TASK_ACTION extraction).
+   */
+  quotedTaskCtx?: { task_id: string; task_summary: string; sent_at: string } | null;
 }
 
 /**
