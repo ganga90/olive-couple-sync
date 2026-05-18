@@ -217,6 +217,19 @@ export interface HandlerContext {
   /** Resolved member list for the current scope (couple or space).
    *  Null = personal context, no other members. */
   members?: MemberInfo[] | null;
+
+  // ── Optional message-level extras ─────────────────────────────────
+  // Added by Initiative 1.6 (CREATE handler). Most handlers ignore
+  // these; CREATE writes `location` into note rows and applies
+  // is_sensitive encryption from `isSensitive`.
+  /** Latitude from a WhatsApp location share, when present. */
+  latitude?: number | null;
+  /** Longitude from a WhatsApp location share, when present. */
+  longitude?: number | null;
+  /** True if the user prefixed the message with `private:` or similar
+   *  sensitivity marker. CREATE encrypts the note's original_text and
+   *  summary at rest when this is set. */
+  isSensitive?: boolean;
 }
 
 /**

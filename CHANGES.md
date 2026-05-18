@@ -1,5 +1,53 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-17 — [REFACTOR-1.6] Extract CREATE (brain-dump) handler
+
+Initiative 1.6 of [OLIVE_REFACTOR_PLAN.md](OLIVE_REFACTOR_PLAN.md). Continues the monolith decomposition started by 1.1 (Reply/HandlerContext) and continued through 1.2–1.5. CREATE is the **default fall-through handler** — anything the classifier doesn't route elsewhere becomes a saved note here. After this extraction every behavior path in the brain-dump pipeline is unit-tested.
+
+### What moved
+
+| File | Action | Notes |
+|---|---|---|
+| `handlers/create-note.ts` | NEW (~480 lines) | Pronoun-only resolution; topical-followup attach with `attached_to_parent` PendingOffer; process-note invoke; multi-note (`insertNotesBatch`) and single-note (`insertNote`) paths; AES-256-GCM encryption via `encryptNoteFields` when `isSensitive`; list_id → couple_id inheritance (shared list → shared note); post-insert duplicate detection via `find_similar_notes` RPC; proactive bridge `date_for_recent_task` offer when no due_date + opted-in; sub-items preview; localized confirmation with random tip / encryption label. |
+| `handlers/create-note.test.ts` | NEW (~430 lines) | 14 tests: 5 pure helpers + 9 handler scenarios (single-note, multi-note, encryption, list inheritance, sub-items, topical-followup, pronoun-only, process-note error, proactive bridge). |
+| `whatsapp-webhook/index.ts` | REMOVED 494 net lines | 527-line CREATE block (lines 6570–7096) → 26-line dispatch case. Kept as fall-through (no `if (intent === 'CREATE')` guard) to preserve byte-identical behavior for any intent that didn't return earlier. |
+| `_shared/types.ts` | MODIFIED (+12 lines) | Extended `HandlerContext` with optional `latitude`/`longitude`/`isSensitive` fields (message-level extras the CREATE handler reads; other handlers ignore them). |
+
+### Pure helpers exported for reuse
+
+- `isPronounOnlyCreate(message: string): boolean` — regex test for "schedule it / save that / lo / questo" patterns.
+- `resolvePronounOnlyMessage(message, sessionCtx): string` — substitutes `session.last_user_message` when fresh (10-min TTL).
+- `buildItemsPreview(items, lang): string` — sub-items preview with localized overflow tail (en/es/it).
+
+### Webhook line-count delta
+
+| Before | After | Removed |
+|---|---|---|
+| 7,145 lines | **6,651 lines** | **−494** |
+
+Cumulative since 1.4 baseline: **9,052 → 6,651 (−2,401 lines, −26.5%)**.
+
+### Behavior preservation
+
+- All four insertion paths preserved verbatim: multi-note encryption per row, single-note encryption, list_id→couple_id inheritance for both, location/media field propagation.
+- Topical-followup attach + undo-offer pattern preserved (uses `attachToParent` + `findFollowupParent` from `_shared/topical-followup.ts` unchanged).
+- Post-insert duplicate detection via `find_similar_notes` RPC unchanged.
+- Proactive bridge `date_for_recent_task` offer condition unchanged (no due_date AND no reminder_time AND no duplicate AND opted-in).
+- Localized confirmation copy unchanged (note_saved / note_added_to / note_manage / note_multi_saved / note_similar_found / proactive_date_offer keys, sub-items preview format).
+- Encryption-at-rest label `🔒 Encrypted at rest` and random tip pool unchanged.
+
+### Tests
+
+| Suite | Before | After |
+|---|---|---|
+| `_shared/` | 1,361 passed | 1,361 passed (no regressions) |
+| `whatsapp-webhook/handlers/` | 65 passed | **79 passed** (+14 new) |
+
+### Followups (out of scope here)
+
+1. The WhatsApp `+` shortcut path (`index.ts:3044–3184`) still has its own inline CREATE logic that bypasses topical-followup, encryption, multi-note splitting, duplicate detection, and the proactive bridge offer. Worth lifting into the same handler in a 1.6.1 PR.
+2. The shortcut path writes session state to `olive_gateway_sessions.conversation_context` while every other path writes to `user_sessions.context_data`. The two tables drift; a cleanup PR should unify on `user_sessions`.
+
 ## 2026-05-17 — [REFACTOR-1.5] Extract CONTEXTUAL_ASK + WEB_SEARCH handlers
 
 Initiative 1.5 of [OLIVE_REFACTOR_PLAN.md](OLIVE_REFACTOR_PLAN.md). Continues the monolith decomposition started by 1.1 (Reply/HandlerContext contract), 1.2 (SAVE_ARTIFACT), 1.3 (CONFIRMATION dispatcher), and 1.4 (CHAT handler).
