@@ -1,5 +1,53 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-17 — [REFACTOR-1.7a] Extract EXPENSE + PARTNER_MESSAGE handlers
+
+Partial Initiative 1.7 of [OLIVE_REFACTOR_PLAN.md](OLIVE_REFACTOR_PLAN.md). The ledger groups TASK_ACTION + EXPENSE + PARTNER_MESSAGE, but TASK_ACTION's 1,191-line block (9+ action subroutines + elaborate task-resolution) needs its own sub-handler decomposition. Splitting into **1.7a (this PR: EXPENSE + PARTNER_MESSAGE)** and **1.7b (TASK_ACTION alone, next PR)** to keep diff sizes reviewable.
+
+### What moved
+
+| File | Action | Notes |
+|---|---|---|
+| `handlers/expense.ts` | NEW (~180 lines) | AI-classified expense capture. Media → `process-receipt` invoke; text → `parseExpenseText` + AI categorization (lite tier) + `expenses` insert + budget status RPC check. Localized over-limit / warning suffix. |
+| `handlers/expense.test.ts` | NEW (~190 lines) | 5 tests: happy path, no-amount edge, AI categorization throws → regex fallback, media → process-receipt path, over_limit budget warning. |
+| `handlers/partner-message.ts` | NEW (~430 lines) | Couple resolution via `get_space_members` RPC; two-layer duplicate detection (vector 0.80 + textSearch keyword 0.40); task creation via process-note + insertNote + embedding; trust gate; direct Meta send (free-form first, template fallback on 131047 outside-window error); outbound queue log; saveReferencedEntity via after_reply. |
+| `handlers/partner-message.test.ts` | NEW (~370 lines) | 6 tests: isTaskLikeRelay pure helper, no_space, no_phone, happy path (resolve + send + create + after_reply), 131047 → template fallback (2 Meta calls), duplicate task → skip creation. |
+| `whatsapp-webhook/index.ts` | REMOVED 543 net lines | 134-line EXPENSE → ~13-line dispatch; 445-line PARTNER_MESSAGE → ~16-line dispatch. |
+
+### Pure helpers exported for reuse
+
+- `isTaskLikeRelay(action, content): boolean` — gates whether a partner relay also creates a task. `remind`/`notify` always do; `tell`/`ask` only when content matches the EN/ES/IT action-verb regex.
+
+### Webhook line-count delta
+
+| Before | After | Removed |
+|---|---|---|
+| 6,651 lines | **6,108 lines** | **−543** |
+
+Cumulative since 1.4 baseline: **9,052 → 6,108 (−2,944 lines, −32.5%)**.
+
+### Behavior preservation
+
+- All localized i18n keys unchanged: `expense_logged`, `expense_need_amount`, `expense_over_budget`, `expense_budget_warning`, `partner_no_space`, `partner_no_phone`, `partner_unreachable`, `partner_reached_partial`, `partner_message_sent`, `partner_message_and_task`, `partner_message_existing_task`.
+- `WA_EXPENSE_CATEGORIZATION_PROMPT_VERSION` unchanged.
+- Meta direct-send flow preserved verbatim, including the 131047 → template fallback.
+- Trust gate `send_whatsapp_to_partner` check + fail-open semantics preserved.
+- Outbound queue logging preserved (`olive_outbound_queue.status` = 'sent'|'failed').
+- Two-layer partner-task duplicate detection (vector 0.80 → keyword 0.40) preserved verbatim.
+
+### Tests
+
+| Suite | Before | After |
+|---|---|---|
+| `_shared/` | 1,361 passed | 1,361 passed (no regressions) |
+| `whatsapp-webhook/handlers/` | 79 passed | **90 passed** (+11 new: 5 EXPENSE + 6 PARTNER_MESSAGE) |
+
+### Followups (out of scope here)
+
+1. **1.7b — TASK_ACTION extraction.** The 1,191-line block has 9+ action subtypes (complete, delete, set_due, remind, archive, move, set_priority, assign, bulk_reschedule_weekday) and elaborate task-resolution priority (quoted-message → relative-reference → ordinal → AI UUID → semantic search). Belongs in its own PR with sub-handler decomposition to hit the ≤300-lines-per-handler target.
+2. **1.6.1** — Lift the WhatsApp `+` shortcut create path into `makeCreateNoteHandler` (currently bypasses topical-followup, encryption, multi-note splitting, dup detection, proactive bridge).
+3. **Session-state unification** — `olive_gateway_sessions.conversation_context` vs `user_sessions.context_data` drift; pick one (probably user_sessions) and migrate writes.
+
 ## 2026-05-17 — [REFACTOR-1.6] Extract CREATE (brain-dump) handler
 
 Initiative 1.6 of [OLIVE_REFACTOR_PLAN.md](OLIVE_REFACTOR_PLAN.md). Continues the monolith decomposition started by 1.1 (Reply/HandlerContext) and continued through 1.2–1.5. CREATE is the **default fall-through handler** — anything the classifier doesn't route elsewhere becomes a saved note here. After this extraction every behavior path in the brain-dump pipeline is unit-tested.
