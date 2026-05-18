@@ -3054,142 +3054,34 @@ serve(async (req) => {
       if (intent === 'SEARCH') {
         // Fall through to normal flow with the shortcut result
       } else if (intent === 'CREATE') {
-        // Process note creation with the clean message
-        console.log(`[Shortcut→CREATE] Processing: "${effectiveMessage?.substring(0, 80)}"`);
+        // Initiative 1.6.1 — the WhatsApp `+` shortcut now flows
+        // through the same makeCreateNoteHandler as the brain-dump
+        // path. This unifies behavior: topical-followup attach,
+        // encryption, multi-note splitting, list inheritance,
+        // duplicate detection, and proactive bridge offer all apply
+        // to shortcut captures as well. The shortcut's previous
+        // `olive_gateway_sessions.conversation_context` write is
+        // dropped (the gateway writes outbound context on every reply
+        // anyway, and the handler's after_reply writes session state
+        // to user_sessions.context_data — the canonical table).
         try {
-          const processResponse = await supabase.functions.invoke('process-note', {
-            body: {
-              text: effectiveMessage,
-              user_id: userId,
-              couple_id: effectiveCoupleId || undefined,
-              timezone: profile?.timezone || 'America/New_York',
-              language: userLang,
-              source: 'whatsapp',
-              isUrgent: isUrgent || false,
-            },
-          });
-          
-          if (processResponse.error) {
-            console.error('[Shortcut→CREATE] process-note error:', processResponse.error);
-            return reply(t('error_generic', userLang));
-          }
-          
-          const noteData = processResponse.data?.note || processResponse.data;
-          const summary = noteData?.summary || effectiveMessage;
-          const newNoteId = noteData?.id;
-          const insertedListId = noteData?.list_id;
-          
-          // Resolve list name consistently with main CREATE path
-          let listName = 'Tasks';
-          if (insertedListId) {
-            const { data: listRow } = await supabase
-              .from('clerk_lists')
-              .select('name')
-              .eq('id', insertedListId)
-              .single();
-            if (listRow?.name) listName = listRow.name;
-          } else if (noteData?.category && noteData.category !== 'task') {
-            listName = noteData.category;
-          }
-
-          // Build rich confirmation matching main CREATE path
-          const shortcutTips: Record<string, string[]> = {
-            en: [
-              "Reply 'Make it urgent' to change priority",
-              "Reply 'Show my tasks' to see your list",
-              "You can send voice notes too! 🎤",
-              "Reply 'Move to Work' to switch lists",
-              "Use ! prefix for urgent tasks (e.g., !call mom)",
-              "Use $ to log expenses (e.g., $25 lunch)",
-              "Use ? to search your tasks (e.g., ?groceries)",
-              "Use @ to assign to partner (e.g., @partner pick up kids)",
-              "Send a photo of a receipt to log it automatically 📸",
-              "Say 'Remind me tomorrow at 9am' to set reminders",
-              "Ask 'What's overdue?' to see pending tasks",
-              "Say 'Summarize my week' for a weekly recap",
-              "Use / to chat with Olive (e.g., /what should I focus on?)",
-              "Send a comma-separated list to create multiple tasks at once",
-              "Say 'done with X' to mark a task complete",
-            ],
-            es: [
-              "Responde 'Hazlo urgente' para cambiar la prioridad",
-              "Responde 'Mostrar mis tareas' para ver tu lista",
-              "¡También puedes enviar notas de voz! 🎤",
-              "Responde 'Mover a Trabajo' para cambiar de lista",
-              "Usa ! para tareas urgentes (ej. !llamar mamá)",
-              "Usa $ para registrar gastos (ej. $25 almuerzo)",
-              "Usa ? para buscar tareas (ej. ?compras)",
-              "Usa @ para asignar a tu pareja (ej. @pareja recoger niños)",
-              "Envía una foto de un recibo para registrarlo automáticamente 📸",
-              "Di 'Recuérdame mañana a las 9am' para poner recordatorios",
-              "Pregunta '¿Qué está vencido?' para ver tareas pendientes",
-              "Di 'Resumen de mi semana' para un recap semanal",
-              "Usa / para chatear con Olive (ej. /¿en qué debo enfocarme?)",
-              "Envía una lista separada por comas para crear varias tareas",
-              "Di 'hecho con X' para completar una tarea",
-            ],
-            it: [
-              "Rispondi 'Rendilo urgente' per cambiare la priorità",
-              "Rispondi 'Mostra le mie attività' per vedere la lista",
-              "Puoi anche inviare note vocali! 🎤",
-              "Rispondi 'Sposta in Lavoro' per cambiare lista",
-              "Usa ! per attività urgenti (es. !chiamare mamma)",
-              "Usa $ per registrare spese (es. $25 pranzo)",
-              "Usa ? per cercare attività (es. ?spesa)",
-              "Usa @ per assegnare al partner (es. @partner prendere i bambini)",
-              "Invia una foto di uno scontrino per registrarlo automaticamente 📸",
-              "Di 'Ricordami domani alle 9' per impostare promemoria",
-              "Chiedi 'Cosa è scaduto?' per vedere le attività in ritardo",
-              "Di 'Riassunto della settimana' per un recap settimanale",
-              "Usa / per chattare con Olive (es. /su cosa dovrei concentrarmi?)",
-              "Invia una lista separata da virgole per creare più attività",
-              "Di 'fatto con X' per completare un'attività",
-            ],
-          };
-          const langTips = shortcutTips[userLang.split('-')[0]] || shortcutTips.en;
-          const tip = langTips[Math.floor(Math.random() * langTips.length)];
-
-          let confirmMsg: string;
-          if (isUrgent) {
-            confirmMsg = [
-              t('note_saved', userLang, { summary }),
-              t('note_added_to', userLang, { list: listName }),
-              t('note_priority_high', userLang),
-              ``,
-              t('note_manage', userLang),
-              ``,
-              `💡 ${tip}`
-            ].join('\n');
-          } else {
-            confirmMsg = [
-              t('note_saved', userLang, { summary }),
-              t('note_added_to', userLang, { list: listName }),
-              ``,
-              t('note_manage', userLang),
-              ``,
-              `💡 ${tip}`
-            ].join('\n');
-          }
-          
-          // Update session with entity reference
-          if (newNoteId) {
-            const updatedContext: any = { ...sessionContext, conversation_history: conversationHistory };
-            updatedContext.last_referenced_entity = newNoteId;
-            updatedContext.entity_referenced_at = new Date().toISOString();
-            updatedContext.last_user_message = messageBody;
-            await supabase
-              .from('olive_gateway_sessions')
-              .update({ conversation_context: updatedContext, last_activity: new Date().toISOString() })
-              .eq('id', session.id);
-            
-            // Store outbound context
-            await supabase
-              .from('clerk_profiles')
-              .update({ last_outbound_context: { type: 'task_created', task_id: newNoteId, task_summary: summary, timestamp: new Date().toISOString() } })
-              .eq('id', userId);
-          }
-          
-          return reply(confirmMsg);
+          const r = await makeCreateNoteHandler({
+            t, generateEmbedding, saveReferencedEntity,
+            invokeProcessNote: (body) => supabase.functions.invoke('process-note', { body }),
+          })({
+            supabase, userId, userLang, userTimezone: profile.timezone || 'America/New_York',
+            profile: profile as any, coupleId, effectiveCoupleId, session: session as any,
+            messageBody, cleanMessage, effectiveMessage, mediaUrls, mediaTypes,
+            wamid, inboundNoteSource, quotedMessageId: quotedMessageId ?? null,
+            receivedAtIso: receivedAtIso ?? new Date().toISOString(),
+            tracker, intentResult: { intent: 'CREATE', isUrgent, cleanMessage } as any,
+            members: null,
+            latitude: latitude ?? null,
+            longitude: longitude ?? null,
+            isSensitive: isSensitiveNote,
+          } as SharedHandlerContext);
+          r.after_reply?.forEach((cb) => cb().catch((e) => console.warn('[Shortcut→CREATE] after-reply:', e)));
+          return reply(r.text);
         } catch (err) {
           console.error('[Shortcut→CREATE] Error:', err);
           return reply(t('error_generic', userLang));

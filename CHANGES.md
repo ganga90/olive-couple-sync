@@ -1,5 +1,56 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-17 — [REFACTOR-1.6.1] Lift `+` shortcut create path into makeCreateNoteHandler
+
+Followup to [REFACTOR-1.6](#2026-05-17--refactor-16-extract-create-brain-dump-handler) addressing followup #1 in that PR's "Out of scope" list. The WhatsApp `+` shortcut now flows through the same `makeCreateNoteHandler` factory as the AI-classified brain-dump path.
+
+### What changed
+
+| File | Action |
+|---|---|
+| `whatsapp-webhook/index.ts` | 141-line inline shortcut CREATE block (lines 3056–3196) → 33-line dispatch via `makeCreateNoteHandler`. |
+
+### Behavior shift (intentional)
+
+Before this PR, the shortcut path was a thinner pipeline — it called `process-note` and inserted the returned note, but **bypassed**:
+
+- Topical-followup detection + attach + `attached_to_parent` undo offer
+- Field-level encryption when `isSensitive` is set (AES-256-GCM)
+- Multi-note splitting (the response was always treated as a single note)
+- Post-insert duplicate detection via `find_similar_notes` RPC
+- Proactive bridge `date_for_recent_task` offer when no due_date + opted-in
+- Sub-items preview in the confirmation
+- List-id → couple-id inheritance for shared lists
+
+After this PR, all of those apply to shortcut captures too. **This is a feature unlock, not a regression** — shortcut users now get the same protections and affordances as brain-dump users. The user-visible delta on a typical "+ buy milk" capture is unchanged.
+
+### Side effect: session-state unification (partial)
+
+The shortcut path's `olive_gateway_sessions.conversation_context` write is dropped. The unified handler writes to `user_sessions.context_data` (the canonical table). The gateway already writes outbound context on every reply via the standard outbound path, so no functional loss.
+
+This addresses the first half of the "session-state unification" followup from PR #190. Remaining `olive_gateway_sessions.conversation_context` writes elsewhere in the webhook still need migration — separate PR.
+
+### Webhook line-count delta
+
+| Before | After | Removed |
+|---|---|---|
+| 6,108 lines | **6,007 lines** | **−101** |
+
+Cumulative since 1.4 baseline: **9,052 → 6,007 (−3,045 lines, −33.6%)**.
+
+### Tests
+
+| Suite | Result |
+|---|---|
+| `_shared/` | 1,361 passed (no regressions) |
+| `whatsapp-webhook/handlers/` | 90 passed (no regressions; existing create-note tests already cover the lifted pipeline) |
+
+### Followups (out of scope)
+
+1. Remaining `olive_gateway_sessions.conversation_context` writes elsewhere in the webhook — finish the session-state unification.
+2. The shortcut `note_priority_high` localized label is no longer rendered (the unified handler doesn't append it). If users miss it, lift the label-build logic into the handler under an opt-in flag.
+3. The shortcut's larger 15-item tip pool is replaced by the handler's 10-item pool (5 fewer tip variations). Minor; can re-merge pools in a future cleanup.
+
 ## 2026-05-17 — [REFACTOR-1.7a] Extract EXPENSE + PARTNER_MESSAGE handlers
 
 Partial Initiative 1.7 of [OLIVE_REFACTOR_PLAN.md](OLIVE_REFACTOR_PLAN.md). The ledger groups TASK_ACTION + EXPENSE + PARTNER_MESSAGE, but TASK_ACTION's 1,191-line block (9+ action subroutines + elaborate task-resolution) needs its own sub-handler decomposition. Splitting into **1.7a (this PR: EXPENSE + PARTNER_MESSAGE)** and **1.7b (TASK_ACTION alone, next PR)** to keep diff sizes reviewable.
