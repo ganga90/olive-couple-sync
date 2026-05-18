@@ -1,5 +1,50 @@
 # CHANGES — Phase 1: Foundation of Robustness & Observability
 
+## 2026-05-17 — [REFACTOR-1.8] Extract MERGE + SEARCH + CREATE_LIST + LIST_RECAP handlers
+
+Initiative 1.8 of OLIVE_REFACTOR_PLAN.md. Lifts the remaining four inline intent blocks (~970 lines combined) out of `whatsapp-webhook/index.ts` into co-located handlers with the same factory + DI pattern as 1.4–1.7b.
+
+### What changed
+
+| File | Action |
+|---|---|
+| `_shared/types.ts` | Added `escalate_to?: WhatsAppIntent` to `Reply`. Lets the SEARCH handler signal "fall through to CONTEXTUAL_ASK" instead of returning text — preserves the monolith's `intent = 'CONTEXTUAL_ASK' as any` smart-escalation behavior cleanly. |
+| `whatsapp-webhook/handlers/merge.ts` | New — 102 lines, `makeMergeHandler({ t, generateEmbedding })`. Most-recent-note (5min) → embedding-based `findSimilarNotes` → freeze `merge` pending_action OR return `merge_no_recent` / `merge_no_similar`. |
+| `whatsapp-webhook/handlers/search.ts` | New — 708 lines, `makeSearchHandler({ t, saveReferencedEntity })`. Owns smart list lookup (AI name + regex fallback), 6 queryType dashboards (urgent / today / tomorrow / this_week / overdue / recent), arbitrary-date agenda, smart escalation. Exports `normalizeListName`, `singularize`, `isContentQuestion` for tests. |
+| `whatsapp-webhook/handlers/create-list.ts` | New — 161 lines, `makeCreateListHandler({ t, saveReferencedEntity })`. Same-name dedup gated on privacy scope (Work-private and Work-shared can coexist), Title-Case, bulk-insert initial items. |
+| `whatsapp-webhook/handlers/list-recap.ts` | New — 283 lines, `makeListRecapHandler({ callAI, t, saveReferencedEntity })`. Fuzzy list match (normalize + singularize + contains), AI-rendered recap with localized language directive, deterministic structured fallback on AI failure. Exports `normalizeListName` / `singularizeListName` / `matchListByName` for tests. |
+| `whatsapp-webhook/handlers/*.test.ts` (4 new) | 30 tests total — merge: 4, create-list: 6, list-recap: 8 (incl. 3 pure helpers), search: 12 (incl. 3 pure helpers). |
+| `whatsapp-webhook/index.ts` | 4 inline blocks (lines 3654–4759, ~970 lines) → 4 short dispatch sites (~75 lines). Removed now-dead imports: 9 `timezone-calendar` helpers, `parseNaturalDate`, 7 task-search helpers (kept `semanticTaskSearch` — still used by bare-reply detection), `WA_LIST_RECAP_PROMPT_VERSION`. Webhook drops 4,833 → 3,919 lines (−914). |
+
+### What's covered
+
+- **MERGE**: 4 tests — no-recent, happy-path (embed + similar found), no-similar, embed-skip when source already has embedding.
+- **CREATE_LIST**: 6 tests — happy path (Title-Case), with-initial-items (bulk insert), duplicate same-scope, duplicate different-scope allowed, name-too-short rejection, insert-error fallback.
+- **LIST_RECAP**: 8 tests — pure helpers (normalize / singularize / matchByName), AI happy path (1500-char slice), AI throws → structured fallback with urgent/overdue/active buckets, no-match → list_not_found, empty list, no lists at all.
+- **SEARCH**: 12 tests — pure helpers (normalize / singularize / isContentQuestion), specific-list (matched + empty), no-tasks onboarding, urgent / urgent-empty / recent / overdue dashboards, escalation to CONTEXTUAL_ASK, default-dashboard fall-through.
+
+### Behavior preservation
+
+- MERGE pending_action write does NOT spread existing context_data — preserves the monolith's behavior verbatim. Note added in the handler to file as follow-up (every other 1.7b call site uses `...currentCtx`).
+- SEARCH escalation now goes through `Reply.escalate_to` rather than mutating an outer-scope `intent` variable. Dispatch site mutates `intent` and falls through to the next handler — same net behavior, no runtime semantic change.
+- `formatFriendlyDate` calls inside the extracted handlers coerce `profile.timezone ?? undefined` (the HandlerProfile type tightening exposes the latent `string | null` mismatch in the monolith). Identical runtime behavior since both null and undefined skip the `Intl` timezone branch.
+
+### Tests
+
+| Suite | Count |
+|---|---|
+| `handlers/*.test.ts` | 138 passing (was 108; +30 for 1.8). |
+| `_shared/` | 1,361 passing — unchanged, no regressions. |
+
+### Verification
+
+- `deno check supabase/functions/whatsapp-webhook/index.ts` — 3 pre-existing TS2345 errors remain, no NEW errors.
+- Webhook line count: 4,833 → 3,919 (−914), now within striking distance of the Initiative 1.12 CI gate target (≤1,200).
+
+### Out of scope (deliberate)
+
+- `_shared/list-matcher.ts` (parallel WIP on `feat/clickable-links-smart-save`) shares some normalize/singularize logic with this PR. Consolidating these into a single helper is a follow-up once that feature lands.
+
 ## 2026-05-17 — [REFACTOR-1.7b] Extract TASK_ACTION handler
 
 The last big intent block in `whatsapp-webhook/index.ts`. Lifts ~1,191 lines (the entire `if (intent === 'TASK_ACTION')` body, lines 4332–5522) into a new `handlers/task-action.ts` module that follows the same factory + DI pattern as 1.4 CHAT, 1.5 CONTEXTUAL_ASK / WEB_SEARCH, 1.6 CREATE, and 1.7a EXPENSE / PARTNER_MESSAGE.
