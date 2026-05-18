@@ -12,40 +12,30 @@ import {
   WA_REWRITER_PROMPT_VERSION,
   WA_STT_PROMPT_VERSION,
   WA_WEB_SEARCH_FORMAT_PROMPT_VERSION,
-  WA_LIST_RECAP_PROMPT_VERSION,
 } from "../_shared/prompts/whatsapp-prompts.ts";
-import { parseNaturalDate } from "../_shared/natural-date-parser.ts";
+// parseNaturalDate moved to handlers/task-action.ts + handlers/search.ts
+// (Initiative 1.7b + 1.8). No remaining call sites here.
 import {
   detectSetDueRefinement,
   detectMisroutedPartnerRelay,
 } from "../_shared/conversation-continuity.ts";
-import {
-  isRelativeReference,
-  resolveRelativeReference,
-  searchTaskByKeywords,
-  computeMatchQuality,
-  semanticTaskSearchMulti,
-  semanticTaskSearch,
-  findSimilarNotes,
-  type TaskCandidate,
-} from "../_shared/task-search.ts";
+// task-search: most helpers (isRelativeReference / resolveRelativeReference /
+// searchTaskByKeywords / computeMatchQuality / semanticTaskSearchMulti /
+// findSimilarNotes / TaskCandidate) moved to the extracted handlers
+// (Initiative 1.7b + 1.8). Only `semanticTaskSearch` is still used here —
+// by the bare-reply detection path.
+import { semanticTaskSearch } from "../_shared/task-search.ts";
 import {
   standardizePhoneNumber,
   formatFriendlyDate,
   sendWhatsAppReply,
   downloadAndUploadMetaMedia,
 } from "../_shared/whatsapp-messaging.ts";
-import {
-  formatDateForZone,
-  formatTimeForZone,
-  getNextWeekBoundaryUtc,
-  getRelativeDayWindowUtc,
-  getTimeZoneParts,
-  isBeforeUtc,
-  isInUtcRange,
-  parseStoredTimestamp,
-  toUtcFromLocalParts,
-} from "../_shared/timezone-calendar.ts";
+// timezone-calendar helpers (formatDateForZone, formatTimeForZone,
+// getNextWeekBoundaryUtc, getRelativeDayWindowUtc, getTimeZoneParts,
+// isBeforeUtc, isInUtcRange, parseStoredTimestamp, toUtcFromLocalParts)
+// moved to handlers/search.ts + handlers/task-action.ts as part of
+// Initiative 1.7b + 1.8. No remaining call sites here.
 import { parseExpenseText } from "../_shared/expense-detector.ts";
 import { captureReplyReflection } from "../_shared/reflection-capture.ts";
 import { checkTrustForAction } from "../_shared/trust-gate-check.ts";
@@ -139,6 +129,16 @@ import { makePartnerMessageHandler } from "./handlers/partner-message.ts";
 // create+remind) plus the 11-case action switch (complete, set_priority,
 // set_due, assign, edit_*, delete, move, remind, bulk_reschedule).
 import { makeTaskActionHandler } from "./handlers/task-action.ts";
+// Initiative 1.8 — MERGE + SEARCH + CREATE_LIST + LIST_RECAP handlers.
+// MERGE: most-recent-note semantic match → pending merge offer.
+// SEARCH: smart list lookup + queryType dashboards + smart escalation
+//   to CONTEXTUAL_ASK for content questions (signaled via Reply.escalate_to).
+// CREATE_LIST: name dedup by privacy scope + Title-Case + bulk-insert.
+// LIST_RECAP: fuzzy list match + AI-rendered recap + structured fallback.
+import { makeMergeHandler } from "./handlers/merge.ts";
+import { makeSearchHandler } from "./handlers/search.ts";
+import { makeCreateListHandler } from "./handlers/create-list.ts";
+import { makeListRecapHandler } from "./handlers/list-recap.ts";
 import type { HandlerContext as SharedHandlerContext } from "../_shared/types.ts";
 // Phase 1 WhatsApp port: shared with web Ask Olive.
 import {
@@ -3642,688 +3642,42 @@ Description: "${parsedExpense.description}"`;
     }
 
     // ========================================================================
-    // MERGE COMMAND HANDLER
+    // MERGE — handler in ./handlers/merge.ts (Initiative 1.8).
     // ========================================================================
     if (intent === 'MERGE') {
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      
-      const { data: recentNotes, error: recentError } = await supabase
-        .from('clerk_notes')
-        .select('id, summary, embedding, created_at')
-        .eq('author_id', userId)
-        .eq('completed', false)
-        .gte('created_at', fiveMinutesAgo)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      if (recentError || !recentNotes || recentNotes.length === 0) {
-        return reply(t('merge_no_recent', userLang));
-      }
-
-      const sourceNote = recentNotes[0];
-      let targetNote: { id: string; summary: string } | null = null;
-
-      if (sourceNote.embedding) {
-        const similar = await findSimilarNotes(supabase, userId, coupleId, sourceNote.embedding, sourceNote.id);
-        if (similar) {
-          targetNote = { id: similar.id, summary: similar.summary };
-        }
-      }
-
-      if (!targetNote) {
-        const embedding = await generateEmbedding(sourceNote.summary);
-        if (embedding) {
-          const similar = await findSimilarNotes(supabase, userId, coupleId, embedding, sourceNote.id);
-          if (similar) {
-            targetNote = { id: similar.id, summary: similar.summary };
-          }
-        }
-      }
-
-      if (!targetNote) {
-        return reply(t('merge_no_similar', userLang, { task: sourceNote.summary }));
-      }
-
-      await supabase
-        .from('user_sessions')
-        .update({ 
-          conversation_state: 'AWAITING_CONFIRMATION', 
-          context_data: {
-            pending_action: {
-              type: 'merge',
-              source_id: sourceNote.id,
-              source_summary: sourceNote.summary,
-              target_id: targetNote.id,
-              target_summary: targetNote.summary
-            }
-          },
-          updated_at: new Date().toISOString() 
-        })
-        .eq('id', session.id);
-
-      return reply(t('confirm_merge', userLang, { source: sourceNote.summary, target: targetNote.summary }));
+      const r = await makeMergeHandler({ t, generateEmbedding })({
+        supabase, userId, userLang, userTimezone: profile.timezone || 'America/New_York',
+        profile: profile as any, coupleId, effectiveCoupleId, session: session as any,
+        messageBody, cleanMessage, effectiveMessage, mediaUrls, mediaTypes,
+        wamid, inboundNoteSource, quotedMessageId: quotedMessageId ?? null,
+        receivedAtIso: receivedAtIso ?? new Date().toISOString(),
+        tracker, intentResult: intentResult as any, members: null,
+      } as SharedHandlerContext);
+      return reply(r.text);
     }
 
     // ========================================================================
-    // SEARCH INTENT - Consultation with Context-Aware Responses
+    // SEARCH — handler in ./handlers/search.ts (Initiative 1.8).
     // ========================================================================
+    // The handler may signal `escalate_to: 'CONTEXTUAL_ASK'` instead of
+    // returning text — preserves the monolith's smart-escalation path
+    // where SEARCH detects a content question it can't satisfy from the
+    // dashboard query slots and re-routes via `intent` mutation.
     if (intent === 'SEARCH') {
-      const queryType = (intentResult as any).queryType as QueryType;
-      
-      const { data: tasks } = await supabase
-        .from('clerk_notes')
-        .select('id, summary, due_date, completed, priority, category, list_id, items, task_owner, created_at')
-        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      const { data: lists } = await supabase
-        .from('clerk_lists')
-        .select('id, name, description')
-        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
-
-      const listIdToName = new Map(lists?.map(l => [l.id, l.name]) || []);
-
-      // ================================================================
-      // SMART LIST LOOKUP
-      // ================================================================
-      
-      function normalizeListName(name: string): string {
-        return name.toLowerCase()
-          .replace(/\b(the|a|an|my|our)\b/g, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-      }
-      
-      function singularize(word: string): string {
-        if (word.endsWith('ies')) return word.slice(0, -3) + 'y';
-        if (word.endsWith('ves')) return word.slice(0, -3) + 'f';
-        if (word.endsWith('ses') || word.endsWith('xes') || word.endsWith('zes') || word.endsWith('ches') || word.endsWith('shes')) {
-          return word.slice(0, -2);
-        }
-        if (word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
-        return word;
-      }
-      
-      // Strip trailing punctuation for pattern matching (e.g., "What's on my travel list?")
-      const cleanedMessage = (effectiveMessage || '').replace(/[?!.]+$/, '').trim();
-      
-      const listExtractionPatterns = [
-        /(?:show|display|open|get|see)\s+(?:me\s+)?(?:the\s+|my\s+|our\s+)?(.+?)\s+(?:list|tasks?|items?)$/i,
-        /(?:what'?s|whats)\s+(?:in|on)\s+(?:the\s+|my\s+|our\s+)?(.+?)\s+(?:list|tasks?|items?)$/i,
-        /^list\s+(?:my\s+|the\s+|our\s+)?(.+?)$/i,
-        /^(?:my|our)\s+(.+?)(?:\s+list)?$/i,
-        /^(.+?)\s+list$/i,
-        /(?:show|display|open|get|see|what'?s\s+in)\s+(?:me\s+)?(?:the\s+|my\s+|our\s+)?(.+?)$/i,
-      ];
-      
-      let specificList: string | null = null;
-      let matchedListName: string | null = null;
-      
-      // PRIORITY: Use AI-provided list_name if available (most reliable)
-      const aiListName = (intentResult as any)._listName as string | undefined;
-      if (aiListName) {
-        const aiNormalized = normalizeListName(aiListName);
-        const aiSingular = singularize(aiNormalized);
-        console.log('[WhatsApp] AI provided list_name:', aiListName, '→ normalized:', aiNormalized);
-        
-        for (const [listId, listName] of listIdToName) {
-          const nln = normalizeListName(listName as string);
-          const nlnS = singularize(nln);
-          if (nln === aiNormalized || nlnS === aiSingular || nln.includes(aiNormalized) || aiNormalized.includes(nln) || nlnS.includes(aiSingular) || aiSingular.includes(nlnS)) {
-            specificList = listId;
-            matchedListName = listName as string;
-            console.log(`[WhatsApp] AI list match: "${aiListName}" → "${matchedListName}"`);
-            break;
-          }
-        }
-      }
-      
-      // FALLBACK: Regex extraction from cleaned message (no trailing punctuation)
-      if (!specificList) {
-        for (const pattern of listExtractionPatterns) {
-          const match = cleanedMessage?.match(pattern);
-          if (!match) continue;
-          
-          const rawExtracted = normalizeListName(match[1]);
-          if (!rawExtracted || rawExtracted.length < 2) continue;
-          
-          const genericWords = new Set(['tasks', 'task', 'all', 'everything', 'stuff', 'things', 'my', 'me', 'the']);
-          if (genericWords.has(rawExtracted)) continue;
-          
-          const extractedSingular = singularize(rawExtracted);
-          
-          for (const [listId, listName] of listIdToName) {
-            const normalizedListName = normalizeListName(listName as string);
-            const listNameSingular = singularize(normalizedListName);
-            
-            if (normalizedListName === rawExtracted || normalizedListName === extractedSingular) {
-              specificList = listId;
-              matchedListName = listName as string;
-              break;
-            }
-            
-            if (listNameSingular === extractedSingular) {
-              specificList = listId;
-              matchedListName = listName as string;
-              break;
-            }
-            
-            if (normalizedListName.includes(rawExtracted) || rawExtracted.includes(normalizedListName)) {
-              specificList = listId;
-              matchedListName = listName as string;
-              break;
-            }
-            
-            if (listNameSingular.includes(extractedSingular) || extractedSingular.includes(listNameSingular)) {
-              specificList = listId;
-              matchedListName = listName as string;
-              break;
-            }
-          }
-          
-          if (specificList) {
-            console.log(`[WhatsApp] Regex list matched: "${match[1]}" → "${matchedListName}"`);
-            break;
-          }
-        }
-      }
-
-      if (specificList && tasks) {
-        // ── Fix 7: targeted list fetch (do NOT rely on the 100-recency window) ──
-        // The outer `tasks` array is `LIMIT 100 ORDER BY created_at DESC`. Heavy users
-        // (hundreds of notes spanning months) have lists like "Books" whose items are
-        // older than the 100-most-recent slice — those items get filtered out and the
-        // user sees "Your Books list is empty!" even though the list has 12 items.
-        // Solution: when we have a specific list, fetch its contents directly with no
-        // recency cap, scoped by user/couple to respect RLS-equivalent visibility.
-        const { data: listTasksDirect } = await supabase
-          .from('clerk_notes')
-          .select('id, summary, due_date, completed, priority, category, list_id, items, task_owner, original_text')
-          .eq('list_id', specificList)
-          .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`)
-          .order('created_at', { ascending: false });
-
-        const allListTasks = listTasksDirect || [];
-        const relevantTasks = allListTasks.filter(t => !t.completed);
-        const completedInList = allListTasks.filter(t => t.completed);
-
-        console.log('[WhatsApp/SEARCH] Targeted list fetch:', matchedListName, '→', allListTasks.length, 'total |', relevantTasks.length, 'active');
-
-        if (relevantTasks.length === 0) {
-          const emptyMsg = completedInList.length > 0
-            ? `Your ${matchedListName} list is all done! ✅ (${completedInList.length} completed item${completedInList.length > 1 ? 's' : ''})`
-            : `Your ${matchedListName} list is empty! 🎉`;
-          return reply(emptyMsg);
-        }
-
-        // PR6 — rename loop var (was `t`, shadowing the t() translation
-        // function so we couldn't call t() inside the callback) and
-        // wire the localized "Due:" label.
-        const itemsList = relevantTasks.map((task, i) => {
-          const items = task.items && task.items.length > 0 ? `\n  ${task.items.join('\n  ')}` : '';
-          const priority = task.priority === 'high' ? ' 🔥' : '';
-          const dueInfo = task.due_date
-            ? t('label_task_due_paren', userLang, { date: formatFriendlyDate(task.due_date, true, profile.timezone, userLang) })
-            : '';
-          return `${i + 1}. ${task.summary}${priority}${dueInfo}${items}`;
-        }).join('\n\n');
-
-        const searchListResponse = `📋 ${matchedListName} (${relevantTasks.length}):\n\n${itemsList}\n\n💡 Say "done with [task]" to complete items`;
-        // Save the first task as referenced entity AND the full numbered list for ordinal references
-        await saveReferencedEntity(relevantTasks[0], searchListResponse, relevantTasks.map(t => ({ id: t.id, summary: t.summary })));
-        return reply(searchListResponse);
-      }
-
-      // General task summary
-      if (!tasks || tasks.length === 0) {
-        return reply('You don\'t have any tasks yet! Send me something to save like "Buy groceries tomorrow" 🛒');
-      }
-
-      const activeTasks = tasks.filter(t => !t.completed);
-      const urgentTasks = activeTasks.filter(t => t.priority === 'high');
-      const now = new Date();
-      const userTimezone = profile.timezone || 'UTC';
-      const todayWindow = getRelativeDayWindowUtc(now, userTimezone, 0);
-      const tomorrowWindow = getRelativeDayWindowUtc(now, userTimezone, 1);
-      
-      const dueTodayTasks = activeTasks.filter(t => {
-        return isInUtcRange(t.due_date, todayWindow.start, todayWindow.end);
-      });
-      
-      const overdueTasks = activeTasks.filter(t => {
-        return isBeforeUtc(t.due_date, todayWindow.start);
-      });
-      
-      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const recentTasks = activeTasks.filter(t => new Date(t.created_at) >= oneDayAgo);
-
-      // ================================================================
-      // CONTEXTUAL QUERY RESPONSES
-      // ================================================================
-
-      // Arbitrary-date agenda (e.g., "And for Friday?" as a follow-up to
-      // "What's on my calendar for tomorrow?"). The classifier carries
-      // the date forward in `due_date_expression`; we compute the same
-      // (tasks + calendar) window the today/tomorrow paths use.
-      //
-      // Gates:
-      //   - The expression parses to a concrete date via parseNaturalDate
-      //   - The parsed date isn't already covered by today/tomorrow (those
-      //     have richer hand-tuned copy and we don't want to displace them)
-      const dueDateExpr = (intentResult as any)._dueDateExpr as string | undefined;
-      if (dueDateExpr && (!queryType || queryType === 'general')) {
-        try {
-          const parsedDate = parseNaturalDate(dueDateExpr, userTimezone, userLang);
-          if (parsedDate.date) {
-            const targetIso = parsedDate.date; // already absolute UTC
-            const target = new Date(targetIso);
-            // Compute a day-window in the user's timezone for that date.
-            // We diff against today (UTC-day-of-target − UTC-day-of-today)
-            // and call getRelativeDayWindowUtc with that day-offset so
-            // the window math stays in one helper (handles DST + locale).
-            const msPerDay = 24 * 60 * 60 * 1000;
-            const todayMs = todayWindow.start.getTime();
-            const targetDayStart = new Date(target);
-            targetDayStart.setUTCHours(0, 0, 0, 0);
-            const dayOffset = Math.round((targetDayStart.getTime() - todayMs) / msPerDay);
-
-            // Don't shadow the dedicated today/tomorrow paths.
-            if (dayOffset !== 0 && dayOffset !== 1) {
-              const dateWindow = getRelativeDayWindowUtc(now, userTimezone, dayOffset);
-
-              const dueOnDateTasks = activeTasks.filter(t =>
-                isInUtcRange(t.due_date, dateWindow.start, dateWindow.end),
-              );
-
-              let dateCalendarEvents: string[] = [];
-              try {
-                const { data: dateConnections } = await supabase
-                  .from('calendar_connections')
-                  .select('id')
-                  .eq('user_id', userId)
-                  .eq('is_active', true);
-                if (dateConnections && dateConnections.length > 0) {
-                  const connIds = dateConnections.map(c => c.id);
-                  const { data: events } = await supabase
-                    .from('calendar_events')
-                    .select('title, start_time, all_day')
-                    .in('connection_id', connIds)
-                    .gte('start_time', dateWindow.start.toISOString())
-                    .lt('start_time', dateWindow.end.toISOString())
-                    .order('start_time', { ascending: true })
-                    .limit(10);
-                  dateCalendarEvents = (events || []).map(e => {
-                    if (e.all_day) return `• ${e.title} (all day)`;
-                    const time = formatTimeForZone(e.start_time, userTimezone);
-                    return `• ${time}: ${e.title}`;
-                  });
-                }
-              } catch (calErr) {
-                console.warn('[WhatsApp/SEARCH date] Calendar fetch error:', calErr);
-              }
-
-              // Friendly date label (no time component — it's a day query).
-              const dateLabel = formatFriendlyDate(
-                dateWindow.start.toISOString(),
-                false,
-                profile.timezone,
-                userLang,
-              );
-
-              if (dueOnDateTasks.length === 0 && dateCalendarEvents.length === 0) {
-                return reply(t('empty_no_date', userLang, { date: dateLabel }));
-              }
-
-              let response = `📅 Agenda for ${dateLabel}:\n`;
-              if (dateCalendarEvents.length > 0) {
-                response += `\n🗓️ Calendar (${dateCalendarEvents.length}):\n${dateCalendarEvents.join('\n')}\n`;
-              }
-              if (dueOnDateTasks.length > 0) {
-                const list = dueOnDateTasks.slice(0, 8).map((t2, i) => {
-                  const priority = t2.priority === 'high' ? ' 🔥' : '';
-                  return `${i + 1}. ${t2.summary}${priority}`;
-                }).join('\n');
-                const moreText = dueOnDateTasks.length > 8 ? `\n...and ${dueOnDateTasks.length - 8} more` : '';
-                response += `\n📋 Tasks Due (${dueOnDateTasks.length}):\n${list}${moreText}\n`;
-              }
-              response += '\n\n🔗 Manage: https://witholive.app';
-
-              const displayedDate = dueOnDateTasks.slice(0, 8);
-              if (displayedDate.length > 0) {
-                await saveReferencedEntity(
-                  displayedDate[0],
-                  response,
-                  displayedDate.map(t2 => ({ id: t2.id, summary: t2.summary })),
-                );
-              }
-              return reply(response);
-            }
-          }
-        } catch (dateBranchErr) {
-          console.warn(
-            '[WhatsApp/SEARCH date] Date-scoped branch failed (non-fatal, falling through):',
-            dateBranchErr instanceof Error ? dateBranchErr.message : dateBranchErr,
-          );
-        }
-      }
-
-      if (queryType === 'urgent') {
-        if (urgentTasks.length === 0) {
-          return reply(t('empty_no_urgent', userLang));
-        }
-        
-        // PR6 — rename `t` → `task` so we can call t() inside the callback.
-        const urgentList = urgentTasks.slice(0, 8).map((task, i) => {
-          const dueInfo = task.due_date
-            ? t('label_task_due_paren', userLang, { date: formatFriendlyDate(task.due_date, true, profile.timezone, userLang) })
-            : '';
-          return `${i + 1}. ${task.summary}${dueInfo}`;
-        }).join('\n');
-        
-        const moreText = urgentTasks.length > 8 ? `\n\n...and ${urgentTasks.length - 8} more urgent tasks` : '';
-        
-        const urgentResponse = `🔥 ${urgentTasks.length} Urgent Task${urgentTasks.length === 1 ? '' : 's'}:\n\n${urgentList}${moreText}\n\n🔗 Manage: https://witholive.app`;
-        const displayedUrgent = urgentTasks.slice(0, 8);
-        await saveReferencedEntity(displayedUrgent[0], urgentResponse, displayedUrgent.map(t => ({ id: t.id, summary: t.summary })));
-        return reply(urgentResponse);
-      }
-      
-      if (queryType === 'today') {
-        // Fetch today's calendar events (matching the pattern used in 'tomorrow' and 'this_week')
-        let todayCalendarEvents: string[] = [];
-        try {
-          const { data: calConnections } = await supabase
-            .from('calendar_connections')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('is_active', true);
-          
-          if (calConnections && calConnections.length > 0) {
-            const connIds = calConnections.map(c => c.id);
-            const { data: events } = await supabase
-              .from('calendar_events')
-              .select('title, start_time, all_day')
-              .in('connection_id', connIds)
-              .gte('start_time', todayWindow.start.toISOString())
-              .lt('start_time', todayWindow.end.toISOString())
-              .order('start_time', { ascending: true })
-              .limit(10);
-            
-            todayCalendarEvents = (events || []).map(e => {
-              if (e.all_day) return `• ${e.title} (all day)`;
-              const time = formatTimeForZone(e.start_time, userTimezone);
-              return `• ${time}: ${e.title}`;
-            });
-          }
-        } catch (calErr) {
-          console.warn('[WhatsApp] Calendar fetch error for today:', calErr);
-        }
-        
-        if (dueTodayTasks.length === 0 && todayCalendarEvents.length === 0) {
-          return reply(t('empty_no_today', userLang));
-        }
-        
-        let response = `📅 Today's Agenda:\n`;
-        
-        if (todayCalendarEvents.length > 0) {
-          response += `\n🗓️ Calendar (${todayCalendarEvents.length}):\n${todayCalendarEvents.join('\n')}\n`;
-        }
-        
-        if (dueTodayTasks.length > 0) {
-          const todayList = dueTodayTasks.slice(0, 8).map((t, i) => {
-            const priority = t.priority === 'high' ? ' 🔥' : '';
-            return `${i + 1}. ${t.summary}${priority}`;
-          }).join('\n');
-          const moreText = dueTodayTasks.length > 8 ? `\n...and ${dueTodayTasks.length - 8} more` : '';
-          response += `\n📋 Tasks Due (${dueTodayTasks.length}):\n${todayList}${moreText}\n`;
-        }
-        
-        if (overdueTasks.length > 0) {
-          response += `\n⚠️ Also: ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''} to catch up on`;
-        }
-        
-        response += '\n\n🔗 Manage: https://witholive.app';
-        
-        const displayedToday = dueTodayTasks.slice(0, 8);
-        if (displayedToday.length > 0) {
-          await saveReferencedEntity(displayedToday[0], response, displayedToday.map(t => ({ id: t.id, summary: t.summary })));
-        }
-        return reply(response);
-      }
-      
-      if (queryType === 'tomorrow') {
-        const dueTomorrowTasks = activeTasks.filter(t => {
-          return isInUtcRange(t.due_date, tomorrowWindow.start, tomorrowWindow.end);
-        });
-        
-        let tomorrowCalendarEvents: string[] = [];
-        try {
-          const { data: calConnections } = await supabase
-            .from('calendar_connections')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('is_active', true);
-          
-          if (calConnections && calConnections.length > 0) {
-            const connIds = calConnections.map(c => c.id);
-            const { data: events } = await supabase
-              .from('calendar_events')
-              .select('title, start_time, all_day')
-              .in('connection_id', connIds)
-              .gte('start_time', tomorrowWindow.start.toISOString())
-              .lt('start_time', tomorrowWindow.end.toISOString())
-              .order('start_time', { ascending: true })
-              .limit(10);
-            
-            tomorrowCalendarEvents = (events || []).map(e => {
-              if (e.all_day) return `• ${e.title} (all day)`;
-              const time = formatTimeForZone(e.start_time, userTimezone);
-              return `• ${time}: ${e.title}`;
-            });
-          }
-        } catch (calErr) {
-          console.warn('[WhatsApp] Calendar fetch error for tomorrow:', calErr);
-        }
-        
-        if (dueTomorrowTasks.length === 0 && tomorrowCalendarEvents.length === 0) {
-          return reply('📅 Nothing scheduled for tomorrow! Enjoy your free day.\n\n💡 Try "what\'s urgent" to see high-priority tasks');
-        }
-        
-        let response = '📅 Tomorrow\'s Agenda:\n';
-        
-        if (tomorrowCalendarEvents.length > 0) {
-          response += `\n🗓️ Calendar (${tomorrowCalendarEvents.length}):\n${tomorrowCalendarEvents.join('\n')}\n`;
-        }
-        
-        if (dueTomorrowTasks.length > 0) {
-          const tomorrowList = dueTomorrowTasks.slice(0, 8).map((t, i) => {
-            const priority = t.priority === 'high' ? ' 🔥' : '';
-            return `${i + 1}. ${t.summary}${priority}`;
-          }).join('\n');
-          const moreText = dueTomorrowTasks.length > 8 ? `\n...and ${dueTomorrowTasks.length - 8} more` : '';
-          response += `\n📋 Tasks Due (${dueTomorrowTasks.length}):\n${tomorrowList}${moreText}\n`;
-        }
-        
-        if (overdueTasks.length > 0) {
-          response += `\n⚠️ Also: ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''} to catch up on`;
-        }
-        
-        response += '\n\n🔗 Manage: https://witholive.app';
-        
-        const displayedTomorrow = dueTomorrowTasks.slice(0, 8);
-        if (displayedTomorrow.length > 0) {
-          await saveReferencedEntity(displayedTomorrow[0], response, displayedTomorrow.map(t => ({ id: t.id, summary: t.summary })));
-        }
-        return reply(response);
-      }
-      
-      if (queryType === 'this_week') {
-        const endOfWeek = getNextWeekBoundaryUtc(now, userTimezone);
-        
-        const dueThisWeekTasks = activeTasks.filter(t => {
-          return isInUtcRange(t.due_date, todayWindow.start, endOfWeek);
-        });
-        
-        let weekCalendarEvents: string[] = [];
-        try {
-          const { data: calConnections } = await supabase
-            .from('calendar_connections')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('is_active', true);
-          
-          if (calConnections && calConnections.length > 0) {
-            const connIds = calConnections.map(c => c.id);
-            const { data: events } = await supabase
-              .from('calendar_events')
-              .select('title, start_time, all_day')
-              .in('connection_id', connIds)
-              .gte('start_time', todayWindow.start.toISOString())
-              .lt('start_time', endOfWeek.toISOString())
-              .order('start_time', { ascending: true })
-              .limit(15);
-            
-            weekCalendarEvents = (events || []).map(e => {
-              const dayName = formatDateForZone(e.start_time, userTimezone, { weekday: 'short' });
-              if (e.all_day) return `• ${dayName}: ${e.title} (all day)`;
-              const time = formatTimeForZone(e.start_time, userTimezone);
-              return `• ${dayName} ${time}: ${e.title}`;
-            });
-          }
-        } catch (calErr) {
-          console.warn('[WhatsApp] Calendar fetch error for week:', calErr);
-        }
-        
-        if (dueThisWeekTasks.length === 0 && weekCalendarEvents.length === 0) {
-          return reply('📅 Nothing scheduled for this week! Looks like a clear week ahead.\n\n💡 Try "what\'s urgent" to see high-priority tasks');
-        }
-        
-        let response = '📅 This Week\'s Overview:\n';
-        
-        if (weekCalendarEvents.length > 0) {
-          response += `\n🗓️ Calendar (${weekCalendarEvents.length}):\n${weekCalendarEvents.join('\n')}\n`;
-        }
-        
-        if (dueThisWeekTasks.length > 0) {
-          // PR6 — rename `t` → `task` (shadowing fix) + pass userLang to
-          // formatter so the date string itself ("Friday, May 4th" vs
-          // "venerdì 4 maggio" vs "viernes 4 de mayo") matches the user's
-          // locale. No "Due:" label here — date already inside parens.
-          const weekList = dueThisWeekTasks.slice(0, 10).map((task, i) => {
-            const priority = task.priority === 'high' ? ' 🔥' : '';
-            const dueDate = task.due_date ? formatFriendlyDate(task.due_date, false, profile.timezone, userLang) : '';
-            return `${i + 1}. ${task.summary}${priority}${dueDate ? ` (${dueDate})` : ''}`;
-          }).join('\n');
-          const moreText = dueThisWeekTasks.length > 10 ? `\n...and ${dueThisWeekTasks.length - 10} more` : '';
-          response += `\n📋 Tasks Due (${dueThisWeekTasks.length}):\n${weekList}${moreText}\n`;
-        }
-        
-        if (overdueTasks.length > 0) {
-          response += `\n⚠️ Also: ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''} to catch up on`;
-        }
-        
-        if (urgentTasks.length > 0) {
-          response += `\n🔥 ${urgentTasks.length} urgent task${urgentTasks.length > 1 ? 's' : ''} need attention`;
-        }
-        
-        response += '\n\n🔗 Manage: https://witholive.app';
-        
-        const displayedWeek = dueThisWeekTasks.slice(0, 10);
-        if (displayedWeek.length > 0) {
-          await saveReferencedEntity(displayedWeek[0], response, displayedWeek.map(t => ({ id: t.id, summary: t.summary })));
-        }
-        return reply(response);
-      }
-      
-      if (queryType === 'recent') {
-        if (recentTasks.length === 0) {
-          const lastFive = activeTasks.slice(0, 5);
-          if (lastFive.length === 0) {
-            return reply(t('empty_no_recent', userLang));
-          }
-          
-          const recentList = lastFive.map((t, i) => `${i + 1}. ${t.summary}`).join('\n');
-          const recentResponse = `📝 Your Latest Tasks:\n\n${recentList}\n\n🔗 Manage: https://witholive.app`;
-          await saveReferencedEntity(lastFive[0], recentResponse, lastFive.map(t => ({ id: t.id, summary: t.summary })));
-          return reply(recentResponse);
-        }
-        
-        const displayedRecent = recentTasks.slice(0, 8);
-        const recentList = displayedRecent.map((t, i) => {
-          const priority = t.priority === 'high' ? ' 🔥' : '';
-          return `${i + 1}. ${t.summary}${priority}`;
-        }).join('\n');
-        
-        const moreText = recentTasks.length > 8 ? `\n\n...and ${recentTasks.length - 8} more` : '';
-        
-        const recentResponse = `🕐 ${recentTasks.length} Task${recentTasks.length === 1 ? '' : 's'} Added Recently:\n\n${recentList}${moreText}\n\n🔗 Manage: https://witholive.app`;
-        await saveReferencedEntity(displayedRecent[0], recentResponse, displayedRecent.map(t => ({ id: t.id, summary: t.summary })));
-        return reply(recentResponse);
-      }
-      
-      if (queryType === 'overdue') {
-        if (overdueTasks.length === 0) {
-          return reply('✅ No overdue tasks! You\'re on track.\n\n💡 Try "what\'s due today" to see today\'s tasks');
-        }
-        
-        const overdueList = overdueTasks.slice(0, 8).map((t, i) => {
-          const dueDate = parseStoredTimestamp(t.due_date);
-          const daysOverdue = dueDate
-            ? Math.max(1, Math.floor((todayWindow.start.getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000)))
-            : 1;
-          return `${i + 1}. ${t.summary} (${daysOverdue}d overdue)`;
-        }).join('\n');
-        
-        const moreText = overdueTasks.length > 8 ? `\n\n...and ${overdueTasks.length - 8} more` : '';
-        
-        const overdueResponse = `⚠️ ${overdueTasks.length} Overdue Task${overdueTasks.length === 1 ? '' : 's'}:\n\n${overdueList}${moreText}\n\n🔗 Manage: https://witholive.app`;
-        const displayedOverdue = overdueTasks.slice(0, 8);
-        await saveReferencedEntity(displayedOverdue[0], overdueResponse, displayedOverdue.map(t => ({ id: t.id, summary: t.summary })));
-        return reply(overdueResponse);
-      }
-
-      // ================================================================
-      // SMART ESCALATION: If the user asked a content QUESTION (not a
-      // dashboard command) and we couldn't match a specific list, escalate
-      // to CONTEXTUAL_ASK which uses AI to search all saved data.
-      // ================================================================
-      const questionPatterns = /^(which|what|where|who|how|do i|did i|any |are there|have i|cuál|qué|dónde|quién|cómo|tengo|hay|quali|cosa|dove|chi|come|ho )\b/i;
-      const isQuestionMark = (effectiveMessage || '').trim().endsWith('?');
-      const isContentQuestion = questionPatterns.test((effectiveMessage || '').trim()) || isQuestionMark;
-      const dashboardQueryTypes = new Set(['urgent', 'today', 'tomorrow', 'this_week', 'overdue', 'recent']);
-
-      // Escalate any content question that did not match a dashboard slot to CONTEXTUAL_ASK.
-      // Previously gated on queryType === 'general', which silently dropped questions when the
-      // classifier set queryType to null/undefined or any non-dashboard value — leading to
-      // generic dashboard summaries for content questions like "What's my Waymo discount code?".
-      if (isContentQuestion && !dashboardQueryTypes.has(queryType as string)) {
-        console.log('[WhatsApp] SEARCH escalating to CONTEXTUAL_ASK — question detected:', effectiveMessage?.substring(0, 60), 'queryType:', queryType);
-        // Re-route: jump to CONTEXTUAL_ASK handler by overriding intent
-        intent = 'CONTEXTUAL_ASK' as any;
-        // Fall through — the CONTEXTUAL_ASK handler below will pick it up
+      const r = await makeSearchHandler({ t, saveReferencedEntity })({
+        supabase, userId, userLang, userTimezone: profile.timezone || 'America/New_York',
+        profile: profile as any, coupleId, effectiveCoupleId, session: session as any,
+        messageBody, cleanMessage, effectiveMessage, mediaUrls, mediaTypes,
+        wamid, inboundNoteSource, quotedMessageId: quotedMessageId ?? null,
+        receivedAtIso: receivedAtIso ?? new Date().toISOString(),
+        tracker, intentResult: intentResult as any, members: null,
+      } as SharedHandlerContext);
+      if (r.escalate_to) {
+        console.log('[SEARCH] Escalating to', r.escalate_to);
+        intent = r.escalate_to as any;
+        // Fall through to the next matching handler.
       } else {
-        // Default: General task summary (dashboard)
-        let summary = `📊 Your Tasks:\n`;
-        summary += `• Active: ${activeTasks.length}\n`;
-        if (urgentTasks.length > 0) summary += `• Urgent: ${urgentTasks.length} 🔥\n`;
-        if (dueTodayTasks.length > 0) summary += `• Due today: ${dueTodayTasks.length}\n`;
-        if (overdueTasks.length > 0) summary += `• Overdue: ${overdueTasks.length} ⚠️\n`;
-
-        if (urgentTasks.length > 0) {
-          summary += `\n⚡ Urgent:\n`;
-          summary += urgentTasks.slice(0, 3).map((t, i) => `${i + 1}. ${t.summary}`).join('\n');
-        } else if (activeTasks.length > 0) {
-          summary += `\n📝 Recent:\n`;
-          summary += activeTasks.slice(0, 5).map((t, i) => `${i + 1}. ${t.summary}`).join('\n');
-        }
-
-        summary += '\n\n💡 Try: "what\'s urgent", "what\'s due today", or "show my groceries list"';
-
-        const prominentTask = urgentTasks[0] || dueTodayTasks[0] || activeTasks[0] || null;
-        const displayedTasks = urgentTasks.length > 0 ? urgentTasks.slice(0, 3) : activeTasks.slice(0, 5);
-        await saveReferencedEntity(prominentTask, summary, displayedTasks.map(t => ({ id: t.id, summary: t.summary })));
-        return reply(summary);
+        return reply(r.text);
       }
     }
 
@@ -4452,300 +3806,33 @@ Description: "${parsedExpense.description}"`;
     }
 
     // ========================================================================
-    // CREATE LIST HANDLER - Create a new organizational list from WhatsApp
+    // CREATE_LIST — handler in ./handlers/create-list.ts (Initiative 1.8).
     // ========================================================================
     if (intent === 'CREATE_LIST') {
-      const listName = (intentResult as any)._listName || cleanMessage || '';
-      const initialItemsRaw = (intentResult as any)._initialItems || '';
-      console.log('[CREATE_LIST] Creating list:', listName, '| initial items:', initialItemsRaw?.substring(0, 80));
-
-      if (!listName || listName.trim().length < 2) {
-        return reply(t('list_no_name', userLang));
-      }
-
-      // Check if a list with this name already exists with the SAME privacy scope
-      // Users CAN have "Work" (private) and "Work" (shared) as separate lists
-      const { data: existingLists } = await supabase
-        .from('clerk_lists')
-        .select('id, name, couple_id')
-        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
-
-      const normalizedNewName = listName.toLowerCase().trim();
-      // Only match if same name AND same privacy scope
-      const existingMatch = existingLists?.find(l => {
-        const nameMatch = l.name.toLowerCase().trim() === normalizedNewName;
-        if (!nameMatch) return false;
-        const existingIsShared = l.couple_id !== null;
-        const newIsShared = effectiveCoupleId !== null;
-        return existingIsShared === newIsShared;
-      });
-
-      if (existingMatch) {
-        // List already exists with same privacy — inform the user
-        const { data: existingItems } = await supabase
-          .from('clerk_notes')
-          .select('id')
-          .eq('list_id', existingMatch.id)
-          .eq('completed', false);
-
-        const count = existingItems?.length || 0;
-        return reply(t('list_already_exists', userLang, { list: existingMatch.name, count: String(count), plural: count !== 1 ? 's' : '' }));
-      }
-
-      // Format list name to Title Case
-      const formattedName = listName.trim()
-        .split(/\s+/)
-        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        .join(' ');
-
-      // Create the list
-      const { data: newList, error: createError } = await supabase
-        .from('clerk_lists')
-        .insert({
-          name: formattedName,
-          author_id: userId,
-          couple_id: effectiveCoupleId,
-          is_manual: true,
-          description: `Created via WhatsApp`,
-        })
-        .select('id, name')
-        .single();
-
-      if (createError || !newList) {
-        console.error('[CREATE_LIST] Insert error:', createError);
-        return reply('Sorry, I couldn\'t create that list. Please try again.');
-      }
-
-      console.log('[CREATE_LIST] Created list:', newList.name, newList.id);
-
-      // If initial items were provided, create notes for each
-      let itemsCreated = 0;
-      if (initialItemsRaw && initialItemsRaw.trim().length > 0) {
-        // Split by commas, semicolons, or newlines
-        const items = initialItemsRaw
-          .split(/[,;\n]+/)
-          .map((s: string) => s.trim())
-          .filter((s: string) => s.length > 1);
-
-        if (items.length > 0) {
-          const notesToInsert = items.map((item: string) => ({
-            author_id: userId,
-            couple_id: effectiveCoupleId,
-            source: inboundNoteSource,
-            source_ref: wamid,
-            original_text: item,
-            summary: item,
-            category: formattedName.toLowerCase().replace(/\s+/g, '_'),
-            list_id: newList.id,
-            priority: 'medium',
-            completed: false,
-            tags: [],
-            items: [],
-          }));
-
-          const { error: itemsError } = await insertNotesBatch(supabase, notesToInsert);
-
-          if (!itemsError) {
-            itemsCreated = items.length;
-          } else {
-            console.error('[CREATE_LIST] Items insert error:', itemsError);
-          }
-        }
-      }
-
-      let response = `📋 Created list: *${newList.name}*\n`;
-      if (itemsCreated > 0) {
-        response += `✅ Added ${itemsCreated} item${itemsCreated > 1 ? 's' : ''}\n`;
-      }
-      response += `\n💡 Now just send items and they'll be automatically sorted here!\n`;
-      response += `📂 Say "show my ${newList.name} list" to view it\n`;
-      response += `🔗 Manage: https://witholive.app`;
-
-      await saveReferencedEntity(null, response);
-      return reply(response);
+      const r = await makeCreateListHandler({ t, saveReferencedEntity })({
+        supabase, userId, userLang, userTimezone: profile.timezone || 'America/New_York',
+        profile: profile as any, coupleId, effectiveCoupleId, session: session as any,
+        messageBody, cleanMessage, effectiveMessage, mediaUrls, mediaTypes,
+        wamid, inboundNoteSource, quotedMessageId: quotedMessageId ?? null,
+        receivedAtIso: receivedAtIso ?? new Date().toISOString(),
+        tracker, intentResult: intentResult as any, members: null,
+      } as SharedHandlerContext);
+      return reply(r.text);
     }
 
     // ========================================================================
-    // LIST RECAP HANDLER - AI-generated detailed review of a specific list
+    // LIST_RECAP — handler in ./handlers/list-recap.ts (Initiative 1.8).
     // ========================================================================
     if (intent === 'LIST_RECAP') {
-      const targetListName = (intentResult as any)._listName || cleanMessage || effectiveMessage || '';
-      console.log('[LIST_RECAP] Generating recap for list:', targetListName);
-
-      // Fetch all user lists for matching
-      const { data: allLists } = await supabase
-        .from('clerk_lists')
-        .select('id, name, description, created_at')
-        .or(`author_id.eq.${userId}${coupleId ? `,couple_id.eq.${coupleId}` : ''}`);
-
-      if (!allLists || allLists.length === 0) {
-        return reply('📋 You don\'t have any lists yet! Try "create a list about [topic]" to get started.');
-      }
-
-      // Smart list matching (same logic as SEARCH)
-      function normalizeForRecap(name: string): string {
-        return name.toLowerCase().replace(/\b(the|a|an|my|our)\b/g, '').replace(/\s+/g, ' ').trim();
-      }
-      function singularizeForRecap(word: string): string {
-        if (word.endsWith('ies')) return word.slice(0, -3) + 'y';
-        if (word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
-        return word;
-      }
-
-      const searchNormalized = normalizeForRecap(targetListName);
-      const searchSingular = singularizeForRecap(searchNormalized);
-      let matchedList: { id: string; name: string; description: string | null; created_at: string } | null = null;
-
-      for (const list of allLists) {
-        const nln = normalizeForRecap(list.name);
-        const nlnS = singularizeForRecap(nln);
-        if (nln === searchNormalized || nlnS === searchSingular || nln.includes(searchNormalized) || searchNormalized.includes(nln) || nlnS.includes(searchSingular) || searchSingular.includes(nlnS)) {
-          matchedList = list;
-          break;
-        }
-      }
-
-      if (!matchedList) {
-        // Suggest available lists
-        const listNames = allLists.slice(0, 8).map(l => `• ${l.name}`).join('\n');
-        return reply(t('list_not_found', userLang, { query: targetListName, lists: listNames }));
-      }
-
-      // Fetch ALL items in this list (including completed)
-      const { data: listItems } = await supabase
-        .from('clerk_notes')
-        .select('id, summary, original_text, category, priority, due_date, reminder_time, completed, created_at, items, tags, task_owner')
-        .eq('list_id', matchedList.id)
-        .order('completed', { ascending: true })
-        .order('priority', { ascending: true })
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (!listItems || listItems.length === 0) {
-        return reply(t('list_empty', userLang, { list: matchedList.name }));
-      }
-
-      const activeItems = listItems.filter(i => !i.completed);
-      const completedItems = listItems.filter(i => i.completed);
-      const urgentItems = activeItems.filter(i => i.priority === 'high');
-      const overdueItems = activeItems.filter(i => i.due_date && new Date(i.due_date) < new Date());
-      const withDueDate = activeItems.filter(i => i.due_date);
-
-      // Build rich context for AI recap
-      let itemsContext = '';
-      listItems.forEach((item, i) => {
-        const status = item.completed ? '✅' : '⬜';
-        const priority = item.priority === 'high' ? ' 🔥' : '';
-        // PR6: AI prompt context — date strings localized, labels stay English.
-        const dueInfo = item.due_date ? ` | Due: ${formatFriendlyDate(item.due_date, true, profile.timezone, userLang)}` : '';
-        const reminderInfo = item.reminder_time ? ` | ⏰ ${formatFriendlyDate(item.reminder_time, true, profile.timezone, userLang)}` : '';
-        const owner = item.task_owner ? ` | Assigned: ${item.task_owner}` : '';
-        itemsContext += `${i + 1}. ${status} ${item.summary}${priority}${dueInfo}${reminderInfo}${owner}\n`;
-        if (item.original_text && item.original_text !== item.summary) {
-          itemsContext += `   Details: ${item.original_text.substring(0, 300)}\n`;
-        }
-        if (item.items && item.items.length > 0) {
-          item.items.forEach((sub: string) => {
-            itemsContext += `   • ${sub}\n`;
-          });
-        }
-      });
-
-      // Generate AI recap
-      const recapPrompt = `You are Olive, generating a detailed recap/review of the user's "${matchedList.name}" list.
-
-## LIST DATA:
-- List: ${matchedList.name}
-- Description: ${matchedList.description || 'None'}
-- Total items: ${listItems.length} (${activeItems.length} active, ${completedItems.length} completed)
-- Urgent items: ${urgentItems.length}
-- Overdue items: ${overdueItems.length}
-- Items with due dates: ${withDueDate.length}
-- Created: ${new Date(matchedList.created_at).toLocaleDateString()}
-
-## ALL ITEMS:
-${itemsContext}
-
-## YOUR TASK:
-Generate a DETAILED, organized recap that includes:
-1. **Overview** — Quick status summary (total, active, completed, urgent)
-2. **Active Items** — List each active item with full details, due dates, and priorities
-3. **Action Needed** — Highlight overdue or urgent items that need attention NOW
-4. **Completed** — Brief mention of what's been done (count and optionally names)
-5. **Insights** — Any patterns or suggestions (e.g., "3 items are overdue", "most items have no due date set")
-
-FORMAT for WhatsApp (max 1500 chars):
-- Use *bold* for headers
-- Use emojis for visual clarity
-- Be concise but thorough
-- Group items logically
-- End with an actionable suggestion`;
-
-      // Inject language instruction
-      const recapLangName = langName(userLang);
-      const fullRecapPrompt = recapLangName !== 'English'
-        ? recapPrompt + `\n\nIMPORTANT: Respond entirely in ${recapLangName}.`
-        : recapPrompt;
-
-      try {
-        const recapResponse = await callAI(fullRecapPrompt, `Recap my ${matchedList.name} list`, 0.7, 'standard', tracker, WA_LIST_RECAP_PROMPT_VERSION);
-
-        // Save context for follow-ups
-        const displayedItems = activeItems.slice(0, 10);
-        if (displayedItems.length > 0) {
-          await saveReferencedEntity(displayedItems[0], recapResponse, displayedItems.map(t => ({ id: t.id, summary: t.summary })));
-        } else {
-          await saveReferencedEntity(null, recapResponse);
-        }
-
-        return reply(recapResponse.slice(0, 1500));
-      } catch (aiError) {
-        console.error('[LIST_RECAP] AI error, using fallback:', aiError);
-
-        // Fallback: structured text recap
-        let fallback = `📋 *${matchedList.name}* Recap\n\n`;
-        fallback += `📊 ${activeItems.length} active | ${completedItems.length} done`;
-        if (urgentItems.length > 0) fallback += ` | ${urgentItems.length} urgent 🔥`;
-        if (overdueItems.length > 0) fallback += ` | ${overdueItems.length} overdue ⚠️`;
-        fallback += '\n\n';
-
-        if (urgentItems.length > 0) {
-          fallback += `🔥 *Urgent:*\n`;
-          urgentItems.slice(0, 5).forEach((item, i) => {
-            fallback += `${i + 1}. ${item.summary}\n`;
-          });
-          fallback += '\n';
-        }
-
-        if (overdueItems.length > 0) {
-          fallback += `⚠️ *Overdue:*\n`;
-          overdueItems.slice(0, 5).forEach((item, i) => {
-            const days = Math.floor((Date.now() - new Date(item.due_date!).getTime()) / 86400000);
-            fallback += `${i + 1}. ${item.summary} (${days}d overdue)\n`;
-          });
-          fallback += '\n';
-        }
-
-        const regularItems = activeItems.filter(i => i.priority !== 'high' && !(i.due_date && new Date(i.due_date) < new Date()));
-        if (regularItems.length > 0) {
-          fallback += `📝 *Active:*\n`;
-          regularItems.slice(0, 8).forEach((item, i) => {
-            // PR6: user-facing fallback — pass userLang so the date is
-            // in the user's locale (no label here, just date in parens).
-            const due = item.due_date ? ` (${formatFriendlyDate(item.due_date, false, profile.timezone, userLang)})` : '';
-            fallback += `${i + 1}. ${item.summary}${due}\n`;
-          });
-          if (regularItems.length > 8) fallback += `...and ${regularItems.length - 8} more\n`;
-        }
-
-        fallback += `\n🔗 Manage: https://witholive.app`;
-
-        const displayedFallback = activeItems.slice(0, 10);
-        if (displayedFallback.length > 0) {
-          await saveReferencedEntity(displayedFallback[0], fallback, displayedFallback.map(t => ({ id: t.id, summary: t.summary })));
-        }
-        return reply(fallback);
-      }
+      const r = await makeListRecapHandler({ callAI, t, saveReferencedEntity })({
+        supabase, userId, userLang, userTimezone: profile.timezone || 'America/New_York',
+        profile: profile as any, coupleId, effectiveCoupleId, session: session as any,
+        messageBody, cleanMessage, effectiveMessage, mediaUrls, mediaTypes,
+        wamid, inboundNoteSource, quotedMessageId: quotedMessageId ?? null,
+        receivedAtIso: receivedAtIso ?? new Date().toISOString(),
+        tracker, intentResult: intentResult as any, members: null,
+      } as SharedHandlerContext);
+      return reply(r.text);
     }
 
     // ========================================================================
